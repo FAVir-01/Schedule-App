@@ -11,3 +11,18 @@ Siga os passos abaixo para testar o aplicativo diretamente no [Expo Snack](https
 7. Se desejar testar no celular, clique em **"Run on your device"**, escaneie o QR code com o aplicativo Expo Go e aguarde a sincronização.
 
 > Observação: Se o projeto usar dependências extras, adicione-as no painel **Dependencies** do Snack antes de rodar.
+
+## Dependências recomendadas
+
+Para aproveitar os lembretes das metas semanais e os gráficos aprimorados, adicione estas bibliotecas ao Snack (ou ao seu projeto Expo):
+
+- `expo-notifications`
+- `expo-device`
+- `@react-native-async-storage/async-storage`
+
+## Novidades
+
+- Sistema de metas semanais com acompanhamento detalhado.
+- Resumo das metas diretamente no dashboard.
+- Comparação gráfica entre semanas para cada atividade.
+- Notificações locais para lembrar de revisar o progresso semanal.
