@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { SafeAreaView, View, Text, TextInput, Pressable, ScrollView, Alert, Switch, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
@@ -358,11 +358,6 @@ export default function App(){
     setSess(all);
   };
 
-  const deleteSession = async (id)=>{
-    const all = (await load(K.SESS, [])).filter(s=>s.id!==id);
-    await save(K.SESS, all); setSess(all);
-  };
-
   const createHabit = async ({name, target, icon, color})=>{
     if (!name?.trim()) return;
     const list = await load(K.HABITS, []);
@@ -525,6 +520,7 @@ export default function App(){
               history8={history8}
               selectedDate={selectedDate}
               sessions={sessions}
+              waterLog={waterLog}
             />
           )}
 
@@ -533,7 +529,6 @@ export default function App(){
               habits={habits}
               sessions={sessions}
               onAdd={addMinutes}
-              onDelete={deleteSession}
               waterLog={waterLog}
               onWaterChange={updateWaterForDate}
               selectedDate={selectedDate}
@@ -583,7 +578,7 @@ export default function App(){
 
 /* ---------------------- sub-screens ---------------------- */
 
-function JournalScreen({ habits, agg, history8, selectedDate, sessions }){
+function JournalScreen({ habits, agg, history8, selectedDate, sessions, waterLog={} }){
   const C = useColors();
   const totalTarget = useMemo(()=>habits.reduce((a,h)=>a+(h.target||0),0), [habits]);
   const totalThisWeek = useMemo(()=>Object.values(agg.byHabit||{}).reduce((a,b)=>a+b,0), [agg]);
@@ -627,6 +622,9 @@ function JournalScreen({ habits, agg, history8, selectedDate, sessions }){
     const end = addDays(start, 7);
     return sessions.filter(s=>{ const d=new Date(s.dateISO); return d>=start && d<end; });
   }, [sessions, agg.start]);
+  const dayKey = dayStart.toISOString().slice(0,10);
+  const waterState = waterLog?.[dayKey] || { bottles:0, progress:0 };
+  const waterProgressPct = Math.round(clamp(waterState.progress||0, 0, 1)*100);
 
   return (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom:32}}>
@@ -692,6 +690,7 @@ function JournalScreen({ habits, agg, history8, selectedDate, sessions }){
           <Text style={{color:C.sub}}>Nenhuma atividade registrada para o dia selecionado.</Text>
         ) : (
           <View style={{marginBottom:16}}>
+            <Text style={{color:C.sub, fontWeight:"700", marginBottom:8}}>Horas por atividade</Text>
             {dayByHabit.map(item=>(
               <View key={item.id} style={{marginBottom:10}}>
                 <View style={{flexDirection:"row", justifyContent:"space-between"}}>
@@ -703,6 +702,24 @@ function JournalScreen({ habits, agg, history8, selectedDate, sessions }){
             ))}
           </View>
         )}
+
+        <View style={{flexDirection:"row", flexWrap:"wrap", marginBottom:16}}>
+          <View style={{marginRight:12, marginBottom:12}}>
+            <SummaryPill label="Registros" value={String(sessionsForDay.length)} compact />
+          </View>
+          <View style={{marginRight:12, marginBottom:12}}>
+            <SummaryPill label="Minutos no dia" value={fmtHM(dayTotal)} compact />
+          </View>
+          <View style={{marginRight:12, marginBottom:12}}>
+            <SummaryPill label="Total na semana" value={fmtHM(totalThisWeek)} compact />
+          </View>
+        </View>
+
+        <View style={{backgroundColor:C.dimStrong||C.dim, borderRadius:14, padding:14, borderWidth:1, borderColor:C.brd, marginBottom:20}}>
+          <Text style={{color:C.sub, fontWeight:"700"}}>Consumo de água</Text>
+          <Text style={{color:C.txt, fontWeight:"900", fontSize:18, marginTop:6}}>{waterState.bottles || 0} garrafas</Text>
+          <Text style={{color:C.sub, marginTop:6}}>Garrafa atual: {waterProgressPct}%</Text>
+        </View>
 
         <Text style={{color:C.sub, fontWeight:"700", marginBottom:8}}>Registros do dia</Text>
         {sessionsForDay.length === 0 ? (
@@ -734,7 +751,7 @@ const SummaryPill = ({ label, value, compact }) => {
   );
 };
 
-function DaysScreen({ habits, sessions, onAdd, onDelete, waterLog, onWaterChange, selectedDate, onSelectDate, agg }){
+function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selectedDate, onSelectDate, agg }){
   const C = useColors();
   const [selectedHabit, setSelectedHabit] = useState(habits[0]?.id || null);
   const [duration, setDuration] = useState(30);
@@ -790,13 +807,6 @@ function DaysScreen({ habits, sessions, onAdd, onDelete, waterLog, onWaterChange
     onAdd(selectedHabit, sign*value, note);
     setNote("");
   };
-  const removeSession = (id)=>{
-    Alert.alert('Excluir registro?','Essa ação não pode ser desfeita.',[
-      {text:'Cancelar', style:'cancel'},
-      {text:'Excluir', style:'destructive', onPress:()=>onDelete?.(id)}
-    ]);
-  };
-
   const changeDay = (offset)=>{
     if (!onSelectDate) return;
     onSelectDate(addDays(date, offset));
@@ -842,7 +852,7 @@ function DaysScreen({ habits, sessions, onAdd, onDelete, waterLog, onWaterChange
 
       <Card style={{marginBottom:16, padding:20}}>
         <Text style={{color:C.sub, fontWeight:'700', marginBottom:12}}>Monitor de água</Text>
-        <Text style={{color:C.sub, marginBottom:12}}>Arraste para esvaziar a garrafa virtual. Ao completar, uma nova garrafa é contada.</Text>
+        <Text style={{color:C.sub, marginBottom:12}}>Use os controles para registrar frações ou completar a garrafa do dia sem precisar arrastar.</Text>
         <WaterTracker value={waterState} onChange={handleWaterChange} />
         <View style={{flexDirection:'row', justifyContent:'space-between', marginTop:16, alignItems:'center'}}>
           <Text style={{color:C.txt, fontWeight:'800'}}>{waterState.bottles || 0} garrafas hoje</Text>
@@ -896,27 +906,6 @@ function DaysScreen({ habits, sessions, onAdd, onDelete, waterLog, onWaterChange
           <View style={{width:12}} />
           <Btn title='Remover' kind='danger' onPress={()=>commit(-1)} style={{flex:1}} />
         </View>
-      </Card>
-
-      <Card style={{marginBottom:16, padding:20}}>
-        <Text style={{color:C.sub, fontWeight:'700', marginBottom:8}}>Atividades do dia</Text>
-        {sessionsForDay.length === 0 ? (
-          <Text style={{color:C.sub}}>Sem registros para este dia.</Text>
-        ) : (
-          sessionsForDay.map(item=>{
-            const ref = habits.find(h=>h.id===item.habitId);
-            return (
-              <View key={item.id} style={{paddingVertical:10, borderBottomWidth:1, borderBottomColor:C.brd, flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
-                <View style={{flex:1, paddingRight:12}}>
-                  <Text style={{color:C.txt, fontWeight:'800'}}>{ref?.icon} {ref?.name || 'Atividade'}</Text>
-                  <Text style={{color:C.sub, marginTop:4}}>{fmtHM(item.minutes)} • {new Date(item.dateISO).toLocaleTimeString().slice(0,5)}</Text>
-                  {item.note ? <Text style={{color:C.sub, marginTop:4}}>{item.note}</Text> : null}
-                </View>
-                <Pressable onPress={()=>removeSession(item.id)}><Text style={{color:C.bad, fontWeight:'700'}}>Excluir</Text></Pressable>
-              </View>
-            );
-          })
-        )}
       </Card>
 
       <Card style={{padding:20}}>
@@ -1314,11 +1303,15 @@ function SettingsScreen({ prefs, onPrefsChange, onThemeChange, themeName }){
 
 function WaterTracker({ value, onChange }){
   const C = useColors();
+  const bottles = Math.max(0, value?.bottles || 0);
   const progress = clamp(value?.progress ?? 0, 0, 1);
-  const [trackWidth, setTrackWidth] = useState(0);
-  const progressRef = useRef(progress);
-
-  useEffect(()=>{ progressRef.current = progress; }, [progress]);
+  const progressPct = Math.round(progress * 100);
+  const options = [
+    { label: '25%', value: 0.25 },
+    { label: '50%', value: 0.5 },
+    { label: '75%', value: 0.75 },
+    { label: 'Completar', value: 1 },
+  ];
 
   const applyChange = useCallback((updater)=>{
     if (!onChange) return;
@@ -1326,39 +1319,82 @@ function WaterTracker({ value, onChange }){
     else onChange(()=>updater);
   }, [onChange]);
 
-  const handleMove = (evt)=>{
-    if (!trackWidth) return;
-    const x = clamp(evt.nativeEvent.locationX, 0, trackWidth);
-    const ratio = clamp(x/trackWidth, 0, 0.99);
-    applyChange(prev=>({ ...prev, progress: ratio }));
-  };
+  const handleStepPress = useCallback((stepValue)=>{
+    applyChange(prev=>{
+      const base = prev || { bottles:0, progress:0 };
+      const currentProgress = clamp(base.progress||0, 0, 1);
+      if (stepValue >= 1){
+        return { bottles: (base.bottles||0) + 1, progress: 0 };
+      }
+      const sameStep = Math.abs(currentProgress - stepValue) < 0.05;
+      return { ...base, progress: sameStep ? 0 : stepValue };
+    });
+  }, [applyChange]);
 
-  const handleRelease = ()=>{
-    const last = progressRef.current;
-    if (last >= 0.95){
-      applyChange(prev=>({ bottles: (prev?.bottles||0) + 1, progress:0 }));
-    }
-  };
+  const handleReset = useCallback(()=>{
+    applyChange(prev=>({ ...(prev||{}), progress:0 }));
+  }, [applyChange]);
 
   return (
-    <View>
-      <View
-        style={{height:120, borderRadius:20, borderWidth:2, borderColor:C.brd, backgroundColor:C.card, alignItems:'center', justifyContent:'center', marginBottom:12}}
-      >
-        <View style={{width:'80%', height:12, borderRadius:999, backgroundColor:C.dim, overflow:'hidden'}}
-          onLayout={(e)=>setTrackWidth(e.nativeEvent.layout.width)}
-          onStartShouldSetResponder={()=>true}
-          onMoveShouldSetResponder={()=>true}
-          onResponderMove={handleMove}
-          onResponderRelease={handleRelease}
-        >
-          <View style={{width:`${Math.round(progress*100)}%`, height:'100%', backgroundColor:C.acc}} />
-        </View>
-        <View style={{marginTop:18, alignItems:'center'}}>
-          <Text style={{fontSize:42}}>💧</Text>
-          <Text style={{color:C.sub, marginTop:6}}>Arraste até o fim para completar uma garrafa</Text>
-        </View>
+    <View style={{backgroundColor:C.dimStrong||C.dim, borderRadius:16, padding:16, borderWidth:1, borderColor:C.brd}}>
+      <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
+        <Text style={{color:C.sub, fontWeight:'700'}}>Garrafa atual</Text>
+        <Text style={{color:C.txt, fontWeight:'800'}}>{progressPct}%</Text>
       </View>
+      <View style={{height:12, borderRadius:999, backgroundColor:C.card, overflow:'hidden', marginTop:12}}>
+        <View style={{width:`${Math.round(progress*100)}%`, height:'100%', backgroundColor:C.acc}} />
+      </View>
+      <Text style={{color:C.sub, marginTop:12}}>Toque em uma fração para registrar rapidamente.</Text>
+      <View style={{flexDirection:'row', flexWrap:'wrap', marginTop:12}}>
+        {options.map((opt, index)=>{
+          const isComplete = opt.value >= 1;
+          const isActive = !isComplete && progress >= opt.value - 0.001;
+          const baseStyle = {
+            flexBasis: isComplete ? '100%' : '48%',
+            marginRight: isComplete ? 0 : (index % 2 === 0 ? 8 : 0),
+            marginBottom:8,
+            paddingVertical:12,
+            borderRadius:12,
+            borderWidth:1,
+            alignItems:'center',
+          };
+          return (
+            <Pressable
+              key={opt.label}
+              onPress={()=>handleStepPress(opt.value)}
+              style={({pressed})=>({
+                ...baseStyle,
+                backgroundColor: isComplete
+                  ? (pressed ? hexToRgba(C.acc,0.7) : C.acc)
+                  : isActive
+                    ? hexToRgba(C.acc,0.16)
+                    : (pressed ? C.dim : C.card),
+                borderColor: isComplete || isActive ? C.acc : C.brd,
+              })}
+            >
+              <Text style={{color:isComplete ? 'white' : (isActive ? C.txt : C.sub), fontWeight:'700'}}>{opt.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      {progress > 0 ? (
+        <Pressable
+          onPress={handleReset}
+          style={({pressed})=>({
+            marginTop:4,
+            alignSelf:'flex-start',
+            paddingVertical:8,
+            paddingHorizontal:12,
+            borderRadius:10,
+            borderWidth:1,
+            borderColor:C.brd,
+            backgroundColor: pressed ? C.dim : C.card,
+          })}
+        >
+          <Text style={{color:C.sub, fontWeight:'700'}}>Zerar garrafa atual</Text>
+        </Pressable>
+      ) : null}
+      <Text style={{color:C.sub, marginTop:12}}>Total acumulado: {bottles} garrafas</Text>
     </View>
   );
 }
