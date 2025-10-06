@@ -30,11 +30,15 @@ const shortDow = ["M","T","W","T","F","S","S"]; // monday..sunday
 const monthDay = (d)=>{const x=new Date(d); return ("0"+x.getDate()).slice(-2)+"/"+("0"+(x.getMonth()+1)).slice(-2);};
 
 const hexToRgba = (hex, alpha=1)=>{
-  if (!hex) return `rgba(255,255,255,${alpha})`;
-  const normalized = hex.replace("#","");
-  const size = normalized.length===3 ? 1 : 2;
+  const fallback = (C && C.acc) || "#5B8CFF";
+  const raw = typeof hex === "string" ? hex.trim() : "";
+  const candidate = raw ? raw.replace("#","") : "";
+  const base = candidate.length===3 || candidate.length===6
+    ? candidate
+    : fallback.replace("#","");
+  const size = base.length===3 ? 1 : 2;
   const parse = (start)=>{
-    const segment = normalized.substr(start, size);
+    const segment = base.substr(start, size);
     const full = size===1 ? segment.repeat(2) : segment;
     return parseInt(full,16)||0;
   };
@@ -1223,16 +1227,6 @@ function buildCSV(habits, sessions){
   return [head, ...rows].join("\n");
 }
 function fmtDate(d){ const dd = new Date(d); const a=("0"+dd.getDate()).slice(-2), b=("0"+(dd.getMonth()+1)).slice(-2); return `${a}/${b}`; }
-function hexToRgba(hex, alpha){
-  if (!hex) return `rgba(91,140,255,${alpha})`;
-  const clean = hex.replace("#","");
-  if (clean.length !==6) return `rgba(91,140,255,${alpha})`;
-  const num = parseInt(clean, 16);
-  const r = (num >> 16) & 255;
-  const g = (num >> 8) & 255;
-  const b = num & 255;
-  return `rgba(${r},${g},${b},${alpha})`;
-}
 function buildGoalNotificationBody(goals, agg){
   if (!goals?.length) return "Nenhuma meta cadastrada.";
   const total = Object.values(agg.byHabit||{}).reduce((a,b)=>a+b,0);
