@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { SafeAreaView, View, Text, TextInput, Pressable, ScrollView, Alert, Share, Switch, Platform } from "react-native";
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { SafeAreaView, View, Text, TextInput, Pressable, ScrollView, Alert, Switch, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
@@ -17,7 +17,14 @@ try {
 }
 
 /* ---------------------- tema e utilidades ---------------------- */
-const C = { bg:"#0B1220", card:"#11192b", txt:"#E7ECF5", sub:"#9FB0C9", acc:"#5B8CFF", good:"#18C08F", warn:"#FFB020", bad:"#FF6B6B", chip:"#1a263e", brd:"#23324a", dim:"#1b2945" };
+const THEMES = {
+  midnight: { bg:"#0B1220", card:"#11192b", txt:"#E7ECF5", sub:"#9FB0C9", acc:"#5B8CFF", good:"#18C08F", warn:"#FFB020", bad:"#FF6B6B", chip:"#1a263e", brd:"#23324a", dim:"#1b2945", dimStrong:"#0f182b" },
+  forest: { bg:"#0F1612", card:"#152018", txt:"#E9F5ED", sub:"#9EC5AC", acc:"#57D399", good:"#7FFFD4", warn:"#FFD66B", bad:"#FF7F7F", chip:"#1B2A1F", brd:"#1F3225", dim:"#1a2c20", dimStrong:"#14231b" },
+  sunrise: { bg:"#1A1627", card:"#221B33", txt:"#F6EEFF", sub:"#B9A9D6", acc:"#FF7AD6", good:"#8FFFC2", warn:"#FFD37D", bad:"#FF6B91", chip:"#2B2240", brd:"#352D4F", dim:"#2d2545", dimStrong:"#251d3a" },
+};
+const ThemeContext = React.createContext({ colors: THEMES.midnight, themeName: "midnight", setThemeName: ()=>{} });
+const useTheme = () => useContext(ThemeContext);
+const useColors = () => useTheme().colors;
 const P = 16;
 const monthNamesShort = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const dayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
@@ -30,7 +37,7 @@ const shortDow = ["M","T","W","T","F","S","S"]; // monday..sunday
 const monthDay = (d)=>{const x=new Date(d); return ("0"+x.getDate()).slice(-2)+"/"+("0"+(x.getMonth()+1)).slice(-2);};
 
 const hexToRgba = (hex, alpha=1)=>{
-  const fallback = (C && C.acc) || "#5B8CFF";
+  const fallback = THEMES.midnight.acc || "#5B8CFF";
   const raw = typeof hex === "string" ? hex.trim() : "";
   const candidate = raw ? raw.replace("#","") : "";
   const base = candidate.length===3 || candidate.length===6
@@ -48,38 +55,53 @@ const hexToRgba = (hex, alpha=1)=>{
   return `rgba(${r},${g},${b},${alpha})`;
 };
 
-const Card = ({children,style}) => <View style={[{backgroundColor:C.card,borderRadius:18,padding:14,borderWidth:1,borderColor:C.brd},style]}>{children}</View>;
+const Card = ({children,style}) => {
+  const C = useColors();
+  return <View style={[{backgroundColor:C.card,borderRadius:18,padding:14,borderWidth:1,borderColor:C.brd},style]}>{children}</View>;
+};
 const Btn = ({title,onPress,kind="primary",style})=>{
+  const C = useColors();
   const map={primary:C.acc, good:C.good, danger:C.bad, chip:C.chip};
   const bg = map[kind] || C.acc;
   return <Pressable onPress={onPress} style={({pressed})=>[{backgroundColor:bg,opacity:pressed?0.9:1,paddingVertical:12,paddingHorizontal:16,borderRadius:12,alignItems:"center"},style]}><Text style={{color:"white",fontWeight:"800"}}>{title}</Text></Pressable>;
 };
-const Tag = ({active,label,onPress})=>(
-  <Pressable onPress={onPress} style={({pressed})=>({backgroundColor:active?C.acc:(pressed?"#22304c":"#1a263e"), paddingVertical:8, paddingHorizontal:12, borderRadius:12, borderWidth:1, borderColor:C.brd})}>
-    <Text style={{color:"white", fontWeight:"800"}}>{label}</Text>
-  </Pressable>
-);
-const Chip = ({title,onPress}) => (
-  <Pressable onPress={onPress} style={({pressed})=>({backgroundColor:pressed?"#22304c":"#1a263e", paddingVertical:8, paddingHorizontal:10, borderRadius:10, borderWidth:1, borderColor:C.brd})}>
-    <Text style={{color:C.txt, fontWeight:"700"}}>{title}</Text>
-  </Pressable>
-);
-const OptionPill = ({active,label,onPress,color,style}) => (
-  <Pressable
-    onPress={onPress}
-    style={({pressed})=>({
-      paddingVertical:6,
-      paddingHorizontal:14,
-      borderRadius:999,
-      backgroundColor: active ? hexToRgba(color||C.acc,0.16) : pressed ? "#1b2945" : "#111a2d",
-      borderWidth:1,
-      borderColor: active ? color||C.acc : C.brd,
-    }, style)}
-  >
-    <Text style={{color: active ? (color||C.acc) : C.sub, fontWeight:"700", fontSize:12}}>{label}</Text>
-  </Pressable>
-);
-const TrendChart = ({series,color=C.acc,height=160})=>{
+const Tag = ({active,label,onPress})=>{
+  const C = useColors();
+  return (
+    <Pressable onPress={onPress} style={({pressed})=>({backgroundColor:active?C.acc:(pressed?hexToRgba(C.acc,0.1):C.chip), paddingVertical:8, paddingHorizontal:12, borderRadius:12, borderWidth:1, borderColor:active?C.acc:C.brd})}>
+      <Text style={{color:active?"white":C.txt, fontWeight:"800"}}>{label}</Text>
+    </Pressable>
+  );
+};
+const Chip = ({title,onPress}) => {
+  const C = useColors();
+  return (
+    <Pressable onPress={onPress} style={({pressed})=>({backgroundColor:pressed?hexToRgba(C.acc,0.12):C.chip, paddingVertical:8, paddingHorizontal:10, borderRadius:10, borderWidth:1, borderColor:C.brd})}>
+      <Text style={{color:C.txt, fontWeight:"700"}}>{title}</Text>
+    </Pressable>
+  );
+};
+const OptionPill = ({active,label,onPress,color,style}) => {
+  const C = useColors();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({pressed})=>({
+        paddingVertical:6,
+        paddingHorizontal:14,
+        borderRadius:999,
+        backgroundColor: active ? hexToRgba(color||C.acc,0.16) : pressed ? C.dim : C.card,
+        borderWidth:1,
+        borderColor: active ? color||C.acc : C.brd,
+      }, style)}
+    >
+      <Text style={{color: active ? (color||C.acc) : C.sub, fontWeight:"700", fontSize:12}}>{label}</Text>
+    </Pressable>
+  );
+};
+const TrendChart = ({series,color,height=160})=>{
+  const C = useColors();
+  const accent = color || C.acc;
   const [width, setWidth] = useState(0);
   const data = Array.isArray(series) ? series : [];
   const topPadding = 12;
@@ -139,7 +161,7 @@ const TrendChart = ({series,color=C.acc,height=160})=>{
               width: Math.max(2, seg.dx),
               bottom: bottomPadding,
               height: Math.max(2, baseline - Math.min(seg.start.y, seg.end.y)),
-              backgroundColor: hexToRgba(color, 0.16),
+              backgroundColor: hexToRgba(accent, 0.16),
               borderTopLeftRadius:12,
               borderTopRightRadius:12,
             }}
@@ -154,9 +176,9 @@ const TrendChart = ({series,color=C.acc,height=160})=>{
               top: seg.start.y,
               width: seg.length,
               height:4,
-              backgroundColor: color,
+              backgroundColor: accent,
               borderRadius:999,
-              shadowColor: color,
+              shadowColor: accent,
               shadowOpacity:0.25,
               shadowRadius:6,
               shadowOffset:{width:0,height:4},
@@ -167,7 +189,7 @@ const TrendChart = ({series,color=C.acc,height=160})=>{
         ))}
         {points.map((pt,index)=>(
           <View key={`dot-${index}`} style={{position:"absolute", left:pt.x-5, top:pt.y-5}}>
-            <View style={{width:10, height:10, borderRadius:5, backgroundColor:color}} />
+            <View style={{width:10, height:10, borderRadius:5, backgroundColor:accent}} />
             <View style={{position:"absolute", width:6, height:6, borderRadius:3, backgroundColor:C.card, left:2, top:2}} />
           </View>
         ))}
@@ -183,21 +205,25 @@ const TrendChart = ({series,color=C.acc,height=160})=>{
   );
 };
 const Bar = ({value,total,color})=>{
+  const C = useColors();
   const pct = Math.min(100, Math.round((value/Math.max(1,total))*100));
   return <View style={{height:12, backgroundColor:C.dim, borderRadius:999, overflow:"hidden"}}>
     <View style={{width:`${pct}%`, height:"100%", backgroundColor:color||C.acc}}/>
   </View>;
 };
-const Stat = ({label,value})=>(
-  <View style={{alignItems:"center"}}>
-    <Text style={{color:C.txt, fontWeight:"800"}}>{value}</Text>
-    <Text style={{color:C.sub, fontSize:12}}>{label}</Text>
-  </View>
-);
+const Stat = ({label,value})=>{
+  const C = useColors();
+  return (
+    <View style={{alignItems:"center"}}>
+      <Text style={{color:C.txt, fontWeight:"800"}}>{value}</Text>
+      <Text style={{color:C.sub, fontSize:12}}>{label}</Text>
+    </View>
+  );
+};
 
 /* ---------------------- Storage ---------------------- */
-const K = { HABITS:"HABITS", SESS:"SESSIONS", PREFS:"PREFS", GOALS:"GOALS" };
-const DEFAULT_PREFS = { showBackup:false, notificationsEnabled:false, notifyHour:20 };
+const K = { HABITS:"HABITS", SESS:"SESSIONS", PREFS:"PREFS", GOALS:"GOALS", WATER:"WATER" };
+const DEFAULT_PREFS = { notificationsEnabled:false, notifyHour:20, themeName:"midnight" };
 async function load(key, fb){ try{ const r=await AsyncStorage.getItem(key); return r?JSON.parse(r):fb; } catch{ return fb; } }
 async function save(key, val){ try{ await AsyncStorage.setItem(key, JSON.stringify(val)); } catch{} }
 
@@ -217,6 +243,7 @@ async function ensureSeed(){
   await save(K.SESS, []);
   await save(K.GOALS, []);
   await save(K.PREFS, DEFAULT_PREFS);
+  await save(K.WATER, {});
 }
 
 function aggregateWeek(sessions, habits, startDate){
@@ -271,22 +298,26 @@ export default function App(){
   const [prefs, setPrefs] = useState(DEFAULT_PREFS);
   const [goals, setGoals] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [waterLog, setWaterLog] = useState({});
 
   useEffect(()=>{ (async()=>{
     await ensureSeed();
     setHabits(await load(K.HABITS, []));
     setSess(await load(K.SESS, []));
     setGoals(await load(K.GOALS, []));
+    setWaterLog(await load(K.WATER, {}));
     const storedPrefs = await load(K.PREFS, DEFAULT_PREFS);
     setPrefs({...DEFAULT_PREFS, ...storedPrefs});
   })(); },[]);
 
+  const themeName = prefs.themeName || DEFAULT_PREFS.themeName;
+  const colors = useMemo(()=>THEMES[themeName] || THEMES.midnight, [themeName]);
+  const C = colors;
+
   const agg = useMemo(()=>aggregateWeek(sessions, habits, new Date()), [sessions, habits]);
-  const totalTarget = habits.reduce((a,h)=>a+(h.target||0),0);
-  const totalDone = Object.values(agg.byHabit).reduce((a,b)=>a+b,0);
-  const weekScore = habits.length ? Math.round(100 * (Object.entries(agg.byHabit).filter(([id, mins]) => mins >= (habits.find(h=>h.id===id)?.target||0)).length / habits.length)) : 0;
   const history8 = useMemo(()=>buildHistory(sessions, habits, 8), [sessions, habits]);
   const notificationBody = useMemo(()=>buildGoalNotificationBody(goals, agg), [goals, agg]);
+  const themeContextValue = useMemo(()=>({ colors, themeName, setThemeName: changeTheme }), [colors, themeName, changeTheme]);
 
   const updatePrefs = useCallback(async (next)=>{
     const base = typeof next === "function" ? next(prefs) : next;
@@ -295,6 +326,26 @@ export default function App(){
     await save(K.PREFS, finalPrefs);
     return finalPrefs;
   }, [prefs]);
+
+  const changeTheme = useCallback((name)=>{
+    const key = THEMES[name] ? name : DEFAULT_PREFS.themeName;
+    updatePrefs(prev=>({...prev, themeName:key}));
+  }, [updatePrefs]);
+
+  const updateWaterForDate = useCallback((dateKey, updater)=>{
+    if (!dateKey) return;
+    setWaterLog(prev=>{
+      const current = prev[dateKey] || { bottles:0, progress:0 };
+      const nextValue = typeof updater === "function" ? updater(current) : updater || current;
+      const sanitized = {
+        bottles: Math.max(0, Math.round(nextValue?.bottles ?? current.bottles ?? 0)),
+        progress: clamp(typeof nextValue?.progress === "number" ? nextValue.progress : current.progress || 0, 0, 1),
+      };
+      const updated = { ...prev, [dateKey]: sanitized };
+      save(K.WATER, updated);
+      return updated;
+    });
+  }, []);
 
   /* ------ actions ------ */
   const addMinutes = async (habitId, mins, note="")=>{
@@ -393,7 +444,7 @@ export default function App(){
   const selectedKey = selectedDate ? selectedDate.toDateString() : today.toDateString();
   const dayItems = Array.from({length:7}).map((_, idx)=>{
     const date = addDays(weekStartDate, idx);
-    const label = dayNames[date.getDay()].charAt(0);
+    const label = shortDow[idx];
     const isToday = date.toDateString() === today.toDateString();
     return { date, label, isToday };
   });
@@ -403,15 +454,16 @@ export default function App(){
     { id:"habits", label:"Programs", icon:"🎯" },
     { id:"dashboard", label:"Journal", icon:"📔" },
     { id:"reports", label:"Statistics", icon:"📊" },
-    { id:"goals", label:"Profile", icon:"👤" },
+    { id:"settings", label:"Settings", icon:"⚙️" },
   ], []);
 
   const currentDayName = dayNames[today.getDay()];
   const currentDateLabel = `${("0"+today.getDate()).slice(-2)} ${monthNamesShort[today.getMonth()]}`;
 
   return (
-    <SafeAreaView style={{flex:1, backgroundColor: C.bg}}>
-      <View style={{flex:1}}>
+    <ThemeContext.Provider value={themeContextValue}>
+      <SafeAreaView style={{flex:1, backgroundColor: C.bg}}>
+        <View style={{flex:1}}>
         <View style={{paddingHorizontal:P, paddingTop:P}}>
           <View style={{marginBottom:16}}>
             <Text style={{color:C.sub, fontSize:12, fontWeight:"700", textTransform:"uppercase", letterSpacing:1}}>Today</Text>
@@ -419,94 +471,141 @@ export default function App(){
             <Text style={{color:C.sub, fontSize:18, fontWeight:"700"}}>{currentDateLabel}</Text>
           </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingRight:16, paddingBottom:4}}>
-            <View style={{flexDirection:"row"}}>
-              {dayItems.map((item, index)=>{
-                const isActive = item.date.toDateString() === selectedKey;
-                return (
-                  <Pressable
-                    key={index}
-                    onPress={()=>setSelectedDate(new Date(item.date))}
-                    style={({pressed})=>({
-                      marginRight:10,
-                      width:44,
-                      height:60,
-                      borderRadius:18,
-                      alignItems:"center",
-                      justifyContent:"center",
-                      backgroundColor: isActive ? hexToRgba(C.acc,0.2) : pressed ? "#111a2d" : "#0f182b",
-                      borderWidth: isActive ? 2 : 1,
-                      borderColor: isActive ? C.acc : C.brd,
-                    })}
-                  >
-                    <Text style={{color:isActive?C.acc:C.sub, fontWeight:"800", fontSize:12, marginBottom:4}}>{item.label}</Text>
-                    <Text style={{color:isActive?C.txt:C.sub, fontWeight:"900", fontSize:16}}>{("0"+item.date.getDate()).slice(-2)}</Text>
-                    {item.isToday && !isActive ? (
-                      <View style={{position:"absolute", bottom:6, width:6, height:6, borderRadius:3, backgroundColor:C.acc}} />
-                    ) : null}
-                  </Pressable>
-                );
-              })}
-            </View>
-          </ScrollView>
+          {tab==="dashboard" && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingRight:16, paddingBottom:4}}>
+              <View style={{flexDirection:"row"}}>
+                {dayItems.map((item, index)=>{
+                  const isActive = item.date.toDateString() === selectedKey;
+                  return (
+                    <Pressable
+                      key={index}
+                      onPress={()=>setSelectedDate(new Date(item.date))}
+                      style={({pressed})=>({
+                        marginRight:14,
+                        width:54,
+                        height:70,
+                        alignItems:"center",
+                        justifyContent:"center",
+                      })}
+                    >
+                      <View
+                        style={{
+                          width:50,
+                          height:50,
+                          borderRadius:25,
+                          borderWidth:isActive?2:1,
+                          borderColor:isActive?C.acc:C.brd,
+                          backgroundColor:isActive?hexToRgba(C.acc,0.15):C.card,
+                          justifyContent:"center",
+                          alignItems:"center",
+                          shadowColor:isActive?C.acc:"transparent",
+                          shadowOpacity:isActive?0.35:0,
+                          shadowRadius:12,
+                        }}
+                      >
+                        <Text style={{color:isActive?C.txt:C.sub, fontWeight:"900", fontSize:14}}>{item.label}</Text>
+                        <Text style={{color:isActive?C.acc:C.sub, fontWeight:"700", fontSize:11}}>{("0"+item.date.getDate()).slice(-2)}</Text>
+                      </View>
+                      {item.isToday ? (
+                        <View style={{marginTop:6, width:6, height:6, borderRadius:3, backgroundColor:isActive?C.acc:C.sub}} />
+                      ) : <View style={{height:6}} />}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          )}
         </View>
 
         <View style={{flex:1, paddingHorizontal:P, paddingBottom:96}}>
           {tab==="dashboard" && (
-            <Dashboard
+            <JournalScreen
               habits={habits}
               agg={agg}
-              totalDone={totalDone}
-              totalTarget={totalTarget}
-              weekScore={weekScore}
               history8={history8}
-              goals={goals}
-              onQuickAdd={addMinutes}
               selectedDate={selectedDate}
               sessions={sessions}
             />
           )}
 
-          {tab==="log" && <LogScreen habits={habits} sessions={sessions} onAdd={addMinutes} onDelete={deleteSession} />}
+          {tab==="log" && (
+            <DaysScreen
+              habits={habits}
+              sessions={sessions}
+              onAdd={addMinutes}
+              onDelete={deleteSession}
+              waterLog={waterLog}
+              onWaterChange={updateWaterForDate}
+              selectedDate={selectedDate}
+              onSelectDate={setSelectedDate}
+              agg={agg}
+            />
+          )}
 
-          {tab==="habits" && <HabitsScreen habits={habits} onCreate={createHabit} onUpdate={updateHabit} onDelete={removeHabit} />}
+          {tab==="habits" && (
+            <ProgramsScreen
+              habits={habits}
+              onCreate={createHabit}
+              onUpdate={updateHabit}
+              onDelete={removeHabit}
+              goals={goals}
+              onGoalCreate={createGoal}
+              onGoalDelete={deleteGoal}
+              agg={agg}
+            />
+          )}
 
-          {tab==="goals" && <GoalsScreen habits={habits} goals={goals} agg={agg} prefs={prefs} onPrefsChange={updatePrefs} onCreate={createGoal} onDelete={deleteGoal} />}
+          {tab==="reports" && (
+            <StatisticsScreen
+              habits={habits}
+              sessions={sessions}
+              cursor={cursor}
+              setCursor={setCursor}
+            />
+          )}
 
-          {tab==="reports" && <ReportsScreen habits={habits} sessions={sessions} cursor={cursor} setCursor={setCursor} prefs={prefs} setPrefs={updatePrefs} />}
+          {tab==="settings" && (
+            <SettingsScreen
+              prefs={prefs}
+              onPrefsChange={updatePrefs}
+              onThemeChange={changeTheme}
+              themeName={themeName}
+            />
+          )}
         </View>
       </View>
 
-      <BottomTabs current={tab} onSelect={setTab} items={navItems} />
-    </SafeAreaView>
+        <BottomTabs current={tab} onSelect={setTab} items={navItems} />
+      </SafeAreaView>
+    </ThemeContext.Provider>
   );
 }
 
 /* ---------------------- sub-screens ---------------------- */
 
-function Dashboard({ habits, agg, totalDone, totalTarget, weekScore, history8, goals, onQuickAdd, selectedDate, sessions }){
-  const [trendFocus, setTrendFocus] = useState("total");
-  const totalThisWeek = Object.values(agg.byHabit).reduce((a,b)=>a+b,0);
-  const sortedByWeek = [...habits].map(h=>({ ...h, done: Math.max(0, agg.byHabit[h.id]||0) })).sort((a,b)=>b.done-a.done);
-  const trendOptions = [{ id:"total", label:"Total", icon:"📊", color:C.acc }, ...sortedByWeek.slice(0,3).map(h=>({ id:h.id, label:h.name, icon:h.icon, color:h.color }))];
-  useEffect(()=>{
-    if (trendFocus!=="total" && !habits.find(h=>h.id===trendFocus)){
-      setTrendFocus("total");
-    }
-  }, [trendFocus, habits]);
-  const focusMeta = trendOptions.find(opt=>opt.id===trendFocus) || trendOptions[0];
-  const trendSeries = useMemo(()=>{
-    if (trendFocus === "total"){
-      return history8.map(week=>({ label: monthDay(week.start), value: week.total }));
-    }
-    return history8.map(week=>({
-      label: monthDay(week.start),
-      value: week.byHabit.find(item=>item.id===trendFocus)?.mins || 0,
-    }));
-  }, [history8, trendFocus]);
-  const trendColor = focusMeta?.color || C.acc;
+function JournalScreen({ habits, agg, history8, selectedDate, sessions }){
+  const C = useColors();
+  const totalTarget = useMemo(()=>habits.reduce((a,h)=>a+(h.target||0),0), [habits]);
+  const totalThisWeek = useMemo(()=>Object.values(agg.byHabit||{}).reduce((a,b)=>a+b,0), [agg]);
+  const sortedByWeek = useMemo(()=>{
+    return [...habits].map(h=>({
+      ...h,
+      done: Math.max(0, agg.byHabit[h.id]||0),
+    })).sort((a,b)=>b.done-a.done);
+  }, [habits, agg]);
+  const topThree = sortedByWeek.slice(0,3);
+  const highlight = topThree[0];
+  const thisWeek = history8[history8.length-1] || { total: totalThisWeek, start: agg.start };
+  const previousWeek = history8.length>1 ? history8[history8.length-2] : null;
+  const desempenhoPct = previousWeek && previousWeek.total>0
+    ? Math.round((thisWeek.total/Math.max(1, previousWeek.total))*100)
+    : 100;
+  const delta = thisWeek.total - (previousWeek?.total || 0);
+  const deltaLabel = delta===0 ? "Sem variação" : `${delta>=0?"+":"-"}${fmtHM(Math.abs(delta)).replace(" (-)","")}`;
+  const deltaColor = delta>=0 ? C.good : C.bad;
+  const completionPct = totalTarget>0 ? Math.min(100, Math.round(100*totalThisWeek/totalTarget)) : 0;
 
-  const dayStart = useMemo(()=>{ const d = new Date(selectedDate||new Date()); d.setHours(0,0,0,0); return d; }, [selectedDate]);
+  const dayStart = useMemo(()=>{ const d=new Date(selectedDate||new Date()); d.setHours(0,0,0,0); return d; }, [selectedDate]);
   const dayEnd = useMemo(()=>addDays(dayStart, 1), [dayStart]);
   const sessionsForDay = useMemo(()=> sessions.filter(s=>{ const d=new Date(s.dateISO); return d>=dayStart && d<dayEnd; }), [sessions, dayStart, dayEnd]);
   const dayByHabit = useMemo(()=>{
@@ -516,547 +615,601 @@ function Dashboard({ habits, agg, totalDone, totalTarget, weekScore, history8, g
       if (amount<=0) return;
       map[s.habitId] = (map[s.habitId]||0) + amount;
     });
-    return map;
-  }, [sessionsForDay]);
-  const dayBreakdown = useMemo(()=>{
-    return Object.entries(dayByHabit).map(([id,value])=>{
+    return Object.entries(map).map(([id,value])=>{
       const ref = habits.find(h=>h.id===id);
-      return { id, value, icon:ref?.icon||"", name:ref?.name||"", color:ref?.color||C.acc };
+      return { id, value, icon:ref?.icon||"", name:ref?.name||"Atividade", color:ref?.color||C.acc };
     }).sort((a,b)=>b.value-a.value);
-  }, [dayByHabit, habits]);
-  const dayTotal = dayBreakdown.reduce((a,b)=>a+b.value,0);
-  const firstItem = dayBreakdown[0];
-  const secondItem = dayBreakdown[1];
-  const awakeMins = Math.max(0, dayTotal - (firstItem?.value||0));
-  const sleepMins = firstItem?.value || 0;
-  const deepMins = secondItem?.value || 0;
-  const highlightLabel = firstItem ? `${firstItem.icon} ${firstItem.name}` : "Sem registros";
-
-  const completionPct = Math.min(100, Math.round(100*totalDone/Math.max(1,totalTarget)));
-  const latestValue = trendSeries[trendSeries.length-1]?.value || 0;
-  const prevValue = trendSeries.length>1 ? trendSeries[trendSeries.length-2].value : 0;
-  const delta = latestValue - prevValue;
-  const diffLabel = delta===0 ? fmtHM(0) : `${delta>=0?"+":"-"}${fmtHM(Math.abs(delta)).replace(" (-)","")}`;
-  const deltaColor = delta>=0 ? C.good : C.bad;
+  }, [sessionsForDay, habits, C.acc]);
+  const dayTotal = dayByHabit.reduce((a,b)=>a+b.value,0);
+  const historySeries = useMemo(()=> history8.map(week=>({ label: monthDay(week.start), value: Math.max(0, week.total||0) })), [history8]);
+  const weekSessions = useMemo(()=>{
+    const start = agg.start;
+    const end = addDays(start, 7);
+    return sessions.filter(s=>{ const d=new Date(s.dateISO); return d>=start && d<end; });
+  }, [sessions, agg.start]);
 
   return (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom:32}}>
-      <Card style={{marginBottom:16, padding:20, backgroundColor:"#111b30"}}>
+      <Card style={{marginBottom:16, padding:20}}>
         <View style={{flexDirection:"row", alignItems:"center"}}>
           <View style={{width:110, height:110, borderRadius:55, borderWidth:4, borderColor:hexToRgba(C.acc,0.45), alignItems:"center", justifyContent:"center", backgroundColor:hexToRgba(C.acc,0.12), marginRight:20}}>
-            <Text style={{color:C.txt, fontSize:34, fontWeight:"900"}}>{weekScore}%</Text>
-            <Text style={{color:C.sub, fontWeight:"700", fontSize:12, letterSpacing:1}}>QUALITY</Text>
+            <Text style={{color:C.txt, fontSize:30, fontWeight:"900"}}>{desempenhoPct}%</Text>
+            <Text style={{color:C.sub, fontWeight:"700", fontSize:12, letterSpacing:1, textAlign:"center"}}>Desempenho</Text>
+            <Text style={{color:deltaColor, fontSize:12, fontWeight:"700", marginTop:6}}>{deltaLabel}</Text>
           </View>
           <View style={{flex:1}}>
-            <Text style={{color:C.sub, fontSize:12, fontWeight:"700", textTransform:"uppercase", letterSpacing:1}}>Highlight</Text>
-            <Text style={{color:C.txt, fontSize:22, fontWeight:"900", marginTop:2}}>{highlightLabel}</Text>
-            <Text style={{color:C.sub, marginTop:4}}>Semana atual • {fmtDate(agg.start)} - {fmtDate(addDays(agg.start,6))}</Text>
+            <Text style={{color:C.sub, fontSize:12, fontWeight:"700", textTransform:"uppercase", letterSpacing:1}}>Semana atual</Text>
+            <Text style={{color:C.txt, fontSize:22, fontWeight:"900", marginTop:4}}>
+              {highlight ? `${highlight.icon} ${highlight.name}` : "Sem atividades registradas"}
+            </Text>
+            <Text style={{color:C.sub, marginTop:8}}>Período • {fmtDate(agg.start)} - {fmtDate(addDays(agg.start,6))}</Text>
             <View style={{marginTop:16}}>
-              <View style={{flexDirection:"row", justifyContent:"space-between", marginBottom:10}}>
-                <SummaryPill label="In bed" value={fmtHM(dayTotal)} />
-                <SummaryPill label="Asleep" value={fmtHM(sleepMins)} />
-                <SummaryPill label="Deep" value={fmtHM(deepMins)} />
-              </View>
               <View style={{flexDirection:"row", justifyContent:"space-between"}}>
-                <SummaryPill label="Awake" value={fmtHM(awakeMins)} />
+                <SummaryPill label="Total" value={fmtHM(totalThisWeek)} />
                 <SummaryPill label="Meta" value={`${completionPct}%`} compact />
-                <SummaryPill label="Total" value={fmtHM(totalDone)} compact />
+                <SummaryPill label="Registros" value={String(weekSessions.length)} compact />
               </View>
             </View>
           </View>
         </View>
+
+        <View style={{marginTop:20}}>
+          <Text style={{color:C.sub, fontWeight:"700", marginBottom:10}}>Atividades mais fortes</Text>
+          {topThree.length === 0 ? (
+            <Text style={{color:C.sub}}>Nenhuma atividade registrada ainda nesta semana.</Text>
+          ) : (
+            topThree.map((item, idx)=>(
+              <View key={item.id} style={{marginBottom:12}}>
+                <View style={{flexDirection:"row", justifyContent:"space-between", marginBottom:6}}>
+                  <Text style={{color:C.txt, fontWeight:"800"}}>{idx+1}. {item.icon} {item.name}</Text>
+                  <Text style={{color:C.sub}}>{fmtHM(item.done)}</Text>
+                </View>
+                <Bar value={item.done} total={item.target||item.done||1} color={item.color}/>
+              </View>
+            ))
+          )}
+        </View>
       </Card>
 
-      <Card style={{marginBottom:16, padding:20, backgroundColor:"#101a2d"}}>
+      <Card style={{marginBottom:16, padding:20}}>
         <View style={{flexDirection:"row", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
-          <View>
-            <Text style={{color:C.sub, fontWeight:"700", textTransform:"uppercase", letterSpacing:1}}>Short night/nap</Text>
-            <Text style={{color:C.txt, fontSize:22, fontWeight:"900"}}>{focusMeta?.icon || ""} {focusMeta?.label || "Total"}</Text>
+          <Text style={{color:C.sub, fontWeight:"700", textTransform:"uppercase", letterSpacing:1}}>Tendência semanal</Text>
+          <Text style={{color:C.sub}}>{historySeries.length} semanas</Text>
+        </View>
+        <View style={{backgroundColor:C.dim, borderRadius:18, padding:12}}>
+          <TrendChart series={historySeries} color={C.acc} height={190} />
+        </View>
+        <View style={{flexDirection:"row", justifyContent:"space-between", marginTop:14}}>
+          <SummaryPill label="Semana atual" value={fmtHM(thisWeek.total||0)} />
+          <SummaryPill label="Anterior" value={fmtHM(previousWeek?.total||0)} />
+          <SummaryPill label="Diferença" value={deltaLabel === "Sem variação" ? fmtHM(0) : deltaLabel} />
+        </View>
+      </Card>
+
+      <Card style={{padding:20}}>
+        <Text style={{color:C.sub, fontWeight:"700", marginBottom:10}}>Foco do dia • {monthDay(dayStart)}</Text>
+        {dayByHabit.length === 0 ? (
+          <Text style={{color:C.sub}}>Nenhuma atividade registrada para o dia selecionado.</Text>
+        ) : (
+          <View style={{marginBottom:16}}>
+            {dayByHabit.map(item=>(
+              <View key={item.id} style={{marginBottom:10}}>
+                <View style={{flexDirection:"row", justifyContent:"space-between"}}>
+                  <Text style={{color:C.txt, fontWeight:"800"}}>{item.icon} {item.name}</Text>
+                  <Text style={{color:C.sub}}>{fmtHM(item.value)}</Text>
+                </View>
+                <Bar value={item.value} total={Math.max(dayTotal, 1)} color={item.color} />
+              </View>
+            ))}
           </View>
-          <View style={{alignItems:"flex-end"}}>
-            <Text style={{color:deltaColor, fontWeight:"800", fontSize:16}}>{diffLabel}</Text>
-            <Text style={{color:C.sub, fontSize:12}}>vs período anterior</Text>
+        )}
+
+        <Text style={{color:C.sub, fontWeight:"700", marginBottom:8}}>Registros do dia</Text>
+        {sessionsForDay.length === 0 ? (
+          <Text style={{color:C.sub}}>Comece adicionando suas atividades em Days.</Text>
+        ) : (
+          sessionsForDay.map(s=>{
+            const ref = habits.find(h=>h.id===s.habitId);
+            return (
+              <View key={s.id} style={{paddingVertical:10, borderBottomWidth:1, borderBottomColor:C.brd}}>
+                <Text style={{color:C.txt, fontWeight:"800"}}>{ref?.icon} {ref?.name || "Atividade"}</Text>
+                <Text style={{color:C.sub, marginTop:2}}>{fmtHM(s.minutes)} • {new Date(s.dateISO).toLocaleTimeString().slice(0,5)}</Text>
+                {s.note ? <Text style={{color:C.sub, marginTop:4}}>{s.note}</Text> : null}
+              </View>
+            );
+          })
+        )}
+      </Card>
+    </ScrollView>
+  );
+}
+
+const SummaryPill = ({ label, value, compact }) => {
+  const C = useColors();
+  return (
+    <View style={{backgroundColor:C.dimStrong||C.dim, borderRadius:14, paddingVertical:10, paddingHorizontal:12, borderWidth:1, borderColor:C.brd, minWidth: compact ? 78 : 86}}>
+      <Text style={{color:C.sub, fontSize:11, fontWeight:"700", textTransform:"uppercase", letterSpacing:1}}>{label}</Text>
+      <Text style={{color:C.txt, fontWeight:"900", fontSize:compact?16:18, marginTop:4}}>{value}</Text>
+    </View>
+  );
+};
+
+function DaysScreen({ habits, sessions, onAdd, onDelete, waterLog, onWaterChange, selectedDate, onSelectDate, agg }){
+  const C = useColors();
+  const [selectedHabit, setSelectedHabit] = useState(habits[0]?.id || null);
+  const [duration, setDuration] = useState(30);
+  const [note, setNote] = useState("");
+
+  useEffect(()=>{
+    if (!selectedHabit && habits[0]){
+      setSelectedHabit(habits[0].id);
+    } else if (selectedHabit && !habits.find(h=>h.id===selectedHabit)){
+      setSelectedHabit(habits[0]?.id || null);
+    }
+  }, [habits, selectedHabit]);
+
+  const ranking = useMemo(()=>{
+    return [...habits].map(h=>({
+      ...h,
+      done: Math.max(0, agg.byHabit?.[h.id]||0),
+    })).sort((a,b)=>b.done-a.done).slice(0,3);
+  }, [habits, agg]);
+
+  const weekTotal = useMemo(()=>Object.values(agg.byHabit||{}).reduce((a,b)=>a+b,0), [agg]);
+  const date = useMemo(()=>{ const d = new Date(selectedDate||new Date()); d.setHours(0,0,0,0); return d; }, [selectedDate]);
+  const dateKey = date.toISOString().slice(0,10);
+  const waterState = waterLog?.[dateKey] || { bottles:0, progress:0 };
+
+  const handleWaterChange = useCallback((payload)=>{
+    if (!onWaterChange || !dateKey) return;
+    if (typeof payload === 'function') onWaterChange(dateKey, payload);
+    else onWaterChange(dateKey, payload);
+  }, [onWaterChange, dateKey]);
+
+  const dayEnd = useMemo(()=>addDays(date, 1), [date]);
+  const sessionsForDay = useMemo(()=> sessions
+    .filter(s=>{ const d=new Date(s.dateISO); return d>=date && d<dayEnd; })
+    .sort((a,b)=> new Date(b.dateISO) - new Date(a.dateISO))
+  , [sessions, date, dayEnd]);
+
+  const dayTotal = sessionsForDay.reduce((acc, item)=> acc + Math.max(0, item.minutes||0), 0);
+  const lastEntries = useMemo(()=>[...sessions]
+    .sort((a,b)=> new Date(b.dateISO) - new Date(a.dateISO))
+    .slice(0,8), [sessions]);
+
+  const adjustDuration = (delta)=>{
+    setDuration(prev=> clamp((prev||0) + delta, 5, 480));
+  };
+  const setDurationDirect = (value)=>{
+    setDuration(clamp(value, 5, 480));
+  };
+  const commit = (sign)=>{
+    if (!selectedHabit){ Alert.alert('Selecione uma atividade'); return; }
+    const value = parseInt(duration,10);
+    if (!value || value<=0){ Alert.alert('Duração inválida','Use o controle para definir os minutos.'); return; }
+    onAdd(selectedHabit, sign*value, note);
+    setNote("");
+  };
+  const removeSession = (id)=>{
+    Alert.alert('Excluir registro?','Essa ação não pode ser desfeita.',[
+      {text:'Cancelar', style:'cancel'},
+      {text:'Excluir', style:'destructive', onPress:()=>onDelete?.(id)}
+    ]);
+  };
+
+  const changeDay = (offset)=>{
+    if (!onSelectDate) return;
+    onSelectDate(addDays(date, offset));
+  };
+
+  const dayLabel = `${dayNames[date.getDay()]} • ${monthDay(date)}`;
+
+  return (
+    <ScrollView contentContainerStyle={{paddingBottom:32}}>
+      <Card style={{marginBottom:16, padding:20}}>
+        <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
+          <View>
+            <Text style={{color:C.sub, fontWeight:'700'}}>Dia selecionado</Text>
+            <Text style={{color:C.txt, fontSize:22, fontWeight:'900'}}>{dayLabel}</Text>
+            <Text style={{color:C.sub, marginTop:6}}>Semana {fmtDate(agg.start)} - {fmtDate(addDays(agg.start,6))}</Text>
+          </View>
+          <View style={{flexDirection:'row'}}>
+            <Btn title='◀' kind='chip' onPress={()=>changeDay(-1)} style={{width:48}} />
+            <View style={{width:8}} />
+            <Btn title='▶' kind='chip' onPress={()=>changeDay(1)} style={{width:48}} />
           </View>
         </View>
+        <View>
+          <Text style={{color:C.sub, fontWeight:'700', marginBottom:10}}>Atividades mais feitas na semana</Text>
+          {ranking.length === 0 ? (
+            <Text style={{color:C.sub}}>Nenhuma atividade registrada ainda.</Text>
+          ) : ranking.map((item, idx)=>(
+            <View key={item.id} style={{marginBottom:12}}>
+              <View style={{flexDirection:'row', justifyContent:'space-between', marginBottom:6}}>
+                <Text style={{color:C.txt, fontWeight:'800'}}>{idx+1}. {item.icon} {item.name}</Text>
+                <Text style={{color:C.sub}}>{fmtHM(item.done)}</Text>
+              </View>
+              <Bar value={item.done} total={item.target||item.done||1} color={item.color} />
+            </View>
+          ))}
+          <View style={{flexDirection:'row', justifyContent:'space-between', marginTop:4}}>
+            <SummaryPill label='Registros' value={String(sessionsForDay.length)} compact />
+            <SummaryPill label='Minutos no dia' value={fmtHM(dayTotal)} compact />
+            <SummaryPill label='Total na semana' value={fmtHM(weekTotal)} compact />
+          </View>
+        </View>
+      </Card>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingRight:12}}>
-          <View style={{flexDirection:"row", marginBottom:12}}>
-            {trendOptions.map(opt=>(
-              <View key={opt.id} style={{marginRight:8}}>
-                <OptionPill
-                  active={trendFocus===opt.id}
-                  label={`${opt.icon||""} ${opt.label}`.trim()}
-                  onPress={()=>setTrendFocus(opt.id)}
-                  color={opt.color}
-                />
+      <Card style={{marginBottom:16, padding:20}}>
+        <Text style={{color:C.sub, fontWeight:'700', marginBottom:12}}>Monitor de água</Text>
+        <Text style={{color:C.sub, marginBottom:12}}>Arraste para esvaziar a garrafa virtual. Ao completar, uma nova garrafa é contada.</Text>
+        <WaterTracker value={waterState} onChange={handleWaterChange} />
+        <View style={{flexDirection:'row', justifyContent:'space-between', marginTop:16, alignItems:'center'}}>
+          <Text style={{color:C.txt, fontWeight:'800'}}>{waterState.bottles || 0} garrafas hoje</Text>
+          <View style={{flexDirection:'row'}}>
+            <Btn title='-1' kind='chip' onPress={()=>handleWaterChange(prev=>({ ...prev, bottles: Math.max(0, (prev?.bottles||0)-1), progress:0 }))} style={{marginRight:8}} />
+            <Btn title='+1' onPress={()=>handleWaterChange(prev=>({ bottles:(prev?.bottles||0)+1, progress:0 }))} />
+          </View>
+        </View>
+      </Card>
+
+      <Card style={{marginBottom:16, padding:20}}>
+        <Text style={{color:C.sub, fontWeight:'700', marginBottom:12}}>Registrar atividade</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingRight:8}}>
+          <View style={{flexDirection:'row'}}>
+            {habits.map(h=>(
+              <View key={h.id} style={{marginRight:8}}>
+                <Tag label={`${h.icon} ${h.name}`} active={selectedHabit===h.id} onPress={()=>setSelectedHabit(h.id)} />
               </View>
             ))}
           </View>
         </ScrollView>
 
-        <View style={{backgroundColor:"#0d1526", borderRadius:18, padding:12}}>
-          <TrendChart series={trendSeries} color={trendColor} height={190} />
+        <View style={{marginTop:16}}>
+          <Text style={{color:C.sub, marginBottom:8}}>Minutos</Text>
+          <View style={{flexDirection:'row', alignItems:'center', justifyContent:'space-between', backgroundColor:C.dimStrong||C.dim, borderRadius:14, padding:12, borderWidth:1, borderColor:C.brd}}>
+            <Pressable onPress={()=>adjustDuration(-5)} style={{padding:6}}><Text style={{color:C.acc, fontSize:24, fontWeight:'900'}}>-</Text></Pressable>
+            <Text style={{color:C.txt, fontSize:28, fontWeight:'900'}}>{duration}m</Text>
+            <Pressable onPress={()=>adjustDuration(5)} style={{padding:6}}><Text style={{color:C.acc, fontSize:24, fontWeight:'900'}}>+</Text></Pressable>
+          </View>
+          <View style={{flexDirection:'row', marginTop:12, flexWrap:'wrap'}}>
+            {[10,20,30,45,60].map(val=>(
+              <View key={val} style={{marginRight:8, marginBottom:8}}>
+                <Chip title={`${val}m`} onPress={()=>setDurationDirect(val)} />
+              </View>
+            ))}
+          </View>
         </View>
 
-        <View style={{flexDirection:"row", justifyContent:"space-between", marginTop:14}}>
-          <SummaryPill label="Awake" value={fmtHM(awakeMins)} />
-          <SummaryPill label="Sleep" value={fmtHM(sleepMins)} />
-          <SummaryPill label="Deep sleep" value={fmtHM(deepMins)} />
+        <Text style={{color:C.sub, marginTop:16, marginBottom:6}}>Anotações</Text>
+        <TextInput
+          value={note}
+          onChangeText={setNote}
+          placeholder='Como foi a sessão?'
+          placeholderTextColor='#7d8fb0'
+          multiline
+          style={{minHeight:68, backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd}}
+        />
+
+        <View style={{flexDirection:'row', marginTop:16}}>
+          <Btn title='Adicionar' onPress={()=>commit(1)} style={{flex:1}} />
+          <View style={{width:12}} />
+          <Btn title='Remover' kind='danger' onPress={()=>commit(-1)} style={{flex:1}} />
         </View>
       </Card>
 
-      <Card style={{marginBottom:16, padding:18}}>
-        <Text style={{color:C.sub, marginBottom:10, fontWeight:"700"}}>Metas da semana</Text>
-        {goals.length === 0 ? (
-          <Text style={{color:C.sub}}>Crie metas na aba Profile para monitorar aqui.</Text>
+      <Card style={{marginBottom:16, padding:20}}>
+        <Text style={{color:C.sub, fontWeight:'700', marginBottom:8}}>Atividades do dia</Text>
+        {sessionsForDay.length === 0 ? (
+          <Text style={{color:C.sub}}>Sem registros para este dia.</Text>
         ) : (
-          goals.map(goal=>{
-            const refHabit = goal.habitId === "total" ? null : habits.find(h=>h.id===goal.habitId);
-            const progress = goal.habitId === "total" ? totalThisWeek : Math.max(0, agg.byHabit[goal.habitId]||0);
-            const pct = Math.min(100, Math.round(100 * progress/Math.max(1, goal.target)));
-            const remaining = Math.max(0, goal.target - progress);
-            const color = refHabit?.color || C.acc;
+          sessionsForDay.map(item=>{
+            const ref = habits.find(h=>h.id===item.habitId);
             return (
-              <View key={goal.id} style={{marginBottom:12, backgroundColor:"#0f182b", borderRadius:14, padding:12}}>
-                <View style={{flexDirection:"row", justifyContent:"space-between", marginBottom:6}}>
-                  <View style={{flex:1, paddingRight:8}}>
-                    <Text style={{color:C.txt, fontWeight:"900"}}>{goal.title}</Text>
-                    <Text style={{color:C.sub, fontSize:12}}>
-                      {goal.habitId === "total" ? "Todas as atividades" : refHabit ? `${refHabit.icon} ${refHabit.name}` : "Atividade removida"}
-                    </Text>
-                  </View>
-                  <Text style={{color:C.sub, fontSize:12}}>{pct}%</Text>
+              <View key={item.id} style={{paddingVertical:10, borderBottomWidth:1, borderBottomColor:C.brd, flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
+                <View style={{flex:1, paddingRight:12}}>
+                  <Text style={{color:C.txt, fontWeight:'800'}}>{ref?.icon} {ref?.name || 'Atividade'}</Text>
+                  <Text style={{color:C.sub, marginTop:4}}>{fmtHM(item.minutes)} • {new Date(item.dateISO).toLocaleTimeString().slice(0,5)}</Text>
+                  {item.note ? <Text style={{color:C.sub, marginTop:4}}>{item.note}</Text> : null}
                 </View>
-                <Bar value={progress} total={goal.target} color={color}/>
-                <Text style={{color:C.sub, fontSize:12, marginTop:6}}>Faltam {fmtHM(remaining)}</Text>
+                <Pressable onPress={()=>removeSession(item.id)}><Text style={{color:C.bad, fontWeight:'700'}}>Excluir</Text></Pressable>
               </View>
             );
           })
         )}
       </Card>
 
-      {[...habits].sort((a,b)=>a.order-b.order).map(h=>{
-        const done = agg.byHabit[h.id]||0;
-        const pct = Math.min(100, Math.round(100*done/Math.max(1,h.target||0)));
-        return (
-          <Card key={h.id} style={{marginBottom:14, padding:18}}>
-            <View style={{flexDirection:"row", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
-              <View>
-                <Text style={{color:h.color, fontWeight:"900", fontSize:18}}>{h.icon} {h.name}</Text>
-                <Text style={{color:C.sub, fontSize:12}}>{fmtHM(done)} / {fmtHM(h.target||0)}</Text>
+      <Card style={{padding:20}}>
+        <Text style={{color:C.sub, fontWeight:'700', marginBottom:8}}>Últimos registros gerais</Text>
+        {lastEntries.length === 0 ? (
+          <Text style={{color:C.sub}}>Nenhuma atividade registrada ainda.</Text>
+        ) : (
+          lastEntries.map(item=>{
+            const ref = habits.find(h=>h.id===item.habitId);
+            return (
+              <View key={item.id} style={{paddingVertical:8, borderBottomWidth:1, borderBottomColor:C.brd}}>
+                <Text style={{color:C.txt, fontWeight:'700'}}>{ref?.icon} {ref?.name || 'Atividade'}</Text>
+                <Text style={{color:C.sub, marginTop:2}}>{fmtHM(item.minutes)} • {new Date(item.dateISO).toLocaleDateString()} {new Date(item.dateISO).toLocaleTimeString().slice(0,5)}</Text>
+                {item.note ? <Text style={{color:C.sub, marginTop:4}}>{item.note}</Text> : null}
               </View>
-              <View style={{alignItems:"flex-end"}}>
-                <Text style={{color:C.sub, fontSize:12}}>Meta</Text>
-                <Text style={{color:C.txt, fontWeight:"800"}}>{pct}%</Text>
-              </View>
-            </View>
-            <Bar value={done} total={h.target||0} color={h.color}/>
-            <View style={{flexDirection:"row", marginTop:12, flexWrap:"wrap"}}>
-              {["+15m","+30m","+60m","-5m","-15m","-30m"].map((t,i)=>(
-                <View key={i} style={{marginRight:8, marginBottom:8}}>
-                  <Chip
-                    title={t}
-                    onPress={()=>{
-                      const map={"+15m":15,"+30m":30,"+60m":60,"-5m":-5,"-15m":-15,"-30m":-30};
-                      onQuickAdd(h.id, map[t]);
-                    }}
-                  />
-                </View>
-              ))}
-            </View>
-          </Card>
-        );
-      })}
-    </ScrollView>
-  );
-}
-
-const SummaryPill = ({ label, value, compact }) => (
-  <View style={{backgroundColor:"#0f182b", borderRadius:14, paddingVertical:10, paddingHorizontal:12, borderWidth:1, borderColor:"#1a2944", minWidth: compact ? 78 : 86}}>
-    <Text style={{color:C.sub, fontSize:11, fontWeight:"700", textTransform:"uppercase", letterSpacing:1}}>{label}</Text>
-    <Text style={{color:C.txt, fontWeight:"900", fontSize:compact?16:18, marginTop:4}}>{value}</Text>
-  </View>
-);
-
-function LogScreen({ habits, sessions, onAdd, onDelete }){
-  const [selected, setSelected] = useState(habits[0]?.id || null);
-  const [mins, setMins] = useState("");
-  const [note, setNote] = useState("");
-
-  useEffect(()=>{ if (!selected && habits[0]) setSelected(habits[0].id); }, [habits]);
-
-  const commit = (sign=1)=>{
-    const m = parseInt(mins,10);
-    if (!selected || isNaN(m) || m<=0) { Alert.alert("Minutos inválidos","Digite um número maior que zero."); return; }
-    onAdd(selected, sign*m, note);
-    setMins(""); setNote("");
-  };
-
-  const last10 = [...sessions].sort((a,b)=> new Date(b.dateISO)-new Date(a.dateISO)).slice(0,10);
-
-  return (
-    <ScrollView>
-      <Card>
-        <Text style={{color:C.sub, marginBottom:6}}>Escolha a atividade</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingRight:4}}>
-          <View style={{flexDirection:"row"}}>
-            {habits.map(h=>(
-              <View key={h.id} style={{marginRight:8}}>
-                <Tag label={`${h.icon} ${h.name}`} active={selected===h.id} onPress={()=>setSelected(h.id)} />
-              </View>
-            ))}
-          </View>
-        </ScrollView>
-
-        <View style={{flexDirection:"row", marginTop:10, flexWrap:"wrap"}}>
-          {["+15m","+30m","+60m","-5m","-15m","-30m"].map((t,i)=>(
-            <View key={i} style={{marginRight:8, marginBottom:8}}>
-              <Chip
-                title={t}
-                onPress={()=>{
-                  const map={"+15m":15,"+30m":30,"+60m":60,"-5m":-5,"-15m":-15,"-30m":-30};
-                  onAdd(selected, map[t], note);
-                }}
-              />
-            </View>
-          ))}
-        </View>
-
-        <Text style={{color:C.sub, marginTop:12}}>Ou adicione manualmente</Text>
-        <View style={{flexDirection:"row", marginTop:6}}>
-          <TextInput value={mins} onChangeText={setMins} placeholder="Minutos (ex: 37)" placeholderTextColor="#7d8fb0"
-            keyboardType="numeric" style={{flex:1, backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd, marginRight:8}}/>
-          <Btn title="Adicionar" onPress={()=>commit(+1)} />
-          <View style={{width:8}} />
-          <Btn title="Remover" kind="danger" onPress={()=>commit(-1)} />
-        </View>
-
-        <Text style={{color:C.sub, marginTop:16, marginBottom:6}}>Últimos registros</Text>
-        {last10.map(s=>{
-          const h = habits.find(x=>x.id===s.habitId);
-          return (
-            <View key={s.id} style={{flexDirection:"row", justifyContent:"space-between", alignItems:"center", marginBottom:8, padding:10, backgroundColor:"#0e1628", borderRadius:12, borderWidth:1, borderColor:C.brd}}>
-              <Text style={{color:C.txt}}>{h?.icon} {h?.name} • {fmtHM(s.minutes)} • {new Date(s.dateISO).toLocaleTimeString().slice(0,5)}</Text>
-              <Pressable onPress={()=>onDelete(s.id)}><Text style={{color:C.bad, fontWeight:"800"}}>Excluir</Text></Pressable>
-            </View>
-          );
-        })}
+            );
+          })
+        )}
       </Card>
     </ScrollView>
   );
 }
 
-function HabitsScreen({ habits, onCreate, onUpdate, onDelete }){
+function ProgramsScreen({ habits, onCreate, onUpdate, onDelete, goals, onGoalCreate, onGoalDelete, agg }){
+  const C = useColors();
   const [name, setName] = useState("");
   const [target, setTarget] = useState("420");
   const [icon, setIcon] = useState("✅");
   const [color, setColor] = useState("#5B8CFF");
-
   const [editId, setEditId] = useState(null);
   const [editTarget, setEditTarget] = useState("");
 
+  const [goalTitle, setGoalTitle] = useState("");
+  const [goalTarget, setGoalTarget] = useState("120");
+  const [goalHabit, setGoalHabit] = useState("total");
+
+  const totalThisWeek = useMemo(()=>Object.values(agg.byHabit||{}).reduce((a,b)=>a+b,0), [agg]);
+
+  const goalDetails = useMemo(()=> goals.map(goal=>{
+    const refHabit = goal.habitId === 'total' ? null : habits.find(h=>h.id===goal.habitId);
+    const progress = goal.habitId === 'total' ? totalThisWeek : Math.max(0, agg.byHabit?.[goal.habitId]||0);
+    const pct = Math.min(100, Math.round(100 * progress/Math.max(1, goal.target||0)));
+    const remaining = Math.max(0, (goal.target||0) - progress);
+    return { goal, refHabit, progress, pct, remaining };
+  }), [goals, habits, agg, totalThisWeek]);
+
+  const submitHabit = ()=>{
+    if (!name.trim()){ Alert.alert('Atividade inválida','Informe um nome.'); return; }
+    onCreate({ name, target, icon, color });
+    setName("");
+    setTarget("420");
+    setIcon("✅");
+    setColor("#5B8CFF");
+  };
+
+  const submitGoal = ()=>{
+    if (!goalTitle.trim()){ Alert.alert('Meta inválida','Informe um nome.'); return; }
+    onGoalCreate({ title: goalTitle, target: goalTarget, habitId: goalHabit });
+    setGoalTitle("");
+    setGoalTarget("120");
+  };
+
   return (
-    <ScrollView>
-      <Card style={{marginBottom:12}}>
-        <Text style={{color:C.sub, marginBottom:8}}>Nova atividade</Text>
-        <TextInput placeholder="Nome (ex: Leitura)" placeholderTextColor="#7d8fb0" value={name} onChangeText={setName}
-          style={{backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd, marginBottom:8}}/>
-        <View style={{flexDirection:"row"}}>
-          <TextInput placeholder="Meta semanal (min)" placeholderTextColor="#7d8fb0" value={target} onChangeText={setTarget} keyboardType="numeric"
-            style={{flex:1, backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd, marginRight:8}}/>
-          <TextInput placeholder="Ícone (emoji)" placeholderTextColor="#7d8fb0" value={icon} onChangeText={setIcon}
-            style={{width:110, backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd, textAlign:"center"}}/>
+    <ScrollView contentContainerStyle={{paddingBottom:32}}>
+      <Card style={{marginBottom:16, padding:20}}>
+        <Text style={{color:C.sub, fontWeight:'700', marginBottom:12}}>Nova atividade</Text>
+        <TextInput
+          placeholder='Nome (ex: Leitura)'
+          placeholderTextColor='#7d8fb0'
+          value={name}
+          onChangeText={setName}
+          style={{backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd, marginBottom:10}}
+        />
+        <View style={{flexDirection:'row', marginBottom:10}}>
+          <TextInput
+            placeholder='Meta semanal (min)'
+            placeholderTextColor='#7d8fb0'
+            keyboardType='numeric'
+            value={target}
+            onChangeText={setTarget}
+            style={{flex:1, backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd, marginRight:8}}
+          />
+          <TextInput
+            placeholder='Ícone (emoji)'
+            placeholderTextColor='#7d8fb0'
+            value={icon}
+            onChangeText={setIcon}
+            style={{width:110, backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd, textAlign:'center'}}
+          />
         </View>
-        <View style={{flexDirection:"row", marginTop:8}}>
-          <TextInput placeholder="Cor (#RRGGBB)" placeholderTextColor="#7d8fb0" value={color} onChangeText={setColor}
-            style={{flex:1, backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd, marginRight:8}}/>
-          <Btn title="Adicionar" onPress={()=>{
-            onCreate({name,target,icon,color});
-            setName(""); setTarget("60"); setIcon("✅"); setColor("#5B8CFF");
-          }} />
+        <View style={{flexDirection:'row'}}>
+          <TextInput
+            placeholder='Cor (#RRGGBB)'
+            placeholderTextColor='#7d8fb0'
+            value={color}
+            onChangeText={setColor}
+            style={{flex:1, backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd, marginRight:8}}
+          />
+          <Btn title='Adicionar' onPress={submitHabit} />
         </View>
       </Card>
 
       {[...habits].sort((a,b)=>a.order-b.order).map(h=>(
-        <Card key={h.id} style={{marginBottom:10}}>
-          <View style={{flexDirection:"row", justifyContent:"space-between", alignItems:"center"}}>
-            <View style={{flex:1, paddingRight:8}}>
-              <Text style={{color:C.txt, fontWeight:"900"}}>{h.icon} {h.name}</Text>
+        <Card key={h.id} style={{marginBottom:14, padding:20}}>
+          <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
+            <View style={{flex:1, paddingRight:12}}>
+              <Text style={{color:C.txt, fontWeight:'900'}}>{h.icon} {h.name}</Text>
               <Text style={{color:C.sub, marginTop:4}}>Meta semanal: {fmtHM(h.target||0)}</Text>
             </View>
-
             {editId === h.id ? (
-              <View style={{flexDirection:"row", alignItems:"center"}}>
+              <View style={{flexDirection:'row', alignItems:'center'}}>
                 <TextInput
                   value={editTarget}
                   onChangeText={setEditTarget}
-                  keyboardType="numeric"
-                  placeholder="min"
-                  placeholderTextColor="#7d8fb0"
+                  keyboardType='numeric'
+                  placeholder='min'
+                  placeholderTextColor='#7d8fb0'
                   style={{width:110, backgroundColor:C.chip, color:C.txt, padding:10, borderRadius:10, borderWidth:1, borderColor:C.brd, marginRight:8}}
                 />
                 <Btn
-                  title="Salvar"
-                  kind="good"
+                  title='Salvar'
+                  kind='good'
                   onPress={()=>{
-                    const x = parseInt(editTarget, 10);
-                    if (isNaN(x)) { Alert.alert("Valor inválido","Digite um número."); return; }
-                    onUpdate(h.id, { target: x });
+                    const x = parseInt(editTarget,10);
+                    if (isNaN(x)){ Alert.alert('Valor inválido','Digite um número.'); return; }
+                    onUpdate(h.id, { target:x });
                     setEditId(null);
                   }}
                 />
                 <View style={{width:8}} />
-                <Btn title="Cancelar" kind="chip" onPress={()=>setEditId(null)} />
+                <Btn title='Cancelar' kind='chip' onPress={()=>setEditId(null)} />
               </View>
             ) : (
-              <View style={{flexDirection:"row"}}>
-                <Btn title="Editar meta" kind="chip" onPress={()=>{ setEditId(h.id); setEditTarget(String(h.target||0)); }} />
+              <View style={{flexDirection:'row'}}>
+                <Btn title='Editar meta' kind='chip' onPress={()=>{ setEditId(h.id); setEditTarget(String(h.target||0)); }} />
                 <View style={{width:12}} />
-                <Btn title="Excluir" kind="danger" onPress={()=>onDelete(h.id)} />
+                <Btn title='Excluir' kind='danger' onPress={()=>onDelete(h.id)} />
               </View>
             )}
           </View>
         </Card>
       ))}
-    </ScrollView>
-  );
-}
 
-function GoalsScreen({ habits, goals, agg, prefs, onPrefsChange, onCreate, onDelete }){
-  const [title, setTitle] = useState("");
-  const [target, setTarget] = useState("120");
-  const [selectedHabit, setSelectedHabit] = useState("total");
-  const [notifyHourField, setNotifyHourField] = useState(String(prefs.notifyHour));
-
-  useEffect(()=>{
-    setNotifyHourField(String(prefs.notifyHour));
-  }, [prefs.notifyHour]);
-
-  useEffect(()=>{
-    if (selectedHabit !== "total" && !habits.find(h=>h.id===selectedHabit)){
-      setSelectedHabit("total");
-    }
-  }, [habits, selectedHabit]);
-
-  const totalThisWeek = Object.values(agg.byHabit).reduce((a,b)=>a+b,0);
-
-  const commitGoal = ()=>{
-    onCreate({ title, target, habitId:selectedHabit });
-    setTitle("");
-    setTarget("120");
-  };
-
-  return (
-    <ScrollView>
-      <Card style={{marginBottom:12}}>
-        <Text style={{color:C.sub, marginBottom:8}}>Nova meta semanal</Text>
+      <Card style={{marginBottom:16, padding:20}}>
+        <Text style={{color:C.sub, fontWeight:'700', marginBottom:12}}>Nova meta semanal</Text>
         <TextInput
-          placeholder="Nome da meta"
-          placeholderTextColor="#7d8fb0"
-          value={title}
-          onChangeText={setTitle}
-          style={{backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd, marginBottom:8}}
+          placeholder='Nome da meta'
+          placeholderTextColor='#7d8fb0'
+          value={goalTitle}
+          onChangeText={setGoalTitle}
+          style={{backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd, marginBottom:10}}
         />
-        <View style={{flexDirection:"row"}}>
+        <View style={{flexDirection:'row'}}>
           <TextInput
-            placeholder="Minutos"
-            placeholderTextColor="#7d8fb0"
-            value={target}
-            onChangeText={setTarget}
-            keyboardType="numeric"
+            placeholder='Minutos'
+            placeholderTextColor='#7d8fb0'
+            keyboardType='numeric'
+            value={goalTarget}
+            onChangeText={setGoalTarget}
             style={{flex:1, backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd, marginRight:8}}
           />
+          <Btn title='Criar meta' onPress={submitGoal} />
         </View>
-
-        <Text style={{color:C.sub, marginTop:10, marginBottom:6}}>Aplicar a</Text>
+        <Text style={{color:C.sub, marginTop:12, marginBottom:6}}>Aplicar a</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingRight:8}}>
-          <View style={{flexDirection:"row"}}>
-            {[{id:"total", name:"Todas"}, ...habits].map(h=>(
+          <View style={{flexDirection:'row'}}>
+            {[{id:'total', name:'Todas'}, ...habits].map(h=>(
               <View key={h.id} style={{marginRight:8}}>
-                <Tag label={h.id==="total"?"Todas":`${h.icon||""} ${h.name}`} active={selectedHabit===h.id} onPress={()=>setSelectedHabit(h.id)} />
+                <Tag label={h.id==='total' ? 'Todas' : `${h.icon} ${h.name}`} active={goalHabit===h.id} onPress={()=>setGoalHabit(h.id)} />
               </View>
             ))}
           </View>
         </ScrollView>
-
-        <Btn title="Criar meta" onPress={commitGoal} style={{marginTop:12}} />
       </Card>
 
-      <Card style={{marginBottom:12}}>
-        <Text style={{color:C.sub, marginBottom:8}}>Notificações</Text>
-        <View style={{flexDirection:"row", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
-          <Text style={{color:C.txt, fontWeight:"700"}}>Lembrar diariamente</Text>
-          <Switch
-            value={prefs.notificationsEnabled}
-            onValueChange={(v)=>onPrefsChange({...prefs, notificationsEnabled:v})}
-            thumbColor={prefs.notificationsEnabled?C.acc:"#f4f3f4"}
-            trackColor={{false:"#3b4763", true:"#233d6b"}}
-          />
-        </View>
-        <Text style={{color:C.sub, marginBottom:6}}>Horário (0-23h)</Text>
-        <TextInput
-          placeholder="Hora"
-          placeholderTextColor="#7d8fb0"
-          keyboardType="numeric"
-          value={notifyHourField}
-          onChangeText={setNotifyHourField}
-          onEndEditing={()=>{
-            const n = clamp(parseInt(notifyHourField||"0",10),0,23);
-            setNotifyHourField(String(n));
-            onPrefsChange({...prefs, notifyHour:n});
-          }}
-          style={{backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd}}
-        />
-        {Platform.OS === "ios" || Platform.OS === "android" ? (
-          <Text style={{color:C.sub, fontSize:12, marginTop:8}}>As notificações são agendadas localmente neste horário.</Text>
+      <Card style={{padding:20}}>
+        <Text style={{color:C.sub, fontWeight:'700', marginBottom:12}}>Metas em andamento</Text>
+        {goalDetails.length === 0 ? (
+          <Text style={{color:C.sub}}>Nenhuma meta cadastrada.</Text>
         ) : (
-          <Text style={{color:C.warn, fontSize:12, marginTop:8}}>Notificações podem não estar disponíveis nesta plataforma.</Text>
-        )}
-      </Card>
-
-      <Card>
-        <Text style={{color:C.sub, marginBottom:8}}>Metas atuais</Text>
-        {goals.length === 0 ? (
-          <Text style={{color:C.sub}}>Nenhuma meta criada até o momento.</Text>
-        ) : (
-          goals.map(goal=>{
-            const refHabit = goal.habitId === "total" ? null : habits.find(h=>h.id===goal.habitId);
-            const progress = goal.habitId === "total" ? totalThisWeek : Math.max(0, agg.byHabit[goal.habitId]||0);
-            const pct = Math.min(100, Math.round(100 * progress/Math.max(1, goal.target)));
-            const remaining = Math.max(0, goal.target - progress);
-            const color = refHabit?.color || C.acc;
-            return (
-              <View key={goal.id} style={{marginBottom:12, borderBottomWidth:1, borderBottomColor:C.brd, paddingBottom:12}}>
-                <View style={{flexDirection:"row", justifyContent:"space-between", marginBottom:6}}>
-                  <View style={{flex:1, paddingRight:8}}>
-                    <Text style={{color:C.txt, fontWeight:"900"}}>{goal.title}</Text>
-                    <Text style={{color:C.sub, fontSize:12}}>
-                      {goal.habitId === "total" ? "Todas as atividades" : refHabit ? `${refHabit.icon} ${refHabit.name}` : "Atividade removida"}
-                    </Text>
-                  </View>
-                  <Pressable onPress={()=>onDelete(goal.id)}>
-                    <Text style={{color:C.bad, fontWeight:"700"}}>Excluir</Text>
-                  </Pressable>
+          goalDetails.map(({goal, refHabit, progress, pct, remaining})=>(
+            <View key={goal.id} style={{marginBottom:14, borderBottomWidth:1, borderBottomColor:C.brd, paddingBottom:14}}>
+              <View style={{flexDirection:'row', justifyContent:'space-between', marginBottom:6}}>
+                <View style={{flex:1, paddingRight:12}}>
+                  <Text style={{color:C.txt, fontWeight:'900'}}>{goal.title}</Text>
+                  <Text style={{color:C.sub, fontSize:12}}>{goal.habitId === 'total' ? 'Todas as atividades' : refHabit ? `${refHabit.icon} ${refHabit.name}` : 'Atividade removida'}</Text>
                 </View>
-                <Bar value={progress} total={goal.target} color={color} />
-                <View style={{flexDirection:"row", justifyContent:"space-between", marginTop:6}}>
-                  <Text style={{color:C.sub, fontSize:12}}>Progresso: {fmtHM(progress)} / {fmtHM(goal.target)}</Text>
-                  <Text style={{color:C.sub, fontSize:12}}>{pct}%</Text>
-                </View>
-                <Text style={{color:C.sub, fontSize:12, marginTop:4}}>Faltam {fmtHM(remaining)}</Text>
+                <Pressable onPress={()=>onGoalDelete(goal.id)}><Text style={{color:C.bad, fontWeight:'700'}}>Excluir</Text></Pressable>
               </View>
-            );
-          })
+              <Bar value={progress} total={goal.target||0} color={refHabit?.color || C.acc} />
+              <View style={{flexDirection:'row', justifyContent:'space-between', marginTop:6}}>
+                <Text style={{color:C.sub, fontSize:12}}>Progresso: {fmtHM(progress)} / {fmtHM(goal.target||0)}</Text>
+                <Text style={{color:C.sub, fontSize:12}}>{pct}%</Text>
+              </View>
+              <Text style={{color:C.sub, fontSize:12, marginTop:4}}>Faltam {fmtHM(remaining)}</Text>
+            </View>
+          ))
         )}
       </Card>
     </ScrollView>
   );
 }
 
-function ReportsScreen({ habits, sessions, cursor, setCursor, prefs, setPrefs }){
-  const start = useMemo(()=>{ const d=weekStart(); d.setDate(d.getDate()-cursor*7); return d; }, [cursor]);
+function StatisticsScreen({ habits, sessions, cursor, setCursor }){
+  const C = useColors();
+  const start = useMemo(()=>{ const d = weekStart(); d.setDate(d.getDate() - cursor*7); return d; }, [cursor]);
   const { byHabit, dailyTotal } = useMemo(()=>aggregateWeek(sessions, habits, start), [sessions, habits, start]);
-  const rows = habits.map(h=>({name:h.name, mins: Math.max(0, byHabit[h.id]||0), target: h.target||0, color:h.color}));
+  const rows = habits.map(h=>({ name:h.name, mins:Math.max(0, byHabit[h.id]||0), target:h.target||0, color:h.color }));
   const history = useMemo(()=>buildHistory(sessions, habits, 12), [sessions, habits]);
-  const [compareHabit, setCompareHabit] = useState("total");
-  const [weekA, setWeekA] = useState(Math.max(history.length-1, 0));
-  const [weekB, setWeekB] = useState(Math.max(history.length-2, 0));
+  const [compareHabit, setCompareHabit] = useState('total');
+  const [weekA, setWeekA] = useState(Math.max(history.length-1,0));
+  const [weekB, setWeekB] = useState(Math.max(history.length-2,0));
 
   useEffect(()=>{
-    if (compareHabit !== "total" && !habits.find(h=>h.id===compareHabit)){
-      setCompareHabit("total");
+    if (compareHabit !== 'total' && !habits.find(h=>h.id===compareHabit)){
+      setCompareHabit('total');
     }
-  }, [habits, compareHabit]);
+  }, [compareHabit, habits]);
 
   useEffect(()=>{
-    if (!history[weekA]) setWeekA(Math.max(history.length-1, 0));
-    if (!history[weekB]) setWeekB(Math.max(history.length-2, 0));
+    if (!history[weekA]) setWeekA(Math.max(history.length-1,0));
+    if (!history[weekB]) setWeekB(Math.max(history.length-2,0));
   }, [history, weekA, weekB]);
 
   const detailWeekA = useMemo(()=> history[weekA] ? aggregateWeek(sessions, habits, history[weekA].start) : null, [history, weekA, sessions, habits]);
   const detailWeekB = useMemo(()=> history[weekB] ? aggregateWeek(sessions, habits, history[weekB].start) : null, [history, weekB, sessions, habits]);
 
   const baseSeries = new Array(7).fill(0);
-  const seriesA = compareHabit === "total"
+  const seriesA = compareHabit === 'total'
     ? (detailWeekA?.dailyTotal || baseSeries)
     : (detailWeekA?.dailyByHabit.map(day=>Math.max(0, day[compareHabit]||0)) || baseSeries);
-  const seriesB = compareHabit === "total"
+  const seriesB = compareHabit === 'total'
     ? (detailWeekB?.dailyTotal || baseSeries)
     : (detailWeekB?.dailyByHabit.map(day=>Math.max(0, day[compareHabit]||0)) || baseSeries);
 
-  const habitInfo = compareHabit === "total" ? null : habits.find(h=>h.id===compareHabit);
+  const habitInfo = compareHabit === 'total' ? null : habits.find(h=>h.id===compareHabit);
   const primaryColor = habitInfo?.color || C.acc;
   const secondaryColor = hexToRgba(primaryColor, 0.35);
-  const totalPrimary = compareHabit === "total" ? (history[weekA]?.total||0) : (history[weekA]?.byHabit.find(h=>h.id===compareHabit)?.mins||0);
-  const totalSecondary = compareHabit === "total" ? (history[weekB]?.total||0) : (history[weekB]?.byHabit.find(h=>h.id===compareHabit)?.mins||0);
-
+  const totalWeek = rows.reduce((a,r)=>a+r.mins,0);
+  const avgPerDay = Math.round(totalWeek/7);
+  const bestIdx = dailyTotal.indexOf(Math.max(...dailyTotal));
+  const bestDay = bestIdx>=0 ? shortDow[bestIdx] : '-';
   const overallStreak = useMemo(()=>{
-    let count = 0; let cur = weekStart();
+    let count=0; let cur = weekStart();
     while(true){
       const ag = aggregateWeek(sessions, habits, cur);
       const target = habits.reduce((a,h)=>a+(h.target||0),0);
       const done = Object.values(ag.byHabit).reduce((a,b)=>a+b,0);
-      if (target>0 && done>=target) { count++; cur = addDays(cur, -7); if (count>52) break; }
+      if (target>0 && done>=target){ count++; cur = addDays(cur, -7); if (count>52) break; }
       else break;
     }
     return count;
   }, [sessions, habits]);
 
-  const totalWeek = rows.reduce((a,r)=>a+r.mins,0);
-  const avgPerDay = Math.round(totalWeek/7);
-
-  // melhor dia desta semana
-  const bestIdx = dailyTotal.indexOf(Math.max(...dailyTotal));
-  const bestDay = bestIdx>=0 ? shortDow[bestIdx] : "-";
-
-  const jsonBackup = JSON.stringify({ habits, sessions }, null, 2);
-  const csv = buildCSV(habits, sessions);
-
-  const shareText = async (text, filename) => {
-    try { await Share.share({ message: text, title: filename }); } catch {}
-  };
-
   return (
-    <ScrollView>
-      <View style={{flexDirection:"row", marginBottom:10}}>
-        <Btn title="< Semana" kind="chip" onPress={()=>setCursor(cursor+1)} />
+    <ScrollView contentContainerStyle={{paddingBottom:32}}>
+      <View style={{flexDirection:'row', marginBottom:12}}>
+        <Btn title='< Semana' kind='chip' onPress={()=>setCursor(cursor+1)} />
         <View style={{width:8}} />
-        <Btn title="Semana >" kind="chip" onPress={()=>setCursor(Math.max(0,cursor-1))} />
-        <View style={{width:8}} />
-        <Btn title={prefs.showBackup? "Ocultar backup":"Mostrar backup"} kind="chip" onPress={()=>setPrefs({...prefs, showBackup: !prefs.showBackup})} />
+        <Btn title='Semana >' kind='chip' onPress={()=>setCursor(Math.max(0, cursor-1))} />
       </View>
 
-      <Card style={{marginBottom:12}}>
+      <Card style={{marginBottom:16, padding:20}}>
         <Text style={{color:C.sub, marginBottom:8}}>Semana {fmtDate(start)} a {fmtDate(addDays(start,6))}</Text>
-
-        {/* KPIs da semana selecionada */}
-        <View style={{flexDirection:"row", justifyContent:"space-between", marginBottom:10}}>
-          <Stat label="Total" value={fmtHM(totalWeek)} />
-          <Stat label="Média/dia" value={fmtHM(avgPerDay)} />
-          <Stat label="Melhor dia" value={bestDay} />
-          <Stat label="Streak 100%" value={String(overallStreak)} />
+        <View style={{flexDirection:'row', justifyContent:'space-between', marginBottom:12}}>
+          <SummaryPill label='Total' value={fmtHM(totalWeek)} />
+          <SummaryPill label='Média/dia' value={fmtHM(avgPerDay)} />
+          <SummaryPill label='Melhor dia' value={bestDay} />
+          <SummaryPill label='Streak 100%' value={String(overallStreak)} />
         </View>
-
         {rows.map((r,i)=>(
-          <View key={i} style={{marginBottom:10}}>
-            <View style={{flexDirection:"row", justifyContent:"space-between"}}>
-              <Text style={{color:C.txt, fontWeight:"900"}}>{r.name}</Text>
+          <View key={i} style={{marginBottom:12}}>
+            <View style={{flexDirection:'row', justifyContent:'space-between'}}>
+              <Text style={{color:C.txt, fontWeight:'900'}}>{r.name}</Text>
               <Text style={{color:C.sub}}>{fmtHM(r.mins)} / {fmtHM(r.target)}</Text>
             </View>
-            <Bar value={r.mins} total={r.target} color={r.color}/>
+            <Bar value={r.mins} total={r.target} color={r.color} />
           </View>
         ))}
       </Card>
 
-      <Card style={{marginBottom:12}}>
-        <Text style={{color:C.sub, marginBottom:8}}>Comparar semanas por atividade</Text>
+      <Card style={{marginBottom:16, padding:20}}>
+        <Text style={{color:C.sub, fontWeight:'700', marginBottom:12}}>Intensidade da semana</Text>
+        <HeatmapWeek totals={dailyTotal} />
+      </Card>
 
-        <Text style={{color:C.sub, marginBottom:6}}>Selecione a atividade</Text>
+      <Card style={{marginBottom:16, padding:20}}>
+        <Text style={{color:C.sub, fontWeight:'700', marginBottom:8}}>Comparar semanas por atividade</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingRight:8}}>
-          <View style={{flexDirection:"row"}}>
-            {[{id:"total", name:"Todas"}, ...habits].map(h=>(
+          <View style={{flexDirection:'row'}}>
+            {[{id:'total', name:'Todas'}, ...habits].map(h=>(
               <View key={h.id} style={{marginRight:8}}>
-                <Tag label={h.id==="total"?"Todas":`${h.icon||""} ${h.name}`} active={compareHabit===h.id} onPress={()=>setCompareHabit(h.id)} />
+                <Tag label={h.id==='total' ? 'Todas' : `${h.icon} ${h.name}`} active={compareHabit===h.id} onPress={()=>setCompareHabit(h.id)} />
               </View>
             ))}
           </View>
@@ -1064,92 +1217,161 @@ function ReportsScreen({ habits, sessions, cursor, setCursor, prefs, setPrefs })
 
         <Text style={{color:C.sub, marginTop:12, marginBottom:6}}>Semana principal</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingRight:8}}>
-          <View style={{flexDirection:"row"}}>
+          <View style={{flexDirection:'row'}}>
             {history.map((w,i)=>(
               <View key={`primary-${i}`} style={{marginRight:8}}>
-                <Tag label={`${monthDay(w.start)}`} active={weekA===i} onPress={()=>setWeekA(i)} />
+                <Tag label={monthDay(w.start)} active={weekA===i} onPress={()=>setWeekA(i)} />
               </View>
             ))}
           </View>
         </ScrollView>
 
-        <Text style={{color:C.sub, marginTop:12, marginBottom:6}}>Semana sobreposta</Text>
+        <Text style={{color:C.sub, marginTop:12, marginBottom:6}}>Semana para comparação</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingRight:8}}>
-          <View style={{flexDirection:"row"}}>
+          <View style={{flexDirection:'row'}}>
             {history.map((w,i)=>(
               <View key={`secondary-${i}`} style={{marginRight:8}}>
-                <Tag label={`${monthDay(w.start)}`} active={weekB===i} onPress={()=>setWeekB(i)} />
+                <Tag label={monthDay(w.start)} active={weekB===i} onPress={()=>setWeekB(i)} />
               </View>
             ))}
           </View>
         </ScrollView>
 
-        <View style={{marginTop:12}}>
+        <View style={{marginTop:16}}>
           <CompareChart seriesA={seriesA} seriesB={seriesB} colorA={primaryColor} colorB={secondaryColor} />
-        </View>
-
-        <View style={{flexDirection:"row", justifyContent:"space-between", marginTop:10}}>
-          <View style={{flexDirection:"row", alignItems:"center"}}>
-            <View style={{width:12, height:12, borderRadius:6, backgroundColor:primaryColor, marginRight:6}} />
-            <Text style={{color:C.sub, fontSize:12}}>Semana {history[weekA] ? fmtDate(history[weekA].start) : "-"}</Text>
-          </View>
-          <View style={{flexDirection:"row", alignItems:"center"}}>
-            <View style={{width:12, height:12, borderRadius:6, backgroundColor:secondaryColor, marginRight:6}} />
-            <Text style={{color:C.sub, fontSize:12}}>Semana {history[weekB] ? fmtDate(history[weekB].start) : "-"}</Text>
-          </View>
-        </View>
-
-        <Text style={{color:C.sub, marginTop:8, fontSize:12}}>
-          Total selecionado: {fmtHM(totalPrimary)} vs {fmtHM(totalSecondary)} ({totalPrimary>totalSecondary?"↑":totalPrimary<totalSecondary?"↓":"="})
-        </Text>
-      </Card>
-
-      {/* Exportações */}
-      <Card style={{marginBottom:12}}>
-        <Text style={{color:C.sub, marginBottom:8}}>Exportar</Text>
-        <View style={{flexDirection:"row"}}>
-          <Btn title="CSV" kind="chip" onPress={()=>shareText(csv, "cronograma.csv")} />
-          <View style={{width:8}} />
-          <Btn title="JSON" kind="chip" onPress={()=>shareText(jsonBackup, "cronograma.json")} />
+          <Text style={{color:C.sub, marginTop:8, fontSize:12}}>
+            Semana {history[weekA] ? fmtDate(history[weekA].start) : '-'} vs {history[weekB] ? fmtDate(history[weekB].start) : '-'}
+          </Text>
         </View>
       </Card>
-
-      {prefs.showBackup ? (
-        <Card>
-          <Text style={{color:C.sub, marginBottom:8}}>Backup (copie e guarde):</Text>
-          <View style={{backgroundColor:"#0d1526", borderColor:C.brd, borderWidth:1, borderRadius:12, padding:10}}>
-            <Text selectable style={{color:"#cdd9f1", fontSize:12}}>{jsonBackup}</Text>
-          </View>
-        </Card>
-      ) : null}
     </ScrollView>
   );
 }
 
-/* ---------------------- micro-gráficos ---------------------- */
-function MiniBars({ series, color, max }){
-  const n = series.length;
+function SettingsScreen({ prefs, onPrefsChange, onThemeChange, themeName }){
+  const C = useColors();
+  const [notifyHourField, setNotifyHourField] = useState(String(prefs.notifyHour));
+
+  useEffect(()=>{
+    setNotifyHourField(String(prefs.notifyHour));
+  }, [prefs.notifyHour]);
+
+  const themeOptions = useMemo(()=>Object.keys(THEMES).map(key=>({ id:key, label:key.charAt(0).toUpperCase()+key.slice(1) })), []);
+
   return (
-    <View style={{flexDirection:"row", alignItems:"flex-end", height:52, justifyContent:"space-between"}}>
-      {series.map((v,i)=>{
-        const h = Math.round((v/Math.max(1,max))*48);
-        return <View key={i} style={{height:48, justifyContent:"flex-end", width:`${100/n}%`, alignItems:"center"}}>
-          <View style={{height:h, width:10, backgroundColor:color, borderRadius:5}}/>
-        </View>;
-      })}
-    </View>
+    <ScrollView contentContainerStyle={{paddingBottom:32}}>
+      <Card style={{marginBottom:16, padding:20}}>
+        <Text style={{color:C.sub, fontWeight:'700', marginBottom:12}}>Tema</Text>
+        <Text style={{color:C.sub, marginBottom:12}}>Escolha a paleta de cores preferida para o aplicativo.</Text>
+        <View style={{flexDirection:'row', flexWrap:'wrap'}}>
+          {themeOptions.map(opt=>(
+            <View key={opt.id} style={{marginRight:8, marginBottom:8}}>
+              <OptionPill
+                label={opt.label}
+                active={themeName===opt.id}
+                onPress={()=>onThemeChange(opt.id)}
+                color={THEMES[opt.id].acc}
+              />
+            </View>
+          ))}
+        </View>
+      </Card>
+
+      <Card style={{padding:20}}>
+        <Text style={{color:C.sub, fontWeight:'700', marginBottom:12}}>Notificações</Text>
+        <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
+          <Text style={{color:C.txt, fontWeight:'700'}}>Lembrar diariamente</Text>
+          <Switch
+            value={prefs.notificationsEnabled}
+            onValueChange={(v)=>onPrefsChange(prev=>({...prev, notificationsEnabled:v }))}
+            thumbColor={prefs.notificationsEnabled?C.acc:'#f4f3f4'}
+            trackColor={{false:'#3b4763', true:'#233d6b'}}
+          />
+        </View>
+        <Text style={{color:C.sub, marginBottom:6}}>Horário (0-23h)</Text>
+        <TextInput
+          placeholder='Hora'
+          placeholderTextColor='#7d8fb0'
+          keyboardType='numeric'
+          value={notifyHourField}
+          onChangeText={setNotifyHourField}
+          onEndEditing={()=>{
+            const n = clamp(parseInt(notifyHourField||'0',10),0,23);
+            setNotifyHourField(String(n));
+            onPrefsChange(prev=>({...prev, notifyHour:n }));
+          }}
+          style={{backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd}}
+        />
+        {Platform.OS === 'ios' || Platform.OS === 'android' ? (
+          <Text style={{color:C.sub, fontSize:12, marginTop:8}}>As notificações são agendadas localmente neste horário.</Text>
+        ) : (
+          <Text style={{color:C.warn, fontSize:12, marginTop:8}}>Notificações podem não estar disponíveis nesta plataforma.</Text>
+        )}
+      </Card>
+    </ScrollView>
   );
 }
 
+function WaterTracker({ value, onChange }){
+  const C = useColors();
+  const progress = clamp(value?.progress ?? 0, 0, 1);
+  const [trackWidth, setTrackWidth] = useState(0);
+  const progressRef = useRef(progress);
+
+  useEffect(()=>{ progressRef.current = progress; }, [progress]);
+
+  const applyChange = useCallback((updater)=>{
+    if (!onChange) return;
+    if (typeof updater === 'function') onChange(updater);
+    else onChange(()=>updater);
+  }, [onChange]);
+
+  const handleMove = (evt)=>{
+    if (!trackWidth) return;
+    const x = clamp(evt.nativeEvent.locationX, 0, trackWidth);
+    const ratio = clamp(x/trackWidth, 0, 0.99);
+    applyChange(prev=>({ ...prev, progress: ratio }));
+  };
+
+  const handleRelease = ()=>{
+    const last = progressRef.current;
+    if (last >= 0.95){
+      applyChange(prev=>({ bottles: (prev?.bottles||0) + 1, progress:0 }));
+    }
+  };
+
+  return (
+    <View>
+      <View
+        style={{height:120, borderRadius:20, borderWidth:2, borderColor:C.brd, backgroundColor:C.card, alignItems:'center', justifyContent:'center', marginBottom:12}}
+      >
+        <View style={{width:'80%', height:12, borderRadius:999, backgroundColor:C.dim, overflow:'hidden'}}
+          onLayout={(e)=>setTrackWidth(e.nativeEvent.layout.width)}
+          onStartShouldSetResponder={()=>true}
+          onMoveShouldSetResponder={()=>true}
+          onResponderMove={handleMove}
+          onResponderRelease={handleRelease}
+        >
+          <View style={{width:`${Math.round(progress*100)}%`, height:'100%', backgroundColor:C.acc}} />
+        </View>
+        <View style={{marginTop:18, alignItems:'center'}}>
+          <Text style={{fontSize:42}}>💧</Text>
+          <Text style={{color:C.sub, marginTop:6}}>Arraste até o fim para completar uma garrafa</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
 function HeatmapWeek({ totals }){
+  const C = useColors();
   const max = Math.max(...totals, 1);
   return (
     <View style={{flexDirection:"row", justifyContent:"space-between"}}>
       {totals.map((v,i)=>{
-        const op = Math.max(0.15, v/max); // intensidade
+        const op = Math.max(0.15, v/max);
         return (
           <View key={i} style={{alignItems:"center", width:`${100/7}%`}}>
-            <View style={{width:26, height:26, borderRadius:6, backgroundColor:`rgba(91,140,255,${op})`, borderWidth:1, borderColor:C.brd}} />
+            <View style={{width:26, height:26, borderRadius:6, backgroundColor:hexToRgba(C.acc, op), borderWidth:1, borderColor:C.brd}} />
             <Text style={{color:C.sub, fontSize:12, marginTop:6}}>{shortDow[i]}</Text>
           </View>
         );
@@ -1159,6 +1381,7 @@ function HeatmapWeek({ totals }){
 }
 
 function CompareChart({ seriesA, seriesB, colorA, colorB }){
+  const C = useColors();
   const max = Math.max(...seriesA, ...seriesB, 1);
   return (
     <View style={{flexDirection:"row", alignItems:"flex-end", height:120}}>
@@ -1182,8 +1405,9 @@ function CompareChart({ seriesA, seriesB, colorA, colorB }){
 }
 
 function BottomTabs({ current, onSelect, items }){
+  const C = useColors();
   return (
-    <View style={{paddingHorizontal:24, paddingTop:12, paddingBottom:24, backgroundColor:"#0c1423", borderTopWidth:1, borderTopColor:"#121c30"}}>
+    <View style={{paddingHorizontal:24, paddingTop:12, paddingBottom:24, backgroundColor:C.card, borderTopWidth:1, borderTopColor:C.brd}}>
       <View style={{flexDirection:"row", justifyContent:"space-between", alignItems:"flex-end"}}>
         {items.map(item=>{
           const active = current === item.id;
@@ -1197,7 +1421,7 @@ function BottomTabs({ current, onSelect, items }){
                 alignItems:"center",
                 paddingVertical: active ? 10 : 6,
                 borderRadius:18,
-                backgroundColor: active ? hexToRgba(C.acc,0.22) : pressed ? "#0f1a2c" : "transparent",
+                backgroundColor: active ? hexToRgba(C.acc,0.22) : pressed ? C.dim : 'transparent',
                 transform:[{translateY: active ? -4 : 0}]
               })}
             >
