@@ -19,12 +19,14 @@ try {
 /* ---------------------- tema e utilidades ---------------------- */
 const C = { bg:"#0B1220", card:"#11192b", txt:"#E7ECF5", sub:"#9FB0C9", acc:"#5B8CFF", good:"#18C08F", warn:"#FFB020", bad:"#FF6B6B", chip:"#1a263e", brd:"#23324a", dim:"#1b2945" };
 const P = 16;
+const monthNamesShort = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const dayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 const uid = () => Math.random().toString(36).slice(2,10);
 const clamp = (n, a, b) => Math.max(a, Math.min(n, b));
 const fmtHM = (mins)=>`${Math.floor(Math.abs(mins)/60)}h ${Math.abs(mins)%60}m${mins<0?" (-)":""}`;
 const weekStart = (d=new Date()) => { const x=new Date(d); const g=x.getDay(); const diff=(g===0?-6:1)-g; x.setDate(x.getDate()+diff); x.setHours(0,0,0,0); return x; };
 const addDays = (d, n)=> new Date(d.getTime()+n*86400000);
-const shortDow = ["S","T","Q","Q","S","S","D"]; // seg..dom
+const shortDow = ["M","T","W","T","F","S","S"]; // monday..sunday
 const monthDay = (d)=>{const x=new Date(d); return ("0"+x.getDate()).slice(-2)+"/"+("0"+(x.getMonth()+1)).slice(-2);};
 
 const hexToRgba = (hex, alpha=1)=>{
@@ -133,7 +135,9 @@ const TrendChart = ({series,color=C.acc,height=160})=>{
               width: Math.max(2, seg.dx),
               bottom: bottomPadding,
               height: Math.max(2, baseline - Math.min(seg.start.y, seg.end.y)),
-              backgroundColor: hexToRgba(color, 0.12),
+              backgroundColor: hexToRgba(color, 0.16),
+              borderTopLeftRadius:12,
+              borderTopRightRadius:12,
             }}
           />
         ))}
@@ -145,10 +149,15 @@ const TrendChart = ({series,color=C.acc,height=160})=>{
               left: seg.start.x,
               top: seg.start.y,
               width: seg.length,
-              height:3,
+              height:4,
               backgroundColor: color,
               borderRadius:999,
-              transform:[{translateY:-1.5},{rotate:`${seg.angle}deg`}],
+              shadowColor: color,
+              shadowOpacity:0.25,
+              shadowRadius:6,
+              shadowOffset:{width:0,height:4},
+              elevation:3,
+              transform:[{translateY:-2},{rotate:`${seg.angle}deg`}],
             }}
           />
         ))}
@@ -257,6 +266,7 @@ export default function App(){
   const [cursor, setCursor] = useState(0);
   const [prefs, setPrefs] = useState(DEFAULT_PREFS);
   const [goals, setGoals] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   useEffect(()=>{ (async()=>{
     await ensureSeed();
@@ -374,37 +384,103 @@ export default function App(){
   }, [notificationsEnabled, notifyHour, notificationBody, updatePrefs]);
 
   /* ------ UI ------ */
+  const today = new Date();
+  const weekStartDate = weekStart(today);
+  const selectedKey = selectedDate ? selectedDate.toDateString() : today.toDateString();
+  const dayItems = Array.from({length:7}).map((_, idx)=>{
+    const date = addDays(weekStartDate, idx);
+    const label = dayNames[date.getDay()].charAt(0);
+    const isToday = date.toDateString() === today.toDateString();
+    return { date, label, isToday };
+  });
+
+  const navItems = useMemo(()=>[
+    { id:"log", label:"Days", icon:"📅" },
+    { id:"habits", label:"Programs", icon:"🎯" },
+    { id:"dashboard", label:"Journal", icon:"📔" },
+    { id:"reports", label:"Statistics", icon:"📊" },
+    { id:"goals", label:"Profile", icon:"👤" },
+  ], []);
+
+  const currentDayName = dayNames[today.getDay()];
+  const currentDateLabel = `${("0"+today.getDate()).slice(-2)} ${monthNamesShort[today.getMonth()]}`;
+
   return (
     <SafeAreaView style={{flex:1, backgroundColor: C.bg}}>
-      <View style={{paddingHorizontal:P, paddingTop:P, paddingBottom:8}}>
-        <Text style={{color:C.txt, fontSize:24, fontWeight:"900"}}>Cronograma</Text>
-        <View style={{flexDirection:"row", marginTop:12, flexWrap:"wrap"}}>
-          {["dashboard","log","habits","goals","reports"].map((k)=>(
-            <View key={k} style={{marginRight:8, marginBottom:8}}>
-              <Tag label={labelTab(k)} active={tab===k} onPress={()=>setTab(k)} />
+      <View style={{flex:1}}>
+        <View style={{paddingHorizontal:P, paddingTop:P}}>
+          <View style={{marginBottom:16}}>
+            <Text style={{color:C.sub, fontSize:12, fontWeight:"700", textTransform:"uppercase", letterSpacing:1}}>Today</Text>
+            <Text style={{color:C.txt, fontSize:30, fontWeight:"900"}}>{currentDayName}</Text>
+            <Text style={{color:C.sub, fontSize:18, fontWeight:"700"}}>{currentDateLabel}</Text>
+          </View>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingRight:16, paddingBottom:4}}>
+            <View style={{flexDirection:"row"}}>
+              {dayItems.map((item, index)=>{
+                const isActive = item.date.toDateString() === selectedKey;
+                return (
+                  <Pressable
+                    key={index}
+                    onPress={()=>setSelectedDate(new Date(item.date))}
+                    style={({pressed})=>({
+                      marginRight:10,
+                      width:44,
+                      height:60,
+                      borderRadius:18,
+                      alignItems:"center",
+                      justifyContent:"center",
+                      backgroundColor: isActive ? hexToRgba(C.acc,0.2) : pressed ? "#111a2d" : "#0f182b",
+                      borderWidth: isActive ? 2 : 1,
+                      borderColor: isActive ? C.acc : C.brd,
+                    })}
+                  >
+                    <Text style={{color:isActive?C.acc:C.sub, fontWeight:"800", fontSize:12, marginBottom:4}}>{item.label}</Text>
+                    <Text style={{color:isActive?C.txt:C.sub, fontWeight:"900", fontSize:16}}>{("0"+item.date.getDate()).slice(-2)}</Text>
+                    {item.isToday && !isActive ? (
+                      <View style={{position:"absolute", bottom:6, width:6, height:6, borderRadius:3, backgroundColor:C.acc}} />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
             </View>
-          ))}
+          </ScrollView>
+        </View>
+
+        <View style={{flex:1, paddingHorizontal:P, paddingBottom:96}}>
+          {tab==="dashboard" && (
+            <Dashboard
+              habits={habits}
+              agg={agg}
+              totalDone={totalDone}
+              totalTarget={totalTarget}
+              weekScore={weekScore}
+              history8={history8}
+              goals={goals}
+              onQuickAdd={addMinutes}
+              selectedDate={selectedDate}
+              sessions={sessions}
+            />
+          )}
+
+          {tab==="log" && <LogScreen habits={habits} sessions={sessions} onAdd={addMinutes} onDelete={deleteSession} />}
+
+          {tab==="habits" && <HabitsScreen habits={habits} onCreate={createHabit} onUpdate={updateHabit} onDelete={removeHabit} />}
+
+          {tab==="goals" && <GoalsScreen habits={habits} goals={goals} agg={agg} prefs={prefs} onPrefsChange={updatePrefs} onCreate={createGoal} onDelete={deleteGoal} />}
+
+          {tab==="reports" && <ReportsScreen habits={habits} sessions={sessions} cursor={cursor} setCursor={setCursor} prefs={prefs} setPrefs={updatePrefs} />}
         </View>
       </View>
 
-      <View style={{flex:1, paddingHorizontal:P, paddingBottom:P}}>
-        {tab==="dashboard" && <Dashboard habits={habits} agg={agg} totalDone={totalDone} totalTarget={totalTarget} weekScore={weekScore} history8={history8} goals={goals} onQuickAdd={addMinutes} />}
-
-        {tab==="log" && <LogScreen habits={habits} sessions={sessions} onAdd={addMinutes} onDelete={deleteSession} />}
-
-        {tab==="habits" && <HabitsScreen habits={habits} onCreate={createHabit} onUpdate={updateHabit} onDelete={removeHabit} />}
-
-        {tab==="goals" && <GoalsScreen habits={habits} goals={goals} agg={agg} prefs={prefs} onPrefsChange={updatePrefs} onCreate={createGoal} onDelete={deleteGoal} />}
-
-        {tab==="reports" && <ReportsScreen habits={habits} sessions={sessions} cursor={cursor} setCursor={setCursor} prefs={prefs} setPrefs={updatePrefs} />}
-      </View>
+      <BottomTabs current={tab} onSelect={setTab} items={navItems} />
     </SafeAreaView>
   );
 }
 
 /* ---------------------- sub-screens ---------------------- */
 
-function Dashboard({ habits, agg, totalDone, totalTarget, weekScore, history8, goals, onQuickAdd }){
+function Dashboard({ habits, agg, totalDone, totalTarget, weekScore, history8, goals, onQuickAdd, selectedDate, sessions }){
   const [trendFocus, setTrendFocus] = useState("total");
   const totalThisWeek = Object.values(agg.byHabit).reduce((a,b)=>a+b,0);
   const sortedByWeek = [...habits].map(h=>({ ...h, done: Math.max(0, agg.byHabit[h.id]||0) })).sort((a,b)=>b.done-a.done);
@@ -425,156 +501,110 @@ function Dashboard({ habits, agg, totalDone, totalTarget, weekScore, history8, g
     }));
   }, [history8, trendFocus]);
   const trendColor = focusMeta?.color || C.acc;
+
+  const dayStart = useMemo(()=>{ const d = new Date(selectedDate||new Date()); d.setHours(0,0,0,0); return d; }, [selectedDate]);
+  const dayEnd = useMemo(()=>addDays(dayStart, 1), [dayStart]);
+  const sessionsForDay = useMemo(()=> sessions.filter(s=>{ const d=new Date(s.dateISO); return d>=dayStart && d<dayEnd; }), [sessions, dayStart, dayEnd]);
+  const dayByHabit = useMemo(()=>{
+    const map={};
+    sessionsForDay.forEach(s=>{
+      const amount = Math.max(0, s.minutes||0);
+      if (amount<=0) return;
+      map[s.habitId] = (map[s.habitId]||0) + amount;
+    });
+    return map;
+  }, [sessionsForDay]);
+  const dayBreakdown = useMemo(()=>{
+    return Object.entries(dayByHabit).map(([id,value])=>{
+      const ref = habits.find(h=>h.id===id);
+      return { id, value, icon:ref?.icon||"", name:ref?.name||"", color:ref?.color||C.acc };
+    }).sort((a,b)=>b.value-a.value);
+  }, [dayByHabit, habits]);
+  const dayTotal = dayBreakdown.reduce((a,b)=>a+b.value,0);
+  const firstItem = dayBreakdown[0];
+  const secondItem = dayBreakdown[1];
+  const awakeMins = Math.max(0, dayTotal - (firstItem?.value||0));
+  const sleepMins = firstItem?.value || 0;
+  const deepMins = secondItem?.value || 0;
+  const highlightLabel = firstItem ? `${firstItem.icon} ${firstItem.name}` : "Sem registros";
+
+  const completionPct = Math.min(100, Math.round(100*totalDone/Math.max(1,totalTarget)));
   const latestValue = trendSeries[trendSeries.length-1]?.value || 0;
   const prevValue = trendSeries.length>1 ? trendSeries[trendSeries.length-2].value : 0;
   const delta = latestValue - prevValue;
   const diffLabel = delta===0 ? fmtHM(0) : `${delta>=0?"+":"-"}${fmtHM(Math.abs(delta)).replace(" (-)","")}`;
   const deltaColor = delta>=0 ? C.good : C.bad;
-  const focusShare = trendFocus === "total"
-    ? Math.min(100, Math.round(100 * totalThisWeek/Math.max(1,totalTarget)))
-    : Math.min(100, Math.round(100 * (agg.byHabit[trendFocus]||0)/Math.max(1,totalThisWeek)));
-  const shareLabel = trendFocus === "total" ? "% da meta semanal" : "% do total da semana";
-  const averageValue = Math.round(trendSeries.reduce((sum,item)=>sum+(item.value||0),0)/Math.max(1, trendSeries.length));
-  const bestWeek = useMemo(()=>{
-    if (!trendSeries.length) return { label:"--", value:0 };
-    return trendSeries.reduce((best,item)=> item.value>best.value ? item : best, { label:"--", value:-Infinity });
-  }, [trendSeries]);
-  const topActivities = sortedByWeek.slice(0,4).map((h,index)=>({
-    ...h,
-    rank:index+1,
-    share: totalThisWeek>0 ? Math.round(100 * h.done/totalThisWeek) : 0,
-  }));
 
   return (
-    <ScrollView>
-      {/* KPIs */}
-      <Card style={{marginBottom:12}}>
-        <Text style={{color:C.sub, marginBottom:6}}>Progresso desta semana</Text>
-        <View style={{flexDirection:"row", justifyContent:"space-between", marginBottom:10}}>
-          <Stat label="Total" value={fmtHM(totalDone)} />
-          <Stat label="Meta"  value={fmtHM(totalTarget)} />
-          <Stat label="Concluído" value={`${Math.min(100, Math.round(100*totalDone/Math.max(1,totalTarget)))}%`} />
-          <Stat label="Score" value={`${weekScore}%`} />
-        </View>
-        <Bar value={totalDone} total={totalTarget} />
-        <Text style={{color:C.sub, marginTop:6}}>{fmtDate(agg.start)} a {fmtDate(addDays(agg.start,6))}</Text>
-      </Card>
-
-      {/* Gráfico: Tendência 8 semanas */}
-      <Card style={{marginBottom:12}}>
-        <View style={{flexDirection:"row", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12}}>
-          <View style={{flex:1, paddingRight:12}}>
-            <Text style={{color:C.sub}}>Resumo da semana</Text>
-            <View style={{flexDirection:"row", alignItems:"center", marginTop:6}}>
-              {focusMeta?.icon ? <Text style={{fontSize:18, marginRight:6}}>{focusMeta.icon}</Text> : null}
-              <Text style={{color:C.txt, fontSize:24, fontWeight:"900"}}>{fmtHM(latestValue)}</Text>
-            </View>
-            <View style={{flexDirection:"row", alignItems:"center", marginTop:6}}>
-              <View style={{backgroundColor:hexToRgba(deltaColor,0.16), paddingVertical:4, paddingHorizontal:10, borderRadius:999, marginRight:8}}>
-                <Text style={{color:deltaColor, fontWeight:"700", fontSize:12}}>{delta===0?"=" : (delta>=0?"↑":"↓")} {diffLabel}</Text>
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom:32}}>
+      <Card style={{marginBottom:16, padding:20, backgroundColor:"#111b30"}}>
+        <View style={{flexDirection:"row", alignItems:"center"}}>
+          <View style={{width:110, height:110, borderRadius:55, borderWidth:4, borderColor:hexToRgba(C.acc,0.45), alignItems:"center", justifyContent:"center", backgroundColor:hexToRgba(C.acc,0.12), marginRight:20}}>
+            <Text style={{color:C.txt, fontSize:34, fontWeight:"900"}}>{weekScore}%</Text>
+            <Text style={{color:C.sub, fontWeight:"700", fontSize:12, letterSpacing:1}}>QUALITY</Text>
+          </View>
+          <View style={{flex:1}}>
+            <Text style={{color:C.sub, fontSize:12, fontWeight:"700", textTransform:"uppercase", letterSpacing:1}}>Highlight</Text>
+            <Text style={{color:C.txt, fontSize:22, fontWeight:"900", marginTop:2}}>{highlightLabel}</Text>
+            <Text style={{color:C.sub, marginTop:4}}>Semana atual • {fmtDate(agg.start)} - {fmtDate(addDays(agg.start,6))}</Text>
+            <View style={{marginTop:16}}>
+              <View style={{flexDirection:"row", justifyContent:"space-between", marginBottom:10}}>
+                <SummaryPill label="In bed" value={fmtHM(dayTotal)} />
+                <SummaryPill label="Asleep" value={fmtHM(sleepMins)} />
+                <SummaryPill label="Deep" value={fmtHM(deepMins)} />
               </View>
-              <Text style={{color:C.sub, fontSize:12}}>vs. semana anterior</Text>
+              <View style={{flexDirection:"row", justifyContent:"space-between"}}>
+                <SummaryPill label="Awake" value={fmtHM(awakeMins)} />
+                <SummaryPill label="Meta" value={`${completionPct}%`} compact />
+                <SummaryPill label="Total" value={fmtHM(totalDone)} compact />
+              </View>
             </View>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingLeft:4}}>
-            <View style={{flexDirection:"row", alignItems:"center"}}>
-              {trendOptions.map((opt,index)=>(
+        </View>
+      </Card>
+
+      <Card style={{marginBottom:16, padding:20, backgroundColor:"#101a2d"}}>
+        <View style={{flexDirection:"row", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
+          <View>
+            <Text style={{color:C.sub, fontWeight:"700", textTransform:"uppercase", letterSpacing:1}}>Short night/nap</Text>
+            <Text style={{color:C.txt, fontSize:22, fontWeight:"900"}}>{focusMeta?.icon || ""} {focusMeta?.label || "Total"}</Text>
+          </View>
+          <View style={{alignItems:"flex-end"}}>
+            <Text style={{color:deltaColor, fontWeight:"800", fontSize:16}}>{diffLabel}</Text>
+            <Text style={{color:C.sub, fontSize:12}}>vs período anterior</Text>
+          </View>
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingRight:12}}>
+          <View style={{flexDirection:"row", marginBottom:12}}>
+            {trendOptions.map(opt=>(
+              <View key={opt.id} style={{marginRight:8}}>
                 <OptionPill
-                  key={opt.id}
-                  label={`${opt.icon||""} ${opt.label}`.trim()}
                   active={trendFocus===opt.id}
+                  label={`${opt.icon||""} ${opt.label}`.trim()}
                   onPress={()=>setTrendFocus(opt.id)}
                   color={opt.color}
-                  style={{marginLeft:index===0?0:8}}
                 />
-              ))}
-            </View>
-          </ScrollView>
-        </View>
-
-        <TrendChart series={trendSeries} color={trendColor} height={170} />
-
-        {trendSeries.every(item=>!item.value) && (
-          <Text style={{color:C.sub, fontSize:12, marginTop:10}}>Sem registros recentes — registre suas atividades para acompanhar a tendência.</Text>
-        )}
-
-        <View style={{flexDirection:"row", marginTop:16}}>
-          <View style={{flex:1, backgroundColor:"#0f182d", borderRadius:14, padding:12, borderWidth:1, borderColor:C.brd, marginRight:8}}>
-            <Text style={{color:C.sub, fontSize:12, marginBottom:4}}>Melhor semana</Text>
-            <Text style={{color:C.txt, fontWeight:"800", fontSize:16}}>{fmtHM(Math.max(0,bestWeek.value))}</Text>
-            <Text style={{color:C.sub, fontSize:11, marginTop:2}}>Semana de {bestWeek.label}</Text>
+              </View>
+            ))}
           </View>
-          <View style={{flex:1, backgroundColor:"#0f182d", borderRadius:14, padding:12, borderWidth:1, borderColor:C.brd}}>
-            <Text style={{color:C.sub, fontSize:12, marginBottom:4}}>Participação</Text>
-            <Text style={{color:C.txt, fontWeight:"800", fontSize:16}}>{focusShare}%</Text>
-            <Text style={{color:C.sub, fontSize:11, marginTop:2}}>{shareLabel}</Text>
-          </View>
+        </ScrollView>
+
+        <View style={{backgroundColor:"#0d1526", borderRadius:18, padding:12}}>
+          <TrendChart series={trendSeries} color={trendColor} height={190} />
         </View>
 
-        <View style={{marginTop:12, backgroundColor:"#0f182d", borderRadius:14, padding:12, borderWidth:1, borderColor:C.brd}}>
-          <Text style={{color:C.sub, fontSize:12, marginBottom:4}}>Média nas últimas {trendSeries.length} semanas</Text>
-          <Text style={{color:C.txt, fontWeight:"800", fontSize:16}}>{fmtHM(averageValue)}</Text>
+        <View style={{flexDirection:"row", justifyContent:"space-between", marginTop:14}}>
+          <SummaryPill label="Awake" value={fmtHM(awakeMins)} />
+          <SummaryPill label="Sleep" value={fmtHM(sleepMins)} />
+          <SummaryPill label="Deep sleep" value={fmtHM(deepMins)} />
         </View>
       </Card>
 
-      <Card style={{marginBottom:12}}>
-        <View style={{flexDirection:"row", justifyContent:"space-between", alignItems:"center", marginBottom:10}}>
-          <Text style={{color:C.sub}}>Atividades mais feitas</Text>
-          <Text style={{color:C.sub, fontSize:12}}>{fmtDate(agg.start)} a {fmtDate(addDays(agg.start,6))}</Text>
-        </View>
-        {topActivities.length===0 ? (
-          <Text style={{color:C.sub}}>Registre atividades para ver o ranking desta semana.</Text>
-        ) : (
-          topActivities.map((item, index)=>(
-            <View key={item.id} style={{flexDirection:"row", alignItems:"center", marginBottom:index===topActivities.length-1?0:12}}>
-              <View style={{width:34, height:34, borderRadius:17, backgroundColor:hexToRgba(item.color,0.18), alignItems:"center", justifyContent:"center", marginRight:12}}>
-                <Text style={{color:item.color, fontWeight:"800"}}>{item.rank}</Text>
-              </View>
-              <View style={{flex:1}}>
-                <Text style={{color:C.txt, fontWeight:"800"}}>{item.icon} {item.name}</Text>
-                <Text style={{color:C.sub, fontSize:12}}>{fmtHM(item.done)} • {item.share}% da semana</Text>
-                <View style={{marginTop:6}}>
-                  <Bar value={item.done} total={item.target||Math.max(item.done,1)} color={item.color} />
-                </View>
-              </View>
-              <View style={{marginLeft:12, alignItems:"flex-end"}}>
-                <Text style={{color:item.done >= (item.target||0) && (item.target||0)>0 ? C.good : C.sub, fontSize:12, fontWeight:"700"}}>
-                  {item.target ? `${Math.min(100, Math.round(100*item.done/Math.max(1,item.target)))}% da meta` : "Sem meta"}
-                </Text>
-              </View>
-            </View>
-          ))
-        )}
-      </Card>
-
-      {/* Mini-gráficos por atividade */}
-      <Card style={{marginBottom:12}}>
-        <Text style={{color:C.sub, marginBottom:10}}>Atividades (8 semanas)</Text>
-        {[...habits].sort((a,b)=>a.order-b.order).map(h=>{
-          const series = history8.map(w=> (w.byHabit.find(x=>x.id===h.id)?.mins)||0 );
-          const max = Math.max(...series, 1);
-          return (
-            <View key={h.id} style={{marginBottom:12}}>
-              <View style={{flexDirection:"row", justifyContent:"space-between", marginBottom:6}}>
-                <Text style={{color:C.txt, fontWeight:"900"}}>{h.icon} {h.name}</Text>
-                <Text style={{color:C.sub}}>{fmtHM(agg.byHabit[h.id]||0)} / {fmtHM(h.target||0)}</Text>
-              </View>
-              <MiniBars series={series} color={h.color} max={max}/>
-            </View>
-          );
-        })}
-      </Card>
-
-      {/* Heatmap 7 dias (semana atual, total por dia) */}
-      <Card style={{marginBottom:12}}>
-        <Text style={{color:C.sub, marginBottom:10}}>Intensidade por dia (semana atual)</Text>
-        <HeatmapWeek totals={agg.dailyTotal}/>
-      </Card>
-
-      <Card style={{marginBottom:12}}>
-        <Text style={{color:C.sub, marginBottom:10}}>Metas da semana</Text>
+      <Card style={{marginBottom:16, padding:18}}>
+        <Text style={{color:C.sub, marginBottom:10, fontWeight:"700"}}>Metas da semana</Text>
         {goals.length === 0 ? (
-          <Text style={{color:C.sub}}>Crie metas semanais na aba Metas para acompanhar aqui.</Text>
+          <Text style={{color:C.sub}}>Crie metas na aba Profile para monitorar aqui.</Text>
         ) : (
           goals.map(goal=>{
             const refHabit = goal.habitId === "total" ? null : habits.find(h=>h.id===goal.habitId);
@@ -583,8 +613,8 @@ function Dashboard({ habits, agg, totalDone, totalTarget, weekScore, history8, g
             const remaining = Math.max(0, goal.target - progress);
             const color = refHabit?.color || C.acc;
             return (
-              <View key={goal.id} style={{marginBottom:12}}>
-                <View style={{flexDirection:"row", justifyContent:"space-between", marginBottom:4}}>
+              <View key={goal.id} style={{marginBottom:12, backgroundColor:"#0f182b", borderRadius:14, padding:12}}>
+                <View style={{flexDirection:"row", justifyContent:"space-between", marginBottom:6}}>
                   <View style={{flex:1, paddingRight:8}}>
                     <Text style={{color:C.txt, fontWeight:"900"}}>{goal.title}</Text>
                     <Text style={{color:C.sub, fontSize:12}}>
@@ -594,24 +624,30 @@ function Dashboard({ habits, agg, totalDone, totalTarget, weekScore, history8, g
                   <Text style={{color:C.sub, fontSize:12}}>{pct}%</Text>
                 </View>
                 <Bar value={progress} total={goal.target} color={color}/>
-                <Text style={{color:C.sub, fontSize:12, marginTop:4}}>Faltam {fmtHM(remaining)}</Text>
+                <Text style={{color:C.sub, fontSize:12, marginTop:6}}>Faltam {fmtHM(remaining)}</Text>
               </View>
             );
           })
         )}
       </Card>
 
-      {/* Lista rápida + botões de ajuste */}
       {[...habits].sort((a,b)=>a.order-b.order).map(h=>{
-        const done = agg.byHabit[h.id]||0, pct = Math.min(100, Math.round(100*done/Math.max(1,h.target||0)));
+        const done = agg.byHabit[h.id]||0;
+        const pct = Math.min(100, Math.round(100*done/Math.max(1,h.target||0)));
         return (
-          <Card key={h.id} style={{marginBottom:10}}>
-            <View style={{flexDirection:"row", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
-              <Text style={{color:C.txt, fontWeight:"900", fontSize:16}}>{h.icon} {h.name}</Text>
-              <Text style={{color:C.sub}}>{fmtHM(done)} / {fmtHM(h.target||0)} ({pct}%)</Text>
+          <Card key={h.id} style={{marginBottom:14, padding:18}}>
+            <View style={{flexDirection:"row", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
+              <View>
+                <Text style={{color:h.color, fontWeight:"900", fontSize:18}}>{h.icon} {h.name}</Text>
+                <Text style={{color:C.sub, fontSize:12}}>{fmtHM(done)} / {fmtHM(h.target||0)}</Text>
+              </View>
+              <View style={{alignItems:"flex-end"}}>
+                <Text style={{color:C.sub, fontSize:12}}>Meta</Text>
+                <Text style={{color:C.txt, fontWeight:"800"}}>{pct}%</Text>
+              </View>
             </View>
             <Bar value={done} total={h.target||0} color={h.color}/>
-            <View style={{flexDirection:"row", marginTop:10, flexWrap:"wrap"}}>
+            <View style={{flexDirection:"row", marginTop:12, flexWrap:"wrap"}}>
               {["+15m","+30m","+60m","-5m","-15m","-30m"].map((t,i)=>(
                 <View key={i} style={{marginRight:8, marginBottom:8}}>
                   <Chip
@@ -630,6 +666,13 @@ function Dashboard({ habits, agg, totalDone, totalTarget, weekScore, history8, g
     </ScrollView>
   );
 }
+
+const SummaryPill = ({ label, value, compact }) => (
+  <View style={{backgroundColor:"#0f182b", borderRadius:14, paddingVertical:10, paddingHorizontal:12, borderWidth:1, borderColor:"#1a2944", minWidth: compact ? 78 : 86}}>
+    <Text style={{color:C.sub, fontSize:11, fontWeight:"700", textTransform:"uppercase", letterSpacing:1}}>{label}</Text>
+    <Text style={{color:C.txt, fontWeight:"900", fontSize:compact?16:18, marginTop:4}}>{value}</Text>
+  </View>
+);
 
 function LogScreen({ habits, sessions, onAdd, onDelete }){
   const [selected, setSelected] = useState(habits[0]?.id || null);
@@ -1134,6 +1177,37 @@ function CompareChart({ seriesA, seriesB, colorA, colorB }){
   );
 }
 
+function BottomTabs({ current, onSelect, items }){
+  return (
+    <View style={{paddingHorizontal:24, paddingTop:12, paddingBottom:24, backgroundColor:"#0c1423", borderTopWidth:1, borderTopColor:"#121c30"}}>
+      <View style={{flexDirection:"row", justifyContent:"space-between", alignItems:"flex-end"}}>
+        {items.map(item=>{
+          const active = current === item.id;
+          return (
+            <Pressable
+              key={item.id}
+              onPress={()=>onSelect(item.id)}
+              style={({pressed})=>({
+                flex:1,
+                marginHorizontal:4,
+                alignItems:"center",
+                paddingVertical: active ? 10 : 6,
+                borderRadius:18,
+                backgroundColor: active ? hexToRgba(C.acc,0.22) : pressed ? "#0f1a2c" : "transparent",
+                transform:[{translateY: active ? -4 : 0}]
+              })}
+            >
+              <Text style={{fontSize: active ? 22 : 20, marginBottom:4}}>{item.icon}</Text>
+              <Text style={{color: active ? C.acc : C.sub, fontSize:12, fontWeight: active ? "800" : "600", letterSpacing:0.4}}>{item.label}</Text>
+              {active ? <View style={{width:6, height:6, borderRadius:3, backgroundColor:C.acc, marginTop:6}} /> : <View style={{height:6}} />}
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 /* ---------------------- helpers ---------------------- */
 function buildCSV(habits, sessions){
   const hmap = Object.fromEntries(habits.map(h=>[h.id, h.name]));
@@ -1148,7 +1222,6 @@ function buildCSV(habits, sessions){
   });
   return [head, ...rows].join("\n");
 }
-function labelTab(k){ return k==="dashboard"?"Dashboard":k==="log"?"Registrar":k==="habits"?"Atividades":k==="goals"?"Metas":"Relatórios"; }
 function fmtDate(d){ const dd = new Date(d); const a=("0"+dd.getDate()).slice(-2), b=("0"+(dd.getMonth()+1)).slice(-2); return `${a}/${b}`; }
 function hexToRgba(hex, alpha){
   if (!hex) return `rgba(91,140,255,${alpha})`;
