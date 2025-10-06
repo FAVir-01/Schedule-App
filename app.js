@@ -1,254 +1,565 @@
-import React, { useMemo, useState } from 'react';
-import {
-  FlatList,
-  SafeAreaView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import React, { useEffect, useMemo, useState } from "react";
+import { SafeAreaView, View, Text, TextInput, Pressable, ScrollView, Alert, Share } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const SCHEDULE_ITEMS = [
-  {
-    id: '1',
-    day: 'Segunda',
-    time: '09:00',
-    title: 'Reunião de Abertura',
-    description: 'Boas-vindas e apresentação da programação da semana.',
-    location: 'Auditório Principal',
-  },
-  {
-    id: '2',
-    day: 'Segunda',
-    time: '11:00',
-    title: 'Workshop: Design Thinking',
-    description: 'Aplicando técnicas de design thinking para resolver problemas.',
-    location: 'Sala 2',
-  },
-  {
-    id: '3',
-    day: 'Terça',
-    time: '10:00',
-    title: 'Palestra: Futuro da Tecnologia',
-    description: 'Tendências e novidades do mercado de tecnologia.',
-    location: 'Auditório Principal',
-  },
-  {
-    id: '4',
-    day: 'Terça',
-    time: '14:00',
-    title: 'Mentorias Individuais',
-    description: 'Sessões rápidas para tirar dúvidas com especialistas.',
-    location: 'Sala 5',
-  },
-  {
-    id: '5',
-    day: 'Quarta',
-    time: '09:30',
-    title: 'Hands-on: React Native',
-    description: 'Construindo interfaces responsivas com React Native.',
-    location: 'Laboratório 1',
-  },
-  {
-    id: '6',
-    day: 'Quarta',
-    time: '16:00',
-    title: 'Painel: Histórias Inspiradoras',
-    description: 'Profissionais compartilham suas trajetórias na área de tecnologia.',
-    location: 'Auditório Principal',
-  },
-  {
-    id: '7',
-    day: 'Quinta',
-    time: '08:30',
-    title: 'Café com Networking',
-    description: 'Momento para conhecer outros participantes e trocar experiências.',
-    location: 'Hall de Entrada',
-  },
-  {
-    id: '8',
-    day: 'Quinta',
-    time: '13:30',
-    title: 'Sessão de Pitch',
-    description: 'Apresente seu projeto e receba feedback dos mentores.',
-    location: 'Sala 3',
-  },
-  {
-    id: '9',
-    day: 'Sexta',
-    time: '10:00',
-    title: 'Oficina: Planejamento de Carreira',
-    description: 'Ferramentas para organizar metas profissionais e pessoais.',
-    location: 'Sala 1',
-  },
-  {
-    id: '10',
-    day: 'Sexta',
-    time: '15:00',
-    title: 'Encerramento e Premiação',
-    description: 'Resumo da semana e reconhecimento dos destaques.',
-    location: 'Auditório Principal',
-  },
-];
+/* ---------------------- tema e utilidades ---------------------- */
+const C = { bg:"#0B1220", card:"#11192b", txt:"#E7ECF5", sub:"#9FB0C9", acc:"#5B8CFF", good:"#18C08F", warn:"#FFB020", bad:"#FF6B6B", chip:"#1a263e", brd:"#23324a", dim:"#1b2945" };
+const P = 16;
+const uid = () => Math.random().toString(36).slice(2,10);
+const clamp = (n, a, b) => Math.max(a, Math.min(n, b));
+const fmtHM = (mins)=>`${Math.floor(Math.abs(mins)/60)}h ${Math.abs(mins)%60}m${mins<0?" (-)":""}`;
+const weekStart = (d=new Date()) => { const x=new Date(d); const g=x.getDay(); const diff=(g===0?-6:1)-g; x.setDate(x.getDate()+diff); x.setHours(0,0,0,0); return x; };
+const addDays = (d, n)=> new Date(d.getTime()+n*86400000);
+const shortDow = ["S","T","Q","Q","S","S","D"]; // seg..dom
+const monthDay = (d)=>{const x=new Date(d); return ("0"+x.getDate()).slice(-2)+"/"+("0"+(x.getMonth()+1)).slice(-2);};
 
-const DAY_OPTIONS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'];
+const Card = ({children,style}) => <View style={[{backgroundColor:C.card,borderRadius:18,padding:14,borderWidth:1,borderColor:C.brd},style]}>{children}</View>;
+const Btn = ({title,onPress,kind="primary",style})=>{
+  const map={primary:C.acc, good:C.good, danger:C.bad, chip:C.chip};
+  const bg = map[kind] || C.acc;
+  return <Pressable onPress={onPress} style={({pressed})=>[{backgroundColor:bg,opacity:pressed?0.9:1,paddingVertical:12,paddingHorizontal:16,borderRadius:12,alignItems:"center"},style]}><Text style={{color:"white",fontWeight:"800"}}>{title}</Text></Pressable>;
+};
+const Tag = ({active,label,onPress})=>(
+  <Pressable onPress={onPress} style={({pressed})=>({backgroundColor:active?C.acc:(pressed?"#22304c":"#1a263e"), paddingVertical:8, paddingHorizontal:12, borderRadius:12, borderWidth:1, borderColor:C.brd})}>
+    <Text style={{color:"white", fontWeight:"800"}}>{label}</Text>
+  </Pressable>
+);
+const Chip = ({title,onPress}) => (
+  <Pressable onPress={onPress} style={({pressed})=>({backgroundColor:pressed?"#22304c":"#1a263e", paddingVertical:8, paddingHorizontal:10, borderRadius:10, borderWidth:1, borderColor:C.brd})}>
+    <Text style={{color:C.txt, fontWeight:"700"}}>{title}</Text>
+  </Pressable>
+);
+const Bar = ({value,total,color})=>{
+  const pct = Math.min(100, Math.round((value/Math.max(1,total))*100));
+  return <View style={{height:12, backgroundColor:C.dim, borderRadius:999, overflow:"hidden"}}>
+    <View style={{width:`${pct}%`, height:"100%", backgroundColor:color||C.acc}}/>
+  </View>;
+};
+const Stat = ({label,value})=>(
+  <View style={{alignItems:"center"}}>
+    <Text style={{color:C.txt, fontWeight:"800"}}>{value}</Text>
+    <Text style={{color:C.sub, fontSize:12}}>{label}</Text>
+  </View>
+);
 
-export default function App() {
-  const [selectedDay, setSelectedDay] = useState(DAY_OPTIONS[0]);
+/* ---------------------- Storage ---------------------- */
+const K = { HABITS:"HABITS", SESS:"SESSIONS", PREFS:"PREFS" };
+async function load(key, fb){ try{ const r=await AsyncStorage.getItem(key); return r?JSON.parse(r):fb; } catch{ return fb; } }
+async function save(key, val){ try{ await AsyncStorage.setItem(key, JSON.stringify(val)); } catch{} }
 
-  const events = useMemo(
-    () => SCHEDULE_ITEMS.filter((item) => item.day === selectedDay),
-    [selectedDay]
-  );
+/* ---------------------- domínio ---------------------- */
+// habit:   {id, name, target, color, icon, order}
+// session: {id, habitId, dateISO, minutes, note?}  (minutos podem ser negativos p/ ajuste)
+async function ensureSeed(){
+  const has = await load(K.HABITS,null);
+  if (has) return;
+  const sample = [
+    { id: uid(), name:"Faculdade",   target:420, color:"#5B8CFF", icon:"🎓", order:0 },
+    { id: uid(), name:"Leitura",     target:420, color:"#18C08F", icon:"📚", order:1 },
+    { id: uid(), name:"Empresa",     target:420, color:"#FFB020", icon:"🏢", order:2 },
+    { id: uid(), name:"Programação", target:420, color:"#FF6B6B", icon:"💻", order:3 },
+  ];
+  await save(K.HABITS, sample);
+  await save(K.SESS, []);
+  await save(K.PREFS, { showBackup:false });
+}
 
-  const renderEvent = ({ item }) => (
-    <View style={styles.card}>
-      <Text style={styles.cardTime}>{item.time}</Text>
-      <Text style={styles.cardTitle}>{item.title}</Text>
-      <Text style={styles.cardDescription}>{item.description}</Text>
-      <Text style={styles.cardLocation}>📍 {item.location}</Text>
-    </View>
-  );
+function aggregateWeek(sessions, habits, startDate){
+  const start = weekStart(startDate);
+  const end = addDays(start, 7);
 
+  const byHabit = {}; habits.forEach(h=>byHabit[h.id]=0);
+  const dailyByHabit = Array.from({length:7}, ()=> ({}));
+  const dailyTotal = Array.from({length:7}, ()=> 0);
+
+  sessions.forEach(s=>{
+    const d = new Date(s.dateISO);
+    if (d>=start && d<end){
+      const idx = Math.floor((d-start)/86400000);
+      const mins = s.minutes||0;
+      byHabit[s.habitId] = (byHabit[s.habitId]||0) + mins;
+      dailyByHabit[idx][s.habitId] = (dailyByHabit[idx][s.habitId]||0) + mins;
+      dailyTotal[idx] += mins;
+    }
+  });
+
+  // clamp visual
+  Object.keys(byHabit).forEach(k=>{ if (byHabit[k] < 0) byHabit[k] = 0; });
+  dailyByHabit.forEach(d=>{
+    Object.keys(d).forEach(k=>{ if (d[k] < 0) d[k] = 0; });
+  });
+  for (let i=0;i<7;i++) dailyTotal[i] = Math.max(0, dailyTotal[i]);
+
+  return { byHabit, dailyByHabit, dailyTotal, start, end };
+}
+
+/* histórico de N semanas (0 = semana atual, 1 = semana passada, ...) */
+function buildHistory(sessions, habits, weeks=8){
+  const out = [];
+  let cursor = weekStart(); // início da semana atual
+  for (let i=0; i<weeks; i++){
+    const agg = aggregateWeek(sessions, habits, cursor);
+    const total = Object.values(agg.byHabit).reduce((a,b)=>a+b,0);
+    const byHabitArr = habits.map(h=>({id:h.id, name:h.name, color:h.color, mins:Math.max(0, agg.byHabit[h.id]||0)}));
+    out.push({ start: new Date(cursor), total: Math.max(0,total), byHabit: byHabitArr });
+    cursor = addDays(cursor, -7);
+  }
+  return out.reverse(); // do mais antigo ao mais recente
+}
+
+/* ---------------------- App ---------------------- */
+export default function App(){
+  const [tab, setTab] = useState("dashboard"); // dashboard | log | habits | reports
+  const [habits, setHabits] = useState([]);
+  const [sessions, setSess] = useState([]);
+  const [cursor, setCursor] = useState(0);
+  const [prefs, setPrefs] = useState({ showBackup:false });
+
+  useEffect(()=>{ (async()=>{
+    await ensureSeed();
+    setHabits(await load(K.HABITS, []));
+    setSess(await load(K.SESS, []));
+    setPrefs(await load(K.PREFS, { showBackup:false }));
+  })(); },[]);
+
+  const agg = useMemo(()=>aggregateWeek(sessions, habits, new Date()), [sessions, habits]);
+  const totalTarget = habits.reduce((a,h)=>a+(h.target||0),0);
+  const totalDone = Object.values(agg.byHabit).reduce((a,b)=>a+b,0);
+  const weekScore = habits.length ? Math.round(100 * (Object.entries(agg.byHabit).filter(([id, mins]) => mins >= (habits.find(h=>h.id===id)?.target||0)).length / habits.length)) : 0;
+  const history8 = useMemo(()=>buildHistory(sessions, habits, 8), [sessions, habits]);
+
+  /* ------ actions ------ */
+  const addMinutes = async (habitId, mins, note="")=>{
+    if (!habitId || !mins || isNaN(mins)) return;
+    const m = parseInt(mins,10);
+    if (m === 0) return;
+    const all = await load(K.SESS, []);
+    all.push({ id: uid(), habitId, dateISO: new Date().toISOString(), minutes: m, note });
+    await save(K.SESS, all);
+    setSess(all);
+  };
+
+  const deleteSession = async (id)=>{
+    const all = (await load(K.SESS, [])).filter(s=>s.id!==id);
+    await save(K.SESS, all); setSess(all);
+  };
+
+  const createHabit = async ({name, target, icon, color})=>{
+    if (!name?.trim()) return;
+    const list = await load(K.HABITS, []);
+    list.push({ id: uid(), name: name.trim(), target: clamp(parseInt(target||"0",10),0,100000), icon: icon||"✅", color: color||"#5B8CFF", order: list.length });
+    await save(K.HABITS, list); setHabits(list);
+  };
+
+  const updateHabit = async (id, patch)=>{
+    const list = (await load(K.HABITS, [])).map(h=>h.id===id?{...h, ...patch}:h);
+    await save(K.HABITS, list); setHabits(list);
+  };
+
+  const removeHabit = async (id)=>{
+    Alert.alert("Excluir atividade?", "Isso não apaga sessões antigas, apenas remove a atividade da lista.", [
+      { text:"Cancelar", style:"cancel" },
+      { text:"Excluir", style:"destructive", onPress: async ()=>{
+        await save(K.HABITS, (await load(K.HABITS,[])).filter(h=>h.id!==id));
+        setHabits(await load(K.HABITS,[]));
+      }}
+    ]);
+  };
+
+  /* ------ UI ------ */
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" />
-
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Programação da Semana</Text>
-        <Text style={styles.headerSubtitle}>
-          Selecione um dia para ver as atividades disponíveis.
-        </Text>
+    <SafeAreaView style={{flex:1, backgroundColor: C.bg}}>
+      <View style={{paddingHorizontal:P, paddingTop:P, paddingBottom:8}}>
+        <Text style={{color:C.txt, fontSize:24, fontWeight:"900"}}>Cronograma</Text>
+        <View style={{flexDirection:"row", marginTop:12, flexWrap:"wrap"}}>
+          {["dashboard","log","habits","reports"].map((k)=>(
+            <View key={k} style={{marginRight:8, marginBottom:8}}>
+              <Tag label={labelTab(k)} active={tab===k} onPress={()=>setTab(k)} />
+            </View>
+          ))}
+        </View>
       </View>
 
-      <View style={styles.daySelector}>
-        {DAY_OPTIONS.map((day) => {
-          const isActive = selectedDay === day;
-          return (
-            <TouchableOpacity
-              key={day}
-              style={[styles.dayChip, isActive && styles.dayChipActive]}
-              onPress={() => setSelectedDay(day)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: isActive }}
-            >
-              <Text style={[styles.dayChipText, isActive && styles.dayChipTextActive]}>
-                {day}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      <View style={{flex:1, paddingHorizontal:P, paddingBottom:P}}>
+        {tab==="dashboard" && <Dashboard habits={habits} agg={agg} totalDone={totalDone} totalTarget={totalTarget} weekScore={weekScore} history8={history8} onQuickAdd={addMinutes} />}
 
-      <FlatList
-        data={events}
-        keyExtractor={(item) => item.id}
-        renderItem={renderEvent}
-        contentContainerStyle={
-          events.length === 0 ? styles.emptyListContainer : styles.listContainer
-        }
-        ListEmptyComponent={
-          <Text style={styles.emptyText}>
-            Não há atividades cadastradas para este dia ainda.
-          </Text>
-        }
-        showsVerticalScrollIndicator={false}
-      />
+        {tab==="log" && <LogScreen habits={habits} sessions={sessions} onAdd={addMinutes} onDelete={deleteSession} />}
+
+        {tab==="habits" && <HabitsScreen habits={habits} onCreate={createHabit} onUpdate={updateHabit} onDelete={removeHabit} />}
+
+        {tab==="reports" && <ReportsScreen habits={habits} sessions={sessions} cursor={cursor} setCursor={setCursor} prefs={prefs} setPrefs={async (p)=>{ setPrefs(p); await save(K.PREFS,p); }} />}
+      </View>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0d1321',
-    paddingHorizontal: 24,
-  },
-  header: {
-    paddingVertical: 24,
-    gap: 8,
-  },
-  headerTitle: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: '#f9f9f9',
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    color: '#cdd0d5',
-    lineHeight: 22,
-  },
-  daySelector: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  dayChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  dayChipActive: {
-    backgroundColor: '#f6aa1c',
-    borderColor: '#f6aa1c',
-  },
-  dayChipText: {
-    color: '#d8dee9',
-    fontWeight: '500',
-  },
-  dayChipTextActive: {
-    color: '#0d1321',
-  },
-  listContainer: {
-    paddingBottom: 24,
-    gap: 16,
-  },
-  emptyListContainer: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  card: {
-    backgroundColor: '#1d2333',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  cardTime: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#f6aa1c',
-    marginBottom: 4,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#f9f9f9',
-    marginBottom: 8,
-  },
-  cardDescription: {
-    fontSize: 14,
-    color: '#cdd0d5',
-    marginBottom: 12,
-    lineHeight: 20,
-  },
-  cardLocation: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#9aa0ac',
-  },
-  emptyText: {
-    textAlign: 'center',
-    fontSize: 16,
-    color: '#cdd0d5',
-    paddingHorizontal: 24,
-  },
-});
+/* ---------------------- sub-screens ---------------------- */
+
+function Dashboard({ habits, agg, totalDone, totalTarget, weekScore, history8, onQuickAdd }){
+  const maxWeek = Math.max(...history8.map(w=>w.total), 1);
+
+  return (
+    <ScrollView>
+      {/* KPIs */}
+      <Card style={{marginBottom:12}}>
+        <Text style={{color:C.sub, marginBottom:6}}>Progresso desta semana</Text>
+        <View style={{flexDirection:"row", justifyContent:"space-between", marginBottom:10}}>
+          <Stat label="Total" value={fmtHM(totalDone)} />
+          <Stat label="Meta"  value={fmtHM(totalTarget)} />
+          <Stat label="Concluído" value={`${Math.min(100, Math.round(100*totalDone/Math.max(1,totalTarget)))}%`} />
+          <Stat label="Score" value={`${weekScore}%`} />
+        </View>
+        <Bar value={totalDone} total={totalTarget} />
+        <Text style={{color:C.sub, marginTop:6}}>{fmtDate(agg.start)} a {fmtDate(addDays(agg.start,6))}</Text>
+      </Card>
+
+      {/* Gráfico: Tendência 8 semanas */}
+      <Card style={{marginBottom:12}}>
+        <Text style={{color:C.sub, marginBottom:10}}>Tendência (8 semanas)</Text>
+        <View style={{flexDirection:"row", alignItems:"flex-end", justifyContent:"space-between", height:90}}>
+          {history8.map((w,i)=>{
+            const h = Math.round((w.total / maxWeek) * 80);
+            const label = monthDay(w.start);
+            return (
+              <View key={i} style={{alignItems:"center", width:`${100/history8.length}%`}}>
+                <View style={{height:80, justifyContent:"flex-end"}}>
+                  <View style={{height:h, width:14, backgroundColor:C.acc, borderRadius:7}}/>
+                </View>
+                <Text style={{color:C.sub, fontSize:10, marginTop:6}}>{label}</Text>
+              </View>
+            );
+          })}
+        </View>
+      </Card>
+
+      {/* Mini-gráficos por atividade */}
+      <Card style={{marginBottom:12}}>
+        <Text style={{color:C.sub, marginBottom:10}}>Atividades (8 semanas)</Text>
+        {[...habits].sort((a,b)=>a.order-b.order).map(h=>{
+          const series = history8.map(w=> (w.byHabit.find(x=>x.id===h.id)?.mins)||0 );
+          const max = Math.max(...series, 1);
+          return (
+            <View key={h.id} style={{marginBottom:12}}>
+              <View style={{flexDirection:"row", justifyContent:"space-between", marginBottom:6}}>
+                <Text style={{color:C.txt, fontWeight:"900"}}>{h.icon} {h.name}</Text>
+                <Text style={{color:C.sub}}>{fmtHM(agg.byHabit[h.id]||0)} / {fmtHM(h.target||0)}</Text>
+              </View>
+              <MiniBars series={series} color={h.color} max={max}/>
+            </View>
+          );
+        })}
+      </Card>
+
+      {/* Heatmap 7 dias (semana atual, total por dia) */}
+      <Card style={{marginBottom:12}}>
+        <Text style={{color:C.sub, marginBottom:10}}>Intensidade por dia (semana atual)</Text>
+        <HeatmapWeek totals={agg.dailyTotal}/>
+      </Card>
+
+      {/* Lista rápida + botões de ajuste */}
+      {[...habits].sort((a,b)=>a.order-b.order).map(h=>{
+        const done = agg.byHabit[h.id]||0, pct = Math.min(100, Math.round(100*done/Math.max(1,h.target||0)));
+        return (
+          <Card key={h.id} style={{marginBottom:10}}>
+            <View style={{flexDirection:"row", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
+              <Text style={{color:C.txt, fontWeight:"900", fontSize:16}}>{h.icon} {h.name}</Text>
+              <Text style={{color:C.sub}}>{fmtHM(done)} / {fmtHM(h.target||0)} ({pct}%)</Text>
+            </View>
+            <Bar value={done} total={h.target||0} color={h.color}/>
+            <View style={{flexDirection:"row", marginTop:10, flexWrap:"wrap"}}>
+              {["+15m","+30m","+60m","-5m","-15m","-30m"].map((t,i)=>(
+                <View key={i} style={{marginRight:8, marginBottom:8}}>
+                  <Chip
+                    title={t}
+                    onPress={()=>{
+                      const map={"+15m":15,"+30m":30,"+60m":60,"-5m":-5,"-15m":-15,"-30m":-30};
+                      onQuickAdd(h.id, map[t]);
+                    }}
+                  />
+                </View>
+              ))}
+            </View>
+          </Card>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+function LogScreen({ habits, sessions, onAdd, onDelete }){
+  const [selected, setSelected] = useState(habits[0]?.id || null);
+  const [mins, setMins] = useState("");
+  const [note, setNote] = useState("");
+
+  useEffect(()=>{ if (!selected && habits[0]) setSelected(habits[0].id); }, [habits]);
+
+  const commit = (sign=1)=>{
+    const m = parseInt(mins,10);
+    if (!selected || isNaN(m) || m<=0) { Alert.alert("Minutos inválidos","Digite um número maior que zero."); return; }
+    onAdd(selected, sign*m, note);
+    setMins(""); setNote("");
+  };
+
+  const last10 = [...sessions].sort((a,b)=> new Date(b.dateISO)-new Date(a.dateISO)).slice(0,10);
+
+  return (
+    <ScrollView>
+      <Card>
+        <Text style={{color:C.sub, marginBottom:6}}>Escolha a atividade</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingRight:4}}>
+          <View style={{flexDirection:"row"}}>
+            {habits.map(h=>(
+              <View key={h.id} style={{marginRight:8}}>
+                <Tag label={`${h.icon} ${h.name}`} active={selected===h.id} onPress={()=>setSelected(h.id)} />
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+
+        <View style={{flexDirection:"row", marginTop:10, flexWrap:"wrap"}}>
+          {["+15m","+30m","+60m","-5m","-15m","-30m"].map((t,i)=>(
+            <View key={i} style={{marginRight:8, marginBottom:8}}>
+              <Chip
+                title={t}
+                onPress={()=>{
+                  const map={"+15m":15,"+30m":30,"+60m":60,"-5m":-5,"-15m":-15,"-30m":-30};
+                  onAdd(selected, map[t], note);
+                }}
+              />
+            </View>
+          ))}
+        </View>
+
+        <Text style={{color:C.sub, marginTop:12}}>Ou adicione manualmente</Text>
+        <View style={{flexDirection:"row", marginTop:6}}>
+          <TextInput value={mins} onChangeText={setMins} placeholder="Minutos (ex: 37)" placeholderTextColor="#7d8fb0"
+            keyboardType="numeric" style={{flex:1, backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd, marginRight:8}}/>
+          <Btn title="Adicionar" onPress={()=>commit(+1)} />
+          <View style={{width:8}} />
+          <Btn title="Remover" kind="danger" onPress={()=>commit(-1)} />
+        </View>
+
+        <Text style={{color:C.sub, marginTop:16, marginBottom:6}}>Últimos registros</Text>
+        {last10.map(s=>{
+          const h = habits.find(x=>x.id===s.habitId);
+          return (
+            <View key={s.id} style={{flexDirection:"row", justifyContent:"space-between", alignItems:"center", marginBottom:8, padding:10, backgroundColor:"#0e1628", borderRadius:12, borderWidth:1, borderColor:C.brd}}>
+              <Text style={{color:C.txt}}>{h?.icon} {h?.name} • {fmtHM(s.minutes)} • {new Date(s.dateISO).toLocaleTimeString().slice(0,5)}</Text>
+              <Pressable onPress={()=>onDelete(s.id)}><Text style={{color:C.bad, fontWeight:"800"}}>Excluir</Text></Pressable>
+            </View>
+          );
+        })}
+      </Card>
+    </ScrollView>
+  );
+}
+
+function HabitsScreen({ habits, onCreate, onUpdate, onDelete }){
+  const [name, setName] = useState("");
+  const [target, setTarget] = useState("420");
+  const [icon, setIcon] = useState("✅");
+  const [color, setColor] = useState("#5B8CFF");
+
+  const [editId, setEditId] = useState(null);
+  const [editTarget, setEditTarget] = useState("");
+
+  return (
+    <ScrollView>
+      <Card style={{marginBottom:12}}>
+        <Text style={{color:C.sub, marginBottom:8}}>Nova atividade</Text>
+        <TextInput placeholder="Nome (ex: Leitura)" placeholderTextColor="#7d8fb0" value={name} onChangeText={setName}
+          style={{backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd, marginBottom:8}}/>
+        <View style={{flexDirection:"row"}}>
+          <TextInput placeholder="Meta semanal (min)" placeholderTextColor="#7d8fb0" value={target} onChangeText={setTarget} keyboardType="numeric"
+            style={{flex:1, backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd, marginRight:8}}/>
+          <TextInput placeholder="Ícone (emoji)" placeholderTextColor="#7d8fb0" value={icon} onChangeText={setIcon}
+            style={{width:110, backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd, textAlign:"center"}}/>
+        </View>
+        <View style={{flexDirection:"row", marginTop:8}}>
+          <TextInput placeholder="Cor (#RRGGBB)" placeholderTextColor="#7d8fb0" value={color} onChangeText={setColor}
+            style={{flex:1, backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd, marginRight:8}}/>
+          <Btn title="Adicionar" onPress={()=>{
+            onCreate({name,target,icon,color});
+            setName(""); setTarget("60"); setIcon("✅"); setColor("#5B8CFF");
+          }} />
+        </View>
+      </Card>
+
+      {[...habits].sort((a,b)=>a.order-b.order).map(h=>(
+        <Card key={h.id} style={{marginBottom:10}}>
+          <View style={{flexDirection:"row", justifyContent:"space-between", alignItems:"center"}}>
+            <View style={{flex:1, paddingRight:8}}>
+              <Text style={{color:C.txt, fontWeight:"900"}}>{h.icon} {h.name}</Text>
+              <Text style={{color:C.sub, marginTop:4}}>Meta semanal: {fmtHM(h.target||0)}</Text>
+            </View>
+
+            {editId === h.id ? (
+              <View style={{flexDirection:"row", alignItems:"center"}}>
+                <TextInput
+                  value={editTarget}
+                  onChangeText={setEditTarget}
+                  keyboardType="numeric"
+                  placeholder="min"
+                  placeholderTextColor="#7d8fb0"
+                  style={{width:110, backgroundColor:C.chip, color:C.txt, padding:10, borderRadius:10, borderWidth:1, borderColor:C.brd, marginRight:8}}
+                />
+                <Btn
+                  title="Salvar"
+                  kind="good"
+                  onPress={()=>{
+                    const x = parseInt(editTarget, 10);
+                    if (isNaN(x)) { Alert.alert("Valor inválido","Digite um número."); return; }
+                    onUpdate(h.id, { target: x });
+                    setEditId(null);
+                  }}
+                />
+                <View style={{width:8}} />
+                <Btn title="Cancelar" kind="chip" onPress={()=>setEditId(null)} />
+              </View>
+            ) : (
+              <View style={{flexDirection:"row"}}>
+                <Btn title="Editar meta" kind="chip" onPress={()=>{ setEditId(h.id); setEditTarget(String(h.target||0)); }} />
+                <View style={{width:12}} />
+                <Btn title="Excluir" kind="danger" onPress={()=>onDelete(h.id)} />
+              </View>
+            )}
+          </View>
+        </Card>
+      ))}
+    </ScrollView>
+  );
+}
+
+function ReportsScreen({ habits, sessions, cursor, setCursor, prefs, setPrefs }){
+  const start = useMemo(()=>{ const d=weekStart(); d.setDate(d.getDate()-cursor*7); return d; }, [cursor]);
+  const { byHabit, dailyTotal } = useMemo(()=>aggregateWeek(sessions, habits, start), [sessions, habits, start]);
+  const rows = habits.map(h=>({name:h.name, mins: Math.max(0, byHabit[h.id]||0), target: h.target||0, color:h.color}));
+
+  const overallStreak = useMemo(()=>{
+    let count = 0; let cur = weekStart();
+    while(true){
+      const ag = aggregateWeek(sessions, habits, cur);
+      const target = habits.reduce((a,h)=>a+(h.target||0),0);
+      const done = Object.values(ag.byHabit).reduce((a,b)=>a+b,0);
+      if (target>0 && done>=target) { count++; cur = addDays(cur, -7); if (count>52) break; }
+      else break;
+    }
+    return count;
+  }, [sessions, habits]);
+
+  const totalWeek = rows.reduce((a,r)=>a+r.mins,0);
+  const avgPerDay = Math.round(totalWeek/7);
+
+  // melhor dia desta semana
+  const bestIdx = dailyTotal.indexOf(Math.max(...dailyTotal));
+  const bestDay = bestIdx>=0 ? shortDow[bestIdx] : "-";
+
+  const jsonBackup = JSON.stringify({ habits, sessions }, null, 2);
+  const csv = buildCSV(habits, sessions);
+
+  const shareText = async (text, filename) => {
+    try { await Share.share({ message: text, title: filename }); } catch {}
+  };
+
+  return (
+    <ScrollView>
+      <View style={{flexDirection:"row", marginBottom:10}}>
+        <Btn title="< Semana" kind="chip" onPress={()=>setCursor(cursor+1)} />
+        <View style={{width:8}} />
+        <Btn title="Semana >" kind="chip" onPress={()=>setCursor(Math.max(0,cursor-1))} />
+        <View style={{width:8}} />
+        <Btn title={prefs.showBackup? "Ocultar backup":"Mostrar backup"} kind="chip" onPress={()=>setPrefs({...prefs, showBackup: !prefs.showBackup})} />
+      </View>
+
+      <Card style={{marginBottom:12}}>
+        <Text style={{color:C.sub, marginBottom:8}}>Semana {fmtDate(start)} a {fmtDate(addDays(start,6))}</Text>
+
+        {/* KPIs da semana selecionada */}
+        <View style={{flexDirection:"row", justifyContent:"space-between", marginBottom:10}}>
+          <Stat label="Total" value={fmtHM(totalWeek)} />
+          <Stat label="Média/dia" value={fmtHM(avgPerDay)} />
+          <Stat label="Melhor dia" value={bestDay} />
+          <Stat label="Streak 100%" value={String(overallStreak)} />
+        </View>
+
+        {rows.map((r,i)=>(
+          <View key={i} style={{marginBottom:10}}>
+            <View style={{flexDirection:"row", justifyContent:"space-between"}}>
+              <Text style={{color:C.txt, fontWeight:"900"}}>{r.name}</Text>
+              <Text style={{color:C.sub}}>{fmtHM(r.mins)} / {fmtHM(r.target)}</Text>
+            </View>
+            <Bar value={r.mins} total={r.target} color={r.color}/>
+          </View>
+        ))}
+      </Card>
+
+      {/* Exportações */}
+      <Card style={{marginBottom:12}}>
+        <Text style={{color:C.sub, marginBottom:8}}>Exportar</Text>
+        <View style={{flexDirection:"row"}}>
+          <Btn title="CSV" kind="chip" onPress={()=>shareText(csv, "cronograma.csv")} />
+          <View style={{width:8}} />
+          <Btn title="JSON" kind="chip" onPress={()=>shareText(jsonBackup, "cronograma.json")} />
+        </View>
+      </Card>
+
+      {prefs.showBackup ? (
+        <Card>
+          <Text style={{color:C.sub, marginBottom:8}}>Backup (copie e guarde):</Text>
+          <View style={{backgroundColor:"#0d1526", borderColor:C.brd, borderWidth:1, borderRadius:12, padding:10}}>
+            <Text selectable style={{color:"#cdd9f1", fontSize:12}}>{jsonBackup}</Text>
+          </View>
+        </Card>
+      ) : null}
+    </ScrollView>
+  );
+}
+
+/* ---------------------- micro-gráficos ---------------------- */
+function MiniBars({ series, color, max }){
+  const n = series.length;
+  return (
+    <View style={{flexDirection:"row", alignItems:"flex-end", height:52, justifyContent:"space-between"}}>
+      {series.map((v,i)=>{
+        const h = Math.round((v/Math.max(1,max))*48);
+        return <View key={i} style={{height:48, justifyContent:"flex-end", width:`${100/n}%`, alignItems:"center"}}>
+          <View style={{height:h, width:10, backgroundColor:color, borderRadius:5}}/>
+        </View>;
+      })}
+    </View>
+  );
+}
+
+function HeatmapWeek({ totals }){
+  const max = Math.max(...totals, 1);
+  return (
+    <View style={{flexDirection:"row", justifyContent:"space-between"}}>
+      {totals.map((v,i)=>{
+        const op = Math.max(0.15, v/max); // intensidade
+        return (
+          <View key={i} style={{alignItems:"center", width:`${100/7}%`}}>
+            <View style={{width:26, height:26, borderRadius:6, backgroundColor:`rgba(91,140,255,${op})`, borderWidth:1, borderColor:C.brd}} />
+            <Text style={{color:C.sub, fontSize:12, marginTop:6}}>{shortDow[i]}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+/* ---------------------- helpers ---------------------- */
+function buildCSV(habits, sessions){
+  const hmap = Object.fromEntries(habits.map(h=>[h.id, h.name]));
+  const head = "date,habit,minutes,note";
+  const rows = sessions.map(s=>{
+    const d = new Date(s.dateISO);
+    const date = d.toISOString();
+    const habit = (hmap[s.habitId]||"");
+    const mins = s.minutes||0;
+    const note = (s.note||"").replace(/"/g,'""');
+    return `${date},"${habit}",${mins},"${note}"`;
+  });
+  return [head, ...rows].join("\n");
+}
+function labelTab(k){ return k==="dashboard"?"Dashboard":k==="log"?"Registrar":k==="habits"?"Atividades":"Relatórios"; }
+function fmtDate(d){ const dd = new Date(d); const a=("0"+dd.getDate()).slice(-2), b=("0"+(dd.getMonth()+1)).slice(-2); return `${a}/${b}`; }
