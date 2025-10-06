@@ -27,6 +27,21 @@ const addDays = (d, n)=> new Date(d.getTime()+n*86400000);
 const shortDow = ["S","T","Q","Q","S","S","D"]; // seg..dom
 const monthDay = (d)=>{const x=new Date(d); return ("0"+x.getDate()).slice(-2)+"/"+("0"+(x.getMonth()+1)).slice(-2);};
 
+const hexToRgba = (hex, alpha=1)=>{
+  if (!hex) return `rgba(255,255,255,${alpha})`;
+  const normalized = hex.replace("#","");
+  const size = normalized.length===3 ? 1 : 2;
+  const parse = (start)=>{
+    const segment = normalized.substr(start, size);
+    const full = size===1 ? segment.repeat(2) : segment;
+    return parseInt(full,16)||0;
+  };
+  const r = parse(0);
+  const g = parse(size);
+  const b = parse(size*2);
+  return `rgba(${r},${g},${b},${alpha})`;
+};
+
 const Card = ({children,style}) => <View style={[{backgroundColor:C.card,borderRadius:18,padding:14,borderWidth:1,borderColor:C.brd},style]}>{children}</View>;
 const Btn = ({title,onPress,kind="primary",style})=>{
   const map={primary:C.acc, good:C.good, danger:C.bad, chip:C.chip};
@@ -43,6 +58,117 @@ const Chip = ({title,onPress}) => (
     <Text style={{color:C.txt, fontWeight:"700"}}>{title}</Text>
   </Pressable>
 );
+const OptionPill = ({active,label,onPress,color,style}) => (
+  <Pressable
+    onPress={onPress}
+    style={({pressed})=>({
+      paddingVertical:6,
+      paddingHorizontal:14,
+      borderRadius:999,
+      backgroundColor: active ? hexToRgba(color||C.acc,0.16) : pressed ? "#1b2945" : "#111a2d",
+      borderWidth:1,
+      borderColor: active ? color||C.acc : C.brd,
+    }, style)}
+  >
+    <Text style={{color: active ? (color||C.acc) : C.sub, fontWeight:"700", fontSize:12}}>{label}</Text>
+  </Pressable>
+);
+const TrendChart = ({series,color=C.acc,height=160})=>{
+  const [width, setWidth] = useState(0);
+  const data = Array.isArray(series) ? series : [];
+  const topPadding = 12;
+  const bottomPadding = 24;
+  const chartHeight = Math.max(40, height - topPadding - bottomPadding);
+  const maxVal = Math.max(...data.map(p=>p.value||0), 1);
+  const points = useMemo(()=>{
+    if (!width || data.length === 0) return [];
+    const step = data.length === 1 ? 0 : width/(data.length-1);
+    return data.map((point, index)=>{
+      const ratio = maxVal === 0 ? 0 : (point.value||0)/maxVal;
+      const x = data.length === 1 ? width/2 : index*step;
+      const y = topPadding + (1 - ratio) * chartHeight;
+      return { x, y, value: point.value||0, label: point.label };
+    });
+  }, [width, data, maxVal, chartHeight]);
+  const baseline = topPadding + chartHeight;
+  const segments = useMemo(()=>{
+    const list = [];
+    for (let i=0;i<points.length-1;i++){
+      const start = points[i];
+      const end = points[i+1];
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const length = Math.sqrt(dx*dx + dy*dy) || 0;
+      const angle = Math.atan2(dy, dx) * 180/Math.PI;
+      list.push({ start, end, dx, dy, length, angle });
+    }
+    return list;
+  }, [points]);
+
+  return (
+    <View>
+      <View
+        style={{height, position:"relative"}}
+        onLayout={(e)=>setWidth(e.nativeEvent.layout.width)}
+      >
+        {[0.25,0.5,0.75,1].map((ratio,index)=>(
+          <View
+            key={index}
+            style={{
+              position:"absolute",
+              left:0,
+              right:0,
+              top: topPadding + (1-ratio)*chartHeight,
+              borderBottomWidth:1,
+              borderBottomColor: ratio===1?C.dim:"#16223a",
+            }}
+          />
+        ))}
+        {segments.map((seg,index)=>(
+          <View
+            key={`area-${index}`}
+            style={{
+              position:"absolute",
+              left: seg.start.x,
+              width: Math.max(2, seg.dx),
+              bottom: bottomPadding,
+              height: Math.max(2, baseline - Math.min(seg.start.y, seg.end.y)),
+              backgroundColor: hexToRgba(color, 0.12),
+            }}
+          />
+        ))}
+        {segments.map((seg,index)=>(
+          <View
+            key={`line-${index}`}
+            style={{
+              position:"absolute",
+              left: seg.start.x,
+              top: seg.start.y,
+              width: seg.length,
+              height:3,
+              backgroundColor: color,
+              borderRadius:999,
+              transform:[{translateY:-1.5},{rotate:`${seg.angle}deg`}],
+            }}
+          />
+        ))}
+        {points.map((pt,index)=>(
+          <View key={`dot-${index}`} style={{position:"absolute", left:pt.x-5, top:pt.y-5}}>
+            <View style={{width:10, height:10, borderRadius:5, backgroundColor:color}} />
+            <View style={{position:"absolute", width:6, height:6, borderRadius:3, backgroundColor:C.card, left:2, top:2}} />
+          </View>
+        ))}
+      </View>
+      <View style={{flexDirection:"row", justifyContent:"space-between", marginTop:6}}>
+        {data.map((point,index)=>(
+          <View key={index} style={{flex:1, alignItems:"center"}}>
+            <Text style={{color:C.sub, fontSize:10}}>{point.label}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+};
 const Bar = ({value,total,color})=>{
   const pct = Math.min(100, Math.round((value/Math.max(1,total))*100));
   return <View style={{height:12, backgroundColor:C.dim, borderRadius:999, overflow:"hidden"}}>
@@ -279,8 +405,45 @@ export default function App(){
 /* ---------------------- sub-screens ---------------------- */
 
 function Dashboard({ habits, agg, totalDone, totalTarget, weekScore, history8, goals, onQuickAdd }){
-  const maxWeek = Math.max(...history8.map(w=>w.total), 1);
+  const [trendFocus, setTrendFocus] = useState("total");
   const totalThisWeek = Object.values(agg.byHabit).reduce((a,b)=>a+b,0);
+  const sortedByWeek = [...habits].map(h=>({ ...h, done: Math.max(0, agg.byHabit[h.id]||0) })).sort((a,b)=>b.done-a.done);
+  const trendOptions = [{ id:"total", label:"Total", icon:"📊", color:C.acc }, ...sortedByWeek.slice(0,3).map(h=>({ id:h.id, label:h.name, icon:h.icon, color:h.color }))];
+  useEffect(()=>{
+    if (trendFocus!=="total" && !habits.find(h=>h.id===trendFocus)){
+      setTrendFocus("total");
+    }
+  }, [trendFocus, habits]);
+  const focusMeta = trendOptions.find(opt=>opt.id===trendFocus) || trendOptions[0];
+  const trendSeries = useMemo(()=>{
+    if (trendFocus === "total"){
+      return history8.map(week=>({ label: monthDay(week.start), value: week.total }));
+    }
+    return history8.map(week=>({
+      label: monthDay(week.start),
+      value: week.byHabit.find(item=>item.id===trendFocus)?.mins || 0,
+    }));
+  }, [history8, trendFocus]);
+  const trendColor = focusMeta?.color || C.acc;
+  const latestValue = trendSeries[trendSeries.length-1]?.value || 0;
+  const prevValue = trendSeries.length>1 ? trendSeries[trendSeries.length-2].value : 0;
+  const delta = latestValue - prevValue;
+  const diffLabel = delta===0 ? fmtHM(0) : `${delta>=0?"+":"-"}${fmtHM(Math.abs(delta)).replace(" (-)","")}`;
+  const deltaColor = delta>=0 ? C.good : C.bad;
+  const focusShare = trendFocus === "total"
+    ? Math.min(100, Math.round(100 * totalThisWeek/Math.max(1,totalTarget)))
+    : Math.min(100, Math.round(100 * (agg.byHabit[trendFocus]||0)/Math.max(1,totalThisWeek)));
+  const shareLabel = trendFocus === "total" ? "% da meta semanal" : "% do total da semana";
+  const averageValue = Math.round(trendSeries.reduce((sum,item)=>sum+(item.value||0),0)/Math.max(1, trendSeries.length));
+  const bestWeek = useMemo(()=>{
+    if (!trendSeries.length) return { label:"--", value:0 };
+    return trendSeries.reduce((best,item)=> item.value>best.value ? item : best, { label:"--", value:-Infinity });
+  }, [trendSeries]);
+  const topActivities = sortedByWeek.slice(0,4).map((h,index)=>({
+    ...h,
+    rank:index+1,
+    share: totalThisWeek>0 ? Math.round(100 * h.done/totalThisWeek) : 0,
+  }));
 
   return (
     <ScrollView>
@@ -299,21 +462,89 @@ function Dashboard({ habits, agg, totalDone, totalTarget, weekScore, history8, g
 
       {/* Gráfico: Tendência 8 semanas */}
       <Card style={{marginBottom:12}}>
-        <Text style={{color:C.sub, marginBottom:10}}>Tendência (8 semanas)</Text>
-        <View style={{flexDirection:"row", alignItems:"flex-end", justifyContent:"space-between", height:90}}>
-          {history8.map((w,i)=>{
-            const h = Math.round((w.total / maxWeek) * 80);
-            const label = monthDay(w.start);
-            return (
-              <View key={i} style={{alignItems:"center", width:`${100/history8.length}%`}}>
-                <View style={{height:80, justifyContent:"flex-end"}}>
-                  <View style={{height:h, width:14, backgroundColor:C.acc, borderRadius:7}}/>
-                </View>
-                <Text style={{color:C.sub, fontSize:10, marginTop:6}}>{label}</Text>
+        <View style={{flexDirection:"row", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12}}>
+          <View style={{flex:1, paddingRight:12}}>
+            <Text style={{color:C.sub}}>Resumo da semana</Text>
+            <View style={{flexDirection:"row", alignItems:"center", marginTop:6}}>
+              {focusMeta?.icon ? <Text style={{fontSize:18, marginRight:6}}>{focusMeta.icon}</Text> : null}
+              <Text style={{color:C.txt, fontSize:24, fontWeight:"900"}}>{fmtHM(latestValue)}</Text>
+            </View>
+            <View style={{flexDirection:"row", alignItems:"center", marginTop:6}}>
+              <View style={{backgroundColor:hexToRgba(deltaColor,0.16), paddingVertical:4, paddingHorizontal:10, borderRadius:999, marginRight:8}}>
+                <Text style={{color:deltaColor, fontWeight:"700", fontSize:12}}>{delta===0?"=" : (delta>=0?"↑":"↓")} {diffLabel}</Text>
               </View>
-            );
-          })}
+              <Text style={{color:C.sub, fontSize:12}}>vs. semana anterior</Text>
+            </View>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingLeft:4}}>
+            <View style={{flexDirection:"row", alignItems:"center"}}>
+              {trendOptions.map((opt,index)=>(
+                <OptionPill
+                  key={opt.id}
+                  label={`${opt.icon||""} ${opt.label}`.trim()}
+                  active={trendFocus===opt.id}
+                  onPress={()=>setTrendFocus(opt.id)}
+                  color={opt.color}
+                  style={{marginLeft:index===0?0:8}}
+                />
+              ))}
+            </View>
+          </ScrollView>
         </View>
+
+        <TrendChart series={trendSeries} color={trendColor} height={170} />
+
+        {trendSeries.every(item=>!item.value) && (
+          <Text style={{color:C.sub, fontSize:12, marginTop:10}}>Sem registros recentes — registre suas atividades para acompanhar a tendência.</Text>
+        )}
+
+        <View style={{flexDirection:"row", marginTop:16}}>
+          <View style={{flex:1, backgroundColor:"#0f182d", borderRadius:14, padding:12, borderWidth:1, borderColor:C.brd, marginRight:8}}>
+            <Text style={{color:C.sub, fontSize:12, marginBottom:4}}>Melhor semana</Text>
+            <Text style={{color:C.txt, fontWeight:"800", fontSize:16}}>{fmtHM(Math.max(0,bestWeek.value))}</Text>
+            <Text style={{color:C.sub, fontSize:11, marginTop:2}}>Semana de {bestWeek.label}</Text>
+          </View>
+          <View style={{flex:1, backgroundColor:"#0f182d", borderRadius:14, padding:12, borderWidth:1, borderColor:C.brd}}>
+            <Text style={{color:C.sub, fontSize:12, marginBottom:4}}>Participação</Text>
+            <Text style={{color:C.txt, fontWeight:"800", fontSize:16}}>{focusShare}%</Text>
+            <Text style={{color:C.sub, fontSize:11, marginTop:2}}>{shareLabel}</Text>
+          </View>
+        </View>
+
+        <View style={{marginTop:12, backgroundColor:"#0f182d", borderRadius:14, padding:12, borderWidth:1, borderColor:C.brd}}>
+          <Text style={{color:C.sub, fontSize:12, marginBottom:4}}>Média nas últimas {trendSeries.length} semanas</Text>
+          <Text style={{color:C.txt, fontWeight:"800", fontSize:16}}>{fmtHM(averageValue)}</Text>
+        </View>
+      </Card>
+
+      <Card style={{marginBottom:12}}>
+        <View style={{flexDirection:"row", justifyContent:"space-between", alignItems:"center", marginBottom:10}}>
+          <Text style={{color:C.sub}}>Atividades mais feitas</Text>
+          <Text style={{color:C.sub, fontSize:12}}>{fmtDate(agg.start)} a {fmtDate(addDays(agg.start,6))}</Text>
+        </View>
+        {topActivities.length===0 ? (
+          <Text style={{color:C.sub}}>Registre atividades para ver o ranking desta semana.</Text>
+        ) : (
+          topActivities.map((item, index)=>(
+            <View key={item.id} style={{flexDirection:"row", alignItems:"center", marginBottom:index===topActivities.length-1?0:12}}>
+              <View style={{width:34, height:34, borderRadius:17, backgroundColor:hexToRgba(item.color,0.18), alignItems:"center", justifyContent:"center", marginRight:12}}>
+                <Text style={{color:item.color, fontWeight:"800"}}>{item.rank}</Text>
+              </View>
+              <View style={{flex:1}}>
+                <Text style={{color:C.txt, fontWeight:"800"}}>{item.icon} {item.name}</Text>
+                <Text style={{color:C.sub, fontSize:12}}>{fmtHM(item.done)} • {item.share}% da semana</Text>
+                <View style={{marginTop:6}}>
+                  <Bar value={item.done} total={item.target||Math.max(item.done,1)} color={item.color} />
+                </View>
+              </View>
+              <View style={{marginLeft:12, alignItems:"flex-end"}}>
+                <Text style={{color:item.done >= (item.target||0) && (item.target||0)>0 ? C.good : C.sub, fontSize:12, fontWeight:"700"}}>
+                  {item.target ? `${Math.min(100, Math.round(100*item.done/Math.max(1,item.target)))}% da meta` : "Sem meta"}
+                </Text>
+              </View>
+            </View>
+          ))
+        )}
       </Card>
 
       {/* Mini-gráficos por atividade */}
