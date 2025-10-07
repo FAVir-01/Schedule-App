@@ -905,10 +905,6 @@ function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selected
       </Card>
 
       <Card style={{marginBottom:16, padding:20}}>
-        <ActivityLogger habits={habits} onAdd={onAdd} />
-      </Card>
-
-      <Card style={{marginBottom:16, padding:20}}>
         <Text style={{color:C.sub, fontWeight:'700', marginBottom:12}}>Monitor de água</Text>
         <Text style={{color:C.sub, marginBottom:12}}>Use os controles para registrar frações ou completar a garrafa do dia sem precisar arrastar.</Text>
         <WaterTracker value={waterState} onChange={handleWaterChange} />
