@@ -512,7 +512,7 @@ export default function App(){
           )}
         </View>
 
-        <View style={{flex:1, paddingHorizontal:P, paddingBottom:96}}>
+        <View style={{flex:1, paddingHorizontal:P, paddingBottom:P*2}}>
           {tab==="dashboard" && (
             <JournalScreen
               habits={habits}
@@ -851,19 +851,6 @@ function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selected
       </Card>
 
       <Card style={{marginBottom:16, padding:20}}>
-        <Text style={{color:C.sub, fontWeight:'700', marginBottom:12}}>Monitor de água</Text>
-        <Text style={{color:C.sub, marginBottom:12}}>Use os controles para registrar frações ou completar a garrafa do dia sem precisar arrastar.</Text>
-        <WaterTracker value={waterState} onChange={handleWaterChange} />
-        <View style={{flexDirection:'row', justifyContent:'space-between', marginTop:16, alignItems:'center'}}>
-          <Text style={{color:C.txt, fontWeight:'800'}}>{waterState.bottles || 0} garrafas hoje</Text>
-          <View style={{flexDirection:'row'}}>
-            <Btn title='-1' kind='chip' onPress={()=>handleWaterChange(prev=>({ ...prev, bottles: Math.max(0, (prev?.bottles||0)-1), progress:0 }))} style={{marginRight:8}} />
-            <Btn title='+1' onPress={()=>handleWaterChange(prev=>({ bottles:(prev?.bottles||0)+1, progress:0 }))} />
-          </View>
-        </View>
-      </Card>
-
-      <Card style={{marginBottom:16, padding:20}}>
         <Text style={{color:C.sub, fontWeight:'700', marginBottom:12}}>Registrar atividade</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingRight:8}}>
           <View style={{flexDirection:'row'}}>
@@ -905,6 +892,19 @@ function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selected
           <Btn title='Adicionar' onPress={()=>commit(1)} style={{flex:1}} />
           <View style={{width:12}} />
           <Btn title='Remover' kind='danger' onPress={()=>commit(-1)} style={{flex:1}} />
+        </View>
+      </Card>
+
+      <Card style={{marginBottom:16, padding:20}}>
+        <Text style={{color:C.sub, fontWeight:'700', marginBottom:12}}>Monitor de água</Text>
+        <Text style={{color:C.sub, marginBottom:12}}>Use os controles para registrar frações ou completar a garrafa do dia sem precisar arrastar.</Text>
+        <WaterTracker value={waterState} onChange={handleWaterChange} />
+        <View style={{flexDirection:'row', justifyContent:'space-between', marginTop:16, alignItems:'center'}}>
+          <Text style={{color:C.txt, fontWeight:'800'}}>{waterState.bottles || 0} garrafas hoje</Text>
+          <View style={{flexDirection:'row'}}>
+            <Btn title='-1' kind='chip' onPress={()=>handleWaterChange(prev=>({ ...prev, bottles: Math.max(0, (prev?.bottles||0)-1), progress:0 }))} style={{marginRight:8}} />
+            <Btn title='+1' onPress={()=>handleWaterChange(prev=>({ bottles:(prev?.bottles||0)+1, progress:0 }))} />
+          </View>
         </View>
       </Card>
 
