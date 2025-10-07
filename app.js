@@ -556,6 +556,7 @@ export default function App(){
               sessions={sessions}
               cursor={cursor}
               setCursor={setCursor}
+              onAdd={addMinutes}
             />
           )}
 
@@ -751,19 +752,86 @@ const SummaryPill = ({ label, value, compact }) => {
   );
 };
 
-function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selectedDate, onSelectDate, agg }){
+function ActivityLogger({ habits, onAdd, style, title="Registrar atividade" }){
   const C = useColors();
   const [selectedHabit, setSelectedHabit] = useState(habits[0]?.id || null);
   const [duration, setDuration] = useState(30);
   const [note, setNote] = useState("");
 
   useEffect(()=>{
-    if (!selectedHabit && habits[0]){
-      setSelectedHabit(habits[0].id);
-    } else if (selectedHabit && !habits.find(h=>h.id===selectedHabit)){
+    if (!habits.length){
+      setSelectedHabit(null);
+      return;
+    }
+    if (!selectedHabit || !habits.find(h=>h.id===selectedHabit)){
       setSelectedHabit(habits[0]?.id || null);
     }
   }, [habits, selectedHabit]);
+
+  const adjustDuration = (delta)=>{
+    setDuration(prev=> clamp((prev||0) + delta, 5, 480));
+  };
+  const setDurationDirect = (value)=>{
+    setDuration(clamp(value, 5, 480));
+  };
+  const commit = (sign)=>{
+    if (!selectedHabit){ Alert.alert('Selecione uma atividade'); return; }
+    const value = parseInt(duration,10);
+    if (!value || value<=0){ Alert.alert('Duração inválida','Use o controle para definir os minutos.'); return; }
+    if (typeof onAdd === 'function') onAdd(selectedHabit, sign*value, note);
+    setNote("");
+  };
+
+  return (
+    <View style={style}>
+      <Text style={{color:C.sub, fontWeight:'700', marginBottom:12}}>{title}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingRight:8}}>
+        <View style={{flexDirection:'row'}}>
+          {habits.map(h=>(
+            <View key={h.id} style={{marginRight:8}}>
+              <Tag label={`${h.icon} ${h.name}`} active={selectedHabit===h.id} onPress={()=>setSelectedHabit(h.id)} />
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+
+      <View style={{marginTop:16}}>
+        <Text style={{color:C.sub, marginBottom:8}}>Minutos</Text>
+        <View style={{flexDirection:'row', alignItems:'center', justifyContent:'space-between', backgroundColor:C.dimStrong||C.dim, borderRadius:14, padding:12, borderWidth:1, borderColor:C.brd}}>
+          <Pressable onPress={()=>adjustDuration(-5)} style={{padding:6}}><Text style={{color:C.acc, fontSize:24, fontWeight:'900'}}>-</Text></Pressable>
+          <Text style={{color:C.txt, fontSize:28, fontWeight:'900'}}>{duration}m</Text>
+          <Pressable onPress={()=>adjustDuration(5)} style={{padding:6}}><Text style={{color:C.acc, fontSize:24, fontWeight:'900'}}>+</Text></Pressable>
+        </View>
+        <View style={{flexDirection:'row', marginTop:12, flexWrap:'wrap'}}>
+          {[10,20,30,45,60].map(val=>(
+            <View key={val} style={{marginRight:8, marginBottom:8}}>
+              <Chip title={`${val}m`} onPress={()=>setDurationDirect(val)} />
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <Text style={{color:C.sub, marginTop:16, marginBottom:6}}>Anotações</Text>
+      <TextInput
+        value={note}
+        onChangeText={setNote}
+        placeholder='Como foi a sessão?'
+        placeholderTextColor='#7d8fb0'
+        multiline
+        style={{minHeight:68, backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd}}
+      />
+
+      <View style={{flexDirection:'row', marginTop:16}}>
+        <Btn title='Adicionar' onPress={()=>commit(1)} style={{flex:1}} />
+        <View style={{width:12}} />
+        <Btn title='Remover' kind='danger' onPress={()=>commit(-1)} style={{flex:1}} />
+      </View>
+    </View>
+  );
+}
+
+function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selectedDate, onSelectDate, agg }){
+  const C = useColors();
 
   const ranking = useMemo(()=>{
     return [...habits].map(h=>({
@@ -793,20 +861,6 @@ function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selected
   const lastEntries = useMemo(()=>[...sessions]
     .sort((a,b)=> new Date(b.dateISO) - new Date(a.dateISO))
     .slice(0,8), [sessions]);
-
-  const adjustDuration = (delta)=>{
-    setDuration(prev=> clamp((prev||0) + delta, 5, 480));
-  };
-  const setDurationDirect = (value)=>{
-    setDuration(clamp(value, 5, 480));
-  };
-  const commit = (sign)=>{
-    if (!selectedHabit){ Alert.alert('Selecione uma atividade'); return; }
-    const value = parseInt(duration,10);
-    if (!value || value<=0){ Alert.alert('Duração inválida','Use o controle para definir os minutos.'); return; }
-    onAdd(selectedHabit, sign*value, note);
-    setNote("");
-  };
   const changeDay = (offset)=>{
     if (!onSelectDate) return;
     onSelectDate(addDays(date, offset));
@@ -851,48 +905,7 @@ function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selected
       </Card>
 
       <Card style={{marginBottom:16, padding:20}}>
-        <Text style={{color:C.sub, fontWeight:'700', marginBottom:12}}>Registrar atividade</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingRight:8}}>
-          <View style={{flexDirection:'row'}}>
-            {habits.map(h=>(
-              <View key={h.id} style={{marginRight:8}}>
-                <Tag label={`${h.icon} ${h.name}`} active={selectedHabit===h.id} onPress={()=>setSelectedHabit(h.id)} />
-              </View>
-            ))}
-          </View>
-        </ScrollView>
-
-        <View style={{marginTop:16}}>
-          <Text style={{color:C.sub, marginBottom:8}}>Minutos</Text>
-          <View style={{flexDirection:'row', alignItems:'center', justifyContent:'space-between', backgroundColor:C.dimStrong||C.dim, borderRadius:14, padding:12, borderWidth:1, borderColor:C.brd}}>
-            <Pressable onPress={()=>adjustDuration(-5)} style={{padding:6}}><Text style={{color:C.acc, fontSize:24, fontWeight:'900'}}>-</Text></Pressable>
-            <Text style={{color:C.txt, fontSize:28, fontWeight:'900'}}>{duration}m</Text>
-            <Pressable onPress={()=>adjustDuration(5)} style={{padding:6}}><Text style={{color:C.acc, fontSize:24, fontWeight:'900'}}>+</Text></Pressable>
-          </View>
-          <View style={{flexDirection:'row', marginTop:12, flexWrap:'wrap'}}>
-            {[10,20,30,45,60].map(val=>(
-              <View key={val} style={{marginRight:8, marginBottom:8}}>
-                <Chip title={`${val}m`} onPress={()=>setDurationDirect(val)} />
-              </View>
-            ))}
-          </View>
-        </View>
-
-        <Text style={{color:C.sub, marginTop:16, marginBottom:6}}>Anotações</Text>
-        <TextInput
-          value={note}
-          onChangeText={setNote}
-          placeholder='Como foi a sessão?'
-          placeholderTextColor='#7d8fb0'
-          multiline
-          style={{minHeight:68, backgroundColor:C.chip, color:C.txt, padding:12, borderRadius:12, borderWidth:1, borderColor:C.brd}}
-        />
-
-        <View style={{flexDirection:'row', marginTop:16}}>
-          <Btn title='Adicionar' onPress={()=>commit(1)} style={{flex:1}} />
-          <View style={{width:12}} />
-          <Btn title='Remover' kind='danger' onPress={()=>commit(-1)} style={{flex:1}} />
-        </View>
+        <ActivityLogger habits={habits} onAdd={onAdd} />
       </Card>
 
       <Card style={{marginBottom:16, padding:20}}>
@@ -1109,7 +1122,7 @@ function ProgramsScreen({ habits, onCreate, onUpdate, onDelete, goals, onGoalCre
   );
 }
 
-function StatisticsScreen({ habits, sessions, cursor, setCursor }){
+function StatisticsScreen({ habits, sessions, cursor, setCursor, onAdd }){
   const C = useColors();
   const start = useMemo(()=>{ const d = weekStart(); d.setDate(d.getDate() - cursor*7); return d; }, [cursor]);
   const { byHabit, dailyTotal } = useMemo(()=>aggregateWeek(sessions, habits, start), [sessions, habits, start]);
@@ -1185,6 +1198,9 @@ function StatisticsScreen({ habits, sessions, cursor, setCursor }){
             <Bar value={r.mins} total={r.target} color={r.color} />
           </View>
         ))}
+        <View style={{marginTop:16, paddingTop:16, borderTopWidth:1, borderTopColor:C.brd}}>
+          <ActivityLogger habits={habits} onAdd={onAdd} />
+        </View>
       </Card>
 
       <Card style={{marginBottom:16, padding:20}}>
