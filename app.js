@@ -33,6 +33,8 @@ const clamp = (n, a, b) => Math.max(a, Math.min(n, b));
 const fmtHM = (mins)=>`${Math.floor(Math.abs(mins)/60)}h ${Math.abs(mins)%60}m${mins<0?" (-)":""}`;
 const weekStart = (d=new Date()) => { const x=new Date(d); const g=x.getDay(); const diff=(g===0?-6:1)-g; x.setDate(x.getDate()+diff); x.setHours(0,0,0,0); return x; };
 const addDays = (d, n)=> new Date(d.getTime()+n*86400000);
+const normalizeDate = (value)=>{ const ref=new Date(value||new Date()); ref.setHours(0,0,0,0); return ref; };
+const isSameWeek = (a,b)=> weekStart(normalizeDate(a)).getTime() === weekStart(normalizeDate(b)).getTime();
 const shortDow = ["M","T","W","T","F","S","S"]; // monday..sunday
 const monthDay = (d)=>{const x=new Date(d); return ("0"+x.getDate()).slice(-2)+"/"+("0"+(x.getMonth()+1)).slice(-2);};
 
@@ -105,14 +107,17 @@ const OptionPill = ({active,label,onPress,color,style}) => {
   return (
     <Pressable
       onPress={onPress}
-      style={({pressed})=>({
-        paddingVertical:6,
-        paddingHorizontal:14,
-        borderRadius:999,
-        backgroundColor: active ? hexToRgba(color||C.acc,0.16) : pressed ? C.dim : C.card,
-        borderWidth:1,
-        borderColor: active ? color||C.acc : C.brd,
-      }, style)}
+      style={({pressed})=>[
+        {
+          paddingVertical:6,
+          paddingHorizontal:14,
+          borderRadius:999,
+          backgroundColor: active ? hexToRgba(color||C.acc,0.16) : pressed ? C.dim : C.card,
+          borderWidth:1,
+          borderColor: active ? color||C.acc : C.brd,
+        },
+        style,
+      ]}
     >
       <Text style={{color: active ? (color||C.acc) : C.sub, fontWeight:"700", fontSize:12}}>{label}</Text>
     </Pressable>
@@ -155,7 +160,7 @@ const TrendChart = ({series,color,height=160})=>{
   return (
     <View>
       <View
-        style={{height, position:"relative"}}
+        style={{height, position:"relative", overflow:"hidden"}}
         onLayout={(e)=>setWidth(e.nativeEvent.layout.width)}
       >
         {[0.25,0.5,0.75,1].map((ratio,index)=>(
@@ -333,10 +338,13 @@ export default function App(){
   const colors = useMemo(()=>THEMES[themeName] || THEMES.midnight, [themeName]);
   const C = colors;
 
-  const agg = useMemo(()=>aggregateWeek(sessions, habits, new Date()), [sessions, habits]);
+  const currentWeekAgg = useMemo(()=>aggregateWeek(sessions, habits, new Date()), [sessions, habits]);
+  const selectedWeekAgg = useMemo(()=>{
+    const base = normalizeDate(selectedDate);
+    return aggregateWeek(sessions, habits, base);
+  }, [sessions, habits, selectedDate]);
   const history8 = useMemo(()=>buildHistory(sessions, habits, 8), [sessions, habits]);
-  const notificationBody = useMemo(()=>buildGoalNotificationBody(goals, agg), [goals, agg]);
-  const themeContextValue = useMemo(()=>({ colors, themeName, setThemeName: changeTheme }), [colors, themeName, changeTheme]);
+  const notificationBody = useMemo(()=>buildGoalNotificationBody(goals, currentWeekAgg), [goals, currentWeekAgg]);
 
   const updatePrefs = useCallback(async (next)=>{
     const base = typeof next === "function" ? next(prefs) : next;
@@ -350,6 +358,8 @@ export default function App(){
     const key = THEMES[name] ? name : DEFAULT_PREFS.themeName;
     updatePrefs(prev=>({...prev, themeName:key}));
   }, [updatePrefs]);
+
+  const themeContextValue = useMemo(()=>({ colors, themeName, setThemeName: changeTheme }), [colors, themeName, changeTheme]);
 
   const updateWaterForDate = useCallback((dateKey, updater)=>{
     if (!dateKey) return;
@@ -541,7 +551,7 @@ export default function App(){
           {tab==="dashboard" && (
             <JournalScreen
               habits={habits}
-              agg={agg}
+              agg={currentWeekAgg}
               history8={history8}
               selectedDate={selectedDate}
               sessions={sessions}
@@ -558,7 +568,8 @@ export default function App(){
               onWaterChange={updateWaterForDate}
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
-              agg={agg}
+              agg={selectedWeekAgg}
+              history={history8}
             />
           )}
 
@@ -571,7 +582,7 @@ export default function App(){
               goals={goals}
               onGoalCreate={createGoal}
               onGoalDelete={deleteGoal}
-              agg={agg}
+              agg={currentWeekAgg}
             />
           )}
 
@@ -879,8 +890,51 @@ function ActivityLogger({ habits, onAdd, style, title }){
   );
 }
 
-function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selectedDate, onSelectDate, agg }){
+function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selectedDate, onSelectDate, agg, history=[] }){
   const C = useColors();
+
+  const date = useMemo(()=>normalizeDate(selectedDate), [selectedDate]);
+  const weekStartDate = useMemo(()=> agg?.start ? normalizeDate(agg.start) : weekStart(date), [agg?.start, date]);
+  const weekEndDate = useMemo(()=>addDays(weekStartDate, 6), [weekStartDate]);
+  const dayOffset = useMemo(()=> clamp(Math.round((date - weekStartDate)/86400000), 0, 6), [date, weekStartDate]);
+  const weekLabel = useMemo(()=>`Semana ${fmtDate(weekStartDate)} - ${fmtDate(weekEndDate)}`, [weekStartDate, weekEndDate]);
+  const weekChoices = useMemo(()=>{
+    if (!Array.isArray(history) || history.length===0) return [];
+    return [...history].reverse().map(week=>{
+      const start = normalizeDate(week.start);
+      const end = addDays(start, 6);
+      return {
+        key: start.toISOString(),
+        start,
+        end,
+        label: `${fmtDate(start)} - ${fmtDate(end)}`,
+      };
+    });
+  }, [history]);
+  const historySeries = useMemo(()=> (Array.isArray(history) ? history : []).map(week=>({
+    label: monthDay(week.start),
+    value: Math.max(0, week.total||0),
+  })), [history]);
+  const historyIndex = useMemo(()=>{
+    if (!Array.isArray(history)) return -1;
+    return history.findIndex(week=>isSameWeek(week.start, weekStartDate));
+  }, [history, weekStartDate]);
+  const currentHistoryWeek = historyIndex>=0 ? history[historyIndex] : null;
+  const previousHistoryWeek = historyIndex>0 ? history[historyIndex-1] : null;
+
+  const changeWeek = useCallback((offset)=>{
+    if (!onSelectDate) return;
+    const targetStart = addDays(weekStartDate, offset*7);
+    const next = addDays(targetStart, dayOffset);
+    onSelectDate(next);
+  }, [onSelectDate, weekStartDate, dayOffset]);
+
+  const handleSelectWeek = useCallback((start)=>{
+    if (!onSelectDate || !start) return;
+    const targetStart = normalizeDate(start);
+    const next = addDays(targetStart, dayOffset);
+    onSelectDate(next);
+  }, [onSelectDate, dayOffset]);
 
   const ranking = useMemo(()=>{
     return [...habits].map(h=>({
@@ -890,7 +944,6 @@ function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selected
   }, [habits, agg]);
 
   const weekTotal = useMemo(()=>Object.values(agg.byHabit||{}).reduce((a,b)=>a+b,0), [agg]);
-  const date = useMemo(()=>{ const d = new Date(selectedDate||new Date()); d.setHours(0,0,0,0); return d; }, [selectedDate]);
   const dateKey = date.toISOString().slice(0,10);
   const waterState = waterLog?.[dateKey] || { bottles:0, progress:0 };
 
@@ -906,10 +959,34 @@ function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selected
     .sort((a,b)=> new Date(b.dateISO) - new Date(a.dateISO))
   , [sessions, date, dayEnd]);
 
-  const dayTotal = sessionsForDay.reduce((acc, item)=> acc + Math.max(0, item.minutes||0), 0);
+  const dayByHabit = useMemo(()=>{
+    const map={};
+    sessionsForDay.forEach(s=>{
+      const amount = Math.max(0, s.minutes||0);
+      if (!amount) return;
+      map[s.habitId] = (map[s.habitId]||0) + amount;
+    });
+    return Object.entries(map).map(([id,value])=>{
+      const ref = habits.find(h=>h.id===id);
+      return { id, value, icon:ref?.icon||"", name:ref?.name||"Atividade", color:ref?.color||C.acc };
+    }).sort((a,b)=>b.value-a.value);
+  }, [sessionsForDay, habits, C.acc]);
+
+  const dayTotal = useMemo(()=> dayByHabit.reduce((acc, item)=>acc+item.value, 0), [dayByHabit]);
   const lastEntries = useMemo(()=>[...sessions]
     .sort((a,b)=> new Date(b.dateISO) - new Date(a.dateISO))
     .slice(0,8), [sessions]);
+  const selectedWeekTotal = useMemo(()=>{
+    if (currentHistoryWeek){
+      return Math.max(0, currentHistoryWeek.total||0);
+    }
+    return Math.max(0, weekTotal||0);
+  }, [currentHistoryWeek, weekTotal]);
+  const previousWeekTotal = Math.max(0, previousHistoryWeek?.total || 0);
+  const delta = selectedWeekTotal - previousWeekTotal;
+  const deltaLabel = delta===0 ? "Sem variação" : `${delta>=0?"+":"-"}${fmtHM(Math.abs(delta)).replace(" (-)","")}`;
+  const deltaForPill = delta===0 ? fmtHM(0) : deltaLabel;
+  const deltaColor = delta===0 ? C.sub : (delta>0 ? C.good : C.bad);
   const changeDay = (offset)=>{
     if (!onSelectDate) return;
     onSelectDate(addDays(date, offset));
@@ -924,7 +1001,7 @@ function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selected
           <View>
             <Text style={{color:C.sub, fontWeight:'700'}}>Dia selecionado</Text>
             <Text style={{color:C.txt, fontSize:22, fontWeight:'900'}}>{dayLabel}</Text>
-            <Text style={{color:C.sub, marginTop:6}}>Semana {fmtDate(agg.start)} - {fmtDate(addDays(agg.start,6))}</Text>
+            <Text style={{color:C.sub, marginTop:6}}>{weekLabel}</Text>
           </View>
           <View style={{flexDirection:'row'}}>
             <Btn title='◀' kind='chip' onPress={()=>changeDay(-1)} style={{width:48}} />
@@ -945,12 +1022,118 @@ function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selected
               <Bar value={item.done} total={item.target||item.done||1} color={item.color} />
             </View>
           ))}
-          <View style={{flexDirection:'row', justifyContent:'space-between', marginTop:4}}>
+          <View style={{flexDirection:'row', flexWrap:'wrap', marginTop:8}}>
+            <View style={{marginRight:12, marginBottom:12}}>
+              <SummaryPill label='Registros' value={String(sessionsForDay.length)} compact />
+            </View>
+            <View style={{marginRight:12, marginBottom:12}}>
+              <SummaryPill label='Minutos no dia' value={fmtHM(dayTotal)} compact />
+            </View>
+            <View style={{marginRight:12, marginBottom:12}}>
+              <SummaryPill label='Total na semana' value={fmtHM(weekTotal)} compact />
+            </View>
+          </View>
+        </View>
+      </Card>
+
+      <Card style={{marginBottom:16, padding:20}}>
+        <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
+          <Text style={{color:C.sub, fontWeight:'700', textTransform:'uppercase', letterSpacing:1}}>Tendência semanal</Text>
+          <Text style={{color:C.sub}}>{historySeries.length} semanas</Text>
+        </View>
+        <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginTop:16}}>
+          <View style={{flex:1, paddingRight:12}}>
+            <Text style={{color:C.sub, fontWeight:'700'}}>Semana selecionada</Text>
+            <Text style={{color:C.txt, fontSize:18, fontWeight:'900', marginTop:4}}>{fmtDate(weekStartDate)} - {fmtDate(weekEndDate)}</Text>
+            <Text style={{color:deltaColor, fontWeight:'700', marginTop:6}}>{deltaLabel}</Text>
+          </View>
+          <View style={{flexDirection:'row'}}>
+            <Btn title='◀' kind='chip' onPress={()=>changeWeek(-1)} style={{width:48}} />
+            <View style={{width:8}} />
+            <Btn title='▶' kind='chip' onPress={()=>changeWeek(1)} style={{width:48}} />
+          </View>
+        </View>
+        {weekChoices.length>0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingVertical:8}} style={{marginTop:8}}>
+            <View style={{flexDirection:'row'}}>
+              {weekChoices.map(week=>(
+                <OptionPill
+                  key={week.key}
+                  label={week.label}
+                  active={isSameWeek(week.start, weekStartDate)}
+                  onPress={()=>handleSelectWeek(week.start)}
+                  style={{marginRight:10}}
+                />
+              ))}
+            </View>
+          </ScrollView>
+        ) : null}
+        {historySeries.length === 0 ? (
+          <View style={{paddingVertical:20}}>
+            <Text style={{color:C.sub}}>Registre atividades para visualizar o histórico.</Text>
+          </View>
+        ) : (
+          <View style={{backgroundColor:C.dim, borderRadius:18, padding:12, marginTop:16, overflow:'hidden'}}>
+            <TrendChart series={historySeries} color={C.acc} height={190} />
+          </View>
+        )}
+        <View style={{flexDirection:'row', flexWrap:'wrap', marginTop:14}}>
+          <View style={{marginRight:12, marginBottom:12}}>
+            <SummaryPill label='Semana' value={fmtHM(selectedWeekTotal)} />
+          </View>
+          <View style={{marginRight:12, marginBottom:12}}>
+            <SummaryPill label='Anterior' value={fmtHM(previousWeekTotal)} />
+          </View>
+          <View style={{marginRight:12, marginBottom:12}}>
+            <SummaryPill label='Diferença' value={deltaForPill} />
+          </View>
+        </View>
+      </Card>
+
+      <Card style={{marginBottom:16, padding:20}}>
+        <Text style={{color:C.sub, fontWeight:'700', marginBottom:10}}>Foco do dia • {monthDay(date)}</Text>
+        {dayByHabit.length === 0 ? (
+          <Text style={{color:C.sub}}>Nenhuma atividade registrada para o dia selecionado.</Text>
+        ) : (
+          <View style={{marginBottom:16}}>
+            <Text style={{color:C.sub, fontWeight:'700', marginBottom:8}}>Horas por atividade</Text>
+            {dayByHabit.map(item=>(
+              <View key={item.id} style={{marginBottom:10}}>
+                <View style={{flexDirection:'row', justifyContent:'space-between'}}>
+                  <Text style={{color:C.txt, fontWeight:'800'}}>{item.icon} {item.name}</Text>
+                  <Text style={{color:C.sub}}>{fmtHM(item.value)}</Text>
+                </View>
+                <Bar value={item.value} total={Math.max(dayTotal, 1)} color={item.color} />
+              </View>
+            ))}
+          </View>
+        )}
+        <View style={{flexDirection:'row', flexWrap:'wrap'}}>
+          <View style={{marginRight:12, marginBottom:12}}>
             <SummaryPill label='Registros' value={String(sessionsForDay.length)} compact />
+          </View>
+          <View style={{marginRight:12, marginBottom:12}}>
             <SummaryPill label='Minutos no dia' value={fmtHM(dayTotal)} compact />
+          </View>
+          <View style={{marginRight:12, marginBottom:12}}>
             <SummaryPill label='Total na semana' value={fmtHM(weekTotal)} compact />
           </View>
         </View>
+        <Text style={{color:C.sub, fontWeight:'700', marginTop:8, marginBottom:6}}>Registros do dia</Text>
+        {sessionsForDay.length === 0 ? (
+          <Text style={{color:C.sub}}>Comece adicionando suas atividades na aba Days.</Text>
+        ) : (
+          sessionsForDay.map(s=>{
+            const ref = habits.find(h=>h.id===s.habitId);
+            return (
+              <View key={s.id} style={{paddingVertical:10, borderBottomWidth:1, borderBottomColor:C.brd}}>
+                <Text style={{color:C.txt, fontWeight:'800'}}>{ref?.icon} {ref?.name || 'Atividade'}</Text>
+                <Text style={{color:C.sub, marginTop:2}}>{fmtHM(s.minutes)} • {new Date(s.dateISO).toLocaleTimeString().slice(0,5)}</Text>
+                {s.note ? <Text style={{color:C.sub, marginTop:4}}>{s.note}</Text> : null}
+              </View>
+            );
+          })
+        )}
       </Card>
 
       <Card style={{marginBottom:16, padding:20}}>
