@@ -32,7 +32,12 @@ const uid = () => Math.random().toString(36).slice(2,10);
 const clamp = (n, a, b) => Math.max(a, Math.min(n, b));
 const fmtHM = (mins)=>`${Math.floor(Math.abs(mins)/60)}h ${Math.abs(mins)%60}m${mins<0?" (-)":""}`;
 const weekStart = (d=new Date()) => { const x=new Date(d); const g=x.getDay(); const diff=(g===0?-6:1)-g; x.setDate(x.getDate()+diff); x.setHours(0,0,0,0); return x; };
-const addDays = (d, n)=> new Date(d.getTime()+n*86400000);
+const addDays = (value, amount)=>{
+  const base = new Date(value);
+  if (!Number.isFinite(amount) || !base.getTime()) return new Date(base.getTime());
+  base.setDate(base.getDate() + amount);
+  return base;
+};
 const normalizeDate = (value)=>{ const ref=new Date(value||new Date()); ref.setHours(0,0,0,0); return ref; };
 const isSameWeek = (a,b)=> weekStart(normalizeDate(a)).getTime() === weekStart(normalizeDate(b)).getTime();
 const shortDow = ["M","T","W","T","F","S","S"]; // monday..sunday
@@ -280,13 +285,14 @@ function aggregateWeek(sessions, habits, startDate){
 
   sessions.forEach(s=>{
     const d = new Date(s.dateISO);
-    if (d>=start && d<end){
-      const idx = Math.floor((d-start)/86400000);
-      const mins = s.minutes||0;
-      byHabit[s.habitId] = (byHabit[s.habitId]||0) + mins;
-      dailyByHabit[idx][s.habitId] = (dailyByHabit[idx][s.habitId]||0) + mins;
-      dailyTotal[idx] += mins;
-    }
+    if (d < start || d >= end) return;
+    const normalizedDay = normalizeDate(d);
+    const idx = Math.round((normalizedDay - start)/86400000);
+    if (idx < 0 || idx > 6) return;
+    const mins = Number(s.minutes) || 0;
+    byHabit[s.habitId] = (byHabit[s.habitId]||0) + mins;
+    dailyByHabit[idx][s.habitId] = (dailyByHabit[idx][s.habitId]||0) + mins;
+    dailyTotal[idx] += mins;
   });
 
   // clamp visual
@@ -953,11 +959,12 @@ function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selected
     else onWaterChange(dateKey, payload);
   }, [onWaterChange, dateKey]);
 
-  const dayEnd = useMemo(()=>addDays(date, 1), [date]);
+  const dayStart = useMemo(()=>normalizeDate(date), [date]);
+  const dayEnd = useMemo(()=>addDays(dayStart, 1), [dayStart]);
   const sessionsForDay = useMemo(()=> sessions
-    .filter(s=>{ const d=new Date(s.dateISO); return d>=date && d<dayEnd; })
+    .filter(s=>{ const d=new Date(s.dateISO); return d>=dayStart && d<dayEnd; })
     .sort((a,b)=> new Date(b.dateISO) - new Date(a.dateISO))
-  , [sessions, date, dayEnd]);
+  , [sessions, dayStart, dayEnd]);
 
   const dayByHabit = useMemo(()=>{
     const map={};
@@ -989,7 +996,7 @@ function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selected
   const deltaColor = delta===0 ? C.sub : (delta>0 ? C.good : C.bad);
   const changeDay = (offset)=>{
     if (!onSelectDate) return;
-    onSelectDate(addDays(date, offset));
+    onSelectDate(addDays(dayStart, offset));
   };
 
   const dayLabel = `${dayNames[date.getDay()]} • ${monthDay(date)}`;
