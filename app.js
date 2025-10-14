@@ -41,6 +41,7 @@ const addDays = (value, amount)=>{
 const normalizeDate = (value)=>{ const ref=new Date(value||new Date()); ref.setHours(0,0,0,0); return ref; };
 const isSameWeek = (a,b)=> weekStart(normalizeDate(a)).getTime() === weekStart(normalizeDate(b)).getTime();
 const shortDow = ["M","T","W","T","F","S","S"]; // monday..sunday
+const shortDowPt = ["S","T","Q","Q","S","S","D"]; // segunda..domingo
 const monthDay = (d)=>{const x=new Date(d); return ("0"+x.getDate()).slice(-2)+"/"+("0"+(x.getMonth()+1)).slice(-2);};
 
 const hexToRgba = (hex, alpha=1)=>{
@@ -227,6 +228,176 @@ const TrendChart = ({series,color,height=160})=>{
         {data.map((point,index)=>(
           <View key={index} style={{flex:1, alignItems:"center"}}>
             <Text style={{color:C.sub, fontSize:10}}>{point.label}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+};
+
+const WeeklyCompareChart = ({ labels=[], current=[], previous=[], height=160, color, previousColor }) => {
+  const C = useColors();
+  const accent = color || C.acc;
+  const compareColor = previousColor || C.sub;
+  const compareStroke = useMemo(()=>hexToRgba(compareColor, 0.75), [compareColor]);
+  const compareFill = useMemo(()=>hexToRgba(compareColor, 0.18), [compareColor]);
+  const [width, setWidth] = useState(0);
+  const topPadding = 12;
+  const bottomPadding = 28;
+  const chartHeight = Math.max(40, height - topPadding - bottomPadding);
+
+  const normalizedLabels = useMemo(()=>{
+    if (Array.isArray(labels) && labels.length > 0) return labels;
+    const count = Math.max(Array.isArray(current) ? current.length : 0, Array.isArray(previous) ? previous.length : 0);
+    if (count === 0) return [];
+    return Array.from({length: count}, (_, idx)=>String(idx+1));
+  }, [labels, current, previous]);
+
+  const safeCurrent = useMemo(()=>{
+    return normalizedLabels.map((_, idx)=>{
+      const value = Array.isArray(current) ? Number(current[idx]||0) : 0;
+      return value > 0 ? value : 0;
+    });
+  }, [normalizedLabels, current]);
+
+  const safePrevious = useMemo(()=>{
+    return normalizedLabels.map((_, idx)=>{
+      const value = Array.isArray(previous) ? Number(previous[idx]||0) : 0;
+      return value > 0 ? value : 0;
+    });
+  }, [normalizedLabels, previous]);
+
+  const maxVal = useMemo(()=>{
+    const combined = [...safeCurrent, ...safePrevious];
+    const highest = combined.length ? Math.max(...combined) : 0;
+    return highest > 0 ? highest : 1;
+  }, [safeCurrent, safePrevious]);
+
+  const computePoints = useCallback((values)=>{
+    if (!width || !values.length) return [];
+    const step = values.length === 1 ? 0 : width/(values.length-1);
+    return values.map((value, index)=>{
+      const ratio = maxVal === 0 ? 0 : value/maxVal;
+      const x = values.length === 1 ? width/2 : index*step;
+      const y = topPadding + (1 - ratio) * chartHeight;
+      return { x, y, value };
+    });
+  }, [width, maxVal, chartHeight]);
+
+  const currentPoints = useMemo(()=>computePoints(safeCurrent), [computePoints, safeCurrent]);
+  const previousPoints = useMemo(()=>computePoints(safePrevious), [computePoints, safePrevious]);
+
+  const makeSegments = (points)=>{
+    const list = [];
+    for (let i=0;i<points.length-1;i++){
+      const start = points[i];
+      const end = points[i+1];
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const length = Math.sqrt(dx*dx + dy*dy) || 0;
+      const angle = Math.atan2(dy, dx) * 180/Math.PI;
+      list.push({ start, end, dx, dy, length, angle });
+    }
+    return list;
+  };
+
+  const currentSegments = useMemo(()=>makeSegments(currentPoints), [currentPoints]);
+  const previousSegments = useMemo(()=>makeSegments(previousPoints), [previousPoints]);
+  const baseline = topPadding + chartHeight;
+
+  return (
+    <View>
+      <View
+        style={{height, position:"relative", overflow:"hidden"}}
+        onLayout={(e)=>setWidth(e.nativeEvent.layout.width)}
+      >
+        {[0.25,0.5,0.75,1].map((ratio,index)=>(
+          <View
+            key={`grid-${index}`}
+            style={{
+              position:"absolute",
+              left:0,
+              right:0,
+              top: topPadding + (1-ratio)*chartHeight,
+              borderBottomWidth:1,
+              borderBottomColor: ratio===1 ? C.dim : hexToRgba(C.brd,0.5),
+            }}
+          />
+        ))}
+        {currentSegments.map((seg,index)=>{
+          if (seg.length <= 0) return null;
+          return (
+            <View
+              key={`fill-${index}`}
+              style={{
+                position:"absolute",
+                left: seg.start.x,
+                width: Math.max(2, seg.dx),
+                bottom: bottomPadding,
+                height: Math.max(2, baseline - Math.min(seg.start.y, seg.end.y)),
+                backgroundColor: hexToRgba(accent, 0.12),
+              }}
+            />
+          );
+        })}
+        {previousSegments.map((seg,index)=>{
+          if (seg.length <= 0) return null;
+          return (
+            <View
+              key={`prev-line-${index}`}
+              style={{
+                position:"absolute",
+                left: seg.start.x,
+                top: seg.start.y,
+                width: seg.length,
+                borderTopWidth:2,
+                borderColor: compareStroke,
+                borderStyle:"dashed",
+                opacity:0.8,
+                transform:[{translateY:-1},{rotate:`${seg.angle}deg`}],
+              }}
+            />
+          );
+        })}
+        {currentSegments.map((seg,index)=>{
+          if (seg.length <= 0) return null;
+          return (
+            <View
+              key={`curr-line-${index}`}
+              style={{
+                position:"absolute",
+                left: seg.start.x,
+                top: seg.start.y,
+                width: seg.length,
+                height:4,
+                backgroundColor: accent,
+                borderRadius:999,
+                shadowColor: accent,
+                shadowOpacity:0.2,
+                shadowRadius:5,
+                shadowOffset:{width:0,height:4},
+                elevation:3,
+                transform:[{translateY:-2},{rotate:`${seg.angle}deg`}],
+              }}
+            />
+          );
+        })}
+        {previousPoints.map((pt,index)=>(
+          <View key={`prev-dot-${index}`} style={{position:"absolute", left:pt.x-5, top:pt.y-5}}>
+            <View style={{width:10, height:10, borderRadius:5, borderWidth:2, borderColor:compareStroke, backgroundColor:compareFill}} />
+          </View>
+        ))}
+        {currentPoints.map((pt,index)=>(
+          <View key={`curr-dot-${index}`} style={{position:"absolute", left:pt.x-5, top:pt.y-5}}>
+            <View style={{width:10, height:10, borderRadius:5, backgroundColor:accent}} />
+            <View style={{position:"absolute", width:6, height:6, borderRadius:3, backgroundColor:C.card, left:2, top:2}} />
+          </View>
+        ))}
+      </View>
+      <View style={{flexDirection:"row", justifyContent:"space-between", marginTop:6}}>
+        {normalizedLabels.map((label,index)=>(
+          <View key={`label-${index}`} style={{flex:1, alignItems:"center"}}>
+            <Text style={{color:C.sub, fontSize:10}}>{label}</Text>
           </View>
         ))}
       </View>
@@ -660,7 +831,12 @@ function JournalScreen({ habits, agg, history8, selectedDate, sessions, waterLog
   }, [sessionsForDay, habits, C.acc]);
   const dayTotal = dayByHabit.reduce((a,b)=>a+b.value,0);
   const dayPositiveTotal = dayByHabit.reduce((a,b)=>a+Math.max(0,b.value),0);
-  const historySeries = useMemo(()=> history8.map(week=>({ label: monthDay(week.start), value: Math.max(0, week.total||0) })), [history8]);
+  const previousWeekAgg = useMemo(()=>{
+    const base = agg?.start instanceof Date ? agg.start : weekStart();
+    return aggregateWeek(sessions, habits, addDays(base, -7));
+  }, [sessions, habits, agg?.start]);
+  const currentDailyTotals = useMemo(()=> shortDowPt.map((_, idx)=> Math.max(0, agg?.dailyTotal?.[idx] || 0)), [agg]);
+  const previousDailyTotals = useMemo(()=> shortDowPt.map((_, idx)=> Math.max(0, previousWeekAgg?.dailyTotal?.[idx] || 0)), [previousWeekAgg]);
   const weekSessions = useMemo(()=>{
     const start = agg.start;
     const end = addDays(start, 7);
@@ -715,11 +891,28 @@ function JournalScreen({ habits, agg, history8, selectedDate, sessions, waterLog
 
       <Card style={{marginBottom:16, padding:20}}>
         <View style={{flexDirection:"row", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
-          <Text style={{color:C.sub, fontWeight:"700", textTransform:"uppercase", letterSpacing:1}}>Tendência semanal</Text>
-          <Text style={{color:C.sub}}>{historySeries.length} semanas</Text>
+          <Text style={{color:C.sub, fontWeight:"700", textTransform:"uppercase", letterSpacing:1}}>Semana atual vs. semana passada</Text>
+          <Text style={{color:C.sub}}>{shortDowPt.length} dias</Text>
+        </View>
+        <View style={{flexDirection:"row", alignItems:"center", marginBottom:12}}>
+          <View style={{flexDirection:"row", alignItems:"center", marginRight:16}}>
+            <View style={{width:12, height:12, borderRadius:6, backgroundColor:C.acc, marginRight:6}} />
+            <Text style={{color:C.sub, fontSize:12, fontWeight:"700"}}>Semana atual</Text>
+          </View>
+          <View style={{flexDirection:"row", alignItems:"center"}}>
+            <View style={{width:12, height:12, borderRadius:6, borderWidth:2, borderColor:hexToRgba(C.sub,0.7), backgroundColor:hexToRgba(C.sub,0.18), marginRight:6}} />
+            <Text style={{color:C.sub, fontSize:12, fontWeight:"700"}}>Semana passada</Text>
+          </View>
         </View>
         <View style={{backgroundColor:C.dim, borderRadius:18, padding:12}}>
-          <TrendChart series={historySeries} color={C.acc} height={190} />
+          <WeeklyCompareChart
+            labels={shortDowPt}
+            current={currentDailyTotals}
+            previous={previousDailyTotals}
+            color={C.acc}
+            previousColor={C.sub}
+            height={190}
+          />
         </View>
         <View style={{flexDirection:"row", justifyContent:"space-between", marginTop:14}}>
           <SummaryPill label="Semana atual" value={fmtHM(thisWeek.total||0)} />
