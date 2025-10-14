@@ -649,16 +649,17 @@ function JournalScreen({ habits, agg, history8, selectedDate, sessions, waterLog
   const dayByHabit = useMemo(()=>{
     const map={};
     sessionsForDay.forEach(s=>{
-      const amount = Math.max(0, s.minutes||0);
-      if (amount<=0) return;
+      const amount = Number(s.minutes) || 0;
+      if (!amount) return;
       map[s.habitId] = (map[s.habitId]||0) + amount;
     });
     return Object.entries(map).map(([id,value])=>{
       const ref = habits.find(h=>h.id===id);
       return { id, value, icon:ref?.icon||"", name:ref?.name||"Atividade", color:ref?.color||C.acc };
-    }).sort((a,b)=>b.value-a.value);
+    }).filter(item=>item.value!==0).sort((a,b)=>b.value-a.value);
   }, [sessionsForDay, habits, C.acc]);
   const dayTotal = dayByHabit.reduce((a,b)=>a+b.value,0);
+  const dayPositiveTotal = dayByHabit.reduce((a,b)=>a+Math.max(0,b.value),0);
   const historySeries = useMemo(()=> history8.map(week=>({ label: monthDay(week.start), value: Math.max(0, week.total||0) })), [history8]);
   const weekSessions = useMemo(()=>{
     const start = agg.start;
@@ -740,7 +741,7 @@ function JournalScreen({ habits, agg, history8, selectedDate, sessions, waterLog
                   <Text style={{color:C.txt, fontWeight:"800"}}>{item.icon} {item.name}</Text>
                   <Text style={{color:C.sub}}>{fmtHM(item.value)}</Text>
                 </View>
-                <Bar value={item.value} total={Math.max(dayTotal, 1)} color={item.color} />
+                <Bar value={Math.max(0, item.value)} total={Math.max(dayPositiveTotal, 1)} color={item.color} />
               </View>
             ))}
           </View>
@@ -969,17 +970,18 @@ function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selected
   const dayByHabit = useMemo(()=>{
     const map={};
     sessionsForDay.forEach(s=>{
-      const amount = Math.max(0, s.minutes||0);
+      const amount = Number(s.minutes) || 0;
       if (!amount) return;
       map[s.habitId] = (map[s.habitId]||0) + amount;
     });
     return Object.entries(map).map(([id,value])=>{
       const ref = habits.find(h=>h.id===id);
       return { id, value, icon:ref?.icon||"", name:ref?.name||"Atividade", color:ref?.color||C.acc };
-    }).sort((a,b)=>b.value-a.value);
+    }).filter(item=>item.value!==0).sort((a,b)=>b.value-a.value);
   }, [sessionsForDay, habits, C.acc]);
 
   const dayTotal = useMemo(()=> dayByHabit.reduce((acc, item)=>acc+item.value, 0), [dayByHabit]);
+  const dayPositiveTotal = useMemo(()=> dayByHabit.reduce((acc, item)=>acc+Math.max(0,item.value), 0), [dayByHabit]);
   const lastEntries = useMemo(()=>[...sessions]
     .sort((a,b)=> new Date(b.dateISO) - new Date(a.dateISO))
     .slice(0,8), [sessions]);
@@ -1110,7 +1112,7 @@ function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selected
                   <Text style={{color:C.txt, fontWeight:'800'}}>{item.icon} {item.name}</Text>
                   <Text style={{color:C.sub}}>{fmtHM(item.value)}</Text>
                 </View>
-                <Bar value={item.value} total={Math.max(dayTotal, 1)} color={item.color} />
+                <Bar value={Math.max(0, item.value)} total={Math.max(dayPositiveTotal, 1)} color={item.color} />
               </View>
             ))}
           </View>
