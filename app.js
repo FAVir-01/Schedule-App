@@ -59,11 +59,30 @@ const Card = ({children,style}) => {
   const C = useColors();
   return <View style={[{backgroundColor:C.card,borderRadius:18,padding:14,borderWidth:1,borderColor:C.brd},style]}>{children}</View>;
 };
-const Btn = ({title,onPress,kind="primary",style})=>{
+const Btn = ({title,onPress,kind="primary",style,disabled})=>{
   const C = useColors();
   const map={primary:C.acc, good:C.good, danger:C.bad, chip:C.chip};
   const bg = map[kind] || C.acc;
-  return <Pressable onPress={onPress} style={({pressed})=>[{backgroundColor:bg,opacity:pressed?0.9:1,paddingVertical:12,paddingHorizontal:16,borderRadius:12,alignItems:"center"},style]}><Text style={{color:"white",fontWeight:"800"}}>{title}</Text></Pressable>;
+  const inactive = disabled ? C.dim : bg;
+  return (
+    <Pressable
+      onPress={disabled ? undefined : onPress}
+      disabled={!!disabled}
+      style={({pressed})=>[
+        {
+          backgroundColor: inactive,
+          opacity: disabled ? 0.6 : (pressed ? 0.9 : 1),
+          paddingVertical:12,
+          paddingHorizontal:16,
+          borderRadius:12,
+          alignItems:"center",
+        },
+        style,
+      ]}
+    >
+      <Text style={{color: disabled ? C.sub : "white", fontWeight:"800"}}>{title}</Text>
+    </Pressable>
+  );
 };
 const Tag = ({active,label,onPress})=>{
   const C = useColors();
@@ -348,15 +367,21 @@ export default function App(){
   }, []);
 
   /* ------ actions ------ */
-  const addMinutes = async (habitId, mins, note="")=>{
-    if (!habitId || !mins || isNaN(mins)) return;
+  const addMinutes = useCallback(async (habitId, mins, note="")=>{
+    if (!habitId || !mins || isNaN(mins)) return false;
     const m = parseInt(mins,10);
-    if (m === 0) return;
-    const all = await load(K.SESS, []);
-    all.push({ id: uid(), habitId, dateISO: new Date().toISOString(), minutes: m, note });
-    await save(K.SESS, all);
-    setSess(all);
-  };
+    if (!m) return false;
+    const entry = { id: uid(), habitId, dateISO: new Date().toISOString(), minutes: m, note };
+
+    let snapshot = null;
+    setSess(prev=>{
+      snapshot = [...prev, entry];
+      return snapshot;
+    });
+
+    await save(K.SESS, snapshot || [entry]);
+    return true;
+  }, [setSess]);
 
   const createHabit = async ({name, target, icon, color})=>{
     if (!name?.trim()) return;
@@ -752,11 +777,13 @@ const SummaryPill = ({ label, value, compact }) => {
   );
 };
 
-function ActivityLogger({ habits, onAdd, style, title="Registrar atividade" }){
+function ActivityLogger({ habits, onAdd, style, title }){
   const C = useColors();
   const [selectedHabit, setSelectedHabit] = useState(habits[0]?.id || null);
   const [duration, setDuration] = useState(30);
   const [note, setNote] = useState("");
+  const hasHabits = habits.length > 0;
+  const [pending, setPending] = useState(false);
 
   useEffect(()=>{
     if (!habits.length){
@@ -774,26 +801,48 @@ function ActivityLogger({ habits, onAdd, style, title="Registrar atividade" }){
   const setDurationDirect = (value)=>{
     setDuration(clamp(value, 5, 480));
   };
-  const commit = (sign)=>{
+  const commit = async (sign)=>{
+    if (pending) return;
     if (!selectedHabit){ Alert.alert('Selecione uma atividade'); return; }
     const value = parseInt(duration,10);
     if (!value || value<=0){ Alert.alert('Duração inválida','Use o controle para definir os minutos.'); return; }
-    if (typeof onAdd === 'function') onAdd(selectedHabit, sign*value, note);
-    setNote("");
+    if (typeof onAdd !== 'function') return;
+
+    setPending(true);
+    try {
+      const ok = await onAdd(selectedHabit, sign*value, note);
+      if (!ok){
+        Alert.alert('Não foi possível registrar', 'Tente novamente em instantes.');
+        return;
+      }
+
+      setNote("");
+      setDuration(30);
+    } finally {
+      setPending(false);
+    }
   };
+
+  const showTitle = typeof title === 'string' && title.trim().length > 0;
 
   return (
     <View style={style}>
-      <Text style={{color:C.sub, fontWeight:'700', marginBottom:12}}>{title}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingRight:8}}>
-        <View style={{flexDirection:'row'}}>
-          {habits.map(h=>(
-            <View key={h.id} style={{marginRight:8}}>
-              <Tag label={`${h.icon} ${h.name}`} active={selectedHabit===h.id} onPress={()=>setSelectedHabit(h.id)} />
-            </View>
-          ))}
-        </View>
-      </ScrollView>
+      {showTitle ? (
+        <Text style={{color:C.sub, fontWeight:'700', marginBottom:12}}>{title}</Text>
+      ) : null}
+      {hasHabits ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingRight:8}}>
+          <View style={{flexDirection:'row'}}>
+            {habits.map(h=>(
+              <View key={h.id} style={{marginRight:8}}>
+                <Tag label={`${h.icon} ${h.name}`} active={selectedHabit===h.id} onPress={()=>setSelectedHabit(h.id)} />
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      ) : (
+        <Text style={{color:C.sub}}>Cadastre uma atividade para registrar sessões.</Text>
+      )}
 
       <View style={{marginTop:16}}>
         <Text style={{color:C.sub, marginBottom:8}}>Minutos</Text>
@@ -822,9 +871,9 @@ function ActivityLogger({ habits, onAdd, style, title="Registrar atividade" }){
       />
 
       <View style={{flexDirection:'row', marginTop:16}}>
-        <Btn title='Adicionar' onPress={()=>commit(1)} style={{flex:1}} />
+        <Btn title='Adicionar' onPress={()=>commit(1)} style={{flex:1}} disabled={!hasHabits || pending} />
         <View style={{width:12}} />
-        <Btn title='Remover' kind='danger' onPress={()=>commit(-1)} style={{flex:1}} />
+        <Btn title='Remover' kind='danger' onPress={()=>commit(-1)} style={{flex:1}} disabled={!hasHabits || pending} />
       </View>
     </View>
   );
@@ -1195,7 +1244,7 @@ function StatisticsScreen({ habits, sessions, cursor, setCursor, onAdd }){
           </View>
         ))}
         <View style={{marginTop:16, paddingTop:16, borderTopWidth:1, borderTopColor:C.brd}}>
-          <ActivityLogger habits={habits} onAdd={onAdd} />
+          <ActivityLogger habits={habits} onAdd={onAdd} title="Registrar atividade" />
         </View>
       </Card>
 
