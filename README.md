@@ -26,3 +26,9 @@ Para aproveitar os lembretes das metas semanais e os gráficos aprimorados, adic
 - Resumo das metas diretamente no dashboard.
 - Comparação gráfica entre semanas para cada atividade.
 - Notificações locais para lembrar de revisar o progresso semanal.
+
+## Onde os dados ficam salvos?
+
+- Os registros de hábitos, sessões e metas são guardados localmente no dispositivo usando `@react-native-async-storage/async-storage`.
+- Ao utilizar o aplicativo pelo Expo Go, os dados permanecem no cache do app; reinstalar o Expo Go ou limpar o armazenamento do aplicativo apaga o histórico.
+- Para manter um backup, utilize os mecanismos de cópia do próprio sistema (backup do dispositivo) ou adapte o código para sincronizar com um serviço externo (por exemplo, Firebase ou Supabase).
