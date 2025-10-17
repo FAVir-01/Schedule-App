@@ -129,6 +129,59 @@ const OptionPill = ({active,label,onPress,color,style}) => {
     </Pressable>
   );
 };
+const DayPeriodChart = ({ data = [], height = 140 }) => {
+  const C = useColors();
+  const safeData = useMemo(() => {
+    if (!Array.isArray(data)) return [];
+    return data.map((item, index) => ({
+      key: item?.key || String(index),
+      label: item?.label || String(index + 1),
+      value: Math.max(0, Number(item?.value) || 0),
+      color: item?.color || C.acc,
+    }));
+  }, [data, C.acc]);
+
+  const maxValue = useMemo(() => {
+    const values = safeData.map(item => item.value);
+    const highest = values.length ? Math.max(...values) : 0;
+    return highest > 0 ? highest : 1;
+  }, [safeData]);
+
+  const chartHeight = Math.max(48, height - 28);
+
+  return (
+    <View style={{ height }}>
+      <View style={{ flex: 1, flexDirection: "row", alignItems: "flex-end", paddingHorizontal: 6 }}>
+        {safeData.map((item, index) => {
+          const ratio = item.value / maxValue;
+          const barHeight = Math.max(8, ratio * chartHeight);
+          return (
+            <View key={item.key || index} style={{ flex: 1, alignItems: "center", paddingHorizontal: 6 }}>
+              <View style={{ height: chartHeight, width: "100%", justifyContent: "flex-end", alignItems: "center" }}>
+                <View
+                  style={{
+                    height: barHeight,
+                    width: "70%",
+                    backgroundColor: item.color,
+                    borderRadius: 12,
+                    shadowColor: item.color,
+                    shadowOpacity: 0.25,
+                    shadowRadius: 6,
+                    shadowOffset: { width: 0, height: 4 },
+                    elevation: 3,
+                  }}
+                />
+              </View>
+              <Text style={{ color: C.txt, fontWeight: "800", fontSize: 12, marginTop: 8 }}>{fmtHM(item.value)}</Text>
+              <Text style={{ color: C.sub, fontSize: 11, marginTop: 4, textAlign: "center" }}>{item.label}</Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+};
+
 const TrendChart = ({series,color,height=160})=>{
   const C = useColors();
   const accent = color || C.acc;
@@ -1175,6 +1228,29 @@ function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selected
 
   const dayTotal = useMemo(()=> dayByHabit.reduce((acc, item)=>acc+item.value, 0), [dayByHabit]);
   const dayPositiveTotal = useMemo(()=> dayByHabit.reduce((acc, item)=>acc+Math.max(0,item.value), 0), [dayByHabit]);
+  const dayPeriodData = useMemo(()=>{
+    const palette = [C.acc, C.good, C.warn, C.bad || C.acc];
+    const periods = [
+      { key:"dawn", label:"Madrugada", start:0, end:6 },
+      { key:"morning", label:"Manhã", start:6, end:12 },
+      { key:"afternoon", label:"Tarde", start:12, end:18 },
+      { key:"night", label:"Noite", start:18, end:24 },
+    ];
+    const buckets = periods.map((period, index)=>({ ...period, value:0, color: palette[index] || C.acc }));
+    sessionsForDay.forEach(session=>{
+      const minutes = Math.max(0, Number(session.minutes) || 0);
+      if (!minutes) return;
+      const refDate = new Date(session.dateISO);
+      if (Number.isNaN(refDate.getTime())) return;
+      const hourValue = refDate.getHours() + (refDate.getMinutes()||0)/60;
+      const targetIndex = buckets.findIndex(period=> hourValue >= period.start && hourValue < period.end);
+      const index = targetIndex >= 0 ? targetIndex : buckets.length - 1;
+      buckets[index].value += minutes;
+    });
+    return buckets.map(({key,label,color,value})=>({ key, label, color, value }));
+  }, [sessionsForDay, C.acc, C.good, C.warn, C.bad]);
+  const dayPeriodTotal = useMemo(()=> dayPeriodData.reduce((acc, item)=>acc+item.value, 0), [dayPeriodData]);
+  const hasDayPeriodData = useMemo(()=> dayPeriodData.some(item=>item.value>0), [dayPeriodData]);
   const lastEntries = useMemo(()=>[...sessions]
     .sort((a,b)=> new Date(b.dateISO) - new Date(a.dateISO))
     .slice(0,8), [sessions]);
@@ -1236,6 +1312,26 @@ function DaysScreen({ habits, sessions, onAdd, waterLog, onWaterChange, selected
             </View>
           </View>
         </View>
+      </Card>
+
+      <Card style={{marginBottom:16, padding:20}}>
+        <View style={{flexDirection:'row', alignItems:'center'}}>
+          <Text style={{color:C.sub, fontWeight:'700'}}>Distribuição do dia</Text>
+          <View style={{flex:1}} />
+          <View style={{backgroundColor:hexToRgba(C.good,0.16), paddingHorizontal:12, paddingVertical:6, borderRadius:12}}>
+            <Text style={{color:C.good, fontWeight:'800'}}>{fmtHM(dayPeriodTotal)}</Text>
+          </View>
+        </View>
+        <Text style={{color:C.sub, marginTop:6}}>{dayLabel}</Text>
+        {hasDayPeriodData ? (
+          <View style={{marginTop:16}}>
+            <DayPeriodChart data={dayPeriodData} height={160} />
+          </View>
+        ) : (
+          <View style={{paddingVertical:24}}>
+            <Text style={{color:C.sub}}>Registre atividades para ver a distribuição por período do dia.</Text>
+          </View>
+        )}
       </Card>
 
       <Card style={{marginBottom:16, padding:20}}>
