@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { StatusBar, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const TABS = [
   {
@@ -15,8 +16,45 @@ const TABS = [
   },
 ];
 
-export default function App() {
+function ScheduleApp() {
   const [activeTab, setActiveTab] = useState('today');
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const isCompact = width < 360;
+  const horizontalPadding = useMemo(() => Math.max(16, Math.min(32, width * 0.06)), [width]);
+  const bottomBarPadding = useMemo(() => Math.max(20, horizontalPadding), [horizontalPadding]);
+  const iconSize = isCompact ? 22 : 24;
+
+  const dynamicStyles = useMemo(
+    () => ({
+      content: {
+        paddingHorizontal: horizontalPadding,
+        paddingTop: isCompact ? 32 : 48,
+      },
+      description: {
+        fontSize: isCompact ? 15 : 16,
+        lineHeight: isCompact ? 20 : 22,
+      },
+      bottomBarContainer: {
+        paddingHorizontal: Math.max(12, horizontalPadding / 2),
+        paddingBottom: insets.bottom > 0 ? insets.bottom : 6,
+      },
+      bottomBar: {
+        paddingHorizontal: bottomBarPadding,
+      },
+      tabLabel: {
+        fontSize: isCompact ? 11 : 12,
+        marginTop: isCompact ? 4 : 6,
+      },
+      addButton: {
+        width: isCompact ? 56 : 64,
+        height: isCompact ? 56 : 64,
+        borderRadius: isCompact ? 28 : 32,
+        top: isCompact ? -28 : -32,
+      },
+    }),
+    [bottomBarPadding, horizontalPadding, insets.bottom, isCompact]
+  );
 
   const renderTabButton = ({ key, label, icon }) => {
     const isActive = activeTab === key;
@@ -30,10 +68,16 @@ export default function App() {
       >
         <Ionicons
           name={icon}
-          size={24}
+          size={iconSize}
           color={isActive ? styles.activeColor.color : styles.inactiveColor.color}
         />
-        <Text style={[styles.tabLabel, isActive ? styles.activeColor : styles.inactiveColor]}>
+        <Text
+          style={[
+            styles.tabLabel,
+            dynamicStyles.tabLabel,
+            isActive ? styles.activeColor : styles.inactiveColor,
+          ]}
+        >
           {label}
         </Text>
       </TouchableOpacity>
@@ -44,25 +88,37 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.content}>
+      <View style={[styles.content, dynamicStyles.content]}>
         <Text style={styles.heading}>Daily Routine</Text>
-        <Text style={styles.description}>
+        <Text style={[styles.description, dynamicStyles.description]}>
           {activeTab === 'today'
             ? 'Review what you planned for today, check off completed habits, and add new tasks as needed.'
             : 'Open the calendar to plan ahead, review upcoming routines, and adjust your schedule.'}
         </Text>
       </View>
 
-      <View style={styles.bottomBarContainer}>
-        <View style={styles.bottomBar}>
+      <View style={[styles.bottomBarContainer, dynamicStyles.bottomBarContainer]}>
+        <View style={[styles.bottomBar, dynamicStyles.bottomBar]}>
           {TABS.map(renderTabButton)}
         </View>
 
-        <TouchableOpacity style={styles.addButton} accessibilityRole="button" accessibilityLabel="Add new routine">
+        <TouchableOpacity
+          style={[styles.addButton, dynamicStyles.addButton]}
+          accessibilityRole="button"
+          accessibilityLabel="Add new routine"
+        >
           <Ionicons name="add" size={32} color="#fff" />
         </TouchableOpacity>
       </View>
     </SafeAreaView>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <ScheduleApp />
+    </SafeAreaProvider>
   );
 }
 
@@ -88,8 +144,9 @@ const styles = StyleSheet.create({
     color: '#4b4b63',
   },
   bottomBarContainer: {
-    alignItems: 'center',
+    width: '100%',
     paddingBottom: 16,
+    alignItems: 'stretch',
     backgroundColor: 'transparent',
   },
   bottomBar: {
@@ -99,9 +156,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingHorizontal: 32,
     paddingVertical: 12,
-    width: '90%',
+    width: '100%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.05,
@@ -113,8 +169,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tabLabel: {
-    marginTop: 6,
-    fontSize: 12,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
     fontWeight: '600',
@@ -128,9 +182,7 @@ const styles = StyleSheet.create({
   addButton: {
     position: 'absolute',
     top: -32,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    alignSelf: 'center',
     backgroundColor: '#3c2ba7',
     alignItems: 'center',
     justifyContent: 'center',
