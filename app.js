@@ -37,20 +37,21 @@ function ScheduleApp() {
       },
       bottomBarContainer: {
         paddingHorizontal: Math.max(12, horizontalPadding / 2),
-        paddingBottom: insets.bottom > 0 ? insets.bottom : 6,
+        paddingBottom: insets.bottom > 0 ? insets.bottom : 4,
       },
       bottomBar: {
         paddingHorizontal: bottomBarPadding,
+        paddingVertical: isCompact ? 8 : 10,
       },
       tabLabel: {
         fontSize: isCompact ? 11 : 12,
         marginTop: isCompact ? 4 : 6,
       },
       addButton: {
-        width: isCompact ? 56 : 64,
-        height: isCompact ? 56 : 64,
-        borderRadius: isCompact ? 28 : 32,
-        top: isCompact ? -28 : -32,
+        width: isCompact ? 52 : 60,
+        height: isCompact ? 52 : 60,
+        borderRadius: isCompact ? 26 : 30,
+        top: isCompact ? -24 : -28,
       },
     }),
     [bottomBarPadding, horizontalPadding, insets.bottom, isCompact]
