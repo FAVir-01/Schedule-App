@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { StatusBar, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const TABS = [
   {
@@ -15,9 +16,10 @@ const TABS = [
   },
 ];
 
-export default function App() {
+function ScheduleApp() {
   const [activeTab, setActiveTab] = useState('today');
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const isCompact = width < 360;
   const horizontalPadding = useMemo(() => Math.max(16, Math.min(32, width * 0.06)), [width]);
   const bottomBarPadding = useMemo(() => Math.max(20, horizontalPadding), [horizontalPadding]);
@@ -35,6 +37,7 @@ export default function App() {
       },
       bottomBarContainer: {
         paddingHorizontal: Math.max(12, horizontalPadding / 2),
+        paddingBottom: Math.max(insets.bottom, 16),
       },
       bottomBar: {
         paddingHorizontal: bottomBarPadding,
@@ -50,7 +53,7 @@ export default function App() {
         top: isCompact ? -28 : -32,
       },
     }),
-    [bottomBarPadding, horizontalPadding, isCompact]
+    [bottomBarPadding, horizontalPadding, insets.bottom, isCompact]
   );
 
   const renderTabButton = ({ key, label, icon }) => {
@@ -108,6 +111,14 @@ export default function App() {
         </TouchableOpacity>
       </View>
     </SafeAreaView>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <ScheduleApp />
+    </SafeAreaProvider>
   );
 }
 
