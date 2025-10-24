@@ -87,39 +87,42 @@ function ScheduleApp() {
   };
 
   return (
-    <>
-      {/* Safe area do topo com fundo preto */}
-      <SafeAreaView edges={['top']} style={{ backgroundColor: '#000' }}>
-        <StatusBar barStyle="light-content" backgroundColor="#000" />
-      </SafeAreaView>
-
-      {/* Conteúdo principal */}
-      <SafeAreaView style={styles.container} edges={['left', 'right']}>
-
-      <View style={[styles.content, dynamicStyles.content]}>
-        <Text style={styles.heading}>Daily Routine</Text>
-        <Text style={[styles.description, dynamicStyles.description]}>
-          {activeTab === 'today'
-            ? 'Review what you planned for today, check off completed habits, and add new tasks as needed.'
-            : 'Open the calendar to plan ahead, review upcoming routines, and adjust your schedule.'}
-        </Text>
-      </View>
-
-      <View style={[styles.bottomBarContainer, dynamicStyles.bottomBarContainer]}>
-        <View style={[styles.bottomBar, dynamicStyles.bottomBar]}>
-          {TABS.map(renderTabButton)}
+    <SafeAreaView style={{ backgroundColor: '#000' }} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="light-content" backgroundColor="#000" />
+      <View style={styles.container}>
+        <View style={[styles.content, dynamicStyles.content]}>
+          <Text style={styles.heading}>Daily Routine</Text>
+          <Text style={[styles.description, dynamicStyles.description]}>
+            {activeTab === 'today'
+              ? 'Review what you planned for today, check off completed habits, and add new tasks as needed.'
+              : 'Open the calendar to plan ahead, review upcoming routines, and adjust your schedule.'}
+          </Text>
         </View>
 
-        <TouchableOpacity
-          style={[styles.addButton, dynamicStyles.addButton]}
-          accessibilityRole="button"
-          accessibilityLabel="Add new routine"
-        >
-          <Ionicons name="add" size={32} color="#fff" />
-        </TouchableOpacity>
+        <View style={[styles.bottomBarContainer, dynamicStyles.bottomBarContainer]}>
+          <View style={[styles.bottomBar, dynamicStyles.bottomBar]}>
+            {TABS.map(renderTabButton)}
+          </View>
+
+          <TouchableOpacity
+            style={[styles.addButton, dynamicStyles.addButton]}
+            accessibilityRole="button"
+            accessibilityLabel="Add new routine"
+          >
+            <Ionicons name="add" size={32} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
       </SafeAreaView>
     </>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <ScheduleApp />
+    </SafeAreaProvider>
   );
 }
 
