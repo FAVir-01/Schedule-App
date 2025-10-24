@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { StatusBar, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const TABS = [
   {
@@ -16,7 +16,7 @@ const TABS = [
   },
 ];
 
-export default function App() {
+function ScheduleApp() {
   const [activeTab, setActiveTab] = useState('today');
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -111,6 +111,14 @@ export default function App() {
         </TouchableOpacity>
       </View>
     </SafeAreaView>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <ScheduleApp />
+    </SafeAreaProvider>
   );
 }
 
