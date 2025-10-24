@@ -113,7 +113,24 @@ function ScheduleApp() {
           </TouchableOpacity>
         </View>
       </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <ScheduleApp />
+    </SafeAreaProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <ScheduleApp />
+    </SafeAreaProvider>
   );
 }
 
