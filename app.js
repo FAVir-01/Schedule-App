@@ -37,12 +37,8 @@ function ScheduleApp() {
       },
       bottomBarContainer: {
         paddingHorizontal: Math.max(12, horizontalPadding / 2),
-        paddingBottom: Math.max(insets.bottom - 8, 6),
-        transform: [
-          {
-            translateY: Math.min(insets.bottom > 0 ? insets.bottom / 2 : 10, 14),
-          },
-        ],
+        // Quanto menor, mais a barra desce/encosta no fundo:
+        paddingBottom: insets.bottom,
       },
       bottomBar: {
         paddingHorizontal: bottomBarPadding,
@@ -91,7 +87,7 @@ function ScheduleApp() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="dark-content" />
 
       <View style={[styles.content, dynamicStyles.content]}>
@@ -151,7 +147,6 @@ const styles = StyleSheet.create({
   },
   bottomBarContainer: {
     width: '100%',
-    paddingBottom: 16,
     alignItems: 'stretch',
     backgroundColor: 'transparent',
   },
