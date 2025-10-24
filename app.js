@@ -37,11 +37,16 @@ function ScheduleApp() {
       },
       bottomBarContainer: {
         paddingHorizontal: Math.max(12, horizontalPadding / 2),
-        paddingBottom: insets.bottom > 0 ? insets.bottom : 4,
+        paddingBottom: Math.max(insets.bottom - 8, 6),
+        transform: [
+          {
+            translateY: Math.min(insets.bottom > 0 ? insets.bottom / 2 : 10, 14),
+          },
+        ],
       },
       bottomBar: {
         paddingHorizontal: bottomBarPadding,
-        paddingVertical: isCompact ? 8 : 10,
+        paddingVertical: isCompact ? 6 : 8,
       },
       tabLabel: {
         fontSize: isCompact ? 11 : 12,
@@ -51,7 +56,7 @@ function ScheduleApp() {
         width: isCompact ? 52 : 60,
         height: isCompact ? 52 : 60,
         borderRadius: isCompact ? 26 : 30,
-        top: isCompact ? -24 : -28,
+        top: isCompact ? -20 : -24,
       },
     }),
     [bottomBarPadding, horizontalPadding, insets.bottom, isCompact]
