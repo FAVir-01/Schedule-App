@@ -37,7 +37,7 @@ function ScheduleApp() {
       },
       bottomBarContainer: {
         paddingHorizontal: Math.max(12, horizontalPadding / 2),
-        paddingBottom: Math.max(insets.bottom, 16),
+        paddingBottom: insets.bottom > 0 ? insets.bottom : 6,
       },
       bottomBar: {
         paddingHorizontal: bottomBarPadding,
