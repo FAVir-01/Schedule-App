@@ -87,8 +87,14 @@ function ScheduleApp() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <StatusBar barStyle="dark-content" />
+    <>
+      {/* Safe area do topo com fundo preto */}
+      <SafeAreaView edges={['top']} style={{ backgroundColor: '#000' }}>
+        <StatusBar barStyle="light-content" backgroundColor="#000" />
+      </SafeAreaView>
+
+      {/* Conteúdo principal */}
+      <SafeAreaView style={styles.container} edges={['left', 'right']}>
 
       <View style={[styles.content, dynamicStyles.content]}>
         <Text style={styles.heading}>Daily Routine</Text>
@@ -112,7 +118,16 @@ function ScheduleApp() {
           <Ionicons name="add" size={32} color="#fff" />
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <ScheduleApp />
+    </SafeAreaProvider>
   );
 }
 
