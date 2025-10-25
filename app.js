@@ -19,6 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import * as NavigationBar from 'expo-navigation-bar';
 import * as Haptics from 'expo-haptics';
+import AddHabitSheet from './components/AddHabitSheet';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -42,6 +43,7 @@ function ScheduleApp() {
   const [activeTab, setActiveTab] = useState('today');
   const [isFabOpen, setIsFabOpen] = useState(false);
   const [isFabMenuMounted, setIsFabMenuMounted] = useState(false);
+  const [isCreateHabitOpen, setIsCreateHabitOpen] = useState(false);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isCompact = width < 360;
@@ -155,8 +157,8 @@ function ScheduleApp() {
 
   const handleAddHabit = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    console.log('Add habit action triggered');
     closeFabMenu();
+    setIsCreateHabitOpen(true);
   }, [closeFabMenu]);
 
   const handleAddReflection = useCallback(() => {
@@ -164,6 +166,14 @@ function ScheduleApp() {
     console.log('Add reflection action triggered');
     closeFabMenu();
   }, [closeFabMenu]);
+
+  const handleCloseCreateHabit = useCallback(() => {
+    setIsCreateHabitOpen(false);
+  }, []);
+
+  const handleCreateHabit = useCallback((habit) => {
+    console.log('Habit created', habit);
+  }, []);
 
   useEffect(() => {
     if (!isFabOpen || Platform.OS !== 'android') {
@@ -531,6 +541,11 @@ function ScheduleApp() {
           </Animated.View>
         )}
       </View>
+      <AddHabitSheet
+        visible={isCreateHabitOpen}
+        onClose={handleCloseCreateHabit}
+        onCreate={handleCreateHabit}
+      />
     </SafeAreaView>
   );
 }
