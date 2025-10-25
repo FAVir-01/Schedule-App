@@ -49,9 +49,9 @@ function ScheduleApp() {
   const horizontalPadding = useMemo(() => Math.max(16, Math.min(32, width * 0.06)), [width]);
   const bottomBarPadding = useMemo(() => Math.max(20, horizontalPadding), [horizontalPadding]);
   const iconSize = isCompact ? 22 : 24;
-  const cardSize = isCompact ? 136 : 152;
-  const cardIconSize = isCompact ? 70 : 84;
-  const cardSpacing = isCompact ? 16 : 24;
+  const cardSize = isCompact ? 176 : 198;
+  const cardIconSize = isCompact ? 108 : 128;
+  const cardSpacing = isCompact ? 20 : 28;
   const cardBorderRadius = isCompact ? 30 : 34;
   const cardVerticalOffset = isCompact ? 116 : 132;
   const fabHaloSize = fabSize + (isCompact ? 26 : 30);
@@ -601,8 +601,8 @@ const styles = StyleSheet.create({
   },
   fabCardBackground: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingVertical: 22,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
   },
   fabCardHighlight: {
     ...StyleSheet.absoluteFillObject,
@@ -614,11 +614,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-start',
     alignItems: 'center',
-    paddingTop: 8,
+    paddingTop: 4,
   },
   fabCardIconWrapper: {
     alignSelf: 'center',
-    marginBottom: 14,
+    marginBottom: 18,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.18,
@@ -634,10 +634,10 @@ const styles = StyleSheet.create({
   },
   fabCardIconHalo: {
     position: 'absolute',
-    top: -10,
-    left: -10,
-    right: -10,
-    bottom: -10,
+    top: -16,
+    left: -16,
+    right: -16,
+    bottom: -16,
     backgroundColor: 'rgba(255, 255, 255, 0.18)',
   },
   fabCardTitle: {
@@ -654,7 +654,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   fabCardIcon: {
-    width: 64,
-    height: 64,
+    width: 120,
+    height: 120,
   },
 });
