@@ -14,6 +14,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import * as NavigationBar from 'expo-navigation-bar';
 import * as Haptics from 'expo-haptics';
 
@@ -43,6 +45,12 @@ function ScheduleApp() {
   const horizontalPadding = useMemo(() => Math.max(16, Math.min(32, width * 0.06)), [width]);
   const bottomBarPadding = useMemo(() => Math.max(20, horizontalPadding), [horizontalPadding]);
   const iconSize = isCompact ? 22 : 24;
+  const cardSize = isCompact ? 136 : 152;
+  const cardIconSize = isCompact ? 52 : 60;
+  const cardSpacing = isCompact ? 16 : 20;
+  const cardBorderRadius = isCompact ? 28 : 32;
+  const cardVerticalOffset = isCompact ? 112 : 128;
+  const fabHaloSize = fabSize + (isCompact ? 24 : 28);
   const lastToggleRef = useRef(0);
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const actionsScale = useRef(new Animated.Value(0.85)).current;
@@ -303,7 +311,13 @@ function ScheduleApp() {
           style={[styles.bottomBarContainer, dynamicStyles.bottomBarContainer]}
           importantForAccessibility={isFabOpen ? 'no-hide-descendants' : 'auto'}
         >
-          <View style={[styles.bottomBar, dynamicStyles.bottomBar]}>
+          <View
+            style={[
+              styles.bottomBar,
+              dynamicStyles.bottomBar,
+              isFabOpen && styles.bottomBarDimmed,
+            ]}
+          >
             {TABS.map(renderTabButton)}
           </View>
 
@@ -314,6 +328,21 @@ function ScheduleApp() {
             accessibilityLabel={isFabOpen ? 'Close add menu' : 'Open add menu'}
             activeOpacity={0.85}
           >
+            {isFabOpen && (
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.addButtonHalo,
+                  {
+                    width: fabHaloSize,
+                    height: fabHaloSize,
+                    borderRadius: fabHaloSize / 2,
+                    top: (fabSize - fabHaloSize) / 2,
+                    left: (fabSize - fabHaloSize) / 2,
+                  },
+                ]}
+              />
+            )}
             <Ionicons name={isFabOpen ? 'close' : 'add'} size={32} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -326,7 +355,11 @@ function ScheduleApp() {
             accessibilityLabel="Close add menu"
             pointerEvents="auto"
             accessibilityHint="Tap to dismiss the add options"
-          />
+          >
+            {Platform.OS === 'ios' && (
+              <BlurView intensity={60} tint="dark" style={styles.overlayBlur} />
+            )}
+          </AnimatedPressable>
         )}
 
         {isFabMenuMounted && (
@@ -335,7 +368,7 @@ function ScheduleApp() {
             style={[
               styles.fabActionsContainer,
               {
-                bottom: insets.bottom + fabSize / 2 + (isCompact ? 96 : 112),
+                bottom: insets.bottom + fabSize / 2 + cardVerticalOffset,
                 opacity: actionsOpacity,
                 transform: [
                   { scale: actionsScale },
@@ -347,24 +380,104 @@ function ScheduleApp() {
           >
             <View style={styles.fabActionsRow}>
               <TouchableOpacity
-                style={styles.fabActionButton}
+                style={[
+                  styles.fabCard,
+                  {
+                    width: cardSize,
+                    height: cardSize,
+                    borderRadius: cardBorderRadius,
+                    marginHorizontal: cardSpacing / 2,
+                    transform: [{ rotate: '-8deg' }],
+                  },
+                ]}
                 onPress={handleAddHabit}
                 accessibilityRole="button"
                 accessibilityLabel="Add habit"
-                activeOpacity={0.85}
+                activeOpacity={0.9}
               >
-                <Ionicons name="checkbox-outline" size={24} color="#3c2ba7" />
-                <Text style={styles.fabActionLabel}>Add habit</Text>
+                <LinearGradient
+                  colors={['#8B5CF6', '#C084FC']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.fabCardBackground, { borderRadius: cardBorderRadius }]}
+                >
+                  <View
+                    pointerEvents="none"
+                    style={[styles.fabCardHighlight, { borderRadius: cardBorderRadius }]}
+                  />
+                  <View style={styles.fabCardContent}>
+                    <View style={styles.fabCardIconWrapper}>
+                      <Ionicons name="checkbox-outline" size={cardIconSize} color="#fff" />
+                    </View>
+                    <Text
+                      style={[
+                        styles.fabCardTitle,
+                        { fontSize: isCompact ? 16 : 17 },
+                      ]}
+                    >
+                      Add habit
+                    </Text>
+                    <Text
+                      style={[
+                        styles.fabCardSubtitle,
+                        { fontSize: isCompact ? 12 : 13 },
+                      ]}
+                      numberOfLines={2}
+                    >
+                      Add a new routine to your life
+                    </Text>
+                  </View>
+                </LinearGradient>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.fabActionButton}
+                style={[
+                  styles.fabCard,
+                  {
+                    width: cardSize,
+                    height: cardSize,
+                    borderRadius: cardBorderRadius,
+                    marginHorizontal: cardSpacing / 2,
+                    transform: [{ rotate: '8deg' }],
+                  },
+                ]}
                 onPress={handleAddReflection}
                 accessibilityRole="button"
                 accessibilityLabel="Add reflection"
-                activeOpacity={0.85}
+                activeOpacity={0.9}
               >
-                <Ionicons name="document-text-outline" size={24} color="#3c2ba7" />
-                <Text style={styles.fabActionLabel}>Add reflection</Text>
+                <LinearGradient
+                  colors={['#F59E0B', '#FDE047']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.fabCardBackground, { borderRadius: cardBorderRadius }]}
+                >
+                  <View
+                    pointerEvents="none"
+                    style={[styles.fabCardHighlight, { borderRadius: cardBorderRadius }]}
+                  />
+                  <View style={styles.fabCardContent}>
+                    <View style={styles.fabCardIconWrapper}>
+                      <Ionicons name="happy-outline" size={cardIconSize} color="#fff" />
+                    </View>
+                    <Text
+                      style={[
+                        styles.fabCardTitle,
+                        { fontSize: isCompact ? 16 : 17 },
+                      ]}
+                    >
+                      Add reflection
+                    </Text>
+                    <Text
+                      style={[
+                        styles.fabCardSubtitle,
+                        { fontSize: isCompact ? 12 : 13 },
+                      ]}
+                      numberOfLines={2}
+                    >
+                      Reflect on your day with your mood and feelings
+                    </Text>
+                  </View>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
           </Animated.View>
@@ -424,6 +537,9 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
+  bottomBarDimmed: {
+    opacity: 0.4,
+  },
   tabButton: {
     flex: 1,
     alignItems: 'center',
@@ -452,11 +568,20 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 12,
     zIndex: 12,
+    overflow: 'visible',
+  },
+  addButtonHalo: {
+    position: 'absolute',
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(26, 26, 46, 0.24)',
+    backgroundColor: 'rgba(26, 26, 46, 0.28)',
     zIndex: 10,
+    overflow: 'hidden',
+  },
+  overlayBlur: {
+    ...StyleSheet.absoluteFillObject,
   },
   fabActionsContainer: {
     position: 'absolute',
@@ -470,25 +595,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fabActionButton: {
-    flexDirection: 'row',
+  fabCard: {
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  fabCardBackground: {
+    flex: 1,
+    paddingHorizontal: 18,
+    paddingVertical: 20,
+  },
+  fabCardHighlight: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: StyleSheet.hairlineWidth * 3,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+  },
+  fabCardContent: {
+    flex: 1,
+    justifyContent: 'flex-start',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 24,
-    paddingVertical: 18,
-    borderRadius: 20,
-    marginHorizontal: 12,
+    paddingTop: 12,
+  },
+  fabCardIconWrapper: {
+    alignSelf: 'center',
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 10,
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
   },
-  fabActionLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1a1a2e',
-    marginLeft: 12,
+  fabCardTitle: {
+    fontWeight: '700',
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  fabCardSubtitle: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });
