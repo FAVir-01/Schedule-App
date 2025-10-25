@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { AppState, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as NavigationBar from 'expo-navigation-bar';
@@ -28,11 +28,25 @@ function ScheduleApp() {
 
   useEffect(() => {
     if (Platform.OS !== 'android') {
-      return;
+      return undefined;
     }
 
-    void NavigationBar.setBackgroundColorAsync('#000000');
-    void NavigationBar.setButtonStyleAsync('light');
+    const applyNavigationBarTheme = () => {
+      void NavigationBar.setBackgroundColorAsync('#000000');
+      void NavigationBar.setButtonStyleAsync('light');
+    };
+
+    applyNavigationBarTheme();
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        applyNavigationBarTheme();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, []);
 
   const dynamicStyles = useMemo(
