@@ -49,9 +49,9 @@ function ScheduleApp() {
   const horizontalPadding = useMemo(() => Math.max(16, Math.min(32, width * 0.06)), [width]);
   const bottomBarPadding = useMemo(() => Math.max(20, horizontalPadding), [horizontalPadding]);
   const iconSize = isCompact ? 22 : 24;
-  const cardSize = isCompact ? 176 : 198;
-  const cardIconSize = isCompact ? 108 : 128;
-  const cardSpacing = isCompact ? 20 : 28;
+  const cardSize = isCompact ? 136 : 152;
+  const cardIconSize = isCompact ? 68 : 80;
+  const cardSpacing = isCompact ? 16 : 24;
   const cardBorderRadius = isCompact ? 30 : 34;
   const cardVerticalOffset = isCompact ? 116 : 132;
   const fabHaloSize = fabSize + (isCompact ? 26 : 30);
