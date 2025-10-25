@@ -97,7 +97,7 @@ function ScheduleApp() {
   };
 
   return (
-    <SafeAreaView style={{ backgroundColor: '#000' }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="light-content" backgroundColor="#000" />
 
       <View style={styles.container}>
