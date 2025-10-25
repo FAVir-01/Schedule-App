@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
-import { StatusBar, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AppState, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as NavigationBar from 'expo-navigation-bar';
 
 const TABS = [
   {
@@ -24,6 +25,29 @@ function ScheduleApp() {
   const horizontalPadding = useMemo(() => Math.max(16, Math.min(32, width * 0.06)), [width]);
   const bottomBarPadding = useMemo(() => Math.max(20, horizontalPadding), [horizontalPadding]);
   const iconSize = isCompact ? 22 : 24;
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return undefined;
+    }
+
+    const applyNavigationBarTheme = () => {
+      void NavigationBar.setBackgroundColorAsync('#000000');
+      void NavigationBar.setButtonStyleAsync('light');
+    };
+
+    applyNavigationBarTheme();
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        applyNavigationBarTheme();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   const dynamicStyles = useMemo(
     () => ({
@@ -87,30 +111,32 @@ function ScheduleApp() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <StatusBar barStyle="dark-content" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="light-content" backgroundColor="#000" />
 
-      <View style={[styles.content, dynamicStyles.content]}>
-        <Text style={styles.heading}>Daily Routine</Text>
-        <Text style={[styles.description, dynamicStyles.description]}>
-          {activeTab === 'today'
-            ? 'Review what you planned for today, check off completed habits, and add new tasks as needed.'
-            : 'Open the calendar to plan ahead, review upcoming routines, and adjust your schedule.'}
-        </Text>
-      </View>
-
-      <View style={[styles.bottomBarContainer, dynamicStyles.bottomBarContainer]}>
-        <View style={[styles.bottomBar, dynamicStyles.bottomBar]}>
-          {TABS.map(renderTabButton)}
+      <View style={styles.container}>
+        <View style={[styles.content, dynamicStyles.content]}>
+          <Text style={styles.heading}>Daily Routine</Text>
+          <Text style={[styles.description, dynamicStyles.description]}>
+            {activeTab === 'today'
+              ? 'Review what you planned for today, check off completed habits, and add new tasks as needed.'
+              : 'Open the calendar to plan ahead, review upcoming routines, and adjust your schedule.'}
+          </Text>
         </View>
 
-        <TouchableOpacity
-          style={[styles.addButton, dynamicStyles.addButton]}
-          accessibilityRole="button"
-          accessibilityLabel="Add new routine"
-        >
-          <Ionicons name="add" size={32} color="#fff" />
-        </TouchableOpacity>
+        <View style={[styles.bottomBarContainer, dynamicStyles.bottomBarContainer]}>
+          <View style={[styles.bottomBar, dynamicStyles.bottomBar]}>
+            {TABS.map(renderTabButton)}
+          </View>
+
+          <TouchableOpacity
+            style={[styles.addButton, dynamicStyles.addButton]}
+            accessibilityRole="button"
+            accessibilityLabel="Add new routine"
+          >
+            <Ionicons name="add" size={32} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
     </SafeAreaView>
   );
