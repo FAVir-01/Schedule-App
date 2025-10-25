@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animate,
+  Animated,
   AppState,
   BackHandler,
   Platform,
