@@ -50,7 +50,7 @@ function ScheduleApp() {
   const bottomBarPadding = useMemo(() => Math.max(20, horizontalPadding), [horizontalPadding]);
   const iconSize = isCompact ? 22 : 24;
   const cardSize = isCompact ? 136 : 152;
-  const cardIconSize = Math.round(cardSize * (isCompact ? 0.62 : 0.6));
+  const cardIconSize = Math.round(cardSize * (isCompact ? 0.4 : 0.42));
   const cardSpacing = isCompact ? 16 : 24;
   const cardBorderRadius = isCompact ? 30 : 34;
   const cardVerticalOffset = isCompact ? 124 : 140;
@@ -411,9 +411,9 @@ function ScheduleApp() {
                     styles.fabCardBackground,
                     {
                       borderRadius: cardBorderRadius,
-                      paddingTop: isCompact ? 14 : 16,
-                      paddingBottom: isCompact ? 18 : 20,
-                      paddingHorizontal: isCompact ? 14 : 16,
+                      paddingTop: isCompact ? 10 : 12,
+                      paddingBottom: isCompact ? 16 : 18,
+                      paddingHorizontal: isCompact ? 12 : 14,
                     },
                   ]}
                 >
@@ -425,37 +425,47 @@ function ScheduleApp() {
                         {
                           width: cardIconSize,
                           height: cardIconSize,
-                          marginBottom: isCompact ? 8 : 10,
+                          marginBottom: isCompact ? 5 : 7,
                         },
                       ]}
                       resizeMode="contain"
                       accessible
                       accessibilityLabel="Illustration of adding a habit"
                     />
-                    <Text
+                    <View
                       style={[
-                        styles.fabCardTitle,
+                        styles.fabCardTextBlock,
                         {
-                          fontSize: isCompact ? 16 : 17,
+                          marginTop: isCompact ? 6 : 6,
                           paddingHorizontal: isCompact ? 12 : 14,
+                          paddingBottom: isCompact ? 4 : 4,
                         },
                       ]}
                     >
-                      Add habit
-                    </Text>
-                    <Text
-                      style={[
-                        styles.fabCardSubtitle,
-                        {
-                          fontSize: isCompact ? 12 : 13,
-                          lineHeight: isCompact ? 18 : 19,
-                          marginTop: isCompact ? 2 : 3,
-                          paddingHorizontal: isCompact ? 12 : 14,
-                        },
-                      ]}
-                    >
-                      {`Add a new routine\nto your life`}
-                    </Text>
+                      <Text
+                        style={[
+                          styles.fabCardTitle,
+                          {
+                            fontSize: isCompact ? 15 : 16,
+                            lineHeight: isCompact ? 20 : 21,
+                          },
+                        ]}
+                      >
+                        Add habit
+                      </Text>
+                      <Text
+                        style={[
+                          styles.fabCardSubtitle,
+                          {
+                            fontSize: isCompact ? 11 : 12,
+                            lineHeight: isCompact ? 16 : 17,
+                            marginTop: isCompact ? 2 : 2,
+                          },
+                        ]}
+                      >
+                        {`Add a new routine\nto your life`}
+                      </Text>
+                    </View>
                   </View>
                 </LinearGradient>
               </TouchableOpacity>
@@ -485,9 +495,9 @@ function ScheduleApp() {
                     styles.fabCardBackground,
                     {
                       borderRadius: cardBorderRadius,
-                      paddingTop: isCompact ? 14 : 16,
-                      paddingBottom: isCompact ? 18 : 20,
-                      paddingHorizontal: isCompact ? 14 : 16,
+                      paddingTop: isCompact ? 10 : 12,
+                      paddingBottom: isCompact ? 16 : 18,
+                      paddingHorizontal: isCompact ? 12 : 14,
                     },
                   ]}
                 >
@@ -499,37 +509,47 @@ function ScheduleApp() {
                         {
                           width: cardIconSize,
                           height: cardIconSize,
-                          marginBottom: isCompact ? 8 : 10,
+                          marginBottom: isCompact ? 5 : 7,
                         },
                       ]}
                       resizeMode="contain"
                       accessible
                       accessibilityLabel="Illustration of adding a reflection"
                     />
-                    <Text
+                    <View
                       style={[
-                        styles.fabCardTitle,
+                        styles.fabCardTextBlock,
                         {
-                          fontSize: isCompact ? 16 : 17,
+                          marginTop: isCompact ? 6 : 6,
                           paddingHorizontal: isCompact ? 12 : 14,
+                          paddingBottom: isCompact ? 4 : 4,
                         },
                       ]}
                     >
-                      Add reflection
-                    </Text>
-                    <Text
-                      style={[
-                        styles.fabCardSubtitle,
-                        {
-                          fontSize: isCompact ? 12 : 13,
-                          lineHeight: isCompact ? 18 : 19,
-                          marginTop: isCompact ? 2 : 3,
-                          paddingHorizontal: isCompact ? 12 : 14,
-                        },
-                      ]}
-                    >
-                      {`Reflect on your day\nwith your mood and feelings`}
-                    </Text>
+                      <Text
+                        style={[
+                          styles.fabCardTitle,
+                          {
+                            fontSize: isCompact ? 15 : 16,
+                            lineHeight: isCompact ? 20 : 21,
+                          },
+                        ]}
+                      >
+                        Add reflection
+                      </Text>
+                      <Text
+                        style={[
+                          styles.fabCardSubtitle,
+                          {
+                            fontSize: isCompact ? 11 : 12,
+                            lineHeight: isCompact ? 16 : 17,
+                            marginTop: isCompact ? 2 : 2,
+                          },
+                        ]}
+                      >
+                        {`Reflect on your day\nwith your mood and feelings`}
+                      </Text>
+                    </View>
                   </View>
                 </LinearGradient>
               </TouchableOpacity>
@@ -685,6 +705,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-start',
     alignItems: 'center',
+    width: '100%',
+  },
+  fabCardTextBlock: {
+    width: '100%',
+    alignItems: 'center',
   },
   fabCardTitle: {
     fontWeight: '700',
@@ -693,9 +718,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
   fabCardSubtitle: {
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(255, 255, 255, 0.85)',
     textAlign: 'center',
-    paddingHorizontal: 4,
   },
   fabCardIcon: {
     alignSelf: 'center',
