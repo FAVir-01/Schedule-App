@@ -72,6 +72,29 @@ function ScheduleApp() {
     };
   }, []);
 
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return undefined;
+    }
+
+    const applyNavigationBarTheme = () => {
+      void NavigationBar.setBackgroundColorAsync('#000000');
+      void NavigationBar.setButtonStyleAsync('light');
+    };
+
+    applyNavigationBarTheme();
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        applyNavigationBarTheme();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   const dynamicStyles = useMemo(
     () => ({
       content: {
