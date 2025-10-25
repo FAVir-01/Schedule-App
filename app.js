@@ -50,7 +50,7 @@ function ScheduleApp() {
   const bottomBarPadding = useMemo(() => Math.max(20, horizontalPadding), [horizontalPadding]);
   const iconSize = isCompact ? 22 : 24;
   const cardSize = isCompact ? 136 : 152;
-  const cardIconSize = isCompact ? 52 : 60;
+  const cardIconSize = isCompact ? 70 : 84;
   const cardSpacing = isCompact ? 16 : 24;
   const cardBorderRadius = isCompact ? 30 : 34;
   const cardVerticalOffset = isCompact ? 116 : 132;
@@ -400,7 +400,7 @@ function ScheduleApp() {
                     <Text
                       style={[
                         styles.fabCardTitle,
-                        { fontSize: isCompact ? 16 : 17 },
+                        { fontSize: isCompact ? 14 : 15 },
                       ]}
                     >
                       Add habit
@@ -408,7 +408,7 @@ function ScheduleApp() {
                     <Text
                       style={[
                         styles.fabCardSubtitle,
-                        { fontSize: isCompact ? 12 : 13 },
+                        { fontSize: isCompact ? 11 : 12 },
                       ]}
                       numberOfLines={2}
                     >
@@ -457,7 +457,7 @@ function ScheduleApp() {
                     <Text
                       style={[
                         styles.fabCardTitle,
-                        { fontSize: isCompact ? 16 : 17 },
+                        { fontSize: isCompact ? 14 : 15 },
                       ]}
                     >
                       Add reflection
@@ -465,7 +465,7 @@ function ScheduleApp() {
                     <Text
                       style={[
                         styles.fabCardSubtitle,
-                        { fontSize: isCompact ? 12 : 13 },
+                        { fontSize: isCompact ? 11 : 12 },
                       ]}
                       numberOfLines={2}
                     >
