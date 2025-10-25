@@ -50,11 +50,13 @@ function ScheduleApp() {
   const bottomBarPadding = useMemo(() => Math.max(20, horizontalPadding), [horizontalPadding]);
   const iconSize = isCompact ? 22 : 24;
   const cardSize = isCompact ? 136 : 152;
-  const cardIconSize = Math.round(cardSize * 0.75);
+  const cardIconSize = Math.round(cardSize * (isCompact ? 0.62 : 0.6));
   const cardSpacing = isCompact ? 16 : 24;
   const cardBorderRadius = isCompact ? 30 : 34;
   const cardVerticalOffset = isCompact ? 124 : 140;
   const fabHaloSize = fabSize + (isCompact ? 26 : 30);
+  const fabBaseSize = fabSize + (isCompact ? 14 : 18);
+  const fabIconSize = isCompact ? 28 : 30;
   const lastToggleRef = useRef(0);
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const actionsScale = useRef(new Animated.Value(0.85)).current;
@@ -303,12 +305,31 @@ function ScheduleApp() {
           </View>
 
           <TouchableOpacity
-            style={[styles.addButton, dynamicStyles.addButton]}
+            style={[
+              styles.addButton,
+              dynamicStyles.addButton,
+              isFabOpen && styles.addButtonActive,
+            ]}
             onPress={handleToggleFab}
             accessibilityRole="button"
             accessibilityLabel={isFabOpen ? 'Close add menu' : 'Open add menu'}
             activeOpacity={0.85}
           >
+            {isFabOpen && (
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.addButtonBase,
+                  {
+                    width: fabBaseSize,
+                    height: fabBaseSize,
+                    borderRadius: fabBaseSize / 2,
+                    top: (fabSize - fabBaseSize) / 2,
+                    left: (fabSize - fabBaseSize) / 2,
+                  },
+                ]}
+              />
+            )}
             {isFabOpen && (
               <View
                 pointerEvents="none"
@@ -324,7 +345,11 @@ function ScheduleApp() {
                 ]}
               />
             )}
-            <Ionicons name={isFabOpen ? 'close' : 'add'} size={32} color="#fff" />
+            <Ionicons
+              name={isFabOpen ? 'close' : 'add'}
+              size={fabIconSize}
+              color={isFabOpen ? '#3c2ba7' : '#fff'}
+            />
           </TouchableOpacity>
         </View>
 
@@ -369,6 +394,8 @@ function ScheduleApp() {
                     borderRadius: cardBorderRadius,
                     marginHorizontal: cardSpacing / 2,
                     transform: [{ rotate: '-7deg' }],
+                    borderWidth: isCompact ? 4 : 5,
+                    borderColor: '#ffffff',
                   },
                 ]}
                 onPress={handleAddHabit}
@@ -384,8 +411,9 @@ function ScheduleApp() {
                     styles.fabCardBackground,
                     {
                       borderRadius: cardBorderRadius,
-                      paddingHorizontal: cardSize * 0.14,
-                      paddingVertical: isCompact ? 18 : 22,
+                      paddingTop: isCompact ? 14 : 16,
+                      paddingBottom: isCompact ? 18 : 20,
+                      paddingHorizontal: isCompact ? 14 : 16,
                     },
                   ]}
                 >
@@ -397,7 +425,7 @@ function ScheduleApp() {
                         {
                           width: cardIconSize,
                           height: cardIconSize,
-                          marginBottom: isCompact ? 12 : 14,
+                          marginBottom: isCompact ? 8 : 10,
                         },
                       ]}
                       resizeMode="contain"
@@ -409,7 +437,7 @@ function ScheduleApp() {
                         styles.fabCardTitle,
                         {
                           fontSize: isCompact ? 16 : 17,
-                          marginBottom: isCompact ? 6 : 8,
+                          paddingHorizontal: isCompact ? 12 : 14,
                         },
                       ]}
                     >
@@ -420,7 +448,9 @@ function ScheduleApp() {
                         styles.fabCardSubtitle,
                         {
                           fontSize: isCompact ? 12 : 13,
-                          lineHeight: isCompact ? 18 : 20,
+                          lineHeight: isCompact ? 18 : 19,
+                          marginTop: isCompact ? 2 : 3,
+                          paddingHorizontal: isCompact ? 12 : 14,
                         },
                       ]}
                     >
@@ -438,6 +468,8 @@ function ScheduleApp() {
                     borderRadius: cardBorderRadius,
                     marginHorizontal: cardSpacing / 2,
                     transform: [{ rotate: '7deg' }],
+                    borderWidth: isCompact ? 4 : 5,
+                    borderColor: '#ffffff',
                   },
                 ]}
                 onPress={handleAddReflection}
@@ -453,8 +485,9 @@ function ScheduleApp() {
                     styles.fabCardBackground,
                     {
                       borderRadius: cardBorderRadius,
-                      paddingHorizontal: cardSize * 0.14,
-                      paddingVertical: isCompact ? 18 : 22,
+                      paddingTop: isCompact ? 14 : 16,
+                      paddingBottom: isCompact ? 18 : 20,
+                      paddingHorizontal: isCompact ? 14 : 16,
                     },
                   ]}
                 >
@@ -466,7 +499,7 @@ function ScheduleApp() {
                         {
                           width: cardIconSize,
                           height: cardIconSize,
-                          marginBottom: isCompact ? 12 : 14,
+                          marginBottom: isCompact ? 8 : 10,
                         },
                       ]}
                       resizeMode="contain"
@@ -478,7 +511,7 @@ function ScheduleApp() {
                         styles.fabCardTitle,
                         {
                           fontSize: isCompact ? 16 : 17,
-                          marginBottom: isCompact ? 6 : 8,
+                          paddingHorizontal: isCompact ? 12 : 14,
                         },
                       ]}
                     >
@@ -489,7 +522,9 @@ function ScheduleApp() {
                         styles.fabCardSubtitle,
                         {
                           fontSize: isCompact ? 12 : 13,
-                          lineHeight: isCompact ? 18 : 20,
+                          lineHeight: isCompact ? 18 : 19,
+                          marginTop: isCompact ? 2 : 3,
+                          paddingHorizontal: isCompact ? 12 : 14,
                         },
                       ]}
                     >
@@ -582,16 +617,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
     elevation: 12,
     zIndex: 12,
     overflow: 'visible',
   },
+  addButtonActive: {
+    backgroundColor: '#ffffff',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  addButtonBase: {
+    position: 'absolute',
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 10,
+    zIndex: -1,
+  },
   addButtonHalo: {
     position: 'absolute',
-    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    zIndex: -2,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -616,12 +669,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   fabCard: {
-    overflow: 'hidden',
+    overflow: 'visible',
+    backgroundColor: '#ffffff',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    elevation: 12,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.22,
+    shadowRadius: 20,
+    elevation: 14,
   },
   fabCardBackground: {
     flex: 1,
