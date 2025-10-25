@@ -47,38 +47,15 @@ function ScheduleApp() {
   const iconSize = isCompact ? 22 : 24;
   const cardSize = isCompact ? 136 : 152;
   const cardIconSize = isCompact ? 52 : 60;
-  const cardSpacing = isCompact ? 16 : 20;
-  const cardBorderRadius = isCompact ? 28 : 32;
-  const cardVerticalOffset = isCompact ? 112 : 128;
-  const fabHaloSize = fabSize + (isCompact ? 24 : 28);
+  const cardSpacing = isCompact ? 16 : 24;
+  const cardBorderRadius = isCompact ? 30 : 34;
+  const cardVerticalOffset = isCompact ? 116 : 132;
+  const fabHaloSize = fabSize + (isCompact ? 26 : 30);
   const lastToggleRef = useRef(0);
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const actionsScale = useRef(new Animated.Value(0.85)).current;
   const actionsOpacity = useRef(new Animated.Value(0)).current;
   const actionsTranslateY = useRef(new Animated.Value(12)).current;
-
-  useEffect(() => {
-    if (Platform.OS !== 'android') {
-      return undefined;
-    }
-
-    const applyNavigationBarTheme = () => {
-      void NavigationBar.setBackgroundColorAsync('#000000');
-      void NavigationBar.setButtonStyleAsync('light');
-    };
-
-    applyNavigationBarTheme();
-
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') {
-        applyNavigationBarTheme();
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, []);
 
   useEffect(() => {
     if (Platform.OS !== 'android') {
@@ -387,7 +364,7 @@ function ScheduleApp() {
                     height: cardSize,
                     borderRadius: cardBorderRadius,
                     marginHorizontal: cardSpacing / 2,
-                    transform: [{ rotate: '-8deg' }],
+                    transform: [{ rotate: '-7deg' }],
                   },
                 ]}
                 onPress={handleAddHabit}
@@ -406,7 +383,8 @@ function ScheduleApp() {
                     style={[styles.fabCardHighlight, { borderRadius: cardBorderRadius }]}
                   />
                   <View style={styles.fabCardContent}>
-                    <View style={styles.fabCardIconWrapper}>
+                    <View style={[styles.fabCardIconWrapper, styles.fabCardIconWrapperLeft]}>
+                      <View style={[styles.fabCardIconHalo, { borderRadius: cardIconSize }]} />
                       <Ionicons name="checkbox-outline" size={cardIconSize} color="#fff" />
                     </View>
                     <Text
@@ -437,7 +415,7 @@ function ScheduleApp() {
                     height: cardSize,
                     borderRadius: cardBorderRadius,
                     marginHorizontal: cardSpacing / 2,
-                    transform: [{ rotate: '8deg' }],
+                    transform: [{ rotate: '7deg' }],
                   },
                 ]}
                 onPress={handleAddReflection}
@@ -456,7 +434,8 @@ function ScheduleApp() {
                     style={[styles.fabCardHighlight, { borderRadius: cardBorderRadius }]}
                   />
                   <View style={styles.fabCardContent}>
-                    <View style={styles.fabCardIconWrapper}>
+                    <View style={[styles.fabCardIconWrapper, styles.fabCardIconWrapperRight]}>
+                      <View style={[styles.fabCardIconHalo, { borderRadius: cardIconSize }]} />
                       <Ionicons name="happy-outline" size={cardIconSize} color="#fff" />
                     </View>
                     <Text
@@ -594,6 +573,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 12,
   },
   fabCard: {
     overflow: 'hidden',
@@ -605,38 +585,56 @@ const styles = StyleSheet.create({
   },
   fabCardBackground: {
     flex: 1,
-    paddingHorizontal: 18,
-    paddingVertical: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 22,
   },
   fabCardHighlight: {
     ...StyleSheet.absoluteFillObject,
-    borderWidth: StyleSheet.hairlineWidth * 3,
-    borderColor: 'rgba(255, 255, 255, 0.16)',
+    borderWidth: StyleSheet.hairlineWidth * 4,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    opacity: 0.9,
   },
   fabCardContent: {
     flex: 1,
     justifyContent: 'flex-start',
     alignItems: 'center',
-    paddingTop: 12,
+    paddingTop: 8,
   },
   fabCardIconWrapper: {
     alignSelf: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.18,
     shadowRadius: 10,
     elevation: 8,
+    position: 'relative',
+  },
+  fabCardIconWrapperLeft: {
+    transform: [{ rotate: '6deg' }],
+  },
+  fabCardIconWrapperRight: {
+    transform: [{ rotate: '-6deg' }],
+  },
+  fabCardIconHalo: {
+    position: 'absolute',
+    top: -10,
+    left: -10,
+    right: -10,
+    bottom: -10,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
   },
   fabCardTitle: {
     fontWeight: '700',
     color: '#fff',
     textAlign: 'center',
+    letterSpacing: 0.1,
     marginBottom: 6,
   },
   fabCardSubtitle: {
     color: 'rgba(255, 255, 255, 0.8)',
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: 19,
+    paddingHorizontal: 4,
   },
 });
