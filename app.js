@@ -400,7 +400,7 @@ function ScheduleApp() {
                     <Text
                       style={[
                         styles.fabCardTitle,
-                        { fontSize: isCompact ? 16 : 17 },
+                        { fontSize: isCompact ? 14 : 15 },
                       ]}
                     >
                       Add habit
@@ -408,7 +408,7 @@ function ScheduleApp() {
                     <Text
                       style={[
                         styles.fabCardSubtitle,
-                        { fontSize: isCompact ? 12 : 13 },
+                        { fontSize: isCompact ? 11 : 12 },
                       ]}
                       numberOfLines={2}
                     >
@@ -457,7 +457,7 @@ function ScheduleApp() {
                     <Text
                       style={[
                         styles.fabCardTitle,
-                        { fontSize: isCompact ? 16 : 17 },
+                        { fontSize: isCompact ? 14 : 15 },
                       ]}
                     >
                       Add reflection
@@ -465,7 +465,7 @@ function ScheduleApp() {
                     <Text
                       style={[
                         styles.fabCardSubtitle,
-                        { fontSize: isCompact ? 12 : 13 },
+                        { fontSize: isCompact ? 11 : 12 },
                       ]}
                       numberOfLines={2}
                     >
@@ -601,8 +601,8 @@ const styles = StyleSheet.create({
   },
   fabCardBackground: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingVertical: 22,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
   },
   fabCardHighlight: {
     ...StyleSheet.absoluteFillObject,
@@ -614,11 +614,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-start',
     alignItems: 'center',
-    paddingTop: 8,
+    paddingTop: 4,
   },
   fabCardIconWrapper: {
     alignSelf: 'center',
-    marginBottom: 14,
+    marginBottom: 18,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.18,
@@ -634,10 +634,10 @@ const styles = StyleSheet.create({
   },
   fabCardIconHalo: {
     position: 'absolute',
-    top: -10,
-    left: -10,
-    right: -10,
-    bottom: -10,
+    top: -16,
+    left: -16,
+    right: -16,
+    bottom: -16,
     backgroundColor: 'rgba(255, 255, 255, 0.18)',
   },
   fabCardTitle: {
@@ -654,7 +654,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   fabCardIcon: {
-    width: 64,
-    height: 64,
+    width: 120,
+    height: 120,
   },
 });
