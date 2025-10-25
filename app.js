@@ -50,7 +50,7 @@ function ScheduleApp() {
   const bottomBarPadding = useMemo(() => Math.max(20, horizontalPadding), [horizontalPadding]);
   const iconSize = isCompact ? 22 : 24;
   const cardSize = isCompact ? 136 : 152;
-  const cardIconSize = Math.round(cardSize * 0.75);
+  const cardIconSize = Math.round(cardSize * 0.72);
   const cardSpacing = isCompact ? 16 : 24;
   const cardBorderRadius = isCompact ? 30 : 34;
   const cardVerticalOffset = isCompact ? 124 : 140;
@@ -411,8 +411,9 @@ function ScheduleApp() {
                     styles.fabCardBackground,
                     {
                       borderRadius: cardBorderRadius,
-                      paddingHorizontal: cardSize * 0.14,
-                      paddingVertical: isCompact ? 18 : 22,
+                      paddingTop: isCompact ? 18 : 20,
+                      paddingBottom: isCompact ? 22 : 24,
+                      paddingHorizontal: isCompact ? 14 : 16,
                     },
                   ]}
                 >
@@ -424,7 +425,6 @@ function ScheduleApp() {
                         {
                           width: cardIconSize,
                           height: cardIconSize,
-                          marginBottom: isCompact ? 12 : 14,
                         },
                       ]}
                       resizeMode="contain"
@@ -436,7 +436,7 @@ function ScheduleApp() {
                         styles.fabCardTitle,
                         {
                           fontSize: isCompact ? 16 : 17,
-                          marginBottom: isCompact ? 6 : 8,
+                          marginTop: isCompact ? 8 : 10,
                         },
                       ]}
                     >
@@ -448,6 +448,7 @@ function ScheduleApp() {
                         {
                           fontSize: isCompact ? 12 : 13,
                           lineHeight: isCompact ? 18 : 20,
+                          marginTop: isCompact ? 3 : 4,
                         },
                       ]}
                     >
@@ -482,8 +483,9 @@ function ScheduleApp() {
                     styles.fabCardBackground,
                     {
                       borderRadius: cardBorderRadius,
-                      paddingHorizontal: cardSize * 0.14,
-                      paddingVertical: isCompact ? 18 : 22,
+                      paddingTop: isCompact ? 18 : 20,
+                      paddingBottom: isCompact ? 22 : 24,
+                      paddingHorizontal: isCompact ? 14 : 16,
                     },
                   ]}
                 >
@@ -495,7 +497,6 @@ function ScheduleApp() {
                         {
                           width: cardIconSize,
                           height: cardIconSize,
-                          marginBottom: isCompact ? 12 : 14,
                         },
                       ]}
                       resizeMode="contain"
@@ -507,7 +508,7 @@ function ScheduleApp() {
                         styles.fabCardTitle,
                         {
                           fontSize: isCompact ? 16 : 17,
-                          marginBottom: isCompact ? 6 : 8,
+                          marginTop: isCompact ? 8 : 10,
                         },
                       ]}
                     >
@@ -519,6 +520,7 @@ function ScheduleApp() {
                         {
                           fontSize: isCompact ? 12 : 13,
                           lineHeight: isCompact ? 18 : 20,
+                          marginTop: isCompact ? 3 : 4,
                         },
                       ]}
                     >
