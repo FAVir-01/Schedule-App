@@ -22,6 +22,8 @@ const SHEET_CLOSE_DURATION = 220;
 const BACKDROP_MAX_OPACITY = 0.5;
 
 const COLORS = ['#FFCF70', '#F7A6A1', '#B39DD6', '#79C3FF', '#A8E6CF', '#FDE2A6'];
+const EMOJIS = ['🌟', '🔥', '💪', '🧘', '📚', '🥗', '🛏️', '🚰', '🎯', '📝'];
+const DEFAULT_EMOJI = EMOJIS[0];
 
 export default function AddHabitSheet({ visible, onClose, onCreate }) {
   const { height } = useWindowDimensions();
@@ -32,11 +34,30 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
   }, [height, insets.bottom, insets.top]);
   const [title, setTitle] = useState('');
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
+  const [selectedEmoji, setSelectedEmoji] = useState(DEFAULT_EMOJI);
+  const [isEmojiPickerVisible, setEmojiPickerVisible] = useState(false);
   const [isMounted, setIsMounted] = useState(visible);
   const titleInputRef = useRef(null);
   const translateY = useRef(new Animated.Value(sheetHeight || height)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const isClosingRef = useRef(false);
+
+  const handleClose = useCallback(() => {
+    if (!visible) {
+      return;
+    }
+    setEmojiPickerVisible(false);
+    onClose?.();
+  }, [onClose, visible]);
+
+  const handleSelectEmoji = useCallback((emoji) => {
+    setSelectedEmoji(emoji);
+    setEmojiPickerVisible(false);
+  }, []);
+
+  const handleToggleEmojiPicker = useCallback(() => {
+    setEmojiPickerVisible((prev) => !prev);
+  }, []);
 
   useEffect(() => {
     if (visible) {
@@ -78,6 +99,8 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
           translateY.setValue(sheetHeight || height);
           setTitle('');
           setSelectedColor(COLORS[0]);
+          setSelectedEmoji(DEFAULT_EMOJI);
+          setEmojiPickerVisible(false);
         }
       });
     }
@@ -106,20 +129,13 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     }
   }, [height, isMounted, sheetHeight, translateY]);
 
-  const handleClose = useCallback(() => {
-    if (!visible) {
-      return;
-    }
-    onClose?.();
-  }, [onClose, visible]);
-
   const handleCreate = useCallback(() => {
     if (!title.trim()) {
       return;
     }
-    onCreate?.({ title: title.trim(), color: selectedColor });
+    onCreate?.({ title: title.trim(), color: selectedColor, emoji: selectedEmoji });
     handleClose();
-  }, [handleClose, onCreate, selectedColor, title]);
+  }, [handleClose, onCreate, selectedColor, selectedEmoji, title]);
 
   const panResponder = useMemo(
     () =>
@@ -178,7 +194,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
   }
 
   return (
-    <View pointerEvents={isMounted ? 'auto' : 'none'} style={StyleSheet.absoluteFill}>
+    <View pointerEvents={isMounted ? 'auto' : 'none'} style={styles.container}>
       <Animated.View
         style={[styles.backdrop, { opacity: backdropOpacity }]}
         accessibilityRole="button"
@@ -233,9 +249,41 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
-              <Text style={styles.emoji} accessible accessibilityLabel="Task icon">
-                🦁
-              </Text>
+              <Pressable
+                style={[styles.emojiButton, isEmojiPickerVisible && styles.emojiButtonActive]}
+                accessibilityRole="button"
+                accessibilityLabel={`Choose emoji, currently ${selectedEmoji}`}
+                accessibilityHint="Opens a list of emoji options"
+                onPress={handleToggleEmojiPicker}
+                hitSlop={12}
+              >
+                <Text style={styles.emoji}>{selectedEmoji}</Text>
+                <Ionicons
+                  name={isEmojiPickerVisible ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color="#6f7a86"
+                  style={styles.emojiChevron}
+                />
+              </Pressable>
+              {isEmojiPickerVisible && (
+                <View style={styles.emojiPicker}>
+                  {EMOJIS.map((emoji) => {
+                    const isSelected = selectedEmoji === emoji;
+                    return (
+                      <Pressable
+                        key={emoji}
+                        style={[styles.emojiOption, isSelected && styles.emojiOptionSelected]}
+                        onPress={() => handleSelectEmoji(emoji)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isSelected }}
+                        accessibilityLabel={`Select emoji ${emoji}`}
+                      >
+                        <Text style={styles.emojiOptionText}>{emoji}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
               <TextInput
                 ref={titleInputRef}
                 value={title}
@@ -304,6 +352,11 @@ function SheetRow({ icon, label, value, showChevron, isLast }) {
 }
 
 const styles = StyleSheet.create({
+  container: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 100,
+    elevation: 30,
+  },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#0F1528',
@@ -360,10 +413,57 @@ const styles = StyleSheet.create({
   scrollViewContent: {
     paddingBottom: 48,
   },
+  emojiButton: {
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 56,
+    paddingHorizontal: 32,
+    paddingVertical: 18,
+    flexDirection: 'row',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+    marginBottom: 16,
+  },
+  emojiButtonActive: {
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 6,
+  },
   emoji: {
     fontSize: 52,
     textAlign: 'center',
-    marginBottom: 16,
+  },
+  emojiChevron: {
+    marginTop: 10,
+  },
+  emojiPicker: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 12,
+    marginBottom: 20,
+  },
+  emojiOption: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F2F6FF',
+  },
+  emojiOptionSelected: {
+    backgroundColor: '#DDE9FF',
+    borderWidth: 2,
+    borderColor: '#1F2742',
+  },
+  emojiOptionText: {
+    fontSize: 28,
   },
   titleInput: {
     fontSize: 24,
