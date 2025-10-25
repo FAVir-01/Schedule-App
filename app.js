@@ -1,8 +1,23 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { AppState, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Animated,
+  AppState,
+  BackHandler,
+  Platform,
+  Pressable,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as NavigationBar from 'expo-navigation-bar';
+import * as Haptics from 'expo-haptics';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const TABS = [
   {
@@ -19,12 +34,43 @@ const TABS = [
 
 function ScheduleApp() {
   const [activeTab, setActiveTab] = useState('today');
+  const [isFabOpen, setIsFabOpen] = useState(false);
+  const [isFabMenuMounted, setIsFabMenuMounted] = useState(false);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isCompact = width < 360;
+  const fabSize = isCompact ? 52 : 60;
   const horizontalPadding = useMemo(() => Math.max(16, Math.min(32, width * 0.06)), [width]);
   const bottomBarPadding = useMemo(() => Math.max(20, horizontalPadding), [horizontalPadding]);
   const iconSize = isCompact ? 22 : 24;
+  const lastToggleRef = useRef(0);
+  const overlayOpacity = useRef(new Animated.Value(0)).current;
+  const actionsScale = useRef(new Animated.Value(0.85)).current;
+  const actionsOpacity = useRef(new Animated.Value(0)).current;
+  const actionsTranslateY = useRef(new Animated.Value(12)).current;
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return undefined;
+    }
+
+    const applyNavigationBarTheme = () => {
+      void NavigationBar.setBackgroundColorAsync('#000000');
+      void NavigationBar.setButtonStyleAsync('light');
+    };
+
+    applyNavigationBarTheme();
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        applyNavigationBarTheme();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (Platform.OS !== 'android') {
@@ -73,14 +119,139 @@ function ScheduleApp() {
         marginTop: isCompact ? 4 : 6,
       },
       addButton: {
-        width: isCompact ? 52 : 60,
-        height: isCompact ? 52 : 60,
-        borderRadius: isCompact ? 26 : 30,
+        width: fabSize,
+        height: fabSize,
+        borderRadius: fabSize / 2,
         top: isCompact ? -20 : -24,
       },
     }),
-    [bottomBarPadding, horizontalPadding, insets.bottom, isCompact]
+    [bottomBarPadding, fabSize, horizontalPadding, insets.bottom, isCompact]
   );
+
+  const openFabMenu = useCallback(() => {
+    const now = Date.now();
+    if (now - lastToggleRef.current < 200) {
+      return;
+    }
+    lastToggleRef.current = now;
+    if (isFabOpen) {
+      return;
+    }
+    setIsFabMenuMounted(true);
+    setIsFabOpen(true);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [isFabOpen]);
+
+  const closeFabMenu = useCallback(() => {
+    if (!isFabOpen && !isFabMenuMounted) {
+      return;
+    }
+    const now = Date.now();
+    if (now - lastToggleRef.current < 200) {
+      return;
+    }
+    lastToggleRef.current = now;
+    setIsFabOpen(false);
+  }, [isFabMenuMounted, isFabOpen]);
+
+  const handleToggleFab = useCallback(() => {
+    if (isFabOpen) {
+      closeFabMenu();
+    } else {
+      openFabMenu();
+    }
+  }, [closeFabMenu, isFabOpen, openFabMenu]);
+
+  const handleAddHabit = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    console.log('Add habit action triggered');
+    closeFabMenu();
+  }, [closeFabMenu]);
+
+  const handleAddReflection = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    console.log('Add reflection action triggered');
+    closeFabMenu();
+  }, [closeFabMenu]);
+
+  useEffect(() => {
+    if (!isFabOpen || Platform.OS !== 'android') {
+      return undefined;
+    }
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      closeFabMenu();
+      return true;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [closeFabMenu, isFabOpen]);
+
+  useEffect(() => {
+    if (!isFabMenuMounted) {
+      overlayOpacity.setValue(0);
+      actionsScale.setValue(0.85);
+      actionsOpacity.setValue(0);
+      actionsTranslateY.setValue(12);
+      return;
+    }
+
+    if (isFabOpen) {
+      Animated.parallel([
+        Animated.timing(overlayOpacity, {
+          toValue: 1,
+          duration: 160,
+          useNativeDriver: true,
+        }),
+        Animated.spring(actionsScale, {
+          toValue: 1,
+          damping: 18,
+          stiffness: 180,
+          mass: 0.9,
+          useNativeDriver: true,
+        }),
+        Animated.timing(actionsOpacity, {
+          toValue: 1,
+          duration: 160,
+          useNativeDriver: true,
+        }),
+        Animated.timing(actionsTranslateY, {
+          toValue: 0,
+          duration: 160,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(overlayOpacity, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(actionsOpacity, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(actionsTranslateY, {
+          toValue: 12,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(actionsScale, {
+          toValue: 0.85,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
+        if (finished && !isFabOpen) {
+          setIsFabMenuMounted(false);
+        }
+      });
+    }
+  }, [actionsOpacity, actionsScale, actionsTranslateY, isFabMenuMounted, isFabOpen, overlayOpacity]);
 
   const renderTabButton = ({ key, label, icon }) => {
     const isActive = activeTab === key;
@@ -91,6 +262,7 @@ function ScheduleApp() {
         onPress={() => setActiveTab(key)}
         accessibilityRole="button"
         accessibilityLabel={`${label} tab`}
+        disabled={isFabOpen}
       >
         <Ionicons
           name={icon}
@@ -115,7 +287,10 @@ function ScheduleApp() {
       <StatusBar barStyle="light-content" backgroundColor="#000" />
 
       <View style={styles.container}>
-        <View style={[styles.content, dynamicStyles.content]}>
+        <View
+          style={[styles.content, dynamicStyles.content]}
+          importantForAccessibility={isFabOpen ? 'no-hide-descendants' : 'auto'}
+        >
           <Text style={styles.heading}>Daily Routine</Text>
           <Text style={[styles.description, dynamicStyles.description]}>
             {activeTab === 'today'
@@ -124,19 +299,76 @@ function ScheduleApp() {
           </Text>
         </View>
 
-        <View style={[styles.bottomBarContainer, dynamicStyles.bottomBarContainer]}>
+        <View
+          style={[styles.bottomBarContainer, dynamicStyles.bottomBarContainer]}
+          importantForAccessibility={isFabOpen ? 'no-hide-descendants' : 'auto'}
+        >
           <View style={[styles.bottomBar, dynamicStyles.bottomBar]}>
             {TABS.map(renderTabButton)}
           </View>
 
           <TouchableOpacity
             style={[styles.addButton, dynamicStyles.addButton]}
+            onPress={handleToggleFab}
             accessibilityRole="button"
-            accessibilityLabel="Add new routine"
+            accessibilityLabel={isFabOpen ? 'Close add menu' : 'Open add menu'}
+            activeOpacity={0.85}
           >
-            <Ionicons name="add" size={32} color="#fff" />
+            <Ionicons name={isFabOpen ? 'close' : 'add'} size={32} color="#fff" />
           </TouchableOpacity>
         </View>
+
+        {isFabMenuMounted && (
+          <AnimatedPressable
+            style={[styles.overlay, { opacity: overlayOpacity }]}
+            onPress={closeFabMenu}
+            accessibilityRole="button"
+            accessibilityLabel="Close add menu"
+            pointerEvents="auto"
+            accessibilityHint="Tap to dismiss the add options"
+          />
+        )}
+
+        {isFabMenuMounted && (
+          <Animated.View
+            pointerEvents={isFabOpen ? 'auto' : 'none'}
+            style={[
+              styles.fabActionsContainer,
+              {
+                bottom: insets.bottom + fabSize / 2 + (isCompact ? 96 : 112),
+                opacity: actionsOpacity,
+                transform: [
+                  { scale: actionsScale },
+                  { translateY: actionsTranslateY },
+                ],
+              },
+            ]}
+            accessibilityViewIsModal
+          >
+            <View style={styles.fabActionsRow}>
+              <TouchableOpacity
+                style={styles.fabActionButton}
+                onPress={handleAddHabit}
+                accessibilityRole="button"
+                accessibilityLabel="Add habit"
+                activeOpacity={0.85}
+              >
+                <Ionicons name="checkbox-outline" size={24} color="#3c2ba7" />
+                <Text style={styles.fabActionLabel}>Add habit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.fabActionButton}
+                onPress={handleAddReflection}
+                accessibilityRole="button"
+                accessibilityLabel="Add reflection"
+                activeOpacity={0.85}
+              >
+                <Ionicons name="document-text-outline" size={24} color="#3c2ba7" />
+                <Text style={styles.fabActionLabel}>Add reflection</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -154,6 +386,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f6f6fb',
+    position: 'relative',
   },
   content: {
     flex: 1,
@@ -218,5 +451,44 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 12,
+    zIndex: 12,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(26, 26, 46, 0.24)',
+    zIndex: 10,
+  },
+  fabActionsContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 11,
+  },
+  fabActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fabActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 24,
+    paddingVertical: 18,
+    borderRadius: 20,
+    marginHorizontal: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  fabActionLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a2e',
+    marginLeft: 12,
   },
 });
