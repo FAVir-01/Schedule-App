@@ -983,13 +983,6 @@ function SheetRow({ icon, label, value, showChevron = true, isLast, onPress, dis
         <Text style={styles.rowValue}>{value}</Text>
         {showChevron && !disabled && <Ionicons name="chevron-forward" size={20} color="#C2CBD8" />}
       </View>
-      <View style={styles.weekdayHeader}>
-        {WEEKDAYS.map((weekday) => (
-          <Text key={weekday.key} style={styles.weekdayLabel}>
-            {weekday.label}
-          </Text>
-        ))}
-      </View>
       {daysMatrix.map((week, rowIndex) => (
         <View key={`week-${rowIndex}`} style={styles.calendarWeekRow}>
           {week.map((date, cellIndex) => {
@@ -1117,6 +1110,550 @@ function OptionList({ options, selectedKey, onSelect }) {
           <Pressable
             key={option.key}
             style={[styles.optionItem, isLast && styles.optionItemLast, isSelected && styles.optionItemSelected]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isSelected }}
+            onPress={() => onSelect(option.key)}
+          >
+            <View style={styles.optionLabelColumn}>
+              <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
+                {option.label}
+              </Text>
+              {option.hint ? <Text style={styles.optionHint}>{option.hint}</Text> : null}
+            </View>
+            <View style={[styles.radioOuter, isSelected && styles.radioOuterActive]}>
+              {isSelected && <View style={styles.radioInner} />}
+            </View>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatOption, repeatWeekdays }) {
+  const today = useMemo(() => normalizeDate(new Date()), []);
+  const monthInfo = useMemo(() => getMonthMetadata(month), [month]);
+  const monthLabel = useMemo(
+    () =>
+      month.toLocaleDateString(undefined, {
+        month: 'long',
+        year: 'numeric',
+      }),
+    [month]
+  );
+  const previousMonth = useMemo(() => addMonths(month, -1), [month]);
+  const nextMonth = useMemo(() => addMonths(month, 1), [month]);
+  const previousMonthDisabled = useMemo(() => {
+    const lastDayPrev = new Date(previousMonth.getFullYear(), previousMonth.getMonth() + 1, 0);
+    return isBeforeDay(lastDayPrev, today);
+  }, [previousMonth, today]);
+  const tomorrow = useMemo(() => {
+    const t = new Date(today);
+    t.setDate(today.getDate() + 1);
+    return normalizeDate(t);
+  }, [today]);
+  const nextMonday = useMemo(() => {
+    const next = new Date(today);
+    const offset = ((1 - next.getDay() + 7) % 7) || 7;
+    next.setDate(next.getDate() + offset);
+    return normalizeDate(next);
+  }, [today]);
+  const repeatingWeekdays = useMemo(
+    () => (repeatWeekdays ? new Set(repeatWeekdays) : new Set()),
+    [repeatWeekdays]
+  );
+
+  const daysMatrix = useMemo(() => {
+    const totalCells = monthInfo.startWeekday + monthInfo.days;
+    const filledCells = Math.ceil(totalCells / 7) * 7;
+    const cells = [];
+    for (let i = 0; i < monthInfo.startWeekday; i += 1) {
+      cells.push(null);
+    }
+    for (let day = 1; day <= monthInfo.days; day += 1) {
+      cells.push(new Date(monthInfo.year, monthInfo.month, day));
+    }
+    while (cells.length < filledCells) {
+      cells.push(null);
+    }
+    const rows = [];
+    for (let index = 0; index < cells.length; index += 7) {
+      rows.push(cells.slice(index, index + 7));
+    }
+    return rows;
+  }, [monthInfo.days, monthInfo.month, monthInfo.startWeekday, monthInfo.year]);
+
+  const handleSelectQuick = useCallback(
+    (targetDate) => {
+      const normalizedTarget = normalizeDate(targetDate);
+      if (
+        normalizedTarget.getFullYear() !== month.getFullYear() ||
+        normalizedTarget.getMonth() !== month.getMonth()
+      ) {
+        onChangeMonth(new Date(normalizedTarget.getFullYear(), normalizedTarget.getMonth(), 1));
+      }
+      onSelectDate(normalizedTarget);
+    },
+    [month, onChangeMonth, onSelectDate]
+  );
+
+  return (
+    <View>
+      <View style={styles.quickSelectRow}>
+        <QuickSelectButton
+          label="Today"
+          active={isSameDay(selectedDate, today)}
+          onPress={() => handleSelectQuick(today)}
+        />
+        <QuickSelectButton
+          label="Tomorrow"
+          active={isSameDay(selectedDate, tomorrow)}
+          onPress={() => handleSelectQuick(tomorrow)}
+        />
+        <QuickSelectButton
+          label="Next Monday"
+          active={isSameDay(selectedDate, nextMonday)}
+          onPress={() => handleSelectQuick(nextMonday)}
+        />
+      </View>
+      <View style={styles.calendarHeader}>
+        <Pressable
+          onPress={() => onChangeMonth(previousMonth)}
+          disabled={previousMonthDisabled}
+          hitSlop={12}
+        >
+          <Ionicons
+            name="chevron-back"
+            size={22}
+            color={previousMonthDisabled ? '#B8C4D6' : '#1F2742'}
+          />
+        </Pressable>
+        <Text style={styles.calendarHeaderText}>{monthLabel}</Text>
+        <Pressable onPress={() => onChangeMonth(nextMonth)} hitSlop={12}>
+          <Ionicons name="chevron-forward" size={22} color="#1F2742" />
+        </Pressable>
+      </View>
+      <View style={styles.weekdayHeader}>
+        {WEEKDAYS.map((weekday) => (
+          <Text key={weekday.key} style={styles.weekdayLabel}>
+            {weekday.label}
+          </Text>
+        ))}
+      </View>
+      {daysMatrix.map((week, rowIndex) => (
+        <View key={`week-${rowIndex}`} style={styles.calendarWeekRow}>
+          {week.map((date, cellIndex) => {
+            if (!date) {
+              return <View key={`empty-${rowIndex}-${cellIndex}`} style={styles.calendarDay} />;
+            }
+            const isDisabled = isBeforeDay(date, today);
+            const isSelected = isSameDay(date, selectedDate);
+            const isToday = isSameDay(date, today);
+            const isRepeating = doesDateRepeat(date, selectedDate, repeatOption, repeatingWeekdays);
+            return (
+              <Pressable
+                key={date.toISOString()}
+                style={[
+                  styles.calendarDay,
+                  isSelected && styles.calendarDaySelected,
+                  isToday && styles.calendarDayToday,
+                  isDisabled && styles.calendarDayDisabled,
+                  !isSelected && isRepeating && styles.calendarDayRepeating,
+                ]}
+                onPress={() => onSelectDate(normalizeDate(date))}
+                disabled={isDisabled}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected, disabled: isDisabled }}
+              >
+                <Text
+                  style={[
+                    styles.calendarDayText,
+                    isSelected && styles.calendarDayTextSelected,
+                    isDisabled && styles.calendarDayTextDisabled,
+                    !isSelected && isRepeating && styles.calendarDayTextRepeating,
+                  ]}
+                >
+                  {date.getDate()}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function QuickSelectButton({ label, active, onPress }) {
+  return (
+    <Pressable
+      style={[styles.quickSelectButton, active && styles.quickSelectButtonActive]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+    >
+      <Text style={[styles.quickSelectLabel, active && styles.quickSelectLabelActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function RepeatPanel({ option, weekdays, onOptionChange, onToggleWeekday, startDate }) {
+  const weeklyHint = useMemo(() => {
+    if (!startDate) {
+      return null;
+    }
+    return `(${startDate.toLocaleDateString(undefined, { weekday: 'long' })})`;
+  }, [startDate]);
+  const monthlyHint = useMemo(() => {
+    if (!startDate) {
+      return null;
+    }
+    return `(On ${formatOrdinal(startDate.getDate())})`;
+  }, [startDate]);
+  const repeatOptions = useMemo(
+    () => [
+      { key: 'off', label: 'No repeat' },
+      { key: 'daily', label: 'Daily' },
+      { key: 'weekly', label: 'Weekly', hint: weeklyHint },
+      { key: 'monthly', label: 'Monthly', hint: monthlyHint },
+      { key: 'weekend', label: 'Weekend (Sat, Sun)' },
+      { key: 'custom', label: 'Custom' },
+    ],
+    [monthlyHint, weeklyHint]
+  );
+  return (
+    <View style={styles.repeatPanel}>
+      {repeatOptions.map((repeatOption, index, array) => {
+        const isSelected = repeatOption.key === option;
+        const isLast = index === array.length - 1;
+        return (
+          <Pressable
+            key={repeatOption.key}
+            style={[styles.optionItem, isLast && styles.optionItemLast, isSelected && styles.optionItemSelected]}
+            onPress={() => onOptionChange(repeatOption.key)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isSelected }}
+          >
+            <View style={styles.optionLabelColumn}>
+              <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
+                {repeatOption.label}
+              </Text>
+              {repeatOption.hint ? <Text style={styles.optionHint}>{repeatOption.hint}</Text> : null}
+            </View>
+            <View style={[styles.radioOuter, isSelected && styles.radioOuterActive]}>
+              {isSelected && <View style={styles.radioInner} />}
+            </View>
+          </Pressable>
+        );
+      })}
+      {option === 'custom' && (
+        <View style={styles.weekdayToggleRow}>
+          {WEEKDAYS.map((weekday) => {
+            const isActive = weekdays.has(weekday.key);
+            return (
+              <Pressable
+                key={weekday.key}
+                style={[styles.weekdayToggle, isActive && styles.weekdayToggleActive]}
+                onPress={() => onToggleWeekday(weekday.key)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
+              >
+                <Text
+                  style={[styles.weekdayToggleLabel, isActive && styles.weekdayToggleLabelActive]}
+                >
+                  {weekday.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function TimePanel({
+  specified,
+  onToggleSpecified,
+  mode,
+  onModeChange,
+  pointTime,
+  onPointTimeChange,
+  periodTime,
+  onPeriodTimeChange,
+}) {
+  const hourIndex = Math.max(0, HOUR_VALUES.indexOf(pointTime.hour));
+  const minuteIndex = Math.max(0, MINUTE_VALUES.indexOf(pointTime.minute));
+  const meridiemIndex = Math.max(0, MERIDIEM_VALUES.indexOf(pointTime.meridiem));
+
+  const startHourIndex = Math.max(0, HOUR_VALUES.indexOf(periodTime.start.hour));
+  const startMinuteIndex = Math.max(0, MINUTE_VALUES.indexOf(periodTime.start.minute));
+  const startMeridiemIndex = Math.max(0, MERIDIEM_VALUES.indexOf(periodTime.start.meridiem));
+  const endHourIndex = Math.max(0, HOUR_VALUES.indexOf(periodTime.end.hour));
+  const endMinuteIndex = Math.max(0, MINUTE_VALUES.indexOf(periodTime.end.minute));
+  const endMeridiemIndex = Math.max(0, MERIDIEM_VALUES.indexOf(periodTime.end.meridiem));
+
+  return (
+    <View style={styles.timePanel}>
+      <View style={styles.specifiedRow}>
+        <View style={styles.specifiedLabelGroup}>
+          <View style={styles.specifiedIconContainer}>
+            <Ionicons name="time-outline" size={22} color="#1F2742" />
+          </View>
+          <View>
+            <Text style={styles.specifiedTitle}>Specified time</Text>
+            <Text style={styles.specifiedSubtitle}>Set a specific time to do it</Text>
+          </View>
+        </View>
+        <Switch
+          value={specified}
+          onValueChange={onToggleSpecified}
+          trackColor={{ false: '#C8D4E6', true: '#A3B7D7' }}
+          thumbColor={specified ? '#1F2742' : Platform.OS === 'android' ? '#f4f3f4' : undefined}
+        />
+      </View>
+      {specified && (
+        <>
+          <View style={styles.segmentedControl}>
+            <SegmentedControlButton
+              label="Point time"
+              active={mode === 'point'}
+              onPress={() => onModeChange('point')}
+            />
+            <SegmentedControlButton
+              label="Time period"
+              active={mode === 'period'}
+              onPress={() => onModeChange('period')}
+            />
+          </View>
+          {mode === 'point' ? (
+            <View style={styles.wheelGroup}>
+              <View style={styles.wheelLabelsRow}>
+                <Text style={styles.wheelLabel}>Hour</Text>
+                <Text style={styles.wheelLabel}>Min</Text>
+                <Text style={styles.wheelLabel}>AM/PM</Text>
+              </View>
+              <View style={styles.wheelArea}>
+                <View pointerEvents="none" style={styles.wheelHighlight} />
+                <View style={styles.wheelRow}>
+                  <WheelColumn
+                    values={HOUR_VALUES}
+                    selectedIndex={hourIndex}
+                    onSelect={(value) => onPointTimeChange({ ...pointTime, hour: value })}
+                    formatter={(value) => formatNumber(value)}
+                  />
+                  <Text pointerEvents="none" style={styles.wheelDivider}>
+                    :
+                  </Text>
+                  <WheelColumn
+                    values={MINUTE_VALUES}
+                    selectedIndex={minuteIndex}
+                    onSelect={(value) => onPointTimeChange({ ...pointTime, minute: value })}
+                    formatter={(value) => formatNumber(value)}
+                  />
+                  <WheelColumn
+                    values={MERIDIEM_VALUES}
+                    selectedIndex={meridiemIndex}
+                    onSelect={(value) => onPointTimeChange({ ...pointTime, meridiem: value })}
+                  />
+                </View>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.periodSection}>
+              <Text style={styles.periodLabel}>FROM</Text>
+              <View style={styles.wheelGroup}>
+                <View style={styles.wheelLabelsRow}>
+                  <Text style={styles.wheelLabel}>Hour</Text>
+                  <Text style={styles.wheelLabel}>Min</Text>
+                  <Text style={styles.wheelLabel}>AM/PM</Text>
+                </View>
+                <View style={styles.wheelArea}>
+                  <View pointerEvents="none" style={styles.wheelHighlight} />
+                  <View style={styles.wheelRow}>
+                    <WheelColumn
+                      values={HOUR_VALUES}
+                      selectedIndex={startHourIndex}
+                      onSelect={(value) =>
+                        onPeriodTimeChange({
+                          start: { ...periodTime.start, hour: value },
+                          end: periodTime.end,
+                        })
+                      }
+                      formatter={(value) => formatNumber(value)}
+                    />
+                    <Text pointerEvents="none" style={styles.wheelDivider}>
+                      :
+                    </Text>
+                    <WheelColumn
+                      values={MINUTE_VALUES}
+                      selectedIndex={startMinuteIndex}
+                      onSelect={(value) =>
+                        onPeriodTimeChange({
+                          start: { ...periodTime.start, minute: value },
+                          end: periodTime.end,
+                        })
+                      }
+                      formatter={(value) => formatNumber(value)}
+                    />
+                    <WheelColumn
+                      values={MERIDIEM_VALUES}
+                      selectedIndex={startMeridiemIndex}
+                      onSelect={(value) =>
+                        onPeriodTimeChange({
+                          start: { ...periodTime.start, meridiem: value },
+                          end: periodTime.end,
+                        })
+                      }
+                    />
+                  </View>
+                </View>
+              </View>
+              <Text style={[styles.periodLabel, styles.periodLabelSpacer]}>TO</Text>
+              <View style={styles.wheelGroup}>
+                <View style={styles.wheelLabelsRow}>
+                  <Text style={styles.wheelLabel}>Hour</Text>
+                  <Text style={styles.wheelLabel}>Min</Text>
+                  <Text style={styles.wheelLabel}>AM/PM</Text>
+                </View>
+                <View style={styles.wheelArea}>
+                  <View pointerEvents="none" style={styles.wheelHighlight} />
+                  <View style={styles.wheelRow}>
+                    <WheelColumn
+                      values={HOUR_VALUES}
+                      selectedIndex={endHourIndex}
+                      onSelect={(value) =>
+                        onPeriodTimeChange({
+                          start: periodTime.start,
+                          end: { ...periodTime.end, hour: value },
+                        })
+                      }
+                      formatter={(value) => formatNumber(value)}
+                    />
+                    <Text pointerEvents="none" style={styles.wheelDivider}>
+                      :
+                    </Text>
+                    <WheelColumn
+                      values={MINUTE_VALUES}
+                      selectedIndex={endMinuteIndex}
+                      onSelect={(value) =>
+                        onPeriodTimeChange({
+                          start: periodTime.start,
+                          end: { ...periodTime.end, minute: value },
+                        })
+                      }
+                      formatter={(value) => formatNumber(value)}
+                    />
+                    <WheelColumn
+                      values={MERIDIEM_VALUES}
+                      selectedIndex={endMeridiemIndex}
+                      onSelect={(value) =>
+                        onPeriodTimeChange({
+                          start: periodTime.start,
+                          end: { ...periodTime.end, meridiem: value },
+                        })
+                      }
+                    />
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
+        </>
+      )}
+    </View>
+  );
+}
+
+function SegmentedControlButton({ label, active, onPress }) {
+  return (
+    <Pressable
+      style={[styles.segmentedButton, active && styles.segmentedButtonActive]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+    >
+      <Text style={[styles.segmentedButtonLabel, active && styles.segmentedButtonLabelActive]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function OptionOverlay({
+  title,
+  subtitle,
+  onClose,
+  onApply,
+  children,
+  applyLabel = 'Apply',
+  applyDisabled,
+  scrollEnabled = true,
+}) {
+  return (
+    <View style={styles.overlayContainer}>
+      <View style={styles.overlayCard}>
+        <View style={styles.overlayHeader}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            onPress={onClose}
+            hitSlop={12}
+          >
+            <Ionicons name="chevron-back" size={24} color="#1F2742" />
+          </Pressable>
+          <View style={styles.overlayTitleContainer}>
+            <Text style={styles.overlayTitle}>{title}</Text>
+            {subtitle ? <Text style={styles.overlaySubtitle}>{subtitle}</Text> : null}
+          </View>
+          <Pressable
+            style={styles.overlayApplyButton}
+            onPress={onApply}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: applyDisabled }}
+            disabled={applyDisabled}
+            hitSlop={12}
+          >
+            <Text
+              style={[styles.overlayApplyText, applyDisabled && styles.overlayApplyTextDisabled]}
+            >
+              {applyLabel}
+            </Text>
+          </Pressable>
+        </View>
+        {scrollEnabled ? (
+          <ScrollView
+            style={styles.overlayScroll}
+            contentContainerStyle={styles.overlayScrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            scrollEnabled
+            nestedScrollEnabled
+          >
+            {children}
+          </ScrollView>
+        ) : (
+          <View style={[styles.overlayScroll, styles.overlayScrollContent]}>{children}</View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function OptionList({ options, selectedKey, onSelect }) {
+  return (
+    <View style={styles.optionList}>
+      {options.map((option, index) => {
+        const isSelected = option.key === selectedKey;
+        const isLast = index === options.length - 1;
+        return (
+          <Pressable
+            key={option.key}
+            style={[
+              styles.optionItem,
+              isLast && styles.optionItemLast,
+              isSelected && styles.optionItemSelected,
+            ]}
             accessibilityRole="button"
             accessibilityState={{ selected: isSelected }}
             onPress={() => onSelect(option.key)}
