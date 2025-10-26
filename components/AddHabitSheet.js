@@ -102,11 +102,11 @@ const WEEKDAY_SHORT_NAMES = {
 
 const REMINDER_OPTIONS = [
   { key: 'none', label: 'No reminder' },
-  { key: 'at_time', label: 'At start time' },
-  { key: '5m', label: '5 minutes before' },
-  { key: '15m', label: '15 minutes before' },
-  { key: '30m', label: '30 minutes before' },
-  { key: '1h', label: '1 hour before' },
+  { key: 'at_time', label: 'At time of event', offsetMinutes: 0 },
+  { key: '5m', label: '5 minutes early', offsetMinutes: -5 },
+  { key: '15m', label: '15 minutes early', offsetMinutes: -15 },
+  { key: '30m', label: '30 minutes early', offsetMinutes: -30 },
+  { key: '1h', label: '1 hour early', offsetMinutes: -60 },
 ];
 
 const TAG_OPTIONS = [
@@ -300,6 +300,30 @@ function ensureValidPeriod(period) {
     start: minutesToTime(startMinutes),
     end: minutesToTime(endMinutes),
   };
+}
+
+function getReminderReferenceTime(hasSpecifiedTime, timeMode, pointTime, periodTime) {
+  if (!hasSpecifiedTime) {
+    return null;
+  }
+  if (timeMode === 'period') {
+    return periodTime.start;
+  }
+  return pointTime;
+}
+
+function getReminderHint(option, hasSpecifiedTime, timeMode, pointTime, periodTime) {
+  if (option.key === 'none') {
+    return null;
+  }
+  const reference = getReminderReferenceTime(hasSpecifiedTime, timeMode, pointTime, periodTime);
+  if (!reference || typeof option.offsetMinutes !== 'number') {
+    return '(No time set)';
+  }
+  const baseMinutes = timeToMinutes(reference);
+  const reminderMinutes = baseMinutes + option.offsetMinutes;
+  const reminderTime = minutesToTime(reminderMinutes);
+  return `(${formatTime(reminderTime)})`;
 }
 
 export default function AddHabitSheet({ visible, onClose, onCreate }) {
@@ -645,10 +669,24 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     }
     return formatPeriod(periodTime);
   }, [hasSpecifiedTime, periodTime, pointTime, timeMode]);
+  const reminderOptions = useMemo(
+    () =>
+      REMINDER_OPTIONS.map((option) => ({
+        ...option,
+        hint: getReminderHint(option, hasSpecifiedTime, timeMode, pointTime, periodTime),
+      })),
+    [hasSpecifiedTime, periodTime, pointTime, timeMode]
+  );
   const reminderLabel = useMemo(() => {
-    const match = REMINDER_OPTIONS.find((option) => option.key === reminderOption);
-    return match?.label ?? 'No reminder';
-  }, [reminderOption]);
+    const match = reminderOptions.find((option) => option.key === reminderOption);
+    if (!match) {
+      return 'No reminder';
+    }
+    if (match.hint) {
+      return `${match.label} ${match.hint}`;
+    }
+    return match.label;
+  }, [reminderOption, reminderOptions]);
   const tagLabel = useMemo(() => {
     const match = TAG_OPTIONS.find((option) => option.key === selectedTag);
     return match?.label ?? 'No tag';
@@ -877,6 +915,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
                 title={pendingTimeTitle}
                 onClose={closePanel}
                 onApply={handleApplyTime}
+                scrollEnabled={false}
               >
                 <TimePanel
                   specified={pendingHasSpecifiedTime}
@@ -902,7 +941,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
                 onApply={handleApplyReminder}
               >
                 <OptionList
-                  options={REMINDER_OPTIONS}
+                  options={reminderOptions}
                   selectedKey={pendingReminder}
                   onSelect={setPendingReminder}
                 />
@@ -948,7 +987,16 @@ function SheetRow({ icon, label, value, showChevron = true, isLast, onPress, dis
   );
 }
 
-function OptionOverlay({ title, subtitle, onClose, onApply, children, applyLabel = 'Apply', applyDisabled }) {
+function OptionOverlay({
+  title,
+  subtitle,
+  onClose,
+  onApply,
+  children,
+  applyLabel = 'Apply',
+  applyDisabled,
+  scrollEnabled = true,
+}) {
   return (
     <View style={styles.overlayContainer}>
       <View style={styles.overlayCard}>
@@ -985,6 +1033,8 @@ function OptionOverlay({ title, subtitle, onClose, onApply, children, applyLabel
           contentContainerStyle={styles.overlayScrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          scrollEnabled={scrollEnabled}
+          nestedScrollEnabled={scrollEnabled}
         >
           {children}
         </ScrollView>
@@ -1007,9 +1057,12 @@ function OptionList({ options, selectedKey, onSelect }) {
             accessibilityState={{ selected: isSelected }}
             onPress={() => onSelect(option.key)}
           >
-            <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
-              {option.label}
-            </Text>
+            <View style={styles.optionLabelColumn}>
+              <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
+                {option.label}
+              </Text>
+              {option.hint ? <Text style={styles.optionHint}>{option.hint}</Text> : null}
+            </View>
             <View style={[styles.radioOuter, isSelected && styles.radioOuterActive]}>
               {isSelected && <View style={styles.radioInner} />}
             </View>
@@ -1450,7 +1503,7 @@ function WheelColumn({ values, selectedIndex, onSelect, formatter = (value) => v
     if (!scrollRef.current) {
       return;
     }
-    scrollRef.current.scrollTo({ y: selectedIndex * WHEEL_ITEM_HEIGHT, animated: true });
+    scrollRef.current.scrollTo({ y: selectedIndex * WHEEL_ITEM_HEIGHT, animated: false });
   }, [selectedIndex]);
 
   const finalizeSelection = useCallback(
@@ -1461,7 +1514,7 @@ function WheelColumn({ values, selectedIndex, onSelect, formatter = (value) => v
       if (scrollRef.current) {
         scrollRef.current.scrollTo({
           y: clampedIndex * WHEEL_ITEM_HEIGHT,
-          animated: true,
+          animated: false,
         });
       }
     },
@@ -1504,6 +1557,7 @@ function WheelColumn({ values, selectedIndex, onSelect, formatter = (value) => v
       onScrollEndDrag={handleScrollEndDrag}
       scrollEventThrottle={16}
       overScrollMode="never"
+      nestedScrollEnabled
     >
       {values.map((value, index) => {
         const isActive = index === selectedIndex;
