@@ -89,6 +89,16 @@ const WEEKDAYS = [
   { key: 'fri', label: 'F' },
   { key: 'sat', label: 'S' },
 ];
+const WEEKDAY_KEYS = WEEKDAYS.map((weekday) => weekday.key);
+const WEEKDAY_SHORT_NAMES = {
+  sun: 'Sun',
+  mon: 'Mon',
+  tue: 'Tue',
+  wed: 'Wed',
+  thu: 'Thu',
+  fri: 'Fri',
+  sat: 'Sat',
+};
 
 const REMINDER_OPTIONS = [
   { key: 'none', label: 'No reminder' },
@@ -114,6 +124,43 @@ const MINUTE_VALUES = Array.from({ length: 12 }, (_, i) => i * 5);
 const MERIDIEM_VALUES = ['AM', 'PM'];
 
 const formatNumber = (value) => value.toString().padStart(2, '0');
+
+const hexToRgb = (hex) => {
+  const sanitized = hex.replace('#', '');
+  const bigint = parseInt(sanitized, 16);
+  return {
+    r: (bigint >> 16) & 255,
+    g: (bigint >> 8) & 255,
+    b: bigint & 255,
+  };
+};
+
+const lightenColor = (hex, amount = 0.6) => {
+  const { r, g, b } = hexToRgb(hex);
+  const mixChannel = (channel) => Math.round(channel + (255 - channel) * amount);
+  const mixed = [mixChannel(r), mixChannel(g), mixChannel(b)];
+  return `#${mixed.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+};
+
+const formatOrdinal = (day) => {
+  const remainder = day % 10;
+  const tens = Math.floor(day / 10) % 10;
+  if (tens === 1) {
+    return `${day}th`;
+  }
+  if (remainder === 1) {
+    return `${day}st`;
+  }
+  if (remainder === 2) {
+    return `${day}nd`;
+  }
+  if (remainder === 3) {
+    return `${day}rd`;
+  }
+  return `${day}th`;
+};
+
+const getWeekdayKeyFromDate = (date) => WEEKDAY_KEYS[date.getDay()];
 
 function formatTime({ hour, minute, meridiem }) {
   return `${formatNumber(hour)}:${formatNumber(minute)} ${meridiem}`;
@@ -143,25 +190,49 @@ function formatDateLabel(date) {
   });
 }
 
-function getRepeatLabel(option, weekdays) {
+function getRepeatLabel(option, weekdays, startDate) {
   switch (option) {
     case 'daily':
-      return 'Daily';
-    case 'weekly': {
-      const selected = WEEKDAYS.filter(({ key }) => weekdays.has(key));
-      if (!selected.length || selected.length === 7) {
-        return 'Weekly';
-      }
-      return selected.map((weekday) => weekday.label).join('');
-    }
+      return 'Every day';
+    case 'weekly':
+      return startDate
+        ? `Every week on ${startDate.toLocaleDateString(undefined, { weekday: 'long' })}`
+        : 'Weekly';
     case 'monthly':
-      return 'Monthly';
+      return startDate ? `Every month on ${formatOrdinal(startDate.getDate())}` : 'Monthly';
     case 'weekend':
-      return 'Weekends';
-    case 'custom':
-      return 'Custom';
+      return 'Every weekend';
+    case 'custom': {
+      const selected = WEEKDAYS.filter(({ key }) => weekdays.has(key));
+      if (!selected.length) {
+        return 'Custom';
+      }
+      return selected.map((weekday) => WEEKDAY_SHORT_NAMES[weekday.key] || weekday.label).join(', ');
+    }
+    case 'off':
     default:
-      return 'Off';
+      return 'No repeat';
+  }
+}
+
+function doesDateRepeat(date, start, repeatOption, weekdays) {
+  if (!start || isBeforeDay(date, start)) {
+    return false;
+  }
+
+  switch (repeatOption) {
+    case 'daily':
+      return true;
+    case 'weekly':
+      return date.getDay() === start.getDay();
+    case 'monthly':
+      return date.getDate() === start.getDate();
+    case 'weekend':
+      return date.getDay() === 0 || date.getDay() === 6;
+    case 'custom':
+      return weekdays?.has(getWeekdayKeyFromDate(date));
+    default:
+      return false;
   }
 }
 
@@ -271,6 +342,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
   const translateY = useRef(new Animated.Value(sheetHeight || height)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const isClosingRef = useRef(false);
+  const sheetBackgroundColor = useMemo(() => lightenColor(selectedColor, 0.75), [selectedColor]);
 
   const handleClose = useCallback(() => {
     if (!visible) {
@@ -331,8 +403,11 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
 
   const handleApplyDate = useCallback(() => {
     setStartDate(pendingDate);
+    if (repeatOption === 'weekly') {
+      setSelectedWeekdays(new Set([getWeekdayKeyFromDate(pendingDate)]));
+    }
     closePanel();
-  }, [closePanel, pendingDate]);
+  }, [closePanel, pendingDate, repeatOption]);
 
   const handleApplyRepeat = useCallback(() => {
     setRepeatOption(pendingRepeatOption);
@@ -341,27 +416,26 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
       resolvedWeekdays = new Set(WEEKDAYS.map((weekday) => weekday.key));
     } else if (pendingRepeatOption === 'weekend') {
       resolvedWeekdays = new Set(['sat', 'sun']);
+    } else if (pendingRepeatOption === 'weekly') {
+      resolvedWeekdays = new Set([getWeekdayKeyFromDate(startDate)]);
     } else if (pendingRepeatOption === 'off' || pendingRepeatOption === 'monthly') {
       resolvedWeekdays = new Set();
     } else {
       const next = new Set(pendingWeekdays);
       if (next.size === 0) {
-        next.add('mon');
+        next.add(getWeekdayKeyFromDate(startDate));
       }
       resolvedWeekdays = next;
     }
     setSelectedWeekdays(resolvedWeekdays);
     closePanel();
-  }, [closePanel, pendingRepeatOption, pendingWeekdays]);
+  }, [closePanel, pendingRepeatOption, pendingWeekdays, startDate]);
 
   const handleApplyTime = useCallback(() => {
     setHasSpecifiedTime(pendingHasSpecifiedTime);
     setTimeMode(pendingTimeMode);
     setPointTime(pendingPointTime);
     setPeriodTime(pendingPeriodTime);
-    if (!pendingHasSpecifiedTime) {
-      setReminderOption('none');
-    }
     closePanel();
   }, [
     closePanel,
@@ -558,7 +632,10 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
   const isCreateDisabled = !title.trim();
 
   const dateLabel = useMemo(() => formatDateLabel(startDate), [startDate]);
-  const repeatLabel = useMemo(() => getRepeatLabel(repeatOption, selectedWeekdays), [repeatOption, selectedWeekdays]);
+  const repeatLabel = useMemo(
+    () => getRepeatLabel(repeatOption, selectedWeekdays, startDate),
+    [repeatOption, selectedWeekdays, startDate]
+  );
   const timeValue = useMemo(() => {
     if (!hasSpecifiedTime) {
       return 'Anytime';
@@ -597,6 +674,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
             paddingBottom: Math.max(insets.bottom, 12),
             transform: [{ translateY }],
             height: sheetHeight,
+            backgroundColor: sheetBackgroundColor,
           },
         ]}
         accessibilityViewIsModal
@@ -608,7 +686,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           enabled
         >
-          <SafeAreaView style={styles.safeArea}>
+          <SafeAreaView style={[styles.safeArea, { backgroundColor: sheetBackgroundColor }]}>
             <View style={styles.header}>
               <Pressable
                 accessibilityRole="button"
@@ -725,7 +803,6 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
                   label="Reminder"
                   value={reminderLabel}
                   onPress={() => handleOpenPanel('reminder')}
-                  disabled={!hasSpecifiedTime}
                 />
                 <SheetRow
                   icon="pricetag-outline"
@@ -754,6 +831,8 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
                   selectedDate={pendingDate}
                   onSelectDate={setPendingDate}
                   onChangeMonth={setCalendarMonth}
+                  repeatOption={repeatOption}
+                  repeatWeekdays={selectedWeekdays}
                 />
               </OptionOverlay>
             )}
@@ -778,6 +857,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
                       return next;
                     });
                   }}
+                  startDate={startDate}
                 />
               </OptionOverlay>
             )}
@@ -929,7 +1009,7 @@ function OptionList({ options, selectedKey, onSelect }) {
   );
 }
 
-function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth }) {
+function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatOption, repeatWeekdays }) {
   const today = useMemo(() => normalizeDate(new Date()), []);
   const monthInfo = useMemo(() => getMonthMetadata(month), [month]);
   const monthLabel = useMemo(
@@ -949,8 +1029,18 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth }) {
   const tomorrow = useMemo(() => {
     const t = new Date(today);
     t.setDate(today.getDate() + 1);
-    return t;
+    return normalizeDate(t);
   }, [today]);
+  const nextMonday = useMemo(() => {
+    const next = new Date(today);
+    const offset = ((1 - next.getDay() + 7) % 7) || 7;
+    next.setDate(next.getDate() + offset);
+    return normalizeDate(next);
+  }, [today]);
+  const repeatingWeekdays = useMemo(
+    () => (repeatWeekdays ? new Set(repeatWeekdays) : new Set()),
+    [repeatWeekdays]
+  );
 
   const daysMatrix = useMemo(() => {
     const totalCells = monthInfo.startWeekday + monthInfo.days;
@@ -973,10 +1063,8 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth }) {
   }, [monthInfo.days, monthInfo.month, monthInfo.startWeekday, monthInfo.year]);
 
   const handleSelectQuick = useCallback(
-    (offset) => {
-      const target = new Date(today);
-      target.setDate(today.getDate() + offset);
-      const normalizedTarget = normalizeDate(target);
+    (targetDate) => {
+      const normalizedTarget = normalizeDate(targetDate);
       if (
         normalizedTarget.getFullYear() !== month.getFullYear() ||
         normalizedTarget.getMonth() !== month.getMonth()
@@ -985,7 +1073,7 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth }) {
       }
       onSelectDate(normalizedTarget);
     },
-    [month, onChangeMonth, onSelectDate, today]
+    [month, onChangeMonth, onSelectDate]
   );
 
   return (
@@ -994,12 +1082,17 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth }) {
         <QuickSelectButton
           label="Today"
           active={isSameDay(selectedDate, today)}
-          onPress={() => handleSelectQuick(0)}
+          onPress={() => handleSelectQuick(today)}
         />
         <QuickSelectButton
           label="Tomorrow"
           active={isSameDay(selectedDate, tomorrow)}
-          onPress={() => handleSelectQuick(1)}
+          onPress={() => handleSelectQuick(tomorrow)}
+        />
+        <QuickSelectButton
+          label="Next Monday"
+          active={isSameDay(selectedDate, nextMonday)}
+          onPress={() => handleSelectQuick(nextMonday)}
         />
       </View>
       <View style={styles.calendarHeader}>
@@ -1035,6 +1128,7 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth }) {
             const isDisabled = isBeforeDay(date, today);
             const isSelected = isSameDay(date, selectedDate);
             const isToday = isSameDay(date, today);
+            const isRepeating = doesDateRepeat(date, selectedDate, repeatOption, repeatingWeekdays);
             return (
               <Pressable
                 key={date.toISOString()}
@@ -1043,8 +1137,9 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth }) {
                   isSelected && styles.calendarDaySelected,
                   isToday && styles.calendarDayToday,
                   isDisabled && styles.calendarDayDisabled,
+                  !isSelected && isRepeating && styles.calendarDayRepeating,
                 ]}
-                onPress={() => onSelectDate(date)}
+                onPress={() => onSelectDate(normalizeDate(date))}
                 disabled={isDisabled}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isSelected, disabled: isDisabled }}
@@ -1054,6 +1149,7 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth }) {
                     styles.calendarDayText,
                     isSelected && styles.calendarDayTextSelected,
                     isDisabled && styles.calendarDayTextDisabled,
+                    !isSelected && isRepeating && styles.calendarDayTextRepeating,
                   ]}
                 >
                   {date.getDate()}
@@ -1080,17 +1176,33 @@ function QuickSelectButton({ label, active, onPress }) {
   );
 }
 
-function RepeatPanel({ option, weekdays, onOptionChange, onToggleWeekday }) {
+function RepeatPanel({ option, weekdays, onOptionChange, onToggleWeekday, startDate }) {
+  const weeklyHint = useMemo(() => {
+    if (!startDate) {
+      return null;
+    }
+    return `(${startDate.toLocaleDateString(undefined, { weekday: 'long' })})`;
+  }, [startDate]);
+  const monthlyHint = useMemo(() => {
+    if (!startDate) {
+      return null;
+    }
+    return `(On ${formatOrdinal(startDate.getDate())})`;
+  }, [startDate]);
+  const repeatOptions = useMemo(
+    () => [
+      { key: 'off', label: 'No repeat' },
+      { key: 'daily', label: 'Daily' },
+      { key: 'weekly', label: 'Weekly', hint: weeklyHint },
+      { key: 'monthly', label: 'Monthly', hint: monthlyHint },
+      { key: 'weekend', label: 'Weekend (Sat, Sun)' },
+      { key: 'custom', label: 'Custom' },
+    ],
+    [monthlyHint, weeklyHint]
+  );
   return (
     <View style={styles.repeatPanel}>
-      {[
-        { key: 'off', label: 'No repeat' },
-        { key: 'daily', label: 'Daily' },
-        { key: 'weekly', label: 'Weekly' },
-        { key: 'monthly', label: 'Monthly' },
-        { key: 'weekend', label: 'Weekend (Sat, Sun)' },
-        { key: 'custom', label: 'Custom' },
-      ].map((repeatOption, index, array) => {
+      {repeatOptions.map((repeatOption, index, array) => {
         const isSelected = repeatOption.key === option;
         const isLast = index === array.length - 1;
         return (
@@ -1101,16 +1213,19 @@ function RepeatPanel({ option, weekdays, onOptionChange, onToggleWeekday }) {
             accessibilityRole="button"
             accessibilityState={{ selected: isSelected }}
           >
-            <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
-              {repeatOption.label}
-            </Text>
+            <View style={styles.optionLabelColumn}>
+              <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
+                {repeatOption.label}
+              </Text>
+              {repeatOption.hint ? <Text style={styles.optionHint}>{repeatOption.hint}</Text> : null}
+            </View>
             <View style={[styles.radioOuter, isSelected && styles.radioOuterActive]}>
               {isSelected && <View style={styles.radioInner} />}
             </View>
           </Pressable>
         );
       })}
-      {(option === 'weekly' || option === 'custom') && (
+      {option === 'custom' && (
         <View style={styles.weekdayToggleRow}>
           {WEEKDAYS.map((weekday) => {
             const isActive = weekdays.has(weekday.key);
@@ -1336,6 +1451,7 @@ function WheelColumn({ values, selectedIndex, onSelect, formatter = (value) => v
       snapToInterval={WHEEL_ITEM_HEIGHT}
       decelerationRate="fast"
       onMomentumScrollEnd={handleMomentumEnd}
+      onScrollEndDrag={handleMomentumEnd}
     >
       {values.map((value, index) => {
         const isActive = index === selectedIndex;
@@ -1650,6 +1766,9 @@ const styles = StyleSheet.create({
   optionItemLast: {
     borderBottomWidth: 0,
   },
+  optionLabelColumn: {
+    flexShrink: 1,
+  },
   optionLabel: {
     color: '#1F2742',
     fontSize: 16,
@@ -1657,6 +1776,11 @@ const styles = StyleSheet.create({
   },
   optionLabelSelected: {
     fontWeight: '600',
+  },
+  optionHint: {
+    marginTop: 2,
+    color: '#6F7A86',
+    fontSize: 13,
   },
   radioOuter: {
     width: 20,
@@ -1680,6 +1804,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 12,
+    flexWrap: 'wrap',
     marginBottom: 16,
   },
   quickSelectButton: {
@@ -1745,6 +1870,9 @@ const styles = StyleSheet.create({
   calendarDayDisabled: {
     opacity: 0.3,
   },
+  calendarDayRepeating: {
+    backgroundColor: 'rgba(31, 39, 66, 0.18)',
+  },
   calendarDayText: {
     fontSize: 16,
     color: '#1F2742',
@@ -1755,6 +1883,10 @@ const styles = StyleSheet.create({
   },
   calendarDayTextDisabled: {
     color: '#1F2742',
+  },
+  calendarDayTextRepeating: {
+    color: '#1F2742',
+    fontWeight: '600',
   },
   repeatPanel: {
     backgroundColor: '#F5F7FF',
