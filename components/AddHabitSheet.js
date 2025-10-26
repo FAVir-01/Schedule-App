@@ -9,6 +9,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -16,6 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 
 const SHEET_OPEN_DURATION = 300;
 const SHEET_CLOSE_DURATION = 220;
@@ -79,6 +81,252 @@ const EMOJIS = [
 ];
 const DEFAULT_EMOJI = EMOJIS[0];
 
+const WEEKDAYS = [
+  { key: 'sun', label: 'S' },
+  { key: 'mon', label: 'M' },
+  { key: 'tue', label: 'T' },
+  { key: 'wed', label: 'W' },
+  { key: 'thu', label: 'T' },
+  { key: 'fri', label: 'F' },
+  { key: 'sat', label: 'S' },
+];
+const WEEKDAY_KEYS = WEEKDAYS.map((weekday) => weekday.key);
+const WEEKDAY_SHORT_NAMES = {
+  sun: 'Sun',
+  mon: 'Mon',
+  tue: 'Tue',
+  wed: 'Wed',
+  thu: 'Thu',
+  fri: 'Fri',
+  sat: 'Sat',
+};
+
+const REMINDER_OPTIONS = [
+  { key: 'none', label: 'No reminder' },
+  { key: 'at_time', label: 'At time of event', offsetMinutes: 0 },
+  { key: '5m', label: '5 minutes early', offsetMinutes: -5 },
+  { key: '15m', label: '15 minutes early', offsetMinutes: -15 },
+  { key: '30m', label: '30 minutes early', offsetMinutes: -30 },
+  { key: '1h', label: '1 hour early', offsetMinutes: -60 },
+];
+
+const TAG_OPTIONS = [
+  { key: 'none', label: 'No tag' },
+  { key: 'clean_room', label: 'Clean Room' },
+  { key: 'healthy_lifestyle', label: 'Healthy Lifestyle' },
+  { key: 'morning_routine', label: 'Morning Routine' },
+  { key: 'relationship', label: 'Relationship' },
+  { key: 'sleep_better', label: 'Sleep Better' },
+  { key: 'workout', label: 'Workout' },
+];
+
+const HOUR_VALUES = Array.from({ length: 12 }, (_, i) => i + 1);
+const MINUTE_VALUES = Array.from({ length: 60 }, (_, i) => i);
+const MERIDIEM_VALUES = ['AM', 'PM'];
+
+const formatNumber = (value) => value.toString().padStart(2, '0');
+
+const hexToRgb = (hex) => {
+  const sanitized = hex.replace('#', '');
+  const bigint = parseInt(sanitized, 16);
+  return {
+    r: (bigint >> 16) & 255,
+    g: (bigint >> 8) & 255,
+    b: bigint & 255,
+  };
+};
+
+const lightenColor = (hex, amount = 0.6) => {
+  const { r, g, b } = hexToRgb(hex);
+  const mixChannel = (channel) => Math.round(channel + (255 - channel) * amount);
+  const mixed = [mixChannel(r), mixChannel(g), mixChannel(b)];
+  return `#${mixed.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+};
+
+const formatOrdinal = (day) => {
+  const remainder = day % 10;
+  const tens = Math.floor(day / 10) % 10;
+  if (tens === 1) {
+    return `${day}th`;
+  }
+  if (remainder === 1) {
+    return `${day}st`;
+  }
+  if (remainder === 2) {
+    return `${day}nd`;
+  }
+  if (remainder === 3) {
+    return `${day}rd`;
+  }
+  return `${day}th`;
+};
+
+const getWeekdayKeyFromDate = (date) => WEEKDAY_KEYS[date.getDay()];
+
+function formatTime({ hour, minute, meridiem }) {
+  return `${formatNumber(hour)}:${formatNumber(minute)} ${meridiem}`;
+}
+
+function formatPeriod({ start, end }) {
+  return `${formatTime(start)} - ${formatTime(end)}`;
+}
+
+function formatDateLabel(date) {
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+
+  if (date.toDateString() === today.toDateString()) {
+    return 'Today';
+  }
+
+  if (date.toDateString() === tomorrow.toDateString()) {
+    return 'Tomorrow';
+  }
+
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    weekday: 'short',
+  });
+}
+
+function getRepeatLabel(option, weekdays, startDate) {
+  switch (option) {
+    case 'daily':
+      return 'Every day';
+    case 'weekly':
+      return startDate
+        ? `Every week on ${startDate.toLocaleDateString(undefined, { weekday: 'long' })}`
+        : 'Weekly';
+    case 'monthly':
+      return startDate ? `Every month on ${formatOrdinal(startDate.getDate())}` : 'Monthly';
+    case 'weekend':
+      return 'Every weekend';
+    case 'custom': {
+      const selected = WEEKDAYS.filter(({ key }) => weekdays.has(key));
+      if (!selected.length) {
+        return 'Custom';
+      }
+      return selected.map((weekday) => WEEKDAY_SHORT_NAMES[weekday.key] || weekday.label).join(', ');
+    }
+    case 'off':
+    default:
+      return 'No repeat';
+  }
+}
+
+function doesDateRepeat(date, start, repeatOption, weekdays) {
+  if (!start || isBeforeDay(date, start)) {
+    return false;
+  }
+
+  switch (repeatOption) {
+    case 'daily':
+      return true;
+    case 'weekly':
+      return date.getDay() === start.getDay();
+    case 'monthly':
+      return date.getDate() === start.getDate();
+    case 'weekend':
+      return date.getDay() === 0 || date.getDay() === 6;
+    case 'custom':
+      return weekdays?.has(getWeekdayKeyFromDate(date));
+    default:
+      return false;
+  }
+}
+
+function getMonthMetadata(date) {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const days = lastDay.getDate();
+  const startWeekday = firstDay.getDay();
+  return {
+    year,
+    month,
+    days,
+    startWeekday,
+  };
+}
+
+function addMonths(date, offset) {
+  const result = new Date(date);
+  result.setDate(1);
+  result.setMonth(result.getMonth() + offset);
+  return result;
+}
+
+function isSameDay(dateA, dateB) {
+  return (
+    dateA.getFullYear() === dateB.getFullYear() &&
+    dateA.getMonth() === dateB.getMonth() &&
+    dateA.getDate() === dateB.getDate()
+  );
+}
+
+function normalizeDate(date) {
+  const result = new Date(date);
+  result.setHours(0, 0, 0, 0);
+  return result;
+}
+
+function isBeforeDay(dateA, dateB) {
+  return normalizeDate(dateA).getTime() < normalizeDate(dateB).getTime();
+}
+
+function timeToMinutes({ hour, minute, meridiem }) {
+  const normalizedHour = hour % 12 + (meridiem === 'PM' ? 12 : 0);
+  return normalizedHour * 60 + minute;
+}
+
+function minutesToTime(totalMinutes) {
+  const normalized = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
+  const hour24 = Math.floor(normalized / 60);
+  const minute = normalized % 60;
+  const meridiem = hour24 >= 12 ? 'PM' : 'AM';
+  const hour12 = hour24 % 12 || 12;
+  return { hour: hour12, minute, meridiem };
+}
+
+function ensureValidPeriod(period) {
+  const startMinutes = timeToMinutes(period.start);
+  let endMinutes = timeToMinutes(period.end);
+  if (endMinutes <= startMinutes) {
+    endMinutes = startMinutes + 30;
+  }
+  return {
+    start: minutesToTime(startMinutes),
+    end: minutesToTime(endMinutes),
+  };
+}
+
+function getReminderReferenceTime(hasSpecifiedTime, timeMode, pointTime, periodTime) {
+  if (!hasSpecifiedTime) {
+    return null;
+  }
+  if (timeMode === 'period') {
+    return periodTime.start;
+  }
+  return pointTime;
+}
+
+function getReminderHint(option, hasSpecifiedTime, timeMode, pointTime, periodTime) {
+  if (option.key === 'none') {
+    return null;
+  }
+  const reference = getReminderReferenceTime(hasSpecifiedTime, timeMode, pointTime, periodTime);
+  if (!reference || typeof option.offsetMinutes !== 'number') {
+    return '(No time set)';
+  }
+  const baseMinutes = timeToMinutes(reference);
+  const reminderMinutes = baseMinutes + option.offsetMinutes;
+  const reminderTime = minutesToTime(reminderMinutes);
+  return `(${formatTime(reminderTime)})`;
+}
+
 export default function AddHabitSheet({ visible, onClose, onCreate }) {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -91,10 +339,35 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
   const [selectedEmoji, setSelectedEmoji] = useState(DEFAULT_EMOJI);
   const [isEmojiPickerVisible, setEmojiPickerVisible] = useState(false);
   const [isMounted, setIsMounted] = useState(visible);
+  const [activePanel, setActivePanel] = useState(null);
+  const [startDate, setStartDate] = useState(() => normalizeDate(new Date()));
+  const [repeatOption, setRepeatOption] = useState('off');
+  const [selectedWeekdays, setSelectedWeekdays] = useState(() => new Set(['mon', 'tue', 'wed', 'thu', 'fri']));
+  const [hasSpecifiedTime, setHasSpecifiedTime] = useState(false);
+  const [timeMode, setTimeMode] = useState('point');
+  const [pointTime, setPointTime] = useState({ hour: 9, minute: 0, meridiem: 'AM' });
+  const [periodTime, setPeriodTime] = useState({
+    start: { hour: 9, minute: 0, meridiem: 'AM' },
+    end: { hour: 10, minute: 0, meridiem: 'AM' },
+  });
+  const [reminderOption, setReminderOption] = useState('none');
+  const [selectedTag, setSelectedTag] = useState('none');
+
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date(startDate.getFullYear(), startDate.getMonth(), 1));
+  const [pendingDate, setPendingDate] = useState(startDate);
+  const [pendingRepeatOption, setPendingRepeatOption] = useState(repeatOption);
+  const [pendingWeekdays, setPendingWeekdays] = useState(() => new Set(selectedWeekdays));
+  const [pendingHasSpecifiedTime, setPendingHasSpecifiedTime] = useState(hasSpecifiedTime);
+  const [pendingTimeMode, setPendingTimeMode] = useState(timeMode);
+  const [pendingPointTime, setPendingPointTime] = useState(pointTime);
+  const [pendingPeriodTime, setPendingPeriodTime] = useState(periodTime);
+  const [pendingReminder, setPendingReminder] = useState(reminderOption);
+  const [pendingTag, setPendingTag] = useState(selectedTag);
   const titleInputRef = useRef(null);
   const translateY = useRef(new Animated.Value(sheetHeight || height)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const isClosingRef = useRef(false);
+  const sheetBackgroundColor = useMemo(() => lightenColor(selectedColor, 0.75), [selectedColor]);
 
   const handleClose = useCallback(() => {
     if (!visible) {
@@ -112,6 +385,100 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
   const handleToggleEmojiPicker = useCallback(() => {
     setEmojiPickerVisible((prev) => !prev);
   }, []);
+
+  const handleOpenPanel = useCallback(
+    (panel) => {
+      setActivePanel(panel);
+      if (panel === 'date') {
+        setCalendarMonth(new Date(startDate.getFullYear(), startDate.getMonth(), 1));
+        setPendingDate(new Date(startDate));
+      } else if (panel === 'repeat') {
+        setPendingRepeatOption(repeatOption);
+        setPendingWeekdays(new Set(selectedWeekdays));
+      } else if (panel === 'time') {
+        setPendingHasSpecifiedTime(hasSpecifiedTime);
+        setPendingTimeMode(timeMode);
+        setPendingPointTime({ ...pointTime });
+        setPendingPeriodTime({
+          start: { ...periodTime.start },
+          end: { ...periodTime.end },
+        });
+      } else if (panel === 'reminder') {
+        setPendingReminder(reminderOption);
+      } else if (panel === 'tag') {
+        setPendingTag(selectedTag);
+      }
+    },
+    [
+      hasSpecifiedTime,
+      periodTime,
+      pointTime,
+      reminderOption,
+      repeatOption,
+      selectedTag,
+      selectedWeekdays,
+      startDate,
+      timeMode,
+    ]
+  );
+
+  const closePanel = useCallback(() => {
+    setActivePanel(null);
+  }, []);
+
+  const handleApplyDate = useCallback(() => {
+    setStartDate(pendingDate);
+    if (repeatOption === 'weekly') {
+      setSelectedWeekdays(new Set([getWeekdayKeyFromDate(pendingDate)]));
+    }
+    closePanel();
+  }, [closePanel, pendingDate, repeatOption]);
+
+  const handleApplyRepeat = useCallback(() => {
+    setRepeatOption(pendingRepeatOption);
+    let resolvedWeekdays;
+    if (pendingRepeatOption === 'daily') {
+      resolvedWeekdays = new Set(WEEKDAYS.map((weekday) => weekday.key));
+    } else if (pendingRepeatOption === 'weekend') {
+      resolvedWeekdays = new Set(['sat', 'sun']);
+    } else if (pendingRepeatOption === 'weekly') {
+      resolvedWeekdays = new Set([getWeekdayKeyFromDate(startDate)]);
+    } else if (pendingRepeatOption === 'off' || pendingRepeatOption === 'monthly') {
+      resolvedWeekdays = new Set();
+    } else {
+      const next = new Set(pendingWeekdays);
+      if (next.size === 0) {
+        next.add(getWeekdayKeyFromDate(startDate));
+      }
+      resolvedWeekdays = next;
+    }
+    setSelectedWeekdays(resolvedWeekdays);
+    closePanel();
+  }, [closePanel, pendingRepeatOption, pendingWeekdays, startDate]);
+
+  const handleApplyTime = useCallback(() => {
+    setHasSpecifiedTime(pendingHasSpecifiedTime);
+    setTimeMode(pendingTimeMode);
+    setPointTime(pendingPointTime);
+    setPeriodTime(pendingPeriodTime);
+    closePanel();
+  }, [
+    closePanel,
+    pendingHasSpecifiedTime,
+    pendingPeriodTime,
+    pendingPointTime,
+    pendingTimeMode,
+  ]);
+
+  const handleApplyReminder = useCallback(() => {
+    setReminderOption(pendingReminder);
+    closePanel();
+  }, [closePanel, pendingReminder]);
+
+  const handleApplyTag = useCallback(() => {
+    setSelectedTag(pendingTag);
+    closePanel();
+  }, [closePanel, pendingTag]);
 
   useEffect(() => {
     if (visible) {
@@ -155,6 +522,19 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
           setSelectedColor(COLORS[0]);
           setSelectedEmoji(DEFAULT_EMOJI);
           setEmojiPickerVisible(false);
+          setActivePanel(null);
+          setStartDate(normalizeDate(new Date()));
+          setRepeatOption('off');
+          setSelectedWeekdays(new Set(['mon', 'tue', 'wed', 'thu', 'fri']));
+          setHasSpecifiedTime(false);
+          setTimeMode('point');
+          setPointTime({ hour: 9, minute: 0, meridiem: 'AM' });
+          setPeriodTime({
+            start: { hour: 9, minute: 0, meridiem: 'AM' },
+            end: { hour: 10, minute: 0, meridiem: 'AM' },
+          });
+          setReminderOption('none');
+          setSelectedTag('none');
         }
       });
     }
@@ -166,7 +546,11 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     }
 
     const onHardwareBack = () => {
-      handleClose();
+      if (activePanel) {
+        closePanel();
+      } else {
+        handleClose();
+      }
       return true;
     };
 
@@ -175,7 +559,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     return () => {
       subscription.remove();
     };
-  }, [handleClose, visible]);
+  }, [activePanel, closePanel, handleClose, visible]);
 
   useEffect(() => {
     if (!isMounted) {
@@ -187,15 +571,44 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     if (!title.trim()) {
       return;
     }
-    onCreate?.({ title: title.trim(), color: selectedColor, emoji: selectedEmoji });
+    onCreate?.({
+      title: title.trim(),
+      color: selectedColor,
+      emoji: selectedEmoji,
+      startDate,
+      repeat: { option: repeatOption, weekdays: Array.from(selectedWeekdays) },
+      time: {
+        specified: hasSpecifiedTime,
+        mode: timeMode,
+        point: pointTime,
+        period: periodTime,
+      },
+      reminder: reminderOption,
+      tag: selectedTag,
+    });
     handleClose();
-  }, [handleClose, onCreate, selectedColor, selectedEmoji, title]);
+  }, [
+    handleClose,
+    hasSpecifiedTime,
+    onCreate,
+    periodTime,
+    pointTime,
+    repeatOption,
+    selectedColor,
+    selectedEmoji,
+    selectedTag,
+    selectedWeekdays,
+    startDate,
+    timeMode,
+    title,
+    reminderOption,
+  ]);
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, gestureState) =>
-          visible && gestureState.dy > 6 && Math.abs(gestureState.dx) < 12,
+          visible && !activePanel && gestureState.dy > 6 && Math.abs(gestureState.dx) < 12,
         onPanResponderMove: (_, gestureState) => {
           if (!visible) {
             return;
@@ -238,10 +651,58 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
           }
         },
       }),
-    [handleClose, sheetHeight, translateY, visible]
+    [activePanel, handleClose, sheetHeight, translateY, visible]
   );
 
   const isCreateDisabled = !title.trim();
+
+  const dateLabel = useMemo(() => formatDateLabel(startDate), [startDate]);
+  const repeatLabel = useMemo(
+    () => getRepeatLabel(repeatOption, selectedWeekdays, startDate),
+    [repeatOption, selectedWeekdays, startDate]
+  );
+  const timeValue = useMemo(() => {
+    if (!hasSpecifiedTime) {
+      return 'Anytime';
+    }
+    if (timeMode === 'point') {
+      return formatTime(pointTime);
+    }
+    return formatPeriod(periodTime);
+  }, [hasSpecifiedTime, periodTime, pointTime, timeMode]);
+  const reminderOptions = useMemo(
+    () =>
+      REMINDER_OPTIONS.map((option) => ({
+        ...option,
+        hint: getReminderHint(option, hasSpecifiedTime, timeMode, pointTime, periodTime),
+      })),
+    [hasSpecifiedTime, periodTime, pointTime, timeMode]
+  );
+  const reminderLabel = useMemo(() => {
+    const match = reminderOptions.find((option) => option.key === reminderOption);
+    if (!match) {
+      return 'No reminder';
+    }
+    if (match.hint) {
+      return `${match.label} ${match.hint}`;
+    }
+    return match.label;
+  }, [reminderOption, reminderOptions]);
+  const tagLabel = useMemo(() => {
+    const match = TAG_OPTIONS.find((option) => option.key === selectedTag);
+    return match?.label ?? 'No tag';
+  }, [selectedTag]);
+
+  const pendingTimeTitle = useMemo(() => {
+    if (!pendingHasSpecifiedTime) {
+      return 'Do it any time of the day';
+    }
+    if (pendingTimeMode === 'period') {
+      const normalized = ensureValidPeriod(pendingPeriodTime);
+      return `Do it from ${formatTime(normalized.start)} to ${formatTime(normalized.end)} of the day`;
+    }
+    return `Do it at ${formatTime(pendingPointTime)} of the day`;
+  }, [pendingHasSpecifiedTime, pendingPeriodTime, pendingPointTime, pendingTimeMode]);
 
   if (!isMounted) {
     return null;
@@ -263,18 +724,19 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
             paddingBottom: Math.max(insets.bottom, 12),
             transform: [{ translateY }],
             height: sheetHeight,
+            backgroundColor: sheetBackgroundColor,
           },
         ]}
         accessibilityViewIsModal
         importantForAccessibility="yes"
-        {...panResponder.panHandlers}
+        {...(!activePanel ? panResponder.panHandlers : {})}
       >
         <KeyboardAvoidingView
           style={styles.keyboardAvoiding}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           enabled
         >
-          <SafeAreaView style={styles.safeArea}>
+          <SafeAreaView style={[styles.safeArea, { backgroundColor: sheetBackgroundColor }]}>
             <View style={styles.header}>
               <Pressable
                 accessibilityRole="button"
@@ -368,11 +830,37 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
                 })}
               </View>
               <View style={styles.listContainer}>
-                <SheetRow icon="calendar-clear-outline" label="Date" value="Today" />
-                <SheetRow icon="repeat-outline" label="Repeat" value="Off" />
-                <SheetRow icon="time-outline" label="Time" value="Anytime" />
-                <SheetRow icon="notifications-outline" label="Reminder" value="No Reminder" />
-                <SheetRow icon="pricetag-outline" label="Tag" value="No tag" isLast />
+                <SheetRow
+                  icon="calendar-clear-outline"
+                  label="Starting from"
+                  value={dateLabel}
+                  onPress={() => handleOpenPanel('date')}
+                />
+                <SheetRow
+                  icon="repeat-outline"
+                  label="Repeat"
+                  value={repeatLabel}
+                  onPress={() => handleOpenPanel('repeat')}
+                />
+                <SheetRow
+                  icon="time-outline"
+                  label="Time"
+                  value={timeValue}
+                  onPress={() => handleOpenPanel('time')}
+                />
+                <SheetRow
+                  icon="notifications-outline"
+                  label="Reminder"
+                  value={reminderLabel}
+                  onPress={() => handleOpenPanel('reminder')}
+                />
+                <SheetRow
+                  icon="pricetag-outline"
+                  label="Tag"
+                  value={tagLabel}
+                  onPress={() => handleOpenPanel('tag')}
+                  isLast
+                />
               </View>
               <View style={styles.subtasksContainer}>
                 <SheetRow icon="list-circle-outline" label="Subtasks" value="Add" showChevron isLast />
@@ -381,6 +869,93 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
                 </Text>
               </View>
             </ScrollView>
+            {activePanel === 'date' && (
+              <OptionOverlay
+                title="Starting from"
+                subtitle={formatDateLabel(pendingDate)}
+                onClose={closePanel}
+                onApply={handleApplyDate}
+              >
+                <DatePanel
+                  month={calendarMonth}
+                  selectedDate={pendingDate}
+                  onSelectDate={setPendingDate}
+                  onChangeMonth={setCalendarMonth}
+                  repeatOption={repeatOption}
+                  repeatWeekdays={selectedWeekdays}
+                />
+              </OptionOverlay>
+            )}
+            {activePanel === 'repeat' && (
+              <OptionOverlay
+                title="Set task repeat"
+                onClose={closePanel}
+                onApply={handleApplyRepeat}
+              >
+                <RepeatPanel
+                  option={pendingRepeatOption}
+                  weekdays={pendingWeekdays}
+                  onOptionChange={setPendingRepeatOption}
+                  onToggleWeekday={(weekday) => {
+                    setPendingWeekdays((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(weekday)) {
+                        next.delete(weekday);
+                      } else {
+                        next.add(weekday);
+                      }
+                      return next;
+                    });
+                  }}
+                  startDate={startDate}
+                />
+              </OptionOverlay>
+            )}
+            {activePanel === 'time' && (
+              <OptionOverlay
+                title={pendingTimeTitle}
+                onClose={closePanel}
+                onApply={handleApplyTime}
+              >
+                <TimePanel
+                  specified={pendingHasSpecifiedTime}
+                  onToggleSpecified={setPendingHasSpecifiedTime}
+                  mode={pendingTimeMode}
+                  onModeChange={setPendingTimeMode}
+                  pointTime={pendingPointTime}
+                  onPointTimeChange={setPendingPointTime}
+                  periodTime={pendingPeriodTime}
+                  onPeriodTimeChange={(updater) => {
+                    setPendingPeriodTime((prev) => {
+                      const next = typeof updater === 'function' ? updater(prev) : updater;
+                      return ensureValidPeriod(next);
+                    });
+                  }}
+                />
+              </OptionOverlay>
+            )}
+            {activePanel === 'reminder' && (
+              <OptionOverlay
+                title="Reminder"
+                onClose={closePanel}
+                onApply={handleApplyReminder}
+              >
+                <OptionList
+                  options={reminderOptions}
+                  selectedKey={pendingReminder}
+                  onSelect={setPendingReminder}
+                />
+              </OptionOverlay>
+            )}
+            {activePanel === 'tag' && (
+              <OptionOverlay
+                title="Tag"
+                onClose={closePanel}
+                onApply={handleApplyTag}
+              >
+                <OptionList options={TAG_OPTIONS} selectedKey={pendingTag} onSelect={setPendingTag} />
+              </OptionOverlay>
+            )}
           </SafeAreaView>
         </KeyboardAvoidingView>
       </Animated.View>
@@ -388,9 +963,16 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
   );
 }
 
-function SheetRow({ icon, label, value, showChevron, isLast }) {
+function SheetRow({ icon, label, value, showChevron = true, isLast, onPress, disabled }) {
   return (
-    <Pressable style={[styles.row, isLast && styles.rowLast]} accessibilityRole="button">
+    <Pressable
+      style={[styles.row, isLast && styles.rowLast, disabled && styles.rowDisabled]}
+      accessibilityRole="button"
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityState={disabled ? { disabled: true } : undefined}
+      hitSlop={10}
+    >
       <View style={styles.rowLeft}>
         <View style={styles.rowIconContainer}>
           <Ionicons name={icon} size={22} color="#61708A" />
@@ -399,9 +981,647 @@ function SheetRow({ icon, label, value, showChevron, isLast }) {
       </View>
       <View style={styles.rowRight}>
         <Text style={styles.rowValue}>{value}</Text>
-        {showChevron && <Ionicons name="chevron-forward" size={20} color="#C2CBD8" />}
+        {showChevron && !disabled && <Ionicons name="chevron-forward" size={20} color="#C2CBD8" />}
       </View>
     </Pressable>
+  );
+}
+
+function OptionOverlay({
+  title,
+  subtitle,
+  onClose,
+  onApply,
+  children,
+  applyLabel = 'Apply',
+  applyDisabled,
+  scrollEnabled = true,
+}) {
+  const ScrollContainer = scrollEnabled ? ScrollView : View;
+  const containerProps = scrollEnabled
+    ? {
+        style: styles.overlayScroll,
+        contentContainerStyle: styles.overlayScrollContent,
+        showsVerticalScrollIndicator: false,
+        keyboardShouldPersistTaps: 'handled',
+        nestedScrollEnabled: true,
+      }
+    : {
+        style: [styles.overlayScroll, styles.overlayScrollContent],
+      };
+
+  return (
+    <View style={styles.overlayContainer}>
+      <View style={styles.overlayCard}>
+        <View style={styles.overlayHeader}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            onPress={onClose}
+            hitSlop={12}
+          >
+            <Ionicons name="chevron-back" size={24} color="#1F2742" />
+          </Pressable>
+          <View style={styles.overlayTitleContainer}>
+            <Text style={styles.overlayTitle}>{title}</Text>
+            {subtitle ? <Text style={styles.overlaySubtitle}>{subtitle}</Text> : null}
+          </View>
+          <Pressable
+            style={styles.overlayApplyButton}
+            onPress={onApply}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: applyDisabled }}
+            disabled={applyDisabled}
+            hitSlop={12}
+          >
+            <Text
+              style={[styles.overlayApplyText, applyDisabled && styles.overlayApplyTextDisabled]}
+            >
+              {applyLabel}
+            </Text>
+          </Pressable>
+        </View>
+        <ScrollContainer {...containerProps}>{children}</ScrollContainer>
+      </View>
+    </View>
+  );
+}
+
+function OptionList({ options, selectedKey, onSelect }) {
+  return (
+    <View style={styles.optionList}>
+      {options.map((option, index) => {
+        const isSelected = option.key === selectedKey;
+        const isLast = index === options.length - 1;
+        return (
+          <Pressable
+            key={option.key}
+            style={[
+              styles.optionItem,
+              isLast ? styles.optionItemLast : null,
+              isSelected ? styles.optionItemSelected : null,
+            ]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isSelected }}
+            onPress={() => onSelect(option.key)}
+          >
+            <View style={styles.optionLabelColumn}>
+              <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
+                {option.label}
+              </Text>
+              {option.hint ? <Text style={styles.optionHint}>{option.hint}</Text> : null}
+            </View>
+            <View style={[styles.radioOuter, isSelected && styles.radioOuterActive]}>
+              {isSelected && <View style={styles.radioInner} />}
+            </View>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatOption, repeatWeekdays }) {
+  const today = useMemo(() => normalizeDate(new Date()), []);
+  const monthInfo = useMemo(() => getMonthMetadata(month), [month]);
+  const monthLabel = useMemo(
+    () =>
+      month.toLocaleDateString(undefined, {
+        month: 'long',
+        year: 'numeric',
+      }),
+    [month]
+  );
+  const previousMonth = useMemo(() => addMonths(month, -1), [month]);
+  const nextMonth = useMemo(() => addMonths(month, 1), [month]);
+  const previousMonthDisabled = useMemo(() => {
+    const lastDayPrev = new Date(previousMonth.getFullYear(), previousMonth.getMonth() + 1, 0);
+    return isBeforeDay(lastDayPrev, today);
+  }, [previousMonth, today]);
+  const tomorrow = useMemo(() => {
+    const t = new Date(today);
+    t.setDate(today.getDate() + 1);
+    return normalizeDate(t);
+  }, [today]);
+  const nextMonday = useMemo(() => {
+    const next = new Date(today);
+    const offset = ((1 - next.getDay() + 7) % 7) || 7;
+    next.setDate(next.getDate() + offset);
+    return normalizeDate(next);
+  }, [today]);
+  const repeatingWeekdays = useMemo(
+    () => (repeatWeekdays ? new Set(repeatWeekdays) : new Set()),
+    [repeatWeekdays]
+  );
+
+  const daysMatrix = useMemo(() => {
+    const totalCells = monthInfo.startWeekday + monthInfo.days;
+    const filledCells = Math.ceil(totalCells / 7) * 7;
+    const cells = [];
+    for (let i = 0; i < monthInfo.startWeekday; i += 1) {
+      cells.push(null);
+    }
+    for (let day = 1; day <= monthInfo.days; day += 1) {
+      cells.push(new Date(monthInfo.year, monthInfo.month, day));
+    }
+    while (cells.length < filledCells) {
+      cells.push(null);
+    }
+    const rows = [];
+    for (let index = 0; index < cells.length; index += 7) {
+      rows.push(cells.slice(index, index + 7));
+    }
+    return rows;
+  }, [monthInfo.days, monthInfo.month, monthInfo.startWeekday, monthInfo.year]);
+
+  const handleSelectQuick = useCallback(
+    (targetDate) => {
+      const normalizedTarget = normalizeDate(targetDate);
+      if (
+        normalizedTarget.getFullYear() !== month.getFullYear() ||
+        normalizedTarget.getMonth() !== month.getMonth()
+      ) {
+        onChangeMonth(new Date(normalizedTarget.getFullYear(), normalizedTarget.getMonth(), 1));
+      }
+      onSelectDate(normalizedTarget);
+    },
+    [month, onChangeMonth, onSelectDate]
+  );
+
+  return (
+    <View>
+      <View style={styles.quickSelectRow}>
+        <QuickSelectButton
+          label="Today"
+          active={isSameDay(selectedDate, today)}
+          onPress={() => handleSelectQuick(today)}
+        />
+        <QuickSelectButton
+          label="Tomorrow"
+          active={isSameDay(selectedDate, tomorrow)}
+          onPress={() => handleSelectQuick(tomorrow)}
+        />
+        <QuickSelectButton
+          label="Next Monday"
+          active={isSameDay(selectedDate, nextMonday)}
+          onPress={() => handleSelectQuick(nextMonday)}
+        />
+      </View>
+      <View style={styles.calendarHeader}>
+        <Pressable
+          onPress={() => onChangeMonth(previousMonth)}
+          disabled={previousMonthDisabled}
+          hitSlop={12}
+        >
+          <Ionicons
+            name="chevron-back"
+            size={22}
+            color={previousMonthDisabled ? '#B8C4D6' : '#1F2742'}
+          />
+        </Pressable>
+        <Text style={styles.calendarHeaderText}>{monthLabel}</Text>
+        <Pressable onPress={() => onChangeMonth(nextMonth)} hitSlop={12}>
+          <Ionicons name="chevron-forward" size={22} color="#1F2742" />
+        </Pressable>
+      </View>
+      <View style={styles.weekdayHeader}>
+        {WEEKDAYS.map((weekday) => (
+          <Text key={weekday.key} style={styles.weekdayLabel}>
+            {weekday.label}
+          </Text>
+        ))}
+      </View>
+      {daysMatrix.map((week, rowIndex) => (
+        <View key={`week-${rowIndex}`} style={styles.calendarWeekRow}>
+          {week.map((date, cellIndex) => {
+            if (!date) {
+              return <View key={`empty-${rowIndex}-${cellIndex}`} style={styles.calendarDay} />;
+            }
+            const isDisabled = isBeforeDay(date, today);
+            const isSelected = isSameDay(date, selectedDate);
+            const isToday = isSameDay(date, today);
+            const isRepeating = doesDateRepeat(date, selectedDate, repeatOption, repeatingWeekdays);
+            return (
+              <Pressable
+                key={date.toISOString()}
+                style={[
+                  styles.calendarDay,
+                  isSelected && styles.calendarDaySelected,
+                  isToday && styles.calendarDayToday,
+                  isDisabled && styles.calendarDayDisabled,
+                  !isSelected && isRepeating && styles.calendarDayRepeating,
+                ]}
+                onPress={() => onSelectDate(normalizeDate(date))}
+                disabled={isDisabled}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected, disabled: isDisabled }}
+              >
+                <Text
+                  style={[
+                    styles.calendarDayText,
+                    isSelected && styles.calendarDayTextSelected,
+                    isDisabled && styles.calendarDayTextDisabled,
+                    !isSelected && isRepeating && styles.calendarDayTextRepeating,
+                  ]}
+                >
+                  {date.getDate()}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function QuickSelectButton({ label, active, onPress }) {
+  return (
+    <Pressable
+      style={[styles.quickSelectButton, active && styles.quickSelectButtonActive]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+    >
+      <Text style={[styles.quickSelectLabel, active && styles.quickSelectLabelActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function RepeatPanel({ option, weekdays, onOptionChange, onToggleWeekday, startDate }) {
+  const weeklyHint = useMemo(() => {
+    if (!startDate) {
+      return null;
+    }
+    return `(${startDate.toLocaleDateString(undefined, { weekday: 'long' })})`;
+  }, [startDate]);
+  const monthlyHint = useMemo(() => {
+    if (!startDate) {
+      return null;
+    }
+    return `(On ${formatOrdinal(startDate.getDate())})`;
+  }, [startDate]);
+  const repeatOptions = useMemo(
+    () => [
+      { key: 'off', label: 'No repeat' },
+      { key: 'daily', label: 'Daily' },
+      { key: 'weekly', label: 'Weekly', hint: weeklyHint },
+      { key: 'monthly', label: 'Monthly', hint: monthlyHint },
+      { key: 'weekend', label: 'Weekend (Sat, Sun)' },
+      { key: 'custom', label: 'Custom' },
+    ],
+    [monthlyHint, weeklyHint]
+  );
+  return (
+    <View style={styles.repeatPanel}>
+      {repeatOptions.map((repeatOption, index, array) => {
+        const isSelected = repeatOption.key === option;
+        const isLast = index === array.length - 1;
+        return (
+          <Pressable
+            key={repeatOption.key}
+            style={[styles.optionItem, isLast && styles.optionItemLast, isSelected && styles.optionItemSelected]}
+            onPress={() => onOptionChange(repeatOption.key)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isSelected }}
+          >
+            <View style={styles.optionLabelColumn}>
+              <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
+                {repeatOption.label}
+              </Text>
+              {repeatOption.hint ? <Text style={styles.optionHint}>{repeatOption.hint}</Text> : null}
+            </View>
+            <View style={[styles.radioOuter, isSelected && styles.radioOuterActive]}>
+              {isSelected && <View style={styles.radioInner} />}
+            </View>
+          </Pressable>
+        );
+      })}
+      {option === 'custom' && (
+        <View style={styles.weekdayToggleRow}>
+          {WEEKDAYS.map((weekday) => {
+            const isActive = weekdays.has(weekday.key);
+            return (
+              <Pressable
+                key={weekday.key}
+                style={[styles.weekdayToggle, isActive && styles.weekdayToggleActive]}
+                onPress={() => onToggleWeekday(weekday.key)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
+              >
+                <Text
+                  style={[styles.weekdayToggleLabel, isActive && styles.weekdayToggleLabelActive]}
+                >
+                  {weekday.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function TimePanel({
+  specified,
+  onToggleSpecified,
+  mode,
+  onModeChange,
+  pointTime,
+  onPointTimeChange,
+  periodTime,
+  onPeriodTimeChange,
+}) {
+  const hourIndex = Math.max(0, HOUR_VALUES.indexOf(pointTime.hour));
+  const minuteIndex = Math.max(0, MINUTE_VALUES.indexOf(pointTime.minute));
+  const meridiemIndex = Math.max(0, MERIDIEM_VALUES.indexOf(pointTime.meridiem));
+
+  const startHourIndex = Math.max(0, HOUR_VALUES.indexOf(periodTime.start.hour));
+  const startMinuteIndex = Math.max(0, MINUTE_VALUES.indexOf(periodTime.start.minute));
+  const startMeridiemIndex = Math.max(0, MERIDIEM_VALUES.indexOf(periodTime.start.meridiem));
+  const endHourIndex = Math.max(0, HOUR_VALUES.indexOf(periodTime.end.hour));
+  const endMinuteIndex = Math.max(0, MINUTE_VALUES.indexOf(periodTime.end.minute));
+  const endMeridiemIndex = Math.max(0, MERIDIEM_VALUES.indexOf(periodTime.end.meridiem));
+
+  return (
+    <View style={styles.timePanel}>
+      <View style={styles.specifiedRow}>
+        <View style={styles.specifiedLabelGroup}>
+          <View style={styles.specifiedIconContainer}>
+            <Ionicons name="time-outline" size={22} color="#1F2742" />
+          </View>
+          <View>
+            <Text style={styles.specifiedTitle}>Specified time</Text>
+            <Text style={styles.specifiedSubtitle}>Set a specific time to do it</Text>
+          </View>
+        </View>
+        <Switch
+          value={specified}
+          onValueChange={onToggleSpecified}
+          trackColor={{ false: '#C8D4E6', true: '#A3B7D7' }}
+          thumbColor={specified ? '#1F2742' : Platform.OS === 'android' ? '#f4f3f4' : undefined}
+        />
+      </View>
+      {specified && (
+        <>
+          <View style={styles.segmentedControl}>
+            <SegmentedControlButton
+              label="Point time"
+              active={mode === 'point'}
+              onPress={() => onModeChange('point')}
+            />
+            <SegmentedControlButton
+              label="Time period"
+              active={mode === 'period'}
+              onPress={() => onModeChange('period')}
+            />
+          </View>
+          {mode === 'point' ? (
+            <View style={styles.wheelGroup}>
+              <View style={styles.wheelLabelsRow}>
+                <Text style={styles.wheelLabel}>Hour</Text>
+                <Text style={styles.wheelLabel}>Min</Text>
+                <Text style={styles.wheelLabel}>AM/PM</Text>
+              </View>
+              <View style={styles.wheelArea}>
+                <View pointerEvents="none" style={styles.wheelHighlight} />
+                <View style={styles.wheelRow}>
+                  <WheelColumn
+                    values={HOUR_VALUES}
+                    selectedIndex={hourIndex}
+                    onSelect={(value) => onPointTimeChange({ ...pointTime, hour: value })}
+                    formatter={(value) => formatNumber(value)}
+                  />
+                  <Text pointerEvents="none" style={styles.wheelDivider}>
+                    :
+                  </Text>
+                  <WheelColumn
+                    values={MINUTE_VALUES}
+                    selectedIndex={minuteIndex}
+                    onSelect={(value) => onPointTimeChange({ ...pointTime, minute: value })}
+                    formatter={(value) => formatNumber(value)}
+                  />
+                  <WheelColumn
+                    values={MERIDIEM_VALUES}
+                    selectedIndex={meridiemIndex}
+                    onSelect={(value) => onPointTimeChange({ ...pointTime, meridiem: value })}
+                  />
+                </View>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.periodSection}>
+              <Text style={styles.periodLabel}>FROM</Text>
+              <View style={styles.wheelGroup}>
+                <View style={styles.wheelLabelsRow}>
+                  <Text style={styles.wheelLabel}>Hour</Text>
+                  <Text style={styles.wheelLabel}>Min</Text>
+                  <Text style={styles.wheelLabel}>AM/PM</Text>
+                </View>
+                <View style={styles.wheelArea}>
+                  <View pointerEvents="none" style={styles.wheelHighlight} />
+                  <View style={styles.wheelRow}>
+                    <WheelColumn
+                      values={HOUR_VALUES}
+                      selectedIndex={startHourIndex}
+                      onSelect={(value) =>
+                        onPeriodTimeChange({
+                          start: { ...periodTime.start, hour: value },
+                          end: periodTime.end,
+                        })
+                      }
+                      formatter={(value) => formatNumber(value)}
+                    />
+                    <Text pointerEvents="none" style={styles.wheelDivider}>
+                      :
+                    </Text>
+                    <WheelColumn
+                      values={MINUTE_VALUES}
+                      selectedIndex={startMinuteIndex}
+                      onSelect={(value) =>
+                        onPeriodTimeChange({
+                          start: { ...periodTime.start, minute: value },
+                          end: periodTime.end,
+                        })
+                      }
+                      formatter={(value) => formatNumber(value)}
+                    />
+                    <WheelColumn
+                      values={MERIDIEM_VALUES}
+                      selectedIndex={startMeridiemIndex}
+                      onSelect={(value) =>
+                        onPeriodTimeChange({
+                          start: { ...periodTime.start, meridiem: value },
+                          end: periodTime.end,
+                        })
+                      }
+                    />
+                  </View>
+                </View>
+              </View>
+              <Text style={[styles.periodLabel, styles.periodLabelSpacer]}>TO</Text>
+              <View style={styles.wheelGroup}>
+                <View style={styles.wheelLabelsRow}>
+                  <Text style={styles.wheelLabel}>Hour</Text>
+                  <Text style={styles.wheelLabel}>Min</Text>
+                  <Text style={styles.wheelLabel}>AM/PM</Text>
+                </View>
+                <View style={styles.wheelArea}>
+                  <View pointerEvents="none" style={styles.wheelHighlight} />
+                  <View style={styles.wheelRow}>
+                    <WheelColumn
+                      values={HOUR_VALUES}
+                      selectedIndex={endHourIndex}
+                      onSelect={(value) =>
+                        onPeriodTimeChange({
+                          start: periodTime.start,
+                          end: { ...periodTime.end, hour: value },
+                        })
+                      }
+                      formatter={(value) => formatNumber(value)}
+                    />
+                    <Text pointerEvents="none" style={styles.wheelDivider}>
+                      :
+                    </Text>
+                    <WheelColumn
+                      values={MINUTE_VALUES}
+                      selectedIndex={endMinuteIndex}
+                      onSelect={(value) =>
+                        onPeriodTimeChange({
+                          start: periodTime.start,
+                          end: { ...periodTime.end, minute: value },
+                        })
+                      }
+                      formatter={(value) => formatNumber(value)}
+                    />
+                    <WheelColumn
+                      values={MERIDIEM_VALUES}
+                      selectedIndex={endMeridiemIndex}
+                      onSelect={(value) =>
+                        onPeriodTimeChange({
+                          start: periodTime.start,
+                          end: { ...periodTime.end, meridiem: value },
+                        })
+                      }
+                    />
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
+        </>
+      )}
+    </View>
+  );
+}
+
+function SegmentedControlButton({ label, active, onPress }) {
+  return (
+    <Pressable
+      style={[styles.segmentedButton, active && styles.segmentedButtonActive]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+    >
+      <Text style={[styles.segmentedButtonLabel, active && styles.segmentedButtonLabelActive]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+const WHEEL_ITEM_HEIGHT = 48;
+
+function WheelColumn({
+  values,
+  selectedIndex,
+  onSelect,
+  formatter = (value) => value,
+  itemHeight = WHEEL_ITEM_HEIGHT,
+}) {
+  const scrollRef = useRef(null);
+  const isMomentumScrolling = useRef(false);
+
+  const offsets = useMemo(
+    () => values.map((_, index) => index * itemHeight),
+    [values, itemHeight]
+  );
+
+  useEffect(() => {
+    if (!scrollRef.current || isMomentumScrolling.current) {
+      return undefined;
+    }
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: selectedIndex * itemHeight, animated: false });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [selectedIndex, itemHeight]);
+
+  const finalizeSelection = useCallback(
+    (offsetY) => {
+      const index = Math.round(offsetY / itemHeight);
+      const clampedIndex = Math.min(Math.max(index, 0), values.length - 1);
+      const targetOffset = offsets[clampedIndex] ?? clampedIndex * itemHeight;
+      scrollRef.current?.scrollTo({ y: targetOffset, animated: true });
+      onSelect(values[clampedIndex]);
+      if (typeof Haptics.selectionAsync === 'function') {
+        Haptics.selectionAsync();
+      }
+    },
+    [itemHeight, offsets, onSelect, values]
+  );
+
+  const handleMomentumBegin = useCallback(() => {
+    isMomentumScrolling.current = true;
+  }, []);
+
+  const handleMomentumEnd = useCallback(
+    (event) => {
+      isMomentumScrolling.current = false;
+      finalizeSelection(event.nativeEvent.contentOffset.y ?? 0);
+    },
+    [finalizeSelection]
+  );
+
+  return (
+    <ScrollView
+      ref={scrollRef}
+      style={styles.wheelColumn}
+      contentContainerStyle={[
+        styles.wheelColumnContent,
+        { paddingVertical: itemHeight * 2 },
+      ]}
+      showsVerticalScrollIndicator={false}
+      // deixa o sistema cuidar do momentum e nós só "arredondamos" no fim:
+      snapToInterval={itemHeight}
+      decelerationRate={Platform.select({ ios: 'fast', android: 0.995 })}
+      overScrollMode="never"
+      bounces
+      scrollEventThrottle={16}
+      nestedScrollEnabled
+      // evita que o gesto suba para o pan da folha:
+      onStartShouldSetResponderCapture={() => true}
+      onMomentumScrollBegin={handleMomentumBegin}
+      onMomentumScrollEnd={handleMomentumEnd}
+      // se o usuário soltar sem momentum, finalize aqui:
+      onScrollEndDrag={(e) => {
+        if (!isMomentumScrolling.current) {
+          finalizeSelection(e.nativeEvent.contentOffset.y ?? 0);
+        }
+      }}
+    >
+      {values.map((value, index) => {
+        const isActive = index === selectedIndex;
+        return (
+          <View key={`${value}-${index}`} style={[styles.wheelItem, { height: itemHeight }]}>
+            <Text style={[styles.wheelItemText, isActive && styles.wheelItemTextActive]}>
+              {formatter(value)}
+            </Text>
+          </View>
+        );
+      })}
+    </ScrollView>
   );
 }
 
@@ -592,6 +1812,9 @@ const styles = StyleSheet.create({
   rowLast: {
     borderBottomWidth: 0,
   },
+  rowDisabled: {
+    opacity: 0.5,
+  },
   rowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -618,5 +1841,387 @@ const styles = StyleSheet.create({
   rowValue: {
     color: '#7F8A9A',
     fontSize: 15,
+  },
+  overlayContainer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#DDE9FF',
+    zIndex: 2,
+  },
+  overlayCard: {
+    flex: 1,
+    borderRadius: 28,
+    backgroundColor: '#FFFFFF',
+    paddingTop: 12,
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 10,
+    overflow: 'hidden',
+  },
+  overlayHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  overlayTitleContainer: {
+    flex: 1,
+    marginHorizontal: 12,
+  },
+  overlayTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2742',
+    textAlign: 'center',
+  },
+  overlaySubtitle: {
+    fontSize: 14,
+    color: '#7F8A9A',
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  overlayApplyButton: {
+    minWidth: 54,
+    alignItems: 'flex-end',
+  },
+  overlayApplyText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2742',
+  },
+  overlayApplyTextDisabled: {
+    color: '#B0BDCF',
+  },
+  overlayScroll: {
+    flex: 1,
+  },
+  overlayScrollContent: {
+    paddingBottom: 32,
+  },
+  optionList: {
+    backgroundColor: '#F5F7FF',
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(109, 125, 150, 0.12)',
+  },
+  optionItemSelected: {
+    backgroundColor: '#E4ECFF',
+  },
+  optionItemLast: {
+    borderBottomWidth: 0,
+  },
+  optionLabelColumn: {
+    flexShrink: 1,
+  },
+  optionLabel: {
+    color: '#1F2742',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  optionLabelSelected: {
+    fontWeight: '600',
+  },
+  optionHint: {
+    marginTop: 2,
+    color: '#6F7A86',
+    fontSize: 13,
+  },
+  radioOuter: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#B8C4D6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioOuterActive: {
+    borderColor: '#1F2742',
+  },
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#1F2742',
+  },
+  quickSelectRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
+    marginBottom: 16,
+  },
+  quickSelectButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 18,
+    backgroundColor: '#EEF3FF',
+  },
+  quickSelectButtonActive: {
+    backgroundColor: '#1F2742',
+  },
+  quickSelectLabel: {
+    fontSize: 14,
+    color: '#1F2742',
+    fontWeight: '600',
+  },
+  quickSelectLabelActive: {
+    color: '#FFFFFF',
+  },
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  calendarHeaderText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2742',
+  },
+  weekdayHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  weekdayLabel: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#7F8A9A',
+  },
+  calendarWeekRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  calendarDay: {
+    flex: 1,
+    marginHorizontal: 4,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarDaySelected: {
+    backgroundColor: '#1F2742',
+  },
+  calendarDayToday: {
+    borderWidth: 2,
+    borderColor: '#1F2742',
+  },
+  calendarDayDisabled: {
+    opacity: 0.3,
+  },
+  calendarDayRepeating: {
+    backgroundColor: 'rgba(31, 39, 66, 0.18)',
+  },
+  calendarDayText: {
+    fontSize: 16,
+    color: '#1F2742',
+    fontWeight: '600',
+  },
+  calendarDayTextSelected: {
+    color: '#FFFFFF',
+  },
+  calendarDayTextDisabled: {
+    color: '#1F2742',
+  },
+  calendarDayTextRepeating: {
+    color: '#1F2742',
+    fontWeight: '600',
+  },
+  repeatPanel: {
+    backgroundColor: '#F5F7FF',
+    borderRadius: 20,
+    paddingVertical: 6,
+  },
+  weekdayToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    paddingTop: 10,
+    gap: 8,
+  },
+  weekdayToggle: {
+    flex: 1,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: '#E8EEFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weekdayToggleActive: {
+    backgroundColor: '#1F2742',
+  },
+  weekdayToggleLabel: {
+    color: '#1F2742',
+    fontWeight: '600',
+  },
+  weekdayToggleLabelActive: {
+    color: '#FFFFFF',
+  },
+  timePanel: {
+    backgroundColor: '#F5F7FF',
+    borderRadius: 20,
+    padding: 16,
+    gap: 18,
+  },
+  specifiedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  specifiedLabelGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  specifiedIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#E3EBFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  specifiedTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2742',
+  },
+  specifiedSubtitle: {
+    fontSize: 13,
+    color: '#7F8A9A',
+    marginTop: 2,
+  },
+  segmentedControl: {
+    flexDirection: 'row',
+    backgroundColor: '#E3EBFF',
+    borderRadius: 18,
+    padding: 4,
+    gap: 4,
+  },
+  segmentedButton: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentedButtonActive: {
+    backgroundColor: '#FFFFFF',
+    elevation: 2,
+  },
+  segmentedButtonLabel: {
+    fontSize: 14,
+    color: '#54627A',
+    fontWeight: '600',
+  },
+  segmentedButtonLabelActive: {
+    color: '#1F2742',
+  },
+  wheelGroup: {
+    marginTop: 18,
+    marginBottom: 14,
+    gap: 10,
+  },
+  wheelArea: {
+    position: 'relative',
+    paddingHorizontal: 12,
+    height: WHEEL_ITEM_HEIGHT * 5,
+    justifyContent: 'center',
+  },
+  wheelHighlight: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    top: WHEEL_ITEM_HEIGHT * 2,
+    height: WHEEL_ITEM_HEIGHT,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(31,39,66,0.16)',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#1F2742',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  wheelRow: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'stretch',
+    gap: 12,
+  },
+  wheelColumn: {
+    flex: 1,
+    height: '100%',
+    maxHeight: WHEEL_ITEM_HEIGHT * 5,
+    flexBasis: 0,
+  },
+  wheelColumnContent: {
+    paddingVertical: WHEEL_ITEM_HEIGHT * 2,
+  },
+  wheelItem: {
+    height: WHEEL_ITEM_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wheelItemText: {
+    fontSize: 18,
+    color: '#A3AEC1',
+    fontWeight: '600',
+  },
+  wheelItemTextActive: {
+    color: '#1F2742',
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  wheelLabelsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+  },
+  wheelLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.6,
+    color: '#7F8A9A',
+    textTransform: 'uppercase',
+  },
+  wheelDivider: {
+    alignSelf: 'center',
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#1F2742',
+    marginHorizontal: 2,
+  },
+  periodSection: {
+    marginTop: 6,
+    gap: 12,
+  },
+  periodLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#7F8A9A',
+    textAlign: 'center',
+  },
+  periodLabelSpacer: {
+    marginTop: 2,
   },
 });
