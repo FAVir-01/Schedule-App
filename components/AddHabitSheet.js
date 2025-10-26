@@ -120,7 +120,7 @@ const TAG_OPTIONS = [
 ];
 
 const HOUR_VALUES = Array.from({ length: 12 }, (_, i) => i + 1);
-const MINUTE_VALUES = Array.from({ length: 12 }, (_, i) => i * 5);
+const MINUTE_VALUES = Array.from({ length: 60 }, (_, i) => i);
 const MERIDIEM_VALUES = ['AM', 'PM'];
 
 const formatNumber = (value) => value.toString().padStart(2, '0');
@@ -654,6 +654,17 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     return match?.label ?? 'No tag';
   }, [selectedTag]);
 
+  const pendingTimeTitle = useMemo(() => {
+    if (!pendingHasSpecifiedTime) {
+      return 'Do it any time of the day';
+    }
+    if (pendingTimeMode === 'period') {
+      const normalized = ensureValidPeriod(pendingPeriodTime);
+      return `Do it from ${formatTime(normalized.start)} to ${formatTime(normalized.end)} of the day`;
+    }
+    return `Do it at ${formatTime(pendingPointTime)} of the day`;
+  }, [pendingHasSpecifiedTime, pendingPeriodTime, pendingPointTime, pendingTimeMode]);
+
   if (!isMounted) {
     return null;
   }
@@ -863,7 +874,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
             )}
             {activePanel === 'time' && (
               <OptionOverlay
-                title={pendingHasSpecifiedTime ? 'Do it at a specific time' : 'Do it any time of the day'}
+                title={pendingTimeTitle}
                 onClose={closePanel}
                 onApply={handleApplyTime}
               >
@@ -1306,96 +1317,105 @@ function TimePanel({
             />
           </View>
           {mode === 'point' ? (
-            <View style={styles.wheelRow}>
-              <WheelColumn
-                values={HOUR_VALUES}
-                selectedIndex={hourIndex}
-                onSelect={(value) => onPointTimeChange({ ...pointTime, hour: value })}
-                formatter={(value) => formatNumber(value)}
-              />
-              <WheelColumn
-                values={MINUTE_VALUES}
-                selectedIndex={minuteIndex}
-                onSelect={(value) => onPointTimeChange({ ...pointTime, minute: value })}
-                formatter={(value) => formatNumber(value)}
-              />
-              <WheelColumn
-                values={MERIDIEM_VALUES}
-                selectedIndex={meridiemIndex}
-                onSelect={(value) => onPointTimeChange({ ...pointTime, meridiem: value })}
-              />
-            </View>
-          ) : (
-            <View>
-              <Text style={styles.periodLabel}>From</Text>
+            <View style={styles.wheelArea}>
+              <View pointerEvents="none" style={styles.wheelHighlight} />
               <View style={styles.wheelRow}>
                 <WheelColumn
                   values={HOUR_VALUES}
-                  selectedIndex={startHourIndex}
-                  onSelect={(value) =>
-                    onPeriodTimeChange({
-                      start: { ...periodTime.start, hour: value },
-                      end: periodTime.end,
-                    })
-                  }
+                  selectedIndex={hourIndex}
+                  onSelect={(value) => onPointTimeChange({ ...pointTime, hour: value })}
                   formatter={(value) => formatNumber(value)}
                 />
                 <WheelColumn
                   values={MINUTE_VALUES}
-                  selectedIndex={startMinuteIndex}
-                  onSelect={(value) =>
-                    onPeriodTimeChange({
-                      start: { ...periodTime.start, minute: value },
-                      end: periodTime.end,
-                    })
-                  }
+                  selectedIndex={minuteIndex}
+                  onSelect={(value) => onPointTimeChange({ ...pointTime, minute: value })}
                   formatter={(value) => formatNumber(value)}
                 />
                 <WheelColumn
                   values={MERIDIEM_VALUES}
-                  selectedIndex={startMeridiemIndex}
-                  onSelect={(value) =>
-                    onPeriodTimeChange({
-                      start: { ...periodTime.start, meridiem: value },
-                      end: periodTime.end,
-                    })
-                  }
+                  selectedIndex={meridiemIndex}
+                  onSelect={(value) => onPointTimeChange({ ...pointTime, meridiem: value })}
                 />
               </View>
-              <Text style={styles.periodLabel}>To</Text>
-              <View style={styles.wheelRow}>
-                <WheelColumn
-                  values={HOUR_VALUES}
-                  selectedIndex={endHourIndex}
-                  onSelect={(value) =>
-                    onPeriodTimeChange({
-                      start: periodTime.start,
-                      end: { ...periodTime.end, hour: value },
-                    })
-                  }
-                  formatter={(value) => formatNumber(value)}
-                />
-                <WheelColumn
-                  values={MINUTE_VALUES}
-                  selectedIndex={endMinuteIndex}
-                  onSelect={(value) =>
-                    onPeriodTimeChange({
-                      start: periodTime.start,
-                      end: { ...periodTime.end, minute: value },
-                    })
-                  }
-                  formatter={(value) => formatNumber(value)}
-                />
-                <WheelColumn
-                  values={MERIDIEM_VALUES}
-                  selectedIndex={endMeridiemIndex}
-                  onSelect={(value) =>
-                    onPeriodTimeChange({
-                      start: periodTime.start,
-                      end: { ...periodTime.end, meridiem: value },
-                    })
-                  }
-                />
+            </View>
+          ) : (
+            <View style={styles.periodSection}>
+              <Text style={styles.periodLabel}>FROM</Text>
+              <View style={styles.wheelArea}>
+                <View pointerEvents="none" style={styles.wheelHighlight} />
+                <View style={styles.wheelRow}>
+                  <WheelColumn
+                    values={HOUR_VALUES}
+                    selectedIndex={startHourIndex}
+                    onSelect={(value) =>
+                      onPeriodTimeChange({
+                        start: { ...periodTime.start, hour: value },
+                        end: periodTime.end,
+                      })
+                    }
+                    formatter={(value) => formatNumber(value)}
+                  />
+                  <WheelColumn
+                    values={MINUTE_VALUES}
+                    selectedIndex={startMinuteIndex}
+                    onSelect={(value) =>
+                      onPeriodTimeChange({
+                        start: { ...periodTime.start, minute: value },
+                        end: periodTime.end,
+                      })
+                    }
+                    formatter={(value) => formatNumber(value)}
+                  />
+                  <WheelColumn
+                    values={MERIDIEM_VALUES}
+                    selectedIndex={startMeridiemIndex}
+                    onSelect={(value) =>
+                      onPeriodTimeChange({
+                        start: { ...periodTime.start, meridiem: value },
+                        end: periodTime.end,
+                      })
+                    }
+                  />
+                </View>
+              </View>
+              <Text style={[styles.periodLabel, styles.periodLabelSpacer]}>TO</Text>
+              <View style={styles.wheelArea}>
+                <View pointerEvents="none" style={styles.wheelHighlight} />
+                <View style={styles.wheelRow}>
+                  <WheelColumn
+                    values={HOUR_VALUES}
+                    selectedIndex={endHourIndex}
+                    onSelect={(value) =>
+                      onPeriodTimeChange({
+                        start: periodTime.start,
+                        end: { ...periodTime.end, hour: value },
+                      })
+                    }
+                    formatter={(value) => formatNumber(value)}
+                  />
+                  <WheelColumn
+                    values={MINUTE_VALUES}
+                    selectedIndex={endMinuteIndex}
+                    onSelect={(value) =>
+                      onPeriodTimeChange({
+                        start: periodTime.start,
+                        end: { ...periodTime.end, minute: value },
+                      })
+                    }
+                    formatter={(value) => formatNumber(value)}
+                  />
+                  <WheelColumn
+                    values={MERIDIEM_VALUES}
+                    selectedIndex={endMeridiemIndex}
+                    onSelect={(value) =>
+                      onPeriodTimeChange({
+                        start: periodTime.start,
+                        end: { ...periodTime.end, meridiem: value },
+                      })
+                    }
+                  />
+                </View>
               </View>
             </View>
           )}
@@ -1424,6 +1444,7 @@ const WHEEL_ITEM_HEIGHT = 42;
 
 function WheelColumn({ values, selectedIndex, onSelect, formatter = (value) => value }) {
   const scrollRef = useRef(null);
+  const isMomentumScrolling = useRef(false);
 
   useEffect(() => {
     if (!scrollRef.current) {
@@ -1432,14 +1453,41 @@ function WheelColumn({ values, selectedIndex, onSelect, formatter = (value) => v
     scrollRef.current.scrollTo({ y: selectedIndex * WHEEL_ITEM_HEIGHT, animated: true });
   }, [selectedIndex]);
 
-  const handleMomentumEnd = useCallback(
-    (event) => {
-      const { y } = event.nativeEvent.contentOffset;
-      const index = Math.round(y / WHEEL_ITEM_HEIGHT);
+  const finalizeSelection = useCallback(
+    (offsetY) => {
+      const index = Math.round(offsetY / WHEEL_ITEM_HEIGHT);
       const clampedIndex = Math.min(Math.max(index, 0), values.length - 1);
       onSelect(values[clampedIndex]);
+      if (scrollRef.current) {
+        scrollRef.current.scrollTo({
+          y: clampedIndex * WHEEL_ITEM_HEIGHT,
+          animated: true,
+        });
+      }
     },
     [onSelect, values]
+  );
+
+  const handleMomentumBegin = useCallback(() => {
+    isMomentumScrolling.current = true;
+  }, []);
+
+  const handleMomentumEnd = useCallback(
+    (event) => {
+      isMomentumScrolling.current = false;
+      finalizeSelection(event.nativeEvent.contentOffset.y);
+    },
+    [finalizeSelection]
+  );
+
+  const handleScrollEndDrag = useCallback(
+    (event) => {
+      if (isMomentumScrolling.current) {
+        return;
+      }
+      finalizeSelection(event.nativeEvent.contentOffset.y);
+    },
+    [finalizeSelection]
   );
 
   return (
@@ -1449,17 +1497,18 @@ function WheelColumn({ values, selectedIndex, onSelect, formatter = (value) => v
       contentContainerStyle={styles.wheelColumnContent}
       showsVerticalScrollIndicator={false}
       snapToInterval={WHEEL_ITEM_HEIGHT}
+      snapToAlignment="center"
       decelerationRate="fast"
+      onMomentumScrollBegin={handleMomentumBegin}
       onMomentumScrollEnd={handleMomentumEnd}
-      onScrollEndDrag={handleMomentumEnd}
+      onScrollEndDrag={handleScrollEndDrag}
+      scrollEventThrottle={16}
+      overScrollMode="never"
     >
       {values.map((value, index) => {
         const isActive = index === selectedIndex;
         return (
-          <View
-            key={`${value}-${index}`}
-            style={[styles.wheelItem, isActive && styles.wheelItemActive]}
-          >
+          <View key={`${value}-${index}`} style={styles.wheelItem}>
             <Text style={[styles.wheelItemText, isActive && styles.wheelItemTextActive]}>
               {formatter(value)}
             </Text>
@@ -1979,15 +2028,40 @@ const styles = StyleSheet.create({
   segmentedButtonLabelActive: {
     color: '#1F2742',
   },
+  wheelArea: {
+    position: 'relative',
+    marginTop: 18,
+    marginBottom: 14,
+    paddingHorizontal: 12,
+    height: WHEEL_ITEM_HEIGHT * 5,
+    justifyContent: 'center',
+  },
+  wheelHighlight: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    top: WHEEL_ITEM_HEIGHT * 2,
+    height: WHEEL_ITEM_HEIGHT,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#CED7E8',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 6,
+  },
   wheelRow: {
+    flex: 1,
     flexDirection: 'row',
-    justifyContent: 'space-evenly',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 12,
-    marginBottom: 6,
+    gap: 12,
   },
   wheelColumn: {
     flex: 1,
+    height: '100%',
     maxHeight: WHEEL_ITEM_HEIGHT * 5,
   },
   wheelColumnContent: {
@@ -1998,28 +2072,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  wheelItemActive: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 4,
-  },
   wheelItemText: {
     fontSize: 18,
-    color: '#7F8A9A',
+    color: '#9AA4B5',
     fontWeight: '600',
   },
   wheelItemTextActive: {
     color: '#1F2742',
+    fontSize: 22,
+  },
+  periodSection: {
+    marginTop: 6,
+    gap: 12,
   },
   periodLabel: {
     fontSize: 13,
     fontWeight: '600',
     color: '#7F8A9A',
-    marginTop: 10,
     textAlign: 'center',
+  },
+  periodLabelSpacer: {
+    marginTop: 2,
   },
 });
