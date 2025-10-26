@@ -983,6 +983,66 @@ function SheetRow({ icon, label, value, showChevron = true, isLast, onPress, dis
         <Text style={styles.rowValue}>{value}</Text>
         {showChevron && !disabled && <Ionicons name="chevron-forward" size={20} color="#C2CBD8" />}
       </View>
+      <View style={styles.weekdayHeader}>
+        {WEEKDAYS.map((weekday) => (
+          <Text key={weekday.key} style={styles.weekdayLabel}>
+            {weekday.label}
+          </Text>
+        ))}
+      </View>
+      {daysMatrix.map((week, rowIndex) => (
+        <View key={`week-${rowIndex}`} style={styles.calendarWeekRow}>
+          {week.map((date, cellIndex) => {
+            if (!date) {
+              return <View key={`empty-${rowIndex}-${cellIndex}`} style={styles.calendarDay} />;
+            }
+            const isDisabled = isBeforeDay(date, today);
+            const isSelected = isSameDay(date, selectedDate);
+            const isToday = isSameDay(date, today);
+            const isRepeating = doesDateRepeat(date, selectedDate, repeatOption, repeatingWeekdays);
+            return (
+              <Pressable
+                key={date.toISOString()}
+                style={[
+                  styles.calendarDay,
+                  isSelected && styles.calendarDaySelected,
+                  isToday && styles.calendarDayToday,
+                  isDisabled && styles.calendarDayDisabled,
+                  !isSelected && isRepeating && styles.calendarDayRepeating,
+                ]}
+                onPress={() => onSelectDate(normalizeDate(date))}
+                disabled={isDisabled}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected, disabled: isDisabled }}
+              >
+                <Text
+                  style={[
+                    styles.calendarDayText,
+                    isSelected && styles.calendarDayTextSelected,
+                    isDisabled && styles.calendarDayTextDisabled,
+                    !isSelected && isRepeating && styles.calendarDayTextRepeating,
+                  ]}
+                >
+                  {date.getDate()}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function QuickSelectButton({ label, active, onPress }) {
+  return (
+    <Pressable
+      style={[styles.quickSelectButton, active && styles.quickSelectButtonActive]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+    >
+      <Text style={[styles.quickSelectLabel, active && styles.quickSelectLabelActive]}>{label}</Text>
     </Pressable>
   );
 }
