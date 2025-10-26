@@ -916,7 +916,6 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
                 title={pendingTimeTitle}
                 onClose={closePanel}
                 onApply={handleApplyTime}
-                scrollEnabled={false}
               >
                 <TimePanel
                   specified={pendingHasSpecifiedTime}
@@ -1530,38 +1529,43 @@ function SegmentedControlButton({ label, active, onPress }) {
 
 const WHEEL_ITEM_HEIGHT = 48;
 
-function WheelColumn({ values, selectedIndex, onSelect, formatter = (value) => value }) {
+function WheelColumn({
+  values,
+  selectedIndex,
+  onSelect,
+  formatter = (value) => value,
+  itemHeight = WHEEL_ITEM_HEIGHT,
+}) {
   const scrollRef = useRef(null);
   const isMomentumScrolling = useRef(false);
 
+  const offsets = useMemo(
+    () => values.map((_, index) => index * itemHeight),
+    [values, itemHeight]
+  );
+
   useEffect(() => {
-    if (!scrollRef.current) {
-      return;
+    if (!scrollRef.current || isMomentumScrolling.current) {
+      return undefined;
     }
     const frame = requestAnimationFrame(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTo({ y: selectedIndex * WHEEL_ITEM_HEIGHT, animated: false });
-      }
+      scrollRef.current?.scrollTo({ y: selectedIndex * itemHeight, animated: false });
     });
     return () => cancelAnimationFrame(frame);
-  }, [selectedIndex]);
+  }, [selectedIndex, itemHeight]);
 
   const finalizeSelection = useCallback(
     (offsetY) => {
-      const index = Math.round(offsetY / WHEEL_ITEM_HEIGHT);
+      const index = Math.round(offsetY / itemHeight);
       const clampedIndex = Math.min(Math.max(index, 0), values.length - 1);
+      const targetOffset = offsets[clampedIndex] ?? clampedIndex * itemHeight;
+      scrollRef.current?.scrollTo({ y: targetOffset, animated: true });
       onSelect(values[clampedIndex]);
       if (typeof Haptics.selectionAsync === 'function') {
         Haptics.selectionAsync();
       }
-      if (scrollRef.current) {
-        scrollRef.current.scrollTo({
-          y: clampedIndex * WHEEL_ITEM_HEIGHT,
-          animated: false,
-        });
-      }
     },
-    [onSelect, values]
+    [itemHeight, offsets, onSelect, values]
   );
 
   const handleMomentumBegin = useCallback(() => {
@@ -1571,17 +1575,7 @@ function WheelColumn({ values, selectedIndex, onSelect, formatter = (value) => v
   const handleMomentumEnd = useCallback(
     (event) => {
       isMomentumScrolling.current = false;
-      finalizeSelection(event.nativeEvent.contentOffset.y);
-    },
-    [finalizeSelection]
-  );
-
-  const handleScrollEndDrag = useCallback(
-    (event) => {
-      if (isMomentumScrolling.current) {
-        return;
-      }
-      finalizeSelection(event.nativeEvent.contentOffset.y);
+      finalizeSelection(event.nativeEvent.contentOffset.y ?? 0);
     },
     [finalizeSelection]
   );
@@ -1590,24 +1584,26 @@ function WheelColumn({ values, selectedIndex, onSelect, formatter = (value) => v
     <ScrollView
       ref={scrollRef}
       style={styles.wheelColumn}
-      contentContainerStyle={styles.wheelColumnContent}
+      contentContainerStyle={[
+        styles.wheelColumnContent,
+        { paddingVertical: itemHeight * 2 },
+      ]}
       showsVerticalScrollIndicator={false}
-      snapToInterval={WHEEL_ITEM_HEIGHT}
-      snapToAlignment="center"
-      decelerationRate={Platform.OS === 'ios' ? 'fast' : 0.98}
-      disableIntervalMomentum
+      snapToOffsets={offsets}
+      snapToAlignment="start"
+      decelerationRate="fast"
+      overScrollMode="never"
       bounces={Platform.OS === 'ios'}
+      scrollEventThrottle={16}
+      nestedScrollEnabled
+      disableIntervalMomentum
       onMomentumScrollBegin={handleMomentumBegin}
       onMomentumScrollEnd={handleMomentumEnd}
-      onScrollEndDrag={handleScrollEndDrag}
-      scrollEventThrottle={16}
-      overScrollMode="never"
-      nestedScrollEnabled
     >
       {values.map((value, index) => {
         const isActive = index === selectedIndex;
         return (
-          <View key={`${value}-${index}`} style={styles.wheelItem}>
+          <View key={`${value}-${index}`} style={[styles.wheelItem, { height: itemHeight }]}>
             <Text style={[styles.wheelItemText, isActive && styles.wheelItemTextActive]}>
               {formatter(value)}
             </Text>
