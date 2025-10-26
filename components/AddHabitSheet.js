@@ -608,7 +608,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, gestureState) =>
-          visible && gestureState.dy > 6 && Math.abs(gestureState.dx) < 12,
+          visible && !activePanel && gestureState.dy > 6 && Math.abs(gestureState.dx) < 12,
         onPanResponderMove: (_, gestureState) => {
           if (!visible) {
             return;
@@ -651,7 +651,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
           }
         },
       }),
-    [handleClose, sheetHeight, translateY, visible]
+    [activePanel, handleClose, sheetHeight, translateY, visible]
   );
 
   const isCreateDisabled = !title.trim();
@@ -729,7 +729,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
         ]}
         accessibilityViewIsModal
         importantForAccessibility="yes"
-        {...panResponder.panHandlers}
+        {...(!activePanel ? panResponder.panHandlers : {})}
       >
         <KeyboardAvoidingView
           style={styles.keyboardAvoiding}
@@ -983,6 +983,66 @@ function SheetRow({ icon, label, value, showChevron = true, isLast, onPress, dis
         <Text style={styles.rowValue}>{value}</Text>
         {showChevron && !disabled && <Ionicons name="chevron-forward" size={20} color="#C2CBD8" />}
       </View>
+      <View style={styles.weekdayHeader}>
+        {WEEKDAYS.map((weekday) => (
+          <Text key={weekday.key} style={styles.weekdayLabel}>
+            {weekday.label}
+          </Text>
+        ))}
+      </View>
+      {daysMatrix.map((week, rowIndex) => (
+        <View key={`week-${rowIndex}`} style={styles.calendarWeekRow}>
+          {week.map((date, cellIndex) => {
+            if (!date) {
+              return <View key={`empty-${rowIndex}-${cellIndex}`} style={styles.calendarDay} />;
+            }
+            const isDisabled = isBeforeDay(date, today);
+            const isSelected = isSameDay(date, selectedDate);
+            const isToday = isSameDay(date, today);
+            const isRepeating = doesDateRepeat(date, selectedDate, repeatOption, repeatingWeekdays);
+            return (
+              <Pressable
+                key={date.toISOString()}
+                style={[
+                  styles.calendarDay,
+                  isSelected && styles.calendarDaySelected,
+                  isToday && styles.calendarDayToday,
+                  isDisabled && styles.calendarDayDisabled,
+                  !isSelected && isRepeating && styles.calendarDayRepeating,
+                ]}
+                onPress={() => onSelectDate(normalizeDate(date))}
+                disabled={isDisabled}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected, disabled: isDisabled }}
+              >
+                <Text
+                  style={[
+                    styles.calendarDayText,
+                    isSelected && styles.calendarDayTextSelected,
+                    isDisabled && styles.calendarDayTextDisabled,
+                    !isSelected && isRepeating && styles.calendarDayTextRepeating,
+                  ]}
+                >
+                  {date.getDate()}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function QuickSelectButton({ label, active, onPress }) {
+  return (
+    <Pressable
+      style={[styles.quickSelectButton, active && styles.quickSelectButtonActive]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+    >
+      <Text style={[styles.quickSelectLabel, active && styles.quickSelectLabelActive]}>{label}</Text>
     </Pressable>
   );
 }
@@ -1589,16 +1649,23 @@ function WheelColumn({
         { paddingVertical: itemHeight * 2 },
       ]}
       showsVerticalScrollIndicator={false}
-      snapToOffsets={offsets}
-      snapToAlignment="start"
-      decelerationRate="fast"
+      // deixa o sistema cuidar do momentum e nós só "arredondamos" no fim:
+      snapToInterval={itemHeight}
+      decelerationRate={Platform.select({ ios: 'fast', android: 0.995 })}
       overScrollMode="never"
-      bounces={Platform.OS === 'ios'}
+      bounces
       scrollEventThrottle={16}
       nestedScrollEnabled
-      disableIntervalMomentum
+      // evita que o gesto suba para o pan da folha:
+      onStartShouldSetResponderCapture={() => true}
       onMomentumScrollBegin={handleMomentumBegin}
       onMomentumScrollEnd={handleMomentumEnd}
+      // se o usuário soltar sem momentum, finalize aqui:
+      onScrollEndDrag={(e) => {
+        if (!isMomentumScrolling.current) {
+          finalizeSelection(e.nativeEvent.contentOffset.y ?? 0);
+        }
+      }}
     >
       {values.map((value, index) => {
         const isActive = index === selectedIndex;
