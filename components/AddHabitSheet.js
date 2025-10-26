@@ -984,140 +984,6 @@ function SheetRow({ icon, label, value, showChevron = true, isLast, onPress, dis
         <Text style={styles.rowValue}>{value}</Text>
         {showChevron && !disabled && <Ionicons name="chevron-forward" size={20} color="#C2CBD8" />}
       </View>
-      {specified && (
-        <>
-          <View style={styles.segmentedControl}>
-            <SegmentedControlButton
-              label="Point time"
-              active={mode === 'point'}
-              onPress={() => onModeChange('point')}
-            />
-            <SegmentedControlButton
-              label="Time period"
-              active={mode === 'period'}
-              onPress={() => onModeChange('period')}
-            />
-          </View>
-          {mode === 'point' ? (
-            <View style={styles.wheelArea}>
-              <View pointerEvents="none" style={styles.wheelHighlight} />
-              <View style={styles.wheelRow}>
-                <WheelColumn
-                  values={HOUR_VALUES}
-                  selectedIndex={hourIndex}
-                  onSelect={(value) => onPointTimeChange({ ...pointTime, hour: value })}
-                  formatter={(value) => formatNumber(value)}
-                />
-                <WheelColumn
-                  values={MINUTE_VALUES}
-                  selectedIndex={minuteIndex}
-                  onSelect={(value) => onPointTimeChange({ ...pointTime, minute: value })}
-                  formatter={(value) => formatNumber(value)}
-                />
-                <WheelColumn
-                  values={MERIDIEM_VALUES}
-                  selectedIndex={meridiemIndex}
-                  onSelect={(value) => onPointTimeChange({ ...pointTime, meridiem: value })}
-                />
-              </View>
-            </View>
-          ) : (
-            <View style={styles.periodSection}>
-              <Text style={styles.periodLabel}>FROM</Text>
-              <View style={styles.wheelArea}>
-                <View pointerEvents="none" style={styles.wheelHighlight} />
-                <View style={styles.wheelRow}>
-                  <WheelColumn
-                    values={HOUR_VALUES}
-                    selectedIndex={startHourIndex}
-                    onSelect={(value) =>
-                      onPeriodTimeChange({
-                        start: { ...periodTime.start, hour: value },
-                        end: periodTime.end,
-                      })
-                    }
-                    formatter={(value) => formatNumber(value)}
-                  />
-                  <WheelColumn
-                    values={MINUTE_VALUES}
-                    selectedIndex={startMinuteIndex}
-                    onSelect={(value) =>
-                      onPeriodTimeChange({
-                        start: { ...periodTime.start, minute: value },
-                        end: periodTime.end,
-                      })
-                    }
-                    formatter={(value) => formatNumber(value)}
-                  />
-                  <WheelColumn
-                    values={MERIDIEM_VALUES}
-                    selectedIndex={startMeridiemIndex}
-                    onSelect={(value) =>
-                      onPeriodTimeChange({
-                        start: { ...periodTime.start, meridiem: value },
-                        end: periodTime.end,
-                      })
-                    }
-                  />
-                </View>
-              </View>
-              <Text style={[styles.periodLabel, styles.periodLabelSpacer]}>TO</Text>
-              <View style={styles.wheelArea}>
-                <View pointerEvents="none" style={styles.wheelHighlight} />
-                <View style={styles.wheelRow}>
-                  <WheelColumn
-                    values={HOUR_VALUES}
-                    selectedIndex={endHourIndex}
-                    onSelect={(value) =>
-                      onPeriodTimeChange({
-                        start: periodTime.start,
-                        end: { ...periodTime.end, hour: value },
-                      })
-                    }
-                    formatter={(value) => formatNumber(value)}
-                  />
-                  <WheelColumn
-                    values={MINUTE_VALUES}
-                    selectedIndex={endMinuteIndex}
-                    onSelect={(value) =>
-                      onPeriodTimeChange({
-                        start: periodTime.start,
-                        end: { ...periodTime.end, minute: value },
-                      })
-                    }
-                    formatter={(value) => formatNumber(value)}
-                  />
-                  <WheelColumn
-                    values={MERIDIEM_VALUES}
-                    selectedIndex={endMeridiemIndex}
-                    onSelect={(value) =>
-                      onPeriodTimeChange({
-                        start: periodTime.start,
-                        end: { ...periodTime.end, meridiem: value },
-                      })
-                    }
-                  />
-                </View>
-              </View>
-            </View>
-          )}
-        </>
-      )}
-    </View>
-  );
-}
-
-function SegmentedControlButton({ label, active, onPress }) {
-  return (
-    <Pressable
-      style={[styles.segmentedButton, active && styles.segmentedButtonActive]}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-    >
-      <Text style={[styles.segmentedButtonLabel, active && styles.segmentedButtonLabelActive]}>
-        {label}
-      </Text>
     </Pressable>
   );
 }
@@ -1163,16 +1029,20 @@ function OptionOverlay({
             </Text>
           </Pressable>
         </View>
-        <ScrollView
-          style={styles.overlayScroll}
-          contentContainerStyle={styles.overlayScrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          scrollEnabled={scrollEnabled}
-          nestedScrollEnabled={scrollEnabled}
-        >
-          {children}
-        </ScrollView>
+        {scrollEnabled ? (
+          <ScrollView
+            style={styles.overlayScroll}
+            contentContainerStyle={styles.overlayScrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            scrollEnabled
+            nestedScrollEnabled
+          >
+            {children}
+          </ScrollView>
+        ) : (
+          <View style={[styles.overlayScroll, styles.overlayScrollContent]}>{children}</View>
+        )}
       </View>
     </View>
   );
@@ -1726,6 +1596,7 @@ function WheelColumn({ values, selectedIndex, onSelect, formatter = (value) => v
       snapToAlignment="center"
       decelerationRate={Platform.OS === 'ios' ? 'fast' : 0.98}
       disableIntervalMomentum
+      bounces={Platform.OS === 'ios'}
       onMomentumScrollBegin={handleMomentumBegin}
       onMomentumScrollEnd={handleMomentumEnd}
       onScrollEndDrag={handleScrollEndDrag}
