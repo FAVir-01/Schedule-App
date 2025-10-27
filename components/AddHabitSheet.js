@@ -1016,6 +1016,7 @@ function SheetRow({
         {icon}
         <Text style={styles.rowLabel}>{label}</Text>
       </View>
+
       <View style={styles.rowRight}>
         <Text style={styles.rowValue}>{value}</Text>
         {showChevron && <Ionicons name="chevron-forward" size={18} color="#9aa0af" />}
