@@ -342,12 +342,12 @@ function getReminderHint(option, hasSpecifiedTime, timeMode, pointTime, periodTi
   }
   const reference = getReminderReferenceTime(hasSpecifiedTime, timeMode, pointTime, periodTime);
   if (!reference || typeof option.offsetMinutes !== 'number') {
-    return '(No time set)';
+    return 'No time set';
   }
   const baseMinutes = timeToMinutes(reference);
   const reminderMinutes = baseMinutes + option.offsetMinutes;
   const reminderTime = minutesToTime(reminderMinutes);
-  return `(${formatTime(reminderTime)})`;
+  return formatTime(reminderTime);
 }
 
 export default function AddHabitSheet({ visible, onClose, onCreate }) {
@@ -753,13 +753,10 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
   );
   const reminderLabel = useMemo(() => {
     const match = reminderOptions.find((option) => option.key === reminderOption);
-    if (!match) {
+    if (!match || match.key === 'none') {
       return 'No reminder';
     }
-    if (match.hint) {
-      return `${match.label} ${match.hint}`;
-    }
-    return match.label;
+    return match.hint ?? 'No time set';
   }, [reminderOption, reminderOptions]);
   const tagLabel = useMemo(() => {
     const match = TAG_OPTIONS.find((option) => option.key === selectedTag);
