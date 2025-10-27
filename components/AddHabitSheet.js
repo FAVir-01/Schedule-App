@@ -405,6 +405,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
   const [pendingPeriodTime, setPendingPeriodTime] = useState(periodTime);
   const [pendingReminder, setPendingReminder] = useState(reminderOption);
   const [pendingTag, setPendingTag] = useState(selectedTag);
+  const [pendingSubtasks, setPendingSubtasks] = useState([]);
   const titleInputRef = useRef(null);
   const translateY = useRef(new Animated.Value(sheetHeight || height)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -476,12 +477,15 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
         setPendingReminder(reminderOption);
       } else if (panel === 'tag') {
         setPendingTag(selectedTag);
+      } else if (panel === 'subtasks') {
+        setPendingSubtasks(subtasks);
       }
     },
     [
       handlePendingPeriodTimeChange,
       handlePendingPointTimeChange,
       hasSpecifiedTime,
+      subtasks,
       periodTime,
       pointTime,
       reminderOption,
