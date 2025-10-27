@@ -460,7 +460,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     setHasSpecifiedTime(pendingHasSpecifiedTime);
     setTimeMode(pendingTimeMode);
     setPointTime(pendingPointTime);
-    setPeriodTime(pendingPeriodTime);
+    setPeriodTime(ensureValidPeriod(pendingPeriodTime));
     closePanel();
   }, [
     closePanel,
@@ -959,10 +959,9 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
                   onPointTimeChange={setPendingPointTime}
                   periodTime={pendingPeriodTime}
                   onPeriodTimeChange={(updater) => {
-                    setPendingPeriodTime((prev) => {
-                      const next = typeof updater === 'function' ? updater(prev) : updater;
-                      return ensureValidPeriod(next);
-                    });
+                    setPendingPeriodTime((prev) =>
+                      typeof updater === 'function' ? updater(prev) : updater
+                    );
                   }}
                 />
               </OptionOverlay>
@@ -1599,7 +1598,9 @@ function WheelColumn({
 
   const finalizeSelection = useCallback(
     (offsetY) => {
-      const index = Math.round(offsetY / itemHeight);
+      const maxOffset = Math.max(0, (values.length - 1) * itemHeight);
+      const clampedOffset = Math.min(Math.max(offsetY, 0), maxOffset);
+      const index = Math.round(clampedOffset / itemHeight);
       const clampedIndex = Math.min(Math.max(index, 0), values.length - 1);
       const targetOffset = offsets[clampedIndex] ?? clampedIndex * itemHeight;
       scrollRef.current?.scrollTo({ y: targetOffset, animated: true });
