@@ -1536,10 +1536,9 @@ function TimePanel({
                       values={HOUR_VALUES}
                       selectedIndex={startHourIndex}
                       onSelect={(value) =>
-                        onPeriodTimeChange({
-                          start: { ...periodTime.start, hour: value },
-                          end: periodTime.end,
-                        })
+                        onPeriodTimeChange((prev) => ({
+                          start: { ...prev.start, hour: value },
+                        }))
                       }
                       formatter={(value) => formatNumber(value)}
                     />
@@ -1550,10 +1549,9 @@ function TimePanel({
                       values={MINUTE_VALUES}
                       selectedIndex={startMinuteIndex}
                       onSelect={(value) =>
-                        onPeriodTimeChange({
-                          start: { ...periodTime.start, minute: value },
-                          end: periodTime.end,
-                        })
+                        onPeriodTimeChange((prev) => ({
+                          start: { ...prev.start, minute: value },
+                        }))
                       }
                       formatter={(value) => formatNumber(value)}
                     />
@@ -1561,10 +1559,9 @@ function TimePanel({
                       values={MERIDIEM_VALUES}
                       selectedIndex={startMeridiemIndex}
                       onSelect={(value) =>
-                        onPeriodTimeChange({
-                          start: { ...periodTime.start, meridiem: value },
-                          end: periodTime.end,
-                        })
+                        onPeriodTimeChange((prev) => ({
+                          start: { ...prev.start, meridiem: value },
+                        }))
                       }
                     />
                   </View>
@@ -1584,10 +1581,9 @@ function TimePanel({
                       values={HOUR_VALUES}
                       selectedIndex={endHourIndex}
                       onSelect={(value) =>
-                        onPeriodTimeChange({
-                          start: periodTime.start,
-                          end: { ...periodTime.end, hour: value },
-                        })
+                        onPeriodTimeChange((prev) => ({
+                          end: { ...prev.end, hour: value },
+                        }))
                       }
                       formatter={(value) => formatNumber(value)}
                     />
@@ -1598,10 +1594,9 @@ function TimePanel({
                       values={MINUTE_VALUES}
                       selectedIndex={endMinuteIndex}
                       onSelect={(value) =>
-                        onPeriodTimeChange({
-                          start: periodTime.start,
-                          end: { ...periodTime.end, minute: value },
-                        })
+                        onPeriodTimeChange((prev) => ({
+                          end: { ...prev.end, minute: value },
+                        }))
                       }
                       formatter={(value) => formatNumber(value)}
                     />
@@ -1609,10 +1604,9 @@ function TimePanel({
                       values={MERIDIEM_VALUES}
                       selectedIndex={endMeridiemIndex}
                       onSelect={(value) =>
-                        onPeriodTimeChange({
-                          start: periodTime.start,
-                          end: { ...periodTime.end, meridiem: value },
-                        })
+                        onPeriodTimeChange((prev) => ({
+                          end: { ...prev.end, meridiem: value },
+                        }))
                       }
                     />
                   </View>
