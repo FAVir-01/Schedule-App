@@ -291,11 +291,18 @@ function minutesToTime(totalMinutes) {
   return { hour: hour12, minute, meridiem };
 }
 
+function normalizeTimeValue(time) {
+  if (!time) {
+    return time;
+  }
+  return minutesToTime(timeToMinutes(time));
+}
+
 function ensureValidPeriod(period) {
   const startMinutes = timeToMinutes(period.start);
   let endMinutes = timeToMinutes(period.end);
   if (endMinutes <= startMinutes) {
-    endMinutes = startMinutes + 30;
+    endMinutes = startMinutes;
   }
   return {
     start: minutesToTime(startMinutes),
@@ -369,6 +376,25 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
   const isClosingRef = useRef(false);
   const sheetBackgroundColor = useMemo(() => lightenColor(selectedColor, 0.75), [selectedColor]);
 
+  const handlePendingPointTimeChange = useCallback((next) => {
+    setPendingPointTime((prev) => {
+      const resolved = typeof next === 'function' ? next(prev) : next;
+      return normalizeTimeValue(resolved);
+    });
+  }, []);
+
+  const handlePendingPeriodTimeChange = useCallback((updater) => {
+    setPendingPeriodTime((prev) => {
+      const resolved = typeof updater === 'function' ? updater(prev) : updater;
+      const nextStart = resolved?.start ? normalizeTimeValue(resolved.start) : prev.start;
+      const nextEnd = resolved?.end ? normalizeTimeValue(resolved.end) : prev.end;
+      return ensureValidPeriod({
+        start: nextStart,
+        end: nextEnd,
+      });
+    });
+  }, []);
+
   const handleClose = useCallback(() => {
     if (!visible) {
       return;
@@ -398,8 +424,8 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
       } else if (panel === 'time') {
         setPendingHasSpecifiedTime(hasSpecifiedTime);
         setPendingTimeMode(timeMode);
-        setPendingPointTime({ ...pointTime });
-        setPendingPeriodTime({
+        handlePendingPointTimeChange({ ...pointTime });
+        handlePendingPeriodTimeChange({
           start: { ...periodTime.start },
           end: { ...periodTime.end },
         });
@@ -410,6 +436,8 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
       }
     },
     [
+      handlePendingPeriodTimeChange,
+      handlePendingPointTimeChange,
       hasSpecifiedTime,
       periodTime,
       pointTime,
@@ -459,8 +487,12 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
   const handleApplyTime = useCallback(() => {
     setHasSpecifiedTime(pendingHasSpecifiedTime);
     setTimeMode(pendingTimeMode);
-    setPointTime(pendingPointTime);
-    setPeriodTime(ensureValidPeriod(pendingPeriodTime));
+    const normalizedPoint = normalizeTimeValue(pendingPointTime);
+    const normalizedPeriod = ensureValidPeriod(pendingPeriodTime);
+    setPointTime(normalizedPoint);
+    setPeriodTime(normalizedPeriod);
+    setPendingPointTime(normalizedPoint);
+    setPendingPeriodTime(normalizedPeriod);
     closePanel();
   }, [
     closePanel,
@@ -664,15 +696,26 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     () => getRepeatLabel(repeatOption, selectedWeekdays, startDate),
     [repeatOption, selectedWeekdays, startDate]
   );
+  const normalizedPointTime = useMemo(() => normalizeTimeValue(pointTime), [pointTime]);
+  const normalizedPeriodTime = useMemo(() => ensureValidPeriod(periodTime), [periodTime]);
+  const normalizedPendingPointTime = useMemo(
+    () => normalizeTimeValue(pendingPointTime),
+    [pendingPointTime]
+  );
+  const normalizedPendingPeriodTime = useMemo(
+    () => ensureValidPeriod(pendingPeriodTime),
+    [pendingPeriodTime]
+  );
+
   const timeValue = useMemo(() => {
     if (!hasSpecifiedTime) {
       return 'Anytime';
     }
     if (timeMode === 'point') {
-      return formatTime(pointTime);
+      return formatTime(normalizedPointTime);
     }
-    return formatPeriod(periodTime);
-  }, [hasSpecifiedTime, periodTime, pointTime, timeMode]);
+    return formatPeriod(normalizedPeriodTime);
+  }, [hasSpecifiedTime, normalizedPeriodTime, normalizedPointTime, timeMode]);
   const reminderOptions = useMemo(
     () =>
       REMINDER_OPTIONS.map((option) => ({
@@ -701,11 +744,17 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
       return 'Do it any time of the day';
     }
     if (pendingTimeMode === 'period') {
-      const normalized = ensureValidPeriod(pendingPeriodTime);
-      return `Do it from ${formatTime(normalized.start)} to ${formatTime(normalized.end)} of the day`;
+      const startLabel = formatTime(normalizedPendingPeriodTime.start);
+      const endLabel = formatTime(normalizedPendingPeriodTime.end);
+      return `Do it from ${startLabel} to ${endLabel} of the day`;
     }
-    return `Do it at ${formatTime(pendingPointTime)} of the day`;
-  }, [pendingHasSpecifiedTime, pendingPeriodTime, pendingPointTime, pendingTimeMode]);
+    return `Do it at ${formatTime(normalizedPendingPointTime)} of the day`;
+  }, [
+    normalizedPendingPeriodTime,
+    normalizedPendingPointTime,
+    pendingHasSpecifiedTime,
+    pendingTimeMode,
+  ]);
 
   if (!isMounted) {
     return null;
@@ -956,13 +1005,9 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
                   mode={pendingTimeMode}
                   onModeChange={setPendingTimeMode}
                   pointTime={pendingPointTime}
-                  onPointTimeChange={setPendingPointTime}
+                  onPointTimeChange={handlePendingPointTimeChange}
                   periodTime={pendingPeriodTime}
-                  onPeriodTimeChange={(updater) => {
-                    setPendingPeriodTime((prev) =>
-                      typeof updater === 'function' ? updater(prev) : updater
-                    );
-                  }}
+                  onPeriodTimeChange={handlePendingPeriodTimeChange}
                 />
               </OptionOverlay>
             )}
