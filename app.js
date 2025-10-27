@@ -6,6 +6,7 @@ import {
   Platform,
   Image,
   Pressable,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -39,11 +40,74 @@ const TABS = [
   },
 ];
 
+const getDateKey = (date) => {
+  const normalized = new Date(date);
+  normalized.setHours(0, 0, 0, 0);
+  const year = normalized.getFullYear();
+  const month = String(normalized.getMonth() + 1).padStart(2, '0');
+  const day = String(normalized.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const hexToRgb = (hex) => {
+  const sanitized = hex.replace('#', '');
+  const bigint = parseInt(sanitized, 16);
+  return {
+    r: (bigint >> 16) & 255,
+    g: (bigint >> 8) & 255,
+    b: bigint & 255,
+  };
+};
+
+const lightenColor = (hex, amount = 0.7) => {
+  try {
+    const { r, g, b } = hexToRgb(hex);
+    const mixChannel = (channel) => Math.round(channel + (255 - channel) * amount);
+    const mixed = [mixChannel(r), mixChannel(g), mixChannel(b)];
+    return `#${mixed.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+  } catch (error) {
+    return '#f2f3f8';
+  }
+};
+
+const formatNumber = (value) => value.toString().padStart(2, '0');
+
+const formatTimeValue = ({ hour, minute, meridiem }) =>
+  `${formatNumber(hour)}:${formatNumber(minute)} ${meridiem}`;
+
+const toMinutes = ({ hour, minute, meridiem }) => {
+  const normalizedHour = meridiem === 'PM' ? (hour % 12) + 12 : hour % 12;
+  return normalizedHour * 60 + minute;
+};
+
+const formatTaskTime = (time) => {
+  if (!time || !time.specified) {
+    return 'Anytime';
+  }
+
+  if (time.mode === 'period' && time.period) {
+    const { start, end } = time.period;
+    return `${formatTimeValue(start)} - ${formatTimeValue(end)}`;
+  }
+
+  if (time.point) {
+    return formatTimeValue(time.point);
+  }
+
+  return 'Anytime';
+};
+
 function ScheduleApp() {
   const [activeTab, setActiveTab] = useState('today');
   const [isFabOpen, setIsFabOpen] = useState(false);
   const [isFabMenuMounted, setIsFabMenuMounted] = useState(false);
   const [isCreateHabitOpen, setIsCreateHabitOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return now;
+  });
+  const [tasks, setTasks] = useState([]);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isCompact = width < 360;
@@ -59,6 +123,61 @@ function ScheduleApp() {
   const fabHaloSize = fabSize + (isCompact ? 26 : 30);
   const fabBaseSize = fabSize + (isCompact ? 14 : 18);
   const fabIconSize = isCompact ? 28 : 30;
+  const today = useMemo(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return now;
+  }, []);
+  const todayKey = useMemo(() => getDateKey(today), [today]);
+  const selectedDateKey = useMemo(() => getDateKey(selectedDate), [selectedDate]);
+  const isSelectedToday = selectedDateKey === todayKey;
+  const selectedDateLabel = useMemo(() => {
+    if (isSelectedToday) {
+      return 'Today';
+    }
+    const weekday = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
+    return `${weekday}, ${selectedDate.getDate()}`;
+  }, [isSelectedToday, selectedDate]);
+  const weekDays = useMemo(() => {
+    const base = new Date(today);
+    return Array.from({ length: 7 }, (_, index) => {
+      const offset = index - 3;
+      const date = new Date(base);
+      date.setDate(base.getDate() + offset);
+      const key = getDateKey(date);
+      const dayTasks = tasks.filter((task) => task.dateKey === key);
+      const allCompleted = dayTasks.length > 0 && dayTasks.every((task) => task.completed);
+      return {
+        date,
+        key,
+        label: date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase(),
+        dayNumber: date.getDate(),
+        allCompleted,
+      };
+    });
+  }, [tasks, today]);
+  const tasksForSelectedDate = useMemo(() => {
+    const filtered = tasks.filter((task) => task.dateKey === selectedDateKey);
+    const getSortValue = (task) => {
+      if (!task.time || !task.time.specified) {
+        return Number.MAX_SAFE_INTEGER;
+      }
+      if (task.time.mode === 'period' && task.time.period) {
+        return toMinutes(task.time.period.start);
+      }
+      if (task.time.point) {
+        return toMinutes(task.time.point);
+      }
+      return Number.MAX_SAFE_INTEGER;
+    };
+    return filtered.slice().sort((a, b) => getSortValue(a) - getSortValue(b));
+  }, [selectedDateKey, tasks]);
+  const allTasksCompletedForSelectedDay =
+    tasksForSelectedDate.length > 0 && tasksForSelectedDate.every((task) => task.completed);
+  const completedTaskCount = useMemo(
+    () => tasksForSelectedDate.filter((task) => task.completed).length,
+    [tasksForSelectedDate]
+  );
   const lastToggleRef = useRef(0);
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const actionsScale = useRef(new Animated.Value(0.85)).current;
@@ -171,8 +290,37 @@ function ScheduleApp() {
     setIsCreateHabitOpen(false);
   }, []);
 
+  const handleSelectDate = useCallback((date) => {
+    const normalized = new Date(date);
+    normalized.setHours(0, 0, 0, 0);
+    setSelectedDate(normalized);
+  }, []);
+
+  const handleToggleTaskCompletion = useCallback((taskId) => {
+    setTasks((previous) =>
+      previous.map((task) =>
+        task.id === taskId ? { ...task, completed: !task.completed } : task
+      )
+    );
+  }, []);
+
   const handleCreateHabit = useCallback((habit) => {
-    console.log('Habit created', habit);
+    const normalizedDate = new Date(habit?.startDate ?? new Date());
+    normalizedDate.setHours(0, 0, 0, 0);
+    const dateKey = getDateKey(normalizedDate);
+    const color = habit?.color ?? '#d1d7ff';
+    const newTask = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      title: habit?.title ?? 'Untitled task',
+      color,
+      emoji: habit?.emoji ?? '✅',
+      time: habit?.time,
+      date: normalizedDate,
+      dateKey,
+      completed: false,
+    };
+    setTasks((previous) => [...previous, newTask]);
+    setSelectedDate(normalizedDate);
   }, []);
 
   useEffect(() => {
@@ -292,12 +440,118 @@ function ScheduleApp() {
           style={[styles.content, dynamicStyles.content]}
           importantForAccessibility={isFabOpen ? 'no-hide-descendants' : 'auto'}
         >
-          <Text style={styles.heading}>Daily Routine</Text>
-          <Text style={[styles.description, dynamicStyles.description]}>
-            {activeTab === 'today'
-              ? 'Review what you planned for today, check off completed habits, and add new tasks as needed.'
-              : 'Open the calendar to plan ahead, review upcoming routines, and adjust your schedule.'}
-          </Text>
+          {activeTab === 'today' ? (
+            <ScrollView
+              contentContainerStyle={styles.todayContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.todayHeader}>
+                <Text style={styles.todayTitle}>{selectedDateLabel}</Text>
+                {tasksForSelectedDate.length > 0 && (
+                  <Text
+                    style={[
+                      styles.todaySubtitle,
+                      allTasksCompletedForSelectedDay
+                        ? styles.todaySubtitleSuccess
+                        : styles.todaySubtitleInProgress,
+                    ]}
+                  >
+                    {allTasksCompletedForSelectedDay
+                      ? 'All tasks completed'
+                      : `${completedTaskCount}/${tasksForSelectedDate.length} completed`}
+                  </Text>
+                )}
+              </View>
+
+              <View style={styles.daySelector}>
+                {weekDays.map((day) => {
+                  const isSelected = day.key === selectedDateKey;
+                  const isToday = day.key === todayKey;
+                  const dayContainerStyles = [styles.dayNumber];
+                  const dayTextStyles = [styles.dayNumberText];
+                  if (isSelected) {
+                    dayContainerStyles.push(styles.dayNumberSelected);
+                    dayTextStyles.push(styles.dayNumberTextSelected);
+                  }
+                  if (day.allCompleted) {
+                    dayContainerStyles.push(styles.dayNumberCompleted);
+                    dayTextStyles.push(styles.dayNumberTextCompleted);
+                  }
+                  const indicatorStyles = [styles.todayIndicator];
+                  if (day.allCompleted) {
+                    indicatorStyles.push(styles.todayIndicatorOnCompleted);
+                  }
+                  return (
+                    <Pressable
+                      key={day.key}
+                      style={styles.dayItem}
+                      onPress={() => handleSelectDate(day.date)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${day.label} ${day.dayNumber}`}
+                      accessibilityState={{ selected: isSelected }}
+                    >
+                      <Text style={[styles.dayLabel, isSelected && styles.dayLabelSelected]}>
+                        {day.label}
+                      </Text>
+                      <View style={dayContainerStyles}>
+                        <Text style={dayTextStyles}>{day.dayNumber}</Text>
+                        {isToday && <View style={indicatorStyles} />}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View style={styles.tasksSection}>
+                {tasksForSelectedDate.length === 0 ? (
+                  <Text style={styles.emptyState}>
+                    No tasks for this day yet. Use the add button to create one.
+                  </Text>
+                ) : (
+                  tasksForSelectedDate.map((task) => {
+                    const backgroundColor = lightenColor(task.color, 0.75);
+                    return (
+                      <View
+                        key={task.id}
+                        style={[styles.taskCard, { backgroundColor, borderColor: task.color }]}
+                      >
+                        <View style={styles.taskInfo}>
+                          <Text style={styles.taskEmoji}>{task.emoji}</Text>
+                          <View style={styles.taskDetails}>
+                            <Text
+                              style={[styles.taskTitle, task.completed && styles.taskTitleCompleted]}
+                              numberOfLines={1}
+                            >
+                              {task.title}
+                            </Text>
+                            <Text style={styles.taskTime}>{formatTaskTime(task.time)}</Text>
+                          </View>
+                        </View>
+                        <Pressable
+                          onPress={() => handleToggleTaskCompletion(task.id)}
+                          style={[styles.taskToggle, task.completed && styles.taskToggleCompleted]}
+                          accessibilityRole="checkbox"
+                          accessibilityLabel={
+                            task.completed ? 'Mark task as incomplete' : 'Mark task as complete'
+                          }
+                          accessibilityState={{ checked: task.completed }}
+                        >
+                          {task.completed && <Ionicons name="checkmark" size={18} color="#ffffff" />}
+                        </Pressable>
+                      </View>
+                    );
+                  })
+                )}
+              </View>
+            </ScrollView>
+          ) : (
+            <>
+              <Text style={styles.heading}>Daily Routine</Text>
+              <Text style={[styles.description, dynamicStyles.description]}>
+                Open the calendar to plan ahead, review upcoming routines, and adjust your schedule.
+              </Text>
+            </>
+          )}
         </View>
 
         <View
@@ -579,6 +833,147 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     color: '#4b4b63',
+  },
+  todayContent: {
+    flexGrow: 1,
+    paddingBottom: 48,
+  },
+  todayHeader: {
+    marginBottom: 24,
+  },
+  todayTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  todaySubtitle: {
+    marginTop: 8,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  todaySubtitleSuccess: {
+    color: '#2f9e44',
+  },
+  todaySubtitleInProgress: {
+    color: '#6f7a86',
+  },
+  daySelector: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginBottom: 24,
+  },
+  dayItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  dayLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.6,
+    color: '#9ba0b0',
+    marginBottom: 10,
+    textTransform: 'uppercase',
+  },
+  dayLabelSelected: {
+    color: '#3c2ba7',
+  },
+  dayNumber: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#e7f6e6',
+    position: 'relative',
+  },
+  dayNumberSelected: {
+    backgroundColor: '#f0faee',
+  },
+  dayNumberCompleted: {
+    backgroundColor: '#3dd598',
+  },
+  dayNumberText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a2e',
+  },
+  dayNumberTextSelected: {
+    color: '#2f2a6f',
+  },
+  dayNumberTextCompleted: {
+    color: '#ffffff',
+  },
+  todayIndicator: {
+    position: 'absolute',
+    bottom: 6,
+    width: '54%',
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#3c2ba7',
+  },
+  todayIndicatorOnCompleted: {
+    backgroundColor: '#ffffff',
+  },
+  tasksSection: {
+    marginTop: 8,
+  },
+  emptyState: {
+    fontSize: 15,
+    color: '#6f7a86',
+    textAlign: 'center',
+    paddingHorizontal: 12,
+  },
+  taskCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    marginBottom: 14,
+  },
+  taskInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    paddingRight: 12,
+  },
+  taskEmoji: {
+    fontSize: 28,
+  },
+  taskDetails: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  taskTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a2e',
+  },
+  taskTitleCompleted: {
+    color: '#6f7a86',
+    textDecorationLine: 'line-through',
+  },
+  taskTime: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#6f7a86',
+  },
+  taskToggle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#c5cadb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+  },
+  taskToggleCompleted: {
+    backgroundColor: '#3dd598',
+    borderColor: '#3dd598',
   },
   bottomBarContainer: {
     width: '100%',
