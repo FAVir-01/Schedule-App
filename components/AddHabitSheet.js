@@ -291,12 +291,35 @@ function minutesToTime(totalMinutes) {
   return { hour: hour12, minute, meridiem };
 }
 
-function ensureValidPeriod(period) {
-  const startMinutes = timeToMinutes(period.start);
-  let endMinutes = timeToMinutes(period.end);
-  if (endMinutes <= startMinutes) {
-    endMinutes = startMinutes + 30;
+function normalizeTimeValue(time) {
+  if (!time) {
+    return time;
   }
+  return minutesToTime(timeToMinutes(time));
+}
+
+function ensureValidPeriod(period, { allowFlipEndMeridiem = false } = {}) {
+  const normalizedStart = normalizeTimeValue(period.start);
+  let normalizedEnd = normalizeTimeValue(period.end);
+
+  const startMinutes = timeToMinutes(normalizedStart);
+  let endMinutes = timeToMinutes(normalizedEnd);
+
+  if (allowFlipEndMeridiem && endMinutes < startMinutes) {
+    const flippedMeridiem = normalizedEnd.meridiem === 'AM' ? 'PM' : 'AM';
+    const flippedEnd = { ...normalizedEnd, meridiem: flippedMeridiem };
+    const flippedMinutes = timeToMinutes(flippedEnd);
+    if (flippedMinutes >= startMinutes) {
+      normalizedEnd = flippedEnd;
+      endMinutes = flippedMinutes;
+    }
+  }
+
+  if (endMinutes < startMinutes) {
+    normalizedEnd = { ...normalizedStart };
+    endMinutes = startMinutes;
+  }
+
   return {
     start: minutesToTime(startMinutes),
     end: minutesToTime(endMinutes),
@@ -369,6 +392,33 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
   const isClosingRef = useRef(false);
   const sheetBackgroundColor = useMemo(() => lightenColor(selectedColor, 0.75), [selectedColor]);
 
+  const handlePendingPointTimeChange = useCallback((next) => {
+    setPendingPointTime((prev) => {
+      const resolved = typeof next === 'function' ? next(prev) : next;
+      return normalizeTimeValue(resolved);
+    });
+  }, []);
+
+  const handlePendingPeriodTimeChange = useCallback((updater) => {
+    setPendingPeriodTime((prev) => {
+      const resolved = typeof updater === 'function' ? updater(prev) : updater;
+      const hasStartUpdate = resolved?.start != null;
+      const hasEndUpdate = resolved?.end != null;
+      const nextStart = hasStartUpdate ? normalizeTimeValue(resolved.start) : prev.start;
+      const nextEnd = hasEndUpdate ? normalizeTimeValue(resolved.end) : prev.end;
+
+      return ensureValidPeriod(
+        {
+          start: nextStart,
+          end: nextEnd,
+        },
+        {
+          allowFlipEndMeridiem: hasEndUpdate && !hasStartUpdate,
+        }
+      );
+    });
+  }, []);
+
   const handleClose = useCallback(() => {
     if (!visible) {
       return;
@@ -398,8 +448,8 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
       } else if (panel === 'time') {
         setPendingHasSpecifiedTime(hasSpecifiedTime);
         setPendingTimeMode(timeMode);
-        setPendingPointTime({ ...pointTime });
-        setPendingPeriodTime({
+        handlePendingPointTimeChange({ ...pointTime });
+        handlePendingPeriodTimeChange({
           start: { ...periodTime.start },
           end: { ...periodTime.end },
         });
@@ -410,6 +460,8 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
       }
     },
     [
+      handlePendingPeriodTimeChange,
+      handlePendingPointTimeChange,
       hasSpecifiedTime,
       periodTime,
       pointTime,
@@ -459,8 +511,12 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
   const handleApplyTime = useCallback(() => {
     setHasSpecifiedTime(pendingHasSpecifiedTime);
     setTimeMode(pendingTimeMode);
-    setPointTime(pendingPointTime);
-    setPeriodTime(ensureValidPeriod(pendingPeriodTime));
+    const normalizedPoint = normalizeTimeValue(pendingPointTime);
+    const normalizedPeriod = ensureValidPeriod(pendingPeriodTime, { allowFlipEndMeridiem: true });
+    setPointTime(normalizedPoint);
+    setPeriodTime(normalizedPeriod);
+    setPendingPointTime(normalizedPoint);
+    setPendingPeriodTime(normalizedPeriod);
     closePanel();
   }, [
     closePanel,
@@ -664,15 +720,29 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     () => getRepeatLabel(repeatOption, selectedWeekdays, startDate),
     [repeatOption, selectedWeekdays, startDate]
   );
+  const normalizedPointTime = useMemo(() => normalizeTimeValue(pointTime), [pointTime]);
+  const normalizedPeriodTime = useMemo(
+    () => ensureValidPeriod(periodTime, { allowFlipEndMeridiem: true }),
+    [periodTime]
+  );
+  const normalizedPendingPointTime = useMemo(
+    () => normalizeTimeValue(pendingPointTime),
+    [pendingPointTime]
+  );
+  const normalizedPendingPeriodTime = useMemo(
+    () => ensureValidPeriod(pendingPeriodTime, { allowFlipEndMeridiem: true }),
+    [pendingPeriodTime]
+  );
+
   const timeValue = useMemo(() => {
     if (!hasSpecifiedTime) {
       return 'Anytime';
     }
     if (timeMode === 'point') {
-      return formatTime(pointTime);
+      return formatTime(normalizedPointTime);
     }
-    return formatPeriod(periodTime);
-  }, [hasSpecifiedTime, periodTime, pointTime, timeMode]);
+    return formatPeriod(normalizedPeriodTime);
+  }, [hasSpecifiedTime, normalizedPeriodTime, normalizedPointTime, timeMode]);
   const reminderOptions = useMemo(
     () =>
       REMINDER_OPTIONS.map((option) => ({
@@ -701,11 +771,17 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
       return 'Do it any time of the day';
     }
     if (pendingTimeMode === 'period') {
-      const normalized = ensureValidPeriod(pendingPeriodTime);
-      return `Do it from ${formatTime(normalized.start)} to ${formatTime(normalized.end)} of the day`;
+      const startLabel = formatTime(normalizedPendingPeriodTime.start);
+      const endLabel = formatTime(normalizedPendingPeriodTime.end);
+      return `Do it from ${startLabel} to ${endLabel} of the day`;
     }
-    return `Do it at ${formatTime(pendingPointTime)} of the day`;
-  }, [pendingHasSpecifiedTime, pendingPeriodTime, pendingPointTime, pendingTimeMode]);
+    return `Do it at ${formatTime(normalizedPendingPointTime)} of the day`;
+  }, [
+    normalizedPendingPeriodTime,
+    normalizedPendingPointTime,
+    pendingHasSpecifiedTime,
+    pendingTimeMode,
+  ]);
 
   if (!isMounted) {
     return null;
@@ -956,13 +1032,9 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
                   mode={pendingTimeMode}
                   onModeChange={setPendingTimeMode}
                   pointTime={pendingPointTime}
-                  onPointTimeChange={setPendingPointTime}
+                  onPointTimeChange={handlePendingPointTimeChange}
                   periodTime={pendingPeriodTime}
-                  onPeriodTimeChange={(updater) => {
-                    setPendingPeriodTime((prev) =>
-                      typeof updater === 'function' ? updater(prev) : updater
-                    );
-                  }}
+                  onPeriodTimeChange={handlePendingPeriodTimeChange}
                 />
               </OptionOverlay>
             )}
@@ -1603,13 +1675,21 @@ function WheelColumn({
       const index = Math.round(clampedOffset / itemHeight);
       const clampedIndex = Math.min(Math.max(index, 0), values.length - 1);
       const targetOffset = offsets[clampedIndex] ?? clampedIndex * itemHeight;
-      scrollRef.current?.scrollTo({ y: targetOffset, animated: true });
-      onSelect(values[clampedIndex]);
-      if (typeof Haptics.selectionAsync === 'function') {
-        Haptics.selectionAsync();
+
+      const distanceToTarget = Math.abs(targetOffset - clampedOffset);
+      const shouldAnimate = distanceToTarget > 0.5;
+      if (distanceToTarget > 0) {
+        scrollRef.current?.scrollTo({ y: targetOffset, animated: shouldAnimate });
+      }
+
+      if (clampedIndex !== selectedIndex) {
+        onSelect(values[clampedIndex]);
+        if (typeof Haptics.selectionAsync === 'function') {
+          Haptics.selectionAsync();
+        }
       }
     },
-    [itemHeight, offsets, onSelect, values]
+    [itemHeight, offsets, onSelect, selectedIndex, values]
   );
 
   const handleMomentumBegin = useCallback(() => {
