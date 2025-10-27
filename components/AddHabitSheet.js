@@ -1603,13 +1603,21 @@ function WheelColumn({
       const index = Math.round(clampedOffset / itemHeight);
       const clampedIndex = Math.min(Math.max(index, 0), values.length - 1);
       const targetOffset = offsets[clampedIndex] ?? clampedIndex * itemHeight;
-      scrollRef.current?.scrollTo({ y: targetOffset, animated: true });
-      onSelect(values[clampedIndex]);
-      if (typeof Haptics.selectionAsync === 'function') {
-        Haptics.selectionAsync();
+
+      const distanceToTarget = Math.abs(targetOffset - clampedOffset);
+      const shouldAnimate = distanceToTarget > 0.5;
+      if (distanceToTarget > 0) {
+        scrollRef.current?.scrollTo({ y: targetOffset, animated: shouldAnimate });
+      }
+
+      if (clampedIndex !== selectedIndex) {
+        onSelect(values[clampedIndex]);
+        if (typeof Haptics.selectionAsync === 'function') {
+          Haptics.selectionAsync();
+        }
       }
     },
-    [itemHeight, offsets, onSelect, values]
+    [itemHeight, offsets, onSelect, selectedIndex, values]
   );
 
   const handleMomentumBegin = useCallback(() => {
