@@ -821,16 +821,6 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     return match?.label ?? 'No tag';
   }, [selectedTag, tagOptions]);
 
-  const subtaskLabel = useMemo(() => {
-    if (subtasks.length === 0) {
-      return 'No subtasks yet';
-    }
-    if (subtasks.length === 1) {
-      return '1 added';
-    }
-    return `${subtasks.length} added`;
-  }, [subtasks]);
-
   const pendingTimeTitle = useMemo(() => {
     if (!pendingHasSpecifiedTime) {
       return 'Do it any time of the day';
@@ -1026,18 +1016,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
                   isLast
                 />
               </View>
-              <View style={styles.subtasksContainer}>
-                <View style={styles.subtasksHeader}>
-                  <View style={styles.rowLeft}>
-                    <View style={styles.rowIconContainer}>
-                      <Ionicons name="list-circle-outline" size={22} color="#61708A" />
-                    </View>
-                    <Text style={styles.rowLabel}>Subtasks</Text>
-                  </View>
-                  <Text style={styles.rowValue}>{subtaskLabel}</Text>
-                </View>
-                <SubtasksPanel value={subtasks} onChange={setSubtasks} />
-              </View>
+              <SubtasksPanel value={subtasks} onChange={setSubtasks} />
             </ScrollView>
             {activePanel === 'date' && (
               <OptionOverlay
@@ -1306,11 +1285,10 @@ function TagPanel({ options, selectedKey, onSelect, onCreateTag }) {
 function SubtasksPanel({ value, onChange }) {
   const [draft, setDraft] = useState('');
   const trimmedDraft = draft.trim();
-  const isDisabled = trimmedDraft.length === 0;
   const list = Array.isArray(value) ? value : [];
 
   const handleAdd = useCallback(() => {
-    if (isDisabled) {
+    if (!trimmedDraft) {
       return;
     }
     onChange((prev) => {
@@ -1319,7 +1297,7 @@ function SubtasksPanel({ value, onChange }) {
       return next;
     });
     setDraft('');
-  }, [isDisabled, onChange, trimmedDraft]);
+  }, [onChange, trimmedDraft]);
 
   const handleRemove = useCallback(
     (index) => {
@@ -1328,58 +1306,57 @@ function SubtasksPanel({ value, onChange }) {
     [onChange]
   );
 
+  const handleSubmitEditing = useCallback(() => {
+    handleAdd();
+  }, [handleAdd]);
+
+  const placeholder = list.length === 0 ? 'Subtasks' : 'Add subtask';
+
   return (
     <View style={styles.subtasksPanel}>
-      <View style={styles.subtasksList}>
-        {list.length === 0 ? (
-          <Text style={styles.subtasksEmpty}>No subtasks yet</Text>
-        ) : (
-          list.map((item, index) => {
-            const isLast = index === list.length - 1;
-            return (
-              <View key={`${item}-${index}`} style={[styles.subtaskRow, isLast && styles.subtaskRowLast]}>
-                <View style={styles.subtaskRowLeft}>
-                  <Ionicons name="ellipse-outline" size={18} color="#9aa0af" />
-                  <Text style={styles.subtaskName}>{item}</Text>
-                </View>
+      <View style={styles.subtasksCard}>
+        {list.length > 0 && (
+          <View style={styles.subtasksList}>
+            {list.map((item, index) => (
+              <View key={`${item}-${index}`} style={styles.subtaskItem}>
+                <Ionicons name="ellipse-outline" size={18} color="#94A3B8" />
+                <Text style={styles.subtaskText}>{item}</Text>
                 <Pressable
                   onPress={() => handleRemove(index)}
                   accessibilityLabel={`Remove subtask ${item}`}
                   accessibilityRole="button"
                   hitSlop={8}
+                  style={styles.subtaskRemoveButton}
                 >
-                  <Ionicons name="close-circle" size={20} color="#9aa0af" />
+                  <Ionicons name="close-outline" size={20} color="#94A3B8" />
                 </Pressable>
               </View>
-            );
-          })
+            ))}
+          </View>
         )}
-      </View>
-      <View style={styles.subtaskInputRow}>
-        <Ionicons name="add-circle-outline" size={22} color="#61708A" />
-        <TextInput
-          style={styles.subtaskInput}
-          placeholder="New subtask"
-          placeholderTextColor="#7F8A9A"
-          value={draft}
-          onChangeText={setDraft}
-          onSubmitEditing={handleAdd}
-          returnKeyType="done"
-          accessibilityLabel="New subtask"
-        />
-        <Pressable
-          style={[styles.subtaskAddButton, isDisabled && styles.subtaskAddButtonDisabled]}
-          onPress={handleAdd}
-          disabled={isDisabled}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: isDisabled }}
-        >
-          <Text
-            style={[styles.subtaskAddButtonText, isDisabled && styles.subtaskAddButtonTextDisabled]}
-          >
-            Add
-          </Text>
-        </Pressable>
+        <View style={styles.subtaskComposer}>
+          <Ionicons name="add-circle-outline" size={22} color="#61708A" />
+          <TextInput
+            style={styles.subtaskComposerInput}
+            placeholder={placeholder}
+            placeholderTextColor="#7F8A9A"
+            value={draft}
+            onChangeText={setDraft}
+            onSubmitEditing={handleSubmitEditing}
+            returnKeyType="done"
+            accessibilityLabel="Add subtask"
+          />
+          {trimmedDraft.length > 0 && (
+            <Pressable
+              onPress={handleAdd}
+              accessibilityRole="button"
+              accessibilityLabel="Confirm subtask"
+              style={styles.subtaskComposerConfirm}
+            >
+              <Ionicons name="checkmark-circle" size={22} color="#1F2742" />
+            </Pressable>
+          )}
+        </View>
       </View>
       <Text style={styles.subtasksPanelHint}>Subtasks can be set as your daily routine or checklist</Text>
     </View>
@@ -2094,23 +2071,20 @@ const styles = StyleSheet.create({
     elevation: 6,
     overflow: 'hidden',
   },
-  subtasksContainer: {
+  subtasksPanel: {
+    marginTop: 4,
+    gap: 12,
+  },
+  subtasksCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 20,
+    padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.08,
     shadowRadius: 12,
     elevation: 6,
-    gap: 16,
-  },
-  subtasksHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 12,
   },
   row: {
     flexDirection: 'row',
@@ -2307,79 +2281,49 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: '#1F2742',
   },
-  subtasksPanel: {
-    gap: 20,
-  },
   subtasksList: {
-    backgroundColor: '#F5F7FF',
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  subtasksEmpty: {
-    textAlign: 'center',
-    color: '#7F8A9A',
-    paddingVertical: 20,
-    fontSize: 15,
-  },
-  subtaskRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(109, 125, 150, 0.12)',
-  },
-  subtaskRowLast: {
-    borderBottomWidth: 0,
-  },
-  subtaskRowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 10,
-    flex: 1,
   },
-  subtaskName: {
+  subtaskItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 18,
+    backgroundColor: '#F5F7FF',
+  },
+  subtaskText: {
     flex: 1,
     color: '#1F2742',
     fontSize: 15,
   },
-  subtaskInputRow: {
+  subtaskRemoveButton: {
+    padding: 4,
+  },
+  subtaskComposer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     backgroundColor: '#EEF3FF',
-    borderRadius: 20,
+    borderRadius: 18,
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  subtaskInput: {
+  subtaskComposerInput: {
     flex: 1,
     fontSize: 15,
     color: '#1F2742',
+    paddingVertical: 0,
   },
-  subtaskAddButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 14,
-    backgroundColor: '#1F2742',
-  },
-  subtaskAddButtonDisabled: {
-    backgroundColor: '#B8C4D6',
-  },
-  subtaskAddButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 15,
-  },
-  subtaskAddButtonTextDisabled: {
-    opacity: 0.6,
+  subtaskComposerConfirm: {
+    padding: 4,
   },
   subtasksPanelHint: {
     color: '#7F8A9A',
     fontSize: 13,
     textAlign: 'center',
-    marginTop: 6,
+    paddingHorizontal: 16,
   },
   quickSelectRow: {
     flexDirection: 'row',
