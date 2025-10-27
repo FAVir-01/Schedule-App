@@ -298,12 +298,28 @@ function normalizeTimeValue(time) {
   return minutesToTime(timeToMinutes(time));
 }
 
-function ensureValidPeriod(period) {
-  const startMinutes = timeToMinutes(period.start);
-  let endMinutes = timeToMinutes(period.end);
-  if (endMinutes <= startMinutes) {
+function ensureValidPeriod(period, { allowFlipEndMeridiem = false } = {}) {
+  const normalizedStart = normalizeTimeValue(period.start);
+  let normalizedEnd = normalizeTimeValue(period.end);
+
+  const startMinutes = timeToMinutes(normalizedStart);
+  let endMinutes = timeToMinutes(normalizedEnd);
+
+  if (allowFlipEndMeridiem && endMinutes < startMinutes) {
+    const flippedMeridiem = normalizedEnd.meridiem === 'AM' ? 'PM' : 'AM';
+    const flippedEnd = { ...normalizedEnd, meridiem: flippedMeridiem };
+    const flippedMinutes = timeToMinutes(flippedEnd);
+    if (flippedMinutes >= startMinutes) {
+      normalizedEnd = flippedEnd;
+      endMinutes = flippedMinutes;
+    }
+  }
+
+  if (endMinutes < startMinutes) {
+    normalizedEnd = { ...normalizedStart };
     endMinutes = startMinutes;
   }
+
   return {
     start: minutesToTime(startMinutes),
     end: minutesToTime(endMinutes),
@@ -386,12 +402,20 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
   const handlePendingPeriodTimeChange = useCallback((updater) => {
     setPendingPeriodTime((prev) => {
       const resolved = typeof updater === 'function' ? updater(prev) : updater;
-      const nextStart = resolved?.start ? normalizeTimeValue(resolved.start) : prev.start;
-      const nextEnd = resolved?.end ? normalizeTimeValue(resolved.end) : prev.end;
-      return ensureValidPeriod({
-        start: nextStart,
-        end: nextEnd,
-      });
+      const hasStartUpdate = resolved?.start != null;
+      const hasEndUpdate = resolved?.end != null;
+      const nextStart = hasStartUpdate ? normalizeTimeValue(resolved.start) : prev.start;
+      const nextEnd = hasEndUpdate ? normalizeTimeValue(resolved.end) : prev.end;
+
+      return ensureValidPeriod(
+        {
+          start: nextStart,
+          end: nextEnd,
+        },
+        {
+          allowFlipEndMeridiem: hasEndUpdate && !hasStartUpdate,
+        }
+      );
     });
   }, []);
 
@@ -488,7 +512,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     setHasSpecifiedTime(pendingHasSpecifiedTime);
     setTimeMode(pendingTimeMode);
     const normalizedPoint = normalizeTimeValue(pendingPointTime);
-    const normalizedPeriod = ensureValidPeriod(pendingPeriodTime);
+    const normalizedPeriod = ensureValidPeriod(pendingPeriodTime, { allowFlipEndMeridiem: true });
     setPointTime(normalizedPoint);
     setPeriodTime(normalizedPeriod);
     setPendingPointTime(normalizedPoint);
@@ -697,13 +721,16 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     [repeatOption, selectedWeekdays, startDate]
   );
   const normalizedPointTime = useMemo(() => normalizeTimeValue(pointTime), [pointTime]);
-  const normalizedPeriodTime = useMemo(() => ensureValidPeriod(periodTime), [periodTime]);
+  const normalizedPeriodTime = useMemo(
+    () => ensureValidPeriod(periodTime, { allowFlipEndMeridiem: true }),
+    [periodTime]
+  );
   const normalizedPendingPointTime = useMemo(
     () => normalizeTimeValue(pendingPointTime),
     [pendingPointTime]
   );
   const normalizedPendingPeriodTime = useMemo(
-    () => ensureValidPeriod(pendingPeriodTime),
+    () => ensureValidPeriod(pendingPeriodTime, { allowFlipEndMeridiem: true }),
     [pendingPeriodTime]
   );
 
