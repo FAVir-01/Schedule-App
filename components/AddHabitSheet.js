@@ -110,7 +110,7 @@ const REMINDER_OPTIONS = [
   { key: '1h', label: '1 hour early', offsetMinutes: -60 },
 ];
 
-const TAG_OPTIONS = [
+const DEFAULT_TAG_OPTIONS = [
   { key: 'none', label: 'No tag' },
   { key: 'clean_room', label: 'Clean Room' },
   { key: 'healthy_lifestyle', label: 'Healthy Lifestyle' },
@@ -119,6 +119,23 @@ const TAG_OPTIONS = [
   { key: 'sleep_better', label: 'Sleep Better' },
   { key: 'workout', label: 'Workout' },
 ];
+
+const createTagKey = (label, existingKeys) => {
+  const sanitized = label
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 40);
+  const base = sanitized || 'tag';
+  let candidate = base;
+  let suffix = 1;
+  while (existingKeys.has(candidate)) {
+    candidate = `${base}_${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+};
 
 const HOUR_VALUES = Array.from({ length: 12 }, (_, i) => i + 1);
 const MINUTE_VALUES = Array.from({ length: 60 }, (_, i) => i);
@@ -374,7 +391,9 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     end: { hour: 10, minute: 0, meridiem: 'AM' },
   });
   const [reminderOption, setReminderOption] = useState('none');
+  const [tagOptions, setTagOptions] = useState(() => [...DEFAULT_TAG_OPTIONS]);
   const [selectedTag, setSelectedTag] = useState('none');
+  const [subtasks, setSubtasks] = useState([]);
 
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(startDate.getFullYear(), startDate.getMonth(), 1));
   const [pendingDate, setPendingDate] = useState(startDate);
@@ -386,6 +405,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
   const [pendingPeriodTime, setPendingPeriodTime] = useState(periodTime);
   const [pendingReminder, setPendingReminder] = useState(reminderOption);
   const [pendingTag, setPendingTag] = useState(selectedTag);
+  const [pendingSubtasks, setPendingSubtasks] = useState([]);
   const titleInputRef = useRef(null);
   const translateY = useRef(new Animated.Value(sheetHeight || height)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -457,12 +477,15 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
         setPendingReminder(reminderOption);
       } else if (panel === 'tag') {
         setPendingTag(selectedTag);
+      } else if (panel === 'subtasks') {
+        setPendingSubtasks(subtasks);
       }
     },
     [
       handlePendingPeriodTimeChange,
       handlePendingPointTimeChange,
       hasSpecifiedTime,
+      subtasks,
       periodTime,
       pointTime,
       reminderOption,
@@ -536,6 +559,42 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     closePanel();
   }, [closePanel, pendingTag]);
 
+  const handleApplySubtasks = useCallback(() => {
+    const sanitized = pendingSubtasks
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    setSubtasks(sanitized);
+    setPendingSubtasks(sanitized);
+    closePanel();
+  }, [closePanel, pendingSubtasks, setPendingSubtasks, setSubtasks]);
+
+  const handleCreateCustomTag = useCallback(
+    (label) => {
+      const trimmed = label.trim();
+      if (!trimmed) {
+        return { key: null, created: false };
+      }
+      let outcome = { key: null, created: false };
+      setTagOptions((prev) => {
+        const normalized = trimmed.toLowerCase();
+        const existing = prev.find((option) => option.label.toLowerCase() === normalized);
+        if (existing) {
+          setPendingTag(existing.key);
+          outcome = { key: existing.key, created: false };
+          return prev;
+        }
+        const existingKeys = new Set(prev.map((option) => option.key));
+        const key = createTagKey(trimmed, existingKeys);
+        const nextOption = [...prev, { key, label: trimmed }];
+        setPendingTag(key);
+        outcome = { key, created: true };
+        return nextOption;
+      });
+      return outcome;
+    },
+    [setPendingTag, setTagOptions]
+  );
+
   useEffect(() => {
     if (visible) {
       setIsMounted(true);
@@ -591,6 +650,9 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
           });
           setReminderOption('none');
           setSelectedTag('none');
+          setPendingTag('none');
+          setSubtasks([]);
+          setPendingSubtasks([]);
         }
       });
     }
@@ -627,6 +689,8 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     if (!title.trim()) {
       return;
     }
+    const selectedTagOption =
+      tagOptions.find((option) => option.key === selectedTag) ?? tagOptions[0];
     onCreate?.({
       title: title.trim(),
       color: selectedColor,
@@ -640,7 +704,9 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
         period: periodTime,
       },
       reminder: reminderOption,
-      tag: selectedTag,
+      tag: selectedTagOption.key,
+      tagLabel: selectedTagOption.label,
+      subtasks,
     });
     handleClose();
   }, [
@@ -653,11 +719,13 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     selectedColor,
     selectedEmoji,
     selectedTag,
+    tagOptions,
     selectedWeekdays,
     startDate,
     timeMode,
     title,
     reminderOption,
+    subtasks,
   ]);
 
   const panResponder = useMemo(
@@ -759,9 +827,16 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     return match.hint ?? 'No time set';
   }, [reminderOption, reminderOptions]);
   const tagLabel = useMemo(() => {
-    const match = TAG_OPTIONS.find((option) => option.key === selectedTag);
+    const match = tagOptions.find((option) => option.key === selectedTag);
     return match?.label ?? 'No tag';
-  }, [selectedTag]);
+  }, [selectedTag, tagOptions]);
+
+  const subtaskLabel = useMemo(() => {
+    if (subtasks.length === 0) {
+      return 'Add';
+    }
+    return `${subtasks.length} added`;
+  }, [subtasks]);
 
   const pendingTimeTitle = useMemo(() => {
     if (!pendingHasSpecifiedTime) {
@@ -966,10 +1041,23 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
                     </View>
                   )}
                   label="Subtasks"
-                  value="Add"
+                  value={subtaskLabel}
                   showChevron
+                  onPress={() => handleOpenPanel('subtasks')}
                   isLast
                 />
+                {subtasks.length > 0 ? (
+                  <View style={styles.subtasksPreviewList}>
+                    {subtasks.map((item, index) => (
+                      <View key={`${item}-${index}`} style={styles.subtasksPreviewItem}>
+                        <View style={styles.subtasksPreviewBullet} />
+                        <Text style={styles.subtasksPreviewText} numberOfLines={1}>
+                          {item}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
                 <Text style={styles.subtasksHint}>
                   Subtasks can be set as your daily routine or checklist
                 </Text>
@@ -1054,7 +1142,22 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
                 onClose={closePanel}
                 onApply={handleApplyTag}
               >
-                <OptionList options={TAG_OPTIONS} selectedKey={pendingTag} onSelect={setPendingTag} />
+                <TagPanel
+                  options={tagOptions}
+                  selectedKey={pendingTag}
+                  onSelect={setPendingTag}
+                  onCreateTag={handleCreateCustomTag}
+                />
+              </OptionOverlay>
+            )}
+            {activePanel === 'subtasks' && (
+              <OptionOverlay
+                title="Subtasks"
+                onClose={closePanel}
+                onApply={handleApplySubtasks}
+                applyLabel="Done"
+              >
+                <SubtasksPanel value={pendingSubtasks} onChange={setPendingSubtasks} />
               </OptionOverlay>
             )}
           </SafeAreaView>
@@ -1184,6 +1287,135 @@ function OptionList({ options, selectedKey, onSelect }) {
           </Pressable>
         );
       })}
+    </View>
+  );
+}
+
+function TagPanel({ options, selectedKey, onSelect, onCreateTag }) {
+  const [newTagName, setNewTagName] = useState('');
+  const trimmed = newTagName.trim();
+  const isDisabled = trimmed.length === 0;
+
+  const handleAddTag = useCallback(() => {
+    if (isDisabled) {
+      return;
+    }
+    const result = onCreateTag(trimmed);
+    if (result?.key) {
+      setNewTagName('');
+    }
+  }, [isDisabled, onCreateTag, trimmed]);
+
+  return (
+    <View style={styles.tagPanel}>
+      <OptionList options={options} selectedKey={selectedKey} onSelect={onSelect} />
+      <View style={styles.tagCreator}>
+        <TextInput
+          style={styles.tagInput}
+          placeholder="Create new tag"
+          placeholderTextColor="#7F8A9A"
+          value={newTagName}
+          onChangeText={setNewTagName}
+          onSubmitEditing={handleAddTag}
+          returnKeyType="done"
+          maxLength={30}
+          accessibilityLabel="Create new tag"
+        />
+        <Pressable
+          style={[styles.tagAddButton, isDisabled && styles.tagAddButtonDisabled]}
+          onPress={handleAddTag}
+          disabled={isDisabled}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: isDisabled }}
+        >
+          <Text style={[styles.tagAddButtonText, isDisabled && styles.tagAddButtonTextDisabled]}>
+            Add
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function SubtasksPanel({ value, onChange }) {
+  const [draft, setDraft] = useState('');
+  const trimmedDraft = draft.trim();
+  const isDisabled = trimmedDraft.length === 0;
+  const list = Array.isArray(value) ? value : [];
+
+  const handleAdd = useCallback(() => {
+    if (isDisabled) {
+      return;
+    }
+    onChange((prev) => {
+      const next = Array.isArray(prev) ? [...prev] : [];
+      next.push(trimmedDraft);
+      return next;
+    });
+    setDraft('');
+  }, [isDisabled, onChange, trimmedDraft]);
+
+  const handleRemove = useCallback(
+    (index) => {
+      onChange((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+    },
+    [onChange]
+  );
+
+  return (
+    <View style={styles.subtasksPanel}>
+      <View style={styles.subtasksList}>
+        {list.length === 0 ? (
+          <Text style={styles.subtasksEmpty}>No subtasks yet</Text>
+        ) : (
+          list.map((item, index) => {
+            const isLast = index === list.length - 1;
+            return (
+              <View key={`${item}-${index}`} style={[styles.subtaskRow, isLast && styles.subtaskRowLast]}>
+                <View style={styles.subtaskRowLeft}>
+                  <Ionicons name="ellipse-outline" size={18} color="#9aa0af" />
+                  <Text style={styles.subtaskName}>{item}</Text>
+                </View>
+                <Pressable
+                  onPress={() => handleRemove(index)}
+                  accessibilityLabel={`Remove subtask ${item}`}
+                  accessibilityRole="button"
+                  hitSlop={8}
+                >
+                  <Ionicons name="close-circle" size={20} color="#9aa0af" />
+                </Pressable>
+              </View>
+            );
+          })
+        )}
+      </View>
+      <View style={styles.subtaskInputRow}>
+        <Ionicons name="add-circle-outline" size={22} color="#61708A" />
+        <TextInput
+          style={styles.subtaskInput}
+          placeholder="New subtask"
+          placeholderTextColor="#7F8A9A"
+          value={draft}
+          onChangeText={setDraft}
+          onSubmitEditing={handleAdd}
+          returnKeyType="done"
+          accessibilityLabel="New subtask"
+        />
+        <Pressable
+          style={[styles.subtaskAddButton, isDisabled && styles.subtaskAddButtonDisabled]}
+          onPress={handleAdd}
+          disabled={isDisabled}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: isDisabled }}
+        >
+          <Text
+            style={[styles.subtaskAddButtonText, isDisabled && styles.subtaskAddButtonTextDisabled]}
+          >
+            Add
+          </Text>
+        </Pressable>
+      </View>
+      <Text style={styles.subtasksPanelHint}>Subtasks can be set as your daily routine or checklist</Text>
     </View>
   );
 }
@@ -1908,6 +2140,26 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
   },
+  subtasksPreviewList: {
+    marginTop: 12,
+    gap: 8,
+  },
+  subtasksPreviewItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  subtasksPreviewBullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#B8C4D6',
+  },
+  subtasksPreviewText: {
+    flex: 1,
+    color: '#1F2742',
+    fontSize: 15,
+  },
   subtasksHint: {
     color: '#7F8A9A',
     fontSize: 13,
@@ -2018,6 +2270,47 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
   },
+  tagPanel: {
+    gap: 18,
+  },
+  tagCreator: {
+    marginTop: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#EEF3FF',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  tagInput: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: '#1F2742',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(109, 125, 150, 0.16)',
+  },
+  tagAddButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: '#1F2742',
+  },
+  tagAddButtonDisabled: {
+    backgroundColor: '#B8C4D6',
+  },
+  tagAddButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  tagAddButtonTextDisabled: {
+    opacity: 0.6,
+  },
   optionItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2066,6 +2359,80 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     backgroundColor: '#1F2742',
+  },
+  subtasksPanel: {
+    gap: 20,
+  },
+  subtasksList: {
+    backgroundColor: '#F5F7FF',
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  subtasksEmpty: {
+    textAlign: 'center',
+    color: '#7F8A9A',
+    paddingVertical: 20,
+    fontSize: 15,
+  },
+  subtaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(109, 125, 150, 0.12)',
+  },
+  subtaskRowLast: {
+    borderBottomWidth: 0,
+  },
+  subtaskRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  subtaskName: {
+    flex: 1,
+    color: '#1F2742',
+    fontSize: 15,
+  },
+  subtaskInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#EEF3FF',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  subtaskInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#1F2742',
+  },
+  subtaskAddButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: '#1F2742',
+  },
+  subtaskAddButtonDisabled: {
+    backgroundColor: '#B8C4D6',
+  },
+  subtaskAddButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  subtaskAddButtonTextDisabled: {
+    opacity: 0.6,
+  },
+  subtasksPanelHint: {
+    color: '#7F8A9A',
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 6,
   },
   quickSelectRow: {
     flexDirection: 'row',
