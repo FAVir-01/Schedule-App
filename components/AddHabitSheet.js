@@ -559,15 +559,6 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     closePanel();
   }, [closePanel, pendingTag]);
 
-  const handleApplySubtasks = useCallback(() => {
-    const sanitized = pendingSubtasks
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0);
-    setSubtasks(sanitized);
-    setPendingSubtasks(sanitized);
-    closePanel();
-  }, [closePanel, pendingSubtasks, setPendingSubtasks, setSubtasks]);
-
   const handleCreateCustomTag = useCallback(
     (label) => {
       const trimmed = label.trim();
@@ -652,7 +643,6 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
           setSelectedTag('none');
           setPendingTag('none');
           setSubtasks([]);
-          setPendingSubtasks([]);
         }
       });
     }
@@ -833,7 +823,10 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
 
   const subtaskLabel = useMemo(() => {
     if (subtasks.length === 0) {
-      return 'Add';
+      return 'No subtasks yet';
+    }
+    if (subtasks.length === 1) {
+      return '1 added';
     }
     return `${subtasks.length} added`;
   }, [subtasks]);
@@ -1034,33 +1027,16 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
                 />
               </View>
               <View style={styles.subtasksContainer}>
-                <SheetRow
-                  icon={(
+                <View style={styles.subtasksHeader}>
+                  <View style={styles.rowLeft}>
                     <View style={styles.rowIconContainer}>
                       <Ionicons name="list-circle-outline" size={22} color="#61708A" />
                     </View>
-                  )}
-                  label="Subtasks"
-                  value={subtaskLabel}
-                  showChevron
-                  onPress={() => handleOpenPanel('subtasks')}
-                  isLast
-                />
-                {subtasks.length > 0 ? (
-                  <View style={styles.subtasksPreviewList}>
-                    {subtasks.map((item, index) => (
-                      <View key={`${item}-${index}`} style={styles.subtasksPreviewItem}>
-                        <View style={styles.subtasksPreviewBullet} />
-                        <Text style={styles.subtasksPreviewText} numberOfLines={1}>
-                          {item}
-                        </Text>
-                      </View>
-                    ))}
+                    <Text style={styles.rowLabel}>Subtasks</Text>
                   </View>
-                ) : null}
-                <Text style={styles.subtasksHint}>
-                  Subtasks can be set as your daily routine or checklist
-                </Text>
+                  <Text style={styles.rowValue}>{subtaskLabel}</Text>
+                </View>
+                <SubtasksPanel value={subtasks} onChange={setSubtasks} />
               </View>
             </ScrollView>
             {activePanel === 'date' && (
@@ -1148,16 +1124,6 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
                   onSelect={setPendingTag}
                   onCreateTag={handleCreateCustomTag}
                 />
-              </OptionOverlay>
-            )}
-            {activePanel === 'subtasks' && (
-              <OptionOverlay
-                title="Subtasks"
-                onClose={closePanel}
-                onApply={handleApplySubtasks}
-                applyLabel="Done"
-              >
-                <SubtasksPanel value={pendingSubtasks} onChange={setPendingSubtasks} />
               </OptionOverlay>
             )}
           </SafeAreaView>
@@ -2132,38 +2098,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 18,
+    paddingTop: 16,
+    paddingBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.08,
     shadowRadius: 12,
     elevation: 6,
+    gap: 16,
   },
-  subtasksPreviewList: {
-    marginTop: 12,
-    gap: 8,
-  },
-  subtasksPreviewItem: {
+  subtasksHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-  },
-  subtasksPreviewBullet: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#B8C4D6',
-  },
-  subtasksPreviewText: {
-    flex: 1,
-    color: '#1F2742',
-    fontSize: 15,
-  },
-  subtasksHint: {
-    color: '#7F8A9A',
-    fontSize: 13,
-    marginTop: 12,
+    justifyContent: 'space-between',
   },
   row: {
     flexDirection: 'row',
