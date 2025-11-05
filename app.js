@@ -21,6 +21,7 @@ import { BlurView } from 'expo-blur';
 import * as NavigationBar from 'expo-navigation-bar';
 import * as Haptics from 'expo-haptics';
 import AddHabitSheet from './components/AddHabitSheet';
+import { EMPTY_STATE_ANIMATION_DATA_URI } from './assets/emptyStateAnimation';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -216,6 +217,10 @@ function ScheduleApp() {
       description: {
         fontSize: isCompact ? 15 : 16,
         lineHeight: isCompact ? 20 : 22,
+      },
+      emptyStateImage: {
+        width: isCompact ? 220 : 260,
+        height: isCompact ? 220 : 260,
       },
       bottomBarContainer: {
         paddingHorizontal: Math.max(12, horizontalPadding / 2),
@@ -504,9 +509,18 @@ function ScheduleApp() {
 
               <View style={styles.tasksSection}>
                 {tasksForSelectedDate.length === 0 ? (
-                  <Text style={styles.emptyState}>
-                    No tasks for this day yet. Use the add button to create one.
-                  </Text>
+                  <View style={styles.emptyStateContainer}>
+                    <Image
+                      source={{ uri: EMPTY_STATE_ANIMATION_DATA_URI }}
+                      style={[styles.emptyStateImage, dynamicStyles.emptyStateImage]}
+                      resizeMode="contain"
+                      accessible
+                      accessibilityLabel="Illustration showing an empty schedule"
+                    />
+                    <Text style={styles.emptyState}>
+                      No tasks for this day yet. Use the add button to create one.
+                    </Text>
+                  </View>
                 ) : (
                   tasksForSelectedDate.map((task) => {
                     const backgroundColor = lightenColor(task.color, 0.75);
@@ -923,6 +937,15 @@ const styles = StyleSheet.create({
     color: '#6f7a86',
     textAlign: 'center',
     paddingHorizontal: 12,
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 20,
+  },
+  emptyStateImage: {
+    marginBottom: 16,
   },
   taskCard: {
     flexDirection: 'row',
