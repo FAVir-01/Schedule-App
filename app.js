@@ -436,6 +436,16 @@ function ScheduleApp() {
     setActiveTaskId(null);
   }, []);
 
+  const handleCloseTaskDetail = useCallback(() => {
+    setActiveTaskId(null);
+  }, []);
+
+  useEffect(() => {
+    if (activeTaskId && !tasks.some((task) => task.id === activeTaskId)) {
+      setActiveTaskId(null);
+    }
+  }, [activeTaskId, tasks]);
+
   useEffect(() => {
     if (activeTaskId && !tasks.some((task) => task.id === activeTaskId)) {
       setActiveTaskId(null);
