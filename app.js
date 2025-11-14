@@ -310,6 +310,7 @@ function ScheduleApp() {
   }, []);
 
   const handleSelectDate = useCallback((date) => {
+    void Haptics.selectionAsync();
     const normalized = new Date(date);
     normalized.setHours(0, 0, 0, 0);
     setSelectedDate(normalized);
@@ -358,7 +359,6 @@ function ScheduleApp() {
       date: normalizedDate,
       dateKey,
       completed: false,
-      skippedDates: [],
       subtasks: convertSubtasks(habit?.subtasks ?? []),
       repeat: habit?.repeat,
       reminder: habit?.reminder,
@@ -435,6 +435,16 @@ function ScheduleApp() {
   const handleCloseTaskDetail = useCallback(() => {
     setActiveTaskId(null);
   }, []);
+
+  const handleCloseTaskDetail = useCallback(() => {
+    setActiveTaskId(null);
+  }, []);
+
+  useEffect(() => {
+    if (activeTaskId && !tasks.some((task) => task.id === activeTaskId)) {
+      setActiveTaskId(null);
+    }
+  }, [activeTaskId, tasks]);
 
   useEffect(() => {
     if (activeTaskId && !tasks.some((task) => task.id === activeTaskId)) {
@@ -646,7 +656,6 @@ function ScheduleApp() {
                     const completedSubtasks = Array.isArray(task.subtasks)
                       ? task.subtasks.filter((item) => item.completed).length
                       : 0;
-                    const isSkipped = task.skippedDates?.includes(selectedDateKey);
                     return (
                       <SwipeableTaskCard
                         key={task.id}
@@ -655,7 +664,6 @@ function ScheduleApp() {
                         borderColor={task.color}
                         totalSubtasks={totalSubtasks}
                         completedSubtasks={completedSubtasks}
-                        isSkipped={isSkipped}
                         onPress={() => setActiveTaskId(task.id)}
                         onToggleCompletion={() => handleToggleTaskCompletion(task.id)}
                         onCopy={() => {
@@ -666,25 +674,6 @@ function ScheduleApp() {
                             startDate: task.date,
                           };
                           openHabitSheet('copy', duplicated);
-                        }}
-                        onSkip={() => {
-                          setTasks((previous) =>
-                            previous.map((current) => {
-                              if (current.id !== task.id) {
-                                return current;
-                              }
-                              const skipped = new Set(current.skippedDates ?? []);
-                              if (skipped.has(selectedDateKey)) {
-                                skipped.delete(selectedDateKey);
-                              } else {
-                                skipped.add(selectedDateKey);
-                              }
-                              return {
-                                ...current,
-                                skippedDates: Array.from(skipped),
-                              };
-                            })
-                          );
                         }}
                         onDelete={() => {
                           setTasks((previous) => previous.filter((current) => current.id !== task.id));
@@ -1000,16 +989,14 @@ function SwipeableTaskCard({
   borderColor,
   totalSubtasks,
   completedSubtasks,
-  isSkipped,
   onPress,
   onToggleCompletion,
   onCopy,
-  onSkip,
   onDelete,
   onEdit,
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
-  const actionWidth = 240;
+  const actionWidth = 168;
   const [isOpen, setIsOpen] = useState(false);
   const currentOffsetRef = useRef(0);
 
@@ -1041,12 +1028,6 @@ function SwipeableTaskCard({
       useNativeDriver: true,
     }).start(() => setIsOpen(true));
   }, [actionWidth, translateX]);
-
-  useEffect(() => {
-    if (isOpen) {
-      closeActions();
-    }
-  }, [closeActions, isOpen, task.id]);
 
   const handlePanRelease = useCallback(() => {
     const currentValue = currentOffsetRef.current;
@@ -1118,15 +1099,6 @@ function SwipeableTaskCard({
           <Text style={styles.swipeActionText}>Copy</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.swipeActionButton, styles.swipeActionSkip]}
-          onPress={() => handleAction(onSkip)}
-          accessibilityRole="button"
-          accessibilityLabel="Skip task"
-        >
-          <Ionicons name="play-skip-forward-outline" size={18} color="#1a1a2e" />
-          <Text style={styles.swipeActionText}>Skip</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
           style={[styles.swipeActionButton, styles.swipeActionDelete]}
           onPress={() => handleAction(onDelete)}
           accessibilityRole="button"
@@ -1143,7 +1115,6 @@ function SwipeableTaskCard({
           {
             backgroundColor,
             borderColor,
-            opacity: isSkipped ? 0.6 : 1,
             transform: [{ translateX }],
           },
         ]}
@@ -1164,7 +1135,6 @@ function SwipeableTaskCard({
                   <Text style={styles.taskSubtaskSummaryText}>{totalLabel}</Text>
                 </View>
               )}
-              {isSkipped && <Text style={styles.taskSkippedLabel}>Skipped for this day</Text>}
             </View>
           </View>
         </Pressable>
@@ -1453,7 +1423,7 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    width: 240,
+    width: 168,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'stretch',
@@ -1473,9 +1443,6 @@ const styles = StyleSheet.create({
   },
   swipeActionCopy: {
     backgroundColor: '#eef1ff',
-  },
-  swipeActionSkip: {
-    backgroundColor: '#f4f4f8',
   },
   swipeActionDelete: {
     backgroundColor: '#ff6b6b',
@@ -1534,12 +1501,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#3c2ba7',
-  },
-  taskSkippedLabel: {
-    marginTop: 6,
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#b76e00',
   },
   taskToggle: {
     width: 32,
