@@ -1042,9 +1042,20 @@ function SwipeableTaskCard({
   }, [translateX]);
 
   const handlePanRelease = useCallback(() => {
-    const currentValue = Math.min(0, Math.max(-actionWidth, currentOffsetRef.current));
-    translateX.setValue(currentValue);
-    setIsOpen(currentValue <= -actionWidth * 0.35);
+    const clampedValue = Math.min(0, Math.max(-actionWidth, currentOffsetRef.current));
+    const shouldOpen = clampedValue <= -actionWidth * 0.5;
+    const targetValue = shouldOpen ? -actionWidth : 0;
+
+    setIsOpen(shouldOpen);
+    currentOffsetRef.current = targetValue;
+
+    Animated.spring(translateX, {
+      toValue: targetValue,
+      damping: 20,
+      stiffness: 220,
+      mass: 0.9,
+      useNativeDriver: USE_NATIVE_DRIVER,
+    }).start();
   }, [actionWidth, translateX]);
 
   const panResponder = useMemo(
