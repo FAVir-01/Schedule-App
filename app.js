@@ -5,6 +5,8 @@ import {
   BackHandler,
   Platform,
   Image,
+  Modal,
+  PanResponder,
   Pressable,
   ScrollView,
   StatusBar,
@@ -102,13 +104,16 @@ function ScheduleApp() {
   const [activeTab, setActiveTab] = useState('today');
   const [isFabOpen, setIsFabOpen] = useState(false);
   const [isFabMenuMounted, setIsFabMenuMounted] = useState(false);
-  const [isCreateHabitOpen, setIsCreateHabitOpen] = useState(false);
+  const [isHabitSheetOpen, setIsHabitSheetOpen] = useState(false);
+  const [habitSheetMode, setHabitSheetMode] = useState('create');
+  const [habitSheetInitialTask, setHabitSheetInitialTask] = useState(null);
   const [selectedDate, setSelectedDate] = useState(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     return now;
   });
   const [tasks, setTasks] = useState([]);
+  const [activeTaskId, setActiveTaskId] = useState(null);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isCompact = width < 360;
@@ -178,6 +183,10 @@ function ScheduleApp() {
   const completedTaskCount = useMemo(
     () => tasksForSelectedDate.filter((task) => task.completed).length,
     [tasksForSelectedDate]
+  );
+  const activeTask = useMemo(
+    () => tasks.find((task) => task.id === activeTaskId) ?? null,
+    [activeTaskId, tasks]
   );
   const lastToggleRef = useRef(0);
   const overlayOpacity = useRef(new Animated.Value(0)).current;
@@ -282,7 +291,9 @@ function ScheduleApp() {
   const handleAddHabit = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     closeFabMenu();
-    setIsCreateHabitOpen(true);
+    setHabitSheetMode('create');
+    setHabitSheetInitialTask(null);
+    setIsHabitSheetOpen(true);
   }, [closeFabMenu]);
 
   const handleAddReflection = useCallback(() => {
@@ -292,7 +303,9 @@ function ScheduleApp() {
   }, [closeFabMenu]);
 
   const handleCloseCreateHabit = useCallback(() => {
-    setIsCreateHabitOpen(false);
+    setIsHabitSheetOpen(false);
+    setHabitSheetMode('create');
+    setHabitSheetInitialTask(null);
   }, []);
 
   const handleSelectDate = useCallback((date) => {
@@ -302,11 +315,32 @@ function ScheduleApp() {
   }, []);
 
   const handleToggleTaskCompletion = useCallback((taskId) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setTasks((previous) =>
       previous.map((task) =>
         task.id === taskId ? { ...task, completed: !task.completed } : task
       )
     );
+  }, []);
+
+  const convertSubtasks = useCallback((subtasks, existing = []) => {
+    const remainingExisting = [...existing];
+    const now = Date.now();
+    return subtasks
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((title, index) => {
+        const existingIndex = remainingExisting.findIndex((subtask) => subtask.title === title);
+        if (existingIndex >= 0) {
+          const [found] = remainingExisting.splice(existingIndex, 1);
+          return { ...found, title };
+        }
+        return {
+          id: `${now}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+          title,
+          completed: false,
+        };
+      });
   }, []);
 
   const handleCreateHabit = useCallback((habit) => {
@@ -323,10 +357,89 @@ function ScheduleApp() {
       date: normalizedDate,
       dateKey,
       completed: false,
+      skippedDates: [],
+      subtasks: convertSubtasks(habit?.subtasks ?? []),
+      repeat: habit?.repeat,
+      reminder: habit?.reminder,
+      tag: habit?.tag,
+      tagLabel: habit?.tagLabel,
     };
     setTasks((previous) => [...previous, newTask]);
     setSelectedDate(normalizedDate);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [convertSubtasks]);
+
+  const handleUpdateHabit = useCallback(
+    (taskId, habit) => {
+      const normalizedDate = habit?.startDate ? new Date(habit.startDate) : null;
+      if (normalizedDate) {
+        normalizedDate.setHours(0, 0, 0, 0);
+      }
+      setTasks((previous) =>
+        previous.map((task) => {
+          if (task.id !== taskId) {
+            return task;
+          }
+          const nextDate = normalizedDate ? new Date(normalizedDate) : new Date(task.date);
+          nextDate.setHours(0, 0, 0, 0);
+          return {
+            ...task,
+            title: habit?.title ?? task.title,
+            color: habit?.color ?? task.color,
+            emoji: habit?.emoji ?? task.emoji,
+            time: habit?.time,
+            subtasks: convertSubtasks(habit?.subtasks ?? [], task.subtasks ?? []),
+            repeat: habit?.repeat,
+            reminder: habit?.reminder,
+            tag: habit?.tag,
+            tagLabel: habit?.tagLabel,
+            date: nextDate,
+            dateKey: getDateKey(nextDate),
+          };
+        })
+      );
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (normalizedDate) {
+        setSelectedDate(normalizedDate);
+      }
+    },
+    [convertSubtasks]
+  );
+
+  const handleToggleSubtask = useCallback((taskId, subtaskId) => {
+    void Haptics.selectionAsync();
+    setTasks((previous) =>
+      previous.map((task) => {
+        if (task.id !== taskId) {
+          return task;
+        }
+        return {
+          ...task,
+          subtasks: (task.subtasks ?? []).map((subtask) =>
+            subtask.id === subtaskId
+              ? { ...subtask, completed: !subtask.completed }
+              : subtask
+          ),
+        };
+      })
+    );
   }, []);
+
+  const openHabitSheet = useCallback((mode, task = null) => {
+    setHabitSheetMode(mode);
+    setHabitSheetInitialTask(task);
+    setIsHabitSheetOpen(true);
+  }, []);
+
+  const handleCloseTaskDetail = useCallback(() => {
+    setActiveTaskId(null);
+  }, []);
+
+  useEffect(() => {
+    if (activeTaskId && !tasks.some((task) => task.id === activeTaskId)) {
+      setActiveTaskId(null);
+    }
+  }, [activeTaskId, tasks]);
 
   useEffect(() => {
     if (!isFabOpen || Platform.OS !== 'android') {
@@ -413,7 +526,10 @@ function ScheduleApp() {
       <TouchableOpacity
         key={key}
         style={styles.tabButton}
-        onPress={() => setActiveTab(key)}
+        onPress={() => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setActiveTab(key);
+        }}
         accessibilityRole="button"
         accessibilityLabel={`${label} tab`}
         disabled={isFabOpen}
@@ -524,35 +640,62 @@ function ScheduleApp() {
                 ) : (
                   tasksForSelectedDate.map((task) => {
                     const backgroundColor = lightenColor(task.color, 0.75);
+                    const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
+                    const completedSubtasks = Array.isArray(task.subtasks)
+                      ? task.subtasks.filter((item) => item.completed).length
+                      : 0;
+                    const isSkipped = task.skippedDates?.includes(selectedDateKey);
                     return (
-                      <View
+                      <SwipeableTaskCard
                         key={task.id}
-                        style={[styles.taskCard, { backgroundColor, borderColor: task.color }]}
-                      >
-                        <View style={styles.taskInfo}>
-                          <Text style={styles.taskEmoji}>{task.emoji}</Text>
-                          <View style={styles.taskDetails}>
-                            <Text
-                              style={[styles.taskTitle, task.completed && styles.taskTitleCompleted]}
-                              numberOfLines={1}
-                            >
-                              {task.title}
-                            </Text>
-                            <Text style={styles.taskTime}>{formatTaskTime(task.time)}</Text>
-                          </View>
-                        </View>
-                        <Pressable
-                          onPress={() => handleToggleTaskCompletion(task.id)}
-                          style={[styles.taskToggle, task.completed && styles.taskToggleCompleted]}
-                          accessibilityRole="checkbox"
-                          accessibilityLabel={
-                            task.completed ? 'Mark task as incomplete' : 'Mark task as complete'
-                          }
-                          accessibilityState={{ checked: task.completed }}
-                        >
-                          {task.completed && <Ionicons name="checkmark" size={18} color="#ffffff" />}
-                        </Pressable>
-                      </View>
+                        task={task}
+                        backgroundColor={backgroundColor}
+                        borderColor={task.color}
+                        totalSubtasks={totalSubtasks}
+                        completedSubtasks={completedSubtasks}
+                        isSkipped={isSkipped}
+                        onPress={() => setActiveTaskId(task.id)}
+                        onToggleCompletion={() => handleToggleTaskCompletion(task.id)}
+                        onCopy={() => {
+                          const duplicated = {
+                            ...task,
+                            title: `${task.title} 1`,
+                            subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+                            startDate: task.date,
+                          };
+                          openHabitSheet('copy', duplicated);
+                        }}
+                        onSkip={() => {
+                          setTasks((previous) =>
+                            previous.map((current) => {
+                              if (current.id !== task.id) {
+                                return current;
+                              }
+                              const skipped = new Set(current.skippedDates ?? []);
+                              if (skipped.has(selectedDateKey)) {
+                                skipped.delete(selectedDateKey);
+                              } else {
+                                skipped.add(selectedDateKey);
+                              }
+                              return {
+                                ...current,
+                                skippedDates: Array.from(skipped),
+                              };
+                            })
+                          );
+                        }}
+                        onDelete={() => {
+                          setTasks((previous) => previous.filter((current) => current.id !== task.id));
+                        }}
+                        onEdit={() => {
+                          const editable = {
+                            ...task,
+                            startDate: task.date,
+                            subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+                          };
+                          openHabitSheet('edit', editable);
+                        }}
+                      />
                     );
                   })
                 )}
@@ -809,12 +952,350 @@ function ScheduleApp() {
           </Animated.View>
         )}
       </View>
+      <TaskDetailModal
+        visible={Boolean(activeTask)}
+        task={activeTask}
+        onClose={handleCloseTaskDetail}
+        onToggleSubtask={handleToggleSubtask}
+        onToggleCompletion={handleToggleTaskCompletion}
+        onEdit={(taskId) => {
+          const taskToEdit = tasks.find((task) => task.id === taskId);
+          if (!taskToEdit) {
+            return;
+          }
+          const editable = {
+            ...taskToEdit,
+            startDate: taskToEdit.date,
+            subtasks: taskToEdit.subtasks?.map((subtask) => subtask.title) ?? [],
+          };
+          openHabitSheet('edit', editable);
+          handleCloseTaskDetail();
+        }}
+      />
       <AddHabitSheet
-        visible={isCreateHabitOpen}
+        visible={isHabitSheetOpen}
         onClose={handleCloseCreateHabit}
-        onCreate={handleCreateHabit}
+        onCreate={(habit) => {
+          handleCreateHabit(habit);
+          handleCloseCreateHabit();
+        }}
+        onUpdate={(habit) => {
+          if (habitSheetInitialTask) {
+            handleUpdateHabit(habitSheetInitialTask.id, habit);
+          }
+          handleCloseCreateHabit();
+        }}
+        mode={habitSheetMode}
+        initialHabit={habitSheetInitialTask}
       />
     </SafeAreaView>
+  );
+}
+
+function SwipeableTaskCard({
+  task,
+  backgroundColor,
+  borderColor,
+  totalSubtasks,
+  completedSubtasks,
+  isSkipped,
+  onPress,
+  onToggleCompletion,
+  onCopy,
+  onSkip,
+  onDelete,
+  onEdit,
+}) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const actionWidth = 240;
+  const [isOpen, setIsOpen] = useState(false);
+  const currentOffsetRef = useRef(0);
+
+  useEffect(() => {
+    const id = translateX.addListener(({ value }) => {
+      currentOffsetRef.current = value;
+    });
+    return () => {
+      translateX.removeListener(id);
+    };
+  }, [translateX]);
+
+  const closeActions = useCallback(() => {
+    Animated.spring(translateX, {
+      toValue: 0,
+      damping: 20,
+      stiffness: 220,
+      mass: 0.9,
+      useNativeDriver: true,
+    }).start(() => setIsOpen(false));
+  }, [translateX]);
+
+  const openActions = useCallback(() => {
+    Animated.spring(translateX, {
+      toValue: -actionWidth,
+      damping: 18,
+      stiffness: 220,
+      mass: 0.9,
+      useNativeDriver: true,
+    }).start(() => setIsOpen(true));
+  }, [actionWidth, translateX]);
+
+  useEffect(() => {
+    if (isOpen) {
+      closeActions();
+    }
+  }, [closeActions, isOpen, task.id]);
+
+  const handlePanRelease = useCallback(() => {
+    const currentValue = currentOffsetRef.current;
+    if (Math.abs(currentValue) < actionWidth * 0.35) {
+      closeActions();
+    } else {
+      openActions();
+    }
+  }, [actionWidth, closeActions, openActions]);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          Math.abs(gesture.dx) > 6 && Math.abs(gesture.dy) < 10,
+        onPanResponderMove: (_, gesture) => {
+          if (gesture.dx < 0) {
+            translateX.setValue(Math.max(-actionWidth, gesture.dx));
+          } else if (isOpen) {
+            translateX.setValue(Math.min(0, -actionWidth + gesture.dx));
+          }
+        },
+        onPanResponderRelease: () => {
+          handlePanRelease();
+        },
+        onPanResponderTerminate: () => {
+          handlePanRelease();
+        },
+      }),
+    [actionWidth, handlePanRelease, isOpen, translateX]
+  );
+
+  const handlePress = useCallback(() => {
+    if (isOpen) {
+      closeActions();
+      return;
+    }
+    onPress?.();
+  }, [closeActions, isOpen, onPress]);
+
+  const handleAction = useCallback(
+    (callback) => {
+      closeActions();
+      if (callback) {
+        void Haptics.selectionAsync();
+        callback();
+      }
+    },
+    [closeActions]
+  );
+
+  const totalLabel = useMemo(() => {
+    if (!totalSubtasks) {
+      return null;
+    }
+    return `${completedSubtasks}/${totalSubtasks}`;
+  }, [completedSubtasks, totalSubtasks]);
+
+  return (
+    <View style={styles.swipeableWrapper}>
+      <View style={styles.swipeableActions}>
+        <TouchableOpacity
+          style={[styles.swipeActionButton, styles.swipeActionCopy]}
+          onPress={() => handleAction(onCopy)}
+          accessibilityRole="button"
+          accessibilityLabel="Copy task"
+        >
+          <Ionicons name="copy-outline" size={18} color="#3c2ba7" />
+          <Text style={styles.swipeActionText}>Copy</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.swipeActionButton, styles.swipeActionSkip]}
+          onPress={() => handleAction(onSkip)}
+          accessibilityRole="button"
+          accessibilityLabel="Skip task"
+        >
+          <Ionicons name="play-skip-forward-outline" size={18} color="#1a1a2e" />
+          <Text style={styles.swipeActionText}>Skip</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.swipeActionButton, styles.swipeActionDelete]}
+          onPress={() => handleAction(onDelete)}
+          accessibilityRole="button"
+          accessibilityLabel="Delete task"
+        >
+          <Ionicons name="trash-outline" size={18} color="#fff" />
+          <Text style={[styles.swipeActionText, styles.swipeActionTextDelete]}>Delete</Text>
+        </TouchableOpacity>
+      </View>
+      <Animated.View
+        {...panResponder.panHandlers}
+        style={[
+          styles.taskCard,
+          {
+            backgroundColor,
+            borderColor,
+            opacity: isSkipped ? 0.6 : 1,
+            transform: [{ translateX }],
+          },
+        ]}
+      >
+        <Pressable style={styles.taskCardContent} onPress={handlePress}>
+          <View style={styles.taskInfo}>
+            <Text style={styles.taskEmoji}>{task.emoji}</Text>
+            <View style={styles.taskDetails}>
+              <Text
+                style={[styles.taskTitle, task.completed && styles.taskTitleCompleted]}
+                numberOfLines={1}
+              >
+                {task.title}
+              </Text>
+              <Text style={styles.taskTime}>{formatTaskTime(task.time)}</Text>
+              {totalLabel && (
+                <View style={styles.taskSubtaskSummary}>
+                  <Text style={styles.taskSubtaskSummaryText}>{totalLabel}</Text>
+                </View>
+              )}
+              {isSkipped && <Text style={styles.taskSkippedLabel}>Skipped for this day</Text>}
+            </View>
+          </View>
+        </Pressable>
+        <Pressable
+          onPress={() => handleAction(onToggleCompletion)}
+          style={[styles.taskToggle, task.completed && styles.taskToggleCompleted]}
+          accessibilityRole="checkbox"
+          accessibilityLabel={task.completed ? 'Mark task as incomplete' : 'Mark task as complete'}
+          accessibilityState={{ checked: task.completed }}
+        >
+          {task.completed && <Ionicons name="checkmark" size={18} color="#ffffff" />}
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
+}
+
+function TaskDetailModal({
+  visible,
+  task,
+  onClose,
+  onToggleSubtask,
+  onToggleCompletion,
+  onEdit,
+}) {
+  if (!visible || !task) {
+    return null;
+  }
+
+  const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
+  const completedSubtasks = Array.isArray(task.subtasks)
+    ? task.subtasks.filter((item) => item.completed).length
+    : 0;
+  const cardBackground = lightenColor(task.color, 0.85);
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.detailOverlay}>
+        <Pressable style={styles.detailBackdrop} onPress={onClose} accessibilityRole="button" />
+        <View style={styles.detailCardContainer}>
+          <View style={[styles.detailCard, { backgroundColor: cardBackground, borderColor: task.color }]}>
+            <View style={styles.detailHeaderRow}>
+              <View style={styles.detailHeaderInfo}>
+                <Text style={styles.detailEmoji}>{task.emoji}</Text>
+                <View style={styles.detailTitleContainer}>
+                  <Text style={styles.detailTitle}>{task.title}</Text>
+                  <Text style={styles.detailTime}>{formatTaskTime(task.time)}</Text>
+                  {totalSubtasks > 0 && (
+                    <Text style={styles.detailSubtaskSummaryLabel}>
+                      {completedSubtasks}/{totalSubtasks} subtasks completed
+                    </Text>
+                  )}
+                </View>
+              </View>
+              <Pressable
+                onPress={() => {
+                  onToggleCompletion?.(task.id);
+                }}
+                style={[styles.detailToggle, task.completed && styles.detailToggleCompleted]}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: task.completed }}
+                accessibilityLabel={
+                  task.completed ? 'Mark task as incomplete' : 'Mark task as complete'
+                }
+              >
+                {task.completed && <Ionicons name="checkmark" size={18} color="#fff" />}
+              </Pressable>
+            </View>
+            <ScrollView style={styles.detailSubtasksContainer}>
+              {totalSubtasks === 0 ? (
+                <Text style={styles.detailEmptySubtasks}>No subtasks added yet.</Text>
+              ) : (
+                task.subtasks.map((subtask) => (
+                  <Pressable
+                    key={subtask.id}
+                    style={styles.detailSubtaskRow}
+                    onPress={() => onToggleSubtask?.(task.id, subtask.id)}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: subtask.completed }}
+                    accessibilityLabel={
+                      subtask.completed
+                        ? `Mark ${subtask.title} as incomplete`
+                        : `Mark ${subtask.title} as complete`
+                    }
+                  >
+                    <View
+                      style={[
+                        styles.detailSubtaskIndicator,
+                        subtask.completed && styles.detailSubtaskIndicatorCompleted,
+                      ]}
+                    >
+                      {subtask.completed && (
+                        <Ionicons name="checkmark" size={16} color="#ffffff" />
+                      )}
+                    </View>
+                    <Text
+                      style={[
+                        styles.detailSubtaskText,
+                        subtask.completed && styles.detailSubtaskTextCompleted,
+                      ]}
+                    >
+                      {subtask.title}
+                    </Text>
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.detailEditButton}
+              onPress={() => onEdit?.(task.id)}
+              accessibilityRole="button"
+              accessibilityLabel="Edit task"
+            >
+              <Ionicons name="create-outline" size={18} color="#3c2ba7" />
+              <Text style={styles.detailEditButtonText}>Edit Task</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.detailCloseButton}
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close task details"
+            >
+              <Text style={styles.detailCloseButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -955,11 +1436,59 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderWidth: 1,
+  },
+  swipeableWrapper: {
     marginBottom: 14,
+    position: 'relative',
+  },
+  swipeableActions: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 240,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'stretch',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#f3f4fb',
+  },
+  swipeActionButton: {
+    flex: 1,
+    marginHorizontal: 4,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    backgroundColor: '#eef1ff',
+  },
+  swipeActionCopy: {
+    backgroundColor: '#eef1ff',
+  },
+  swipeActionSkip: {
+    backgroundColor: '#f4f4f8',
+  },
+  swipeActionDelete: {
+    backgroundColor: '#ff6b6b',
+  },
+  swipeActionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1a1a2e',
+    textTransform: 'uppercase',
+    marginTop: 4,
+  },
+  swipeActionTextDelete: {
+    color: '#ffffff',
   },
   taskInfo: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+  },
+  taskCardContent: {
     flex: 1,
     paddingRight: 12,
   },
@@ -984,6 +1513,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6f7a86',
   },
+  taskSubtaskSummary: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#d7dbeb',
+  },
+  taskSubtaskSummaryText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#3c2ba7',
+  },
+  taskSkippedLabel: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#b76e00',
+  },
   taskToggle: {
     width: 32,
     height: 32,
@@ -997,6 +1547,143 @@ const styles = StyleSheet.create({
   taskToggleCompleted: {
     backgroundColor: '#3dd598',
     borderColor: '#3dd598',
+  },
+  detailOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(10, 11, 30, 0.45)',
+    justifyContent: 'flex-end',
+  },
+  detailBackdrop: {
+    flex: 1,
+  },
+  detailCardContainer: {
+    padding: 20,
+  },
+  detailCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 20,
+    shadowColor: '#000000',
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  detailHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  detailHeaderInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  detailEmoji: {
+    fontSize: 36,
+  },
+  detailTitleContainer: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  detailTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  detailTime: {
+    marginTop: 4,
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#4b4b63',
+  },
+  detailSubtaskSummaryLabel: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#3c2ba7',
+    fontWeight: '600',
+  },
+  detailToggle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: '#c5cadb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+  },
+  detailToggleCompleted: {
+    backgroundColor: '#3dd598',
+    borderColor: '#3dd598',
+  },
+  detailSubtasksContainer: {
+    maxHeight: 260,
+    marginHorizontal: -4,
+    paddingHorizontal: 4,
+    marginBottom: 16,
+  },
+  detailEmptySubtasks: {
+    fontSize: 14,
+    color: '#6f7a86',
+  },
+  detailSubtaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: '#d9dcea',
+  },
+  detailSubtaskIndicator: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    borderColor: '#c5cadb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+    backgroundColor: '#ffffff',
+  },
+  detailSubtaskIndicatorCompleted: {
+    backgroundColor: '#3dd598',
+    borderColor: '#3dd598',
+  },
+  detailSubtaskText: {
+    flex: 1,
+    fontSize: 15,
+    color: '#1a1a2e',
+  },
+  detailSubtaskTextCompleted: {
+    color: '#6f7a86',
+    textDecorationLine: 'line-through',
+  },
+  detailEditButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#cfd3eb',
+    marginBottom: 12,
+  },
+  detailEditButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#3c2ba7',
+  },
+  detailCloseButton: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  detailCloseButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#3c2ba7',
   },
   bottomBarContainer: {
     width: '100%',
