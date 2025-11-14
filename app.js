@@ -28,6 +28,30 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const habitImage = require('./assets/add-habit.png');
 const reflectionImage = require('./assets/add-reflection.png');
+const USE_NATIVE_DRIVER = Platform.OS !== 'web';
+const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
+
+const triggerImpact = (style) => {
+  if (!HAPTICS_SUPPORTED) {
+    return;
+  }
+  try {
+    void Haptics.impactAsync(style);
+  } catch (error) {
+    // Ignore web environments without haptics support
+  }
+};
+
+const triggerSelection = () => {
+  if (!HAPTICS_SUPPORTED) {
+    return;
+  }
+  try {
+    void Haptics.selectionAsync();
+  } catch (error) {
+    // Ignore web environments without haptics support
+  }
+};
 
 const TABS = [
   {
@@ -199,16 +223,24 @@ function ScheduleApp() {
       return undefined;
     }
 
-    const applyNavigationBarTheme = () => {
-      void NavigationBar.setBackgroundColorAsync('#000000');
-      void NavigationBar.setButtonStyleAsync('light');
+    const applyNavigationBarTheme = async () => {
+      try {
+        await NavigationBar.setBackgroundColorAsync('#000000');
+      } catch (error) {
+        // Ignore when navigation bar background can't be controlled (edge-to-edge devices)
+      }
+      try {
+        await NavigationBar.setButtonStyleAsync('light');
+      } catch (error) {
+        // Ignore when navigation bar button style can't be updated
+      }
     };
 
-    applyNavigationBarTheme();
+    void applyNavigationBarTheme();
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        applyNavigationBarTheme();
+        void applyNavigationBarTheme();
       }
     });
 
@@ -266,7 +298,7 @@ function ScheduleApp() {
     }
     setIsFabMenuMounted(true);
     setIsFabOpen(true);
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    triggerImpact(Haptics.ImpactFeedbackStyle.Light);
   }, [isFabOpen]);
 
   const closeFabMenu = useCallback(() => {
@@ -290,7 +322,7 @@ function ScheduleApp() {
   }, [closeFabMenu, isFabOpen, openFabMenu]);
 
   const handleAddHabit = useCallback(() => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    triggerImpact(Haptics.ImpactFeedbackStyle.Light);
     closeFabMenu();
     setHabitSheetMode('create');
     setHabitSheetInitialTask(null);
@@ -298,7 +330,7 @@ function ScheduleApp() {
   }, [closeFabMenu]);
 
   const handleAddReflection = useCallback(() => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    triggerImpact(Haptics.ImpactFeedbackStyle.Light);
     console.log('Add reflection action triggered');
     closeFabMenu();
   }, [closeFabMenu]);
@@ -310,14 +342,14 @@ function ScheduleApp() {
   }, []);
 
   const handleSelectDate = useCallback((date) => {
-    void Haptics.selectionAsync();
+    triggerSelection();
     const normalized = new Date(date);
     normalized.setHours(0, 0, 0, 0);
     setSelectedDate(normalized);
   }, []);
 
   const handleToggleTaskCompletion = useCallback((taskId) => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    triggerImpact(Haptics.ImpactFeedbackStyle.Light);
     setTasks((previous) =>
       previous.map((task) =>
         task.id === taskId ? { ...task, completed: !task.completed } : task
@@ -367,7 +399,7 @@ function ScheduleApp() {
     };
     setTasks((previous) => [...previous, newTask]);
     setSelectedDate(normalizedDate);
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    triggerImpact(Haptics.ImpactFeedbackStyle.Light);
   }, [convertSubtasks]);
 
   const handleUpdateHabit = useCallback(
@@ -399,7 +431,7 @@ function ScheduleApp() {
           };
         })
       );
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      triggerImpact(Haptics.ImpactFeedbackStyle.Light);
       if (normalizedDate) {
         setSelectedDate(normalizedDate);
       }
@@ -408,7 +440,7 @@ function ScheduleApp() {
   );
 
   const handleToggleSubtask = useCallback((taskId, subtaskId) => {
-    void Haptics.selectionAsync();
+    triggerSelection();
     setTasks((previous) =>
       previous.map((task) => {
         if (task.id !== taskId) {
@@ -432,13 +464,15 @@ function ScheduleApp() {
     setIsHabitSheetOpen(true);
   }, []);
 
-  const handleCloseTaskDetail = useCallback(() => {
+  const closeTaskDetail = useCallback(() => {
     setActiveTaskId(null);
   }, []);
 
-  const handleCloseTaskDetail = useCallback(() => {
-    setActiveTaskId(null);
-  }, []);
+  useEffect(() => {
+    if (activeTaskId && !tasks.some((task) => task.id === activeTaskId)) {
+      setActiveTaskId(null);
+    }
+  }, [activeTaskId, tasks]);
 
   useEffect(() => {
     if (activeTaskId && !tasks.some((task) => task.id === activeTaskId)) {
@@ -481,24 +515,24 @@ function ScheduleApp() {
         Animated.timing(overlayOpacity, {
           toValue: 1,
           duration: 160,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.spring(actionsScale, {
           toValue: 1,
           damping: 18,
           stiffness: 180,
           mass: 0.9,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.timing(actionsOpacity, {
           toValue: 1,
           duration: 160,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.timing(actionsTranslateY, {
           toValue: 0,
           duration: 160,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
       ]).start();
     } else {
@@ -506,22 +540,22 @@ function ScheduleApp() {
         Animated.timing(overlayOpacity, {
           toValue: 0,
           duration: 150,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.timing(actionsOpacity, {
           toValue: 0,
           duration: 150,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.timing(actionsTranslateY, {
           toValue: 12,
           duration: 150,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.timing(actionsScale, {
           toValue: 0.85,
           duration: 150,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
       ]).start(({ finished }) => {
         if (finished && !isFabOpen) {
@@ -538,7 +572,7 @@ function ScheduleApp() {
         key={key}
         style={styles.tabButton}
         onPress={() => {
-          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          triggerImpact(Haptics.ImpactFeedbackStyle.Light);
           setActiveTab(key);
         }}
         accessibilityRole="button"
@@ -946,7 +980,7 @@ function ScheduleApp() {
       <TaskDetailModal
         visible={Boolean(activeTask)}
         task={activeTask}
-        onClose={handleCloseTaskDetail}
+        onClose={closeTaskDetail}
         onToggleSubtask={handleToggleSubtask}
         onToggleCompletion={handleToggleTaskCompletion}
         onEdit={(taskId) => {
@@ -960,7 +994,7 @@ function ScheduleApp() {
             subtasks: taskToEdit.subtasks?.map((subtask) => subtask.title) ?? [],
           };
           openHabitSheet('edit', editable);
-          handleCloseTaskDetail();
+          closeTaskDetail();
         }}
       />
       <AddHabitSheet
@@ -1015,28 +1049,15 @@ function SwipeableTaskCard({
       damping: 20,
       stiffness: 220,
       mass: 0.9,
-      useNativeDriver: true,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start(() => setIsOpen(false));
   }, [translateX]);
 
-  const openActions = useCallback(() => {
-    Animated.spring(translateX, {
-      toValue: -actionWidth,
-      damping: 18,
-      stiffness: 220,
-      mass: 0.9,
-      useNativeDriver: true,
-    }).start(() => setIsOpen(true));
-  }, [actionWidth, translateX]);
-
   const handlePanRelease = useCallback(() => {
-    const currentValue = currentOffsetRef.current;
-    if (Math.abs(currentValue) < actionWidth * 0.35) {
-      closeActions();
-    } else {
-      openActions();
-    }
-  }, [actionWidth, closeActions, openActions]);
+    const currentValue = Math.min(0, Math.max(-actionWidth, currentOffsetRef.current));
+    translateX.setValue(currentValue);
+    setIsOpen(currentValue <= -actionWidth * 0.35);
+  }, [actionWidth, translateX]);
 
   const panResponder = useMemo(
     () =>
@@ -1072,7 +1093,7 @@ function SwipeableTaskCard({
     (callback) => {
       closeActions();
       if (callback) {
-        void Haptics.selectionAsync();
+        triggerSelection();
         callback();
       }
     },

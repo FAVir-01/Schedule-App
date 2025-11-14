@@ -22,6 +22,8 @@ import * as Haptics from 'expo-haptics';
 const SHEET_OPEN_DURATION = 300;
 const SHEET_CLOSE_DURATION = 220;
 const BACKDROP_MAX_OPACITY = 0.5;
+const USE_NATIVE_DRIVER = Platform.OS !== 'web';
+const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
 
 const COLORS = ['#FFCF70', '#F7A6A1', '#B39DD6', '#79C3FF', '#A8E6CF', '#FDE2A6'];
 const EMOJIS = [
@@ -685,14 +687,14 @@ export default function AddHabitSheet({
         Animated.timing(backdropOpacity, {
           toValue: BACKDROP_MAX_OPACITY,
           duration: SHEET_OPEN_DURATION,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.spring(translateY, {
           toValue: 0,
           damping: 18,
           stiffness: 220,
           mass: 0.9,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
       ]).start(() => {
         titleInputRef.current?.focus();
@@ -704,12 +706,12 @@ export default function AddHabitSheet({
         Animated.timing(backdropOpacity, {
           toValue: 0,
           duration: SHEET_CLOSE_DURATION,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.timing(translateY, {
           toValue: sheetHeight || height,
           duration: SHEET_CLOSE_DURATION,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
       ]).start(() => {
         if (isClosingRef.current) {
@@ -853,7 +855,7 @@ export default function AddHabitSheet({
               damping: 18,
               stiffness: 220,
               mass: 0.9,
-              useNativeDriver: true,
+              useNativeDriver: USE_NATIVE_DRIVER,
             }).start();
           }
         },
@@ -870,7 +872,7 @@ export default function AddHabitSheet({
               damping: 18,
               stiffness: 220,
               mass: 0.9,
-              useNativeDriver: true,
+              useNativeDriver: USE_NATIVE_DRIVER,
             }).start();
           }
         },
@@ -1959,8 +1961,12 @@ function WheelColumn({
 
       if (clampedIndex !== selectedIndex) {
         onSelect(values[clampedIndex]);
-        if (typeof Haptics.selectionAsync === 'function') {
-          Haptics.selectionAsync();
+        if (HAPTICS_SUPPORTED && typeof Haptics.selectionAsync === 'function') {
+          try {
+            Haptics.selectionAsync();
+          } catch (error) {
+            // Ignore missing haptics support on web
+          }
         }
       }
     },
