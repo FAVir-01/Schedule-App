@@ -22,6 +22,8 @@ import * as Haptics from 'expo-haptics';
 const SHEET_OPEN_DURATION = 300;
 const SHEET_CLOSE_DURATION = 220;
 const BACKDROP_MAX_OPACITY = 0.5;
+const USE_NATIVE_DRIVER = Platform.OS !== 'web';
+const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
 
 const COLORS = ['#FFCF70', '#F7A6A1', '#B39DD6', '#79C3FF', '#A8E6CF', '#FDE2A6'];
 const EMOJIS = [
@@ -367,7 +369,14 @@ function getReminderHint(option, hasSpecifiedTime, timeMode, pointTime, periodTi
   return formatTime(reminderTime);
 }
 
-export default function AddHabitSheet({ visible, onClose, onCreate }) {
+export default function AddHabitSheet({
+  visible,
+  onClose,
+  onCreate,
+  onUpdate,
+  mode = 'create',
+  initialHabit,
+}) {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const sheetHeight = useMemo(() => {
@@ -411,6 +420,19 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const isClosingRef = useRef(false);
   const sheetBackgroundColor = useMemo(() => lightenColor(selectedColor, 0.75), [selectedColor]);
+  const isEditMode = mode === 'edit';
+  const isCopyMode = mode === 'copy';
+  const submitLabel = isEditMode ? 'Save' : 'Create';
+  const accessibilityAnnouncement = isEditMode
+    ? 'Edit habit'
+    : isCopyMode
+    ? 'Duplicate habit'
+    : 'Create habit';
+  const closeSheetAccessibilityLabel = isEditMode
+    ? 'Close edit habit'
+    : isCopyMode
+    ? 'Close duplicate habit'
+    : 'Close create habit';
 
   const handlePendingPointTimeChange = useCallback((next) => {
     setPendingPointTime((prev) => {
@@ -587,6 +609,77 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
   );
 
   useEffect(() => {
+    if (!visible || !initialHabit) {
+      return;
+    }
+
+    const resolvedStartDate = normalizeDate(
+      initialHabit.startDate ? new Date(initialHabit.startDate) : new Date()
+    );
+    const resolvedRepeatOption = initialHabit.repeat?.option ?? 'off';
+    const resolvedWeekdays = new Set(
+      initialHabit.repeat?.weekdays && initialHabit.repeat.weekdays.length > 0
+        ? initialHabit.repeat.weekdays
+        : ['mon', 'tue', 'wed', 'thu', 'fri']
+    );
+    const resolvedHasSpecifiedTime = initialHabit.time?.specified ?? false;
+    const resolvedTimeMode = initialHabit.time?.mode ?? 'point';
+    const defaultPoint = { hour: 9, minute: 0, meridiem: 'AM' };
+    const defaultPeriod = {
+      start: { hour: 9, minute: 0, meridiem: 'AM' },
+      end: { hour: 10, minute: 0, meridiem: 'AM' },
+    };
+    const resolvedPoint = normalizeTimeValue(initialHabit.time?.point ?? defaultPoint);
+    const resolvedPeriod = initialHabit.time?.period
+      ? {
+          start: normalizeTimeValue(initialHabit.time.period.start ?? defaultPeriod.start),
+          end: normalizeTimeValue(initialHabit.time.period.end ?? defaultPeriod.end),
+        }
+      : {
+          start: normalizeTimeValue(defaultPeriod.start),
+          end: normalizeTimeValue(defaultPeriod.end),
+        };
+    const resolvedReminder = initialHabit.reminder ?? 'none';
+    const resolvedTagKey = initialHabit.tag ?? 'none';
+    const resolvedSubtasks = Array.isArray(initialHabit.subtasks) ? initialHabit.subtasks : [];
+
+    setTitle(initialHabit.title ?? '');
+    setSelectedColor(initialHabit.color ?? COLORS[0]);
+    setSelectedEmoji(initialHabit.emoji ?? DEFAULT_EMOJI);
+    setStartDate(resolvedStartDate);
+    setRepeatOption(resolvedRepeatOption);
+    setSelectedWeekdays(new Set(resolvedWeekdays));
+    setHasSpecifiedTime(resolvedHasSpecifiedTime);
+    setTimeMode(resolvedTimeMode);
+    setPointTime(resolvedPoint);
+    setPeriodTime(resolvedPeriod);
+    setReminderOption(resolvedReminder);
+    setSelectedTag(resolvedTagKey);
+    setPendingTag(resolvedTagKey);
+    setSubtasks(resolvedSubtasks);
+
+    setCalendarMonth(new Date(resolvedStartDate.getFullYear(), resolvedStartDate.getMonth(), 1));
+    setPendingDate(resolvedStartDate);
+    setPendingRepeatOption(resolvedRepeatOption);
+    setPendingWeekdays(new Set(resolvedWeekdays));
+    setPendingHasSpecifiedTime(resolvedHasSpecifiedTime);
+    setPendingTimeMode(resolvedTimeMode);
+    setPendingPointTime(resolvedPoint);
+    setPendingPeriodTime(resolvedPeriod);
+    setPendingReminder(resolvedReminder);
+    setPendingSubtasks(resolvedSubtasks);
+
+    if (initialHabit.tag && initialHabit.tagLabel) {
+      setTagOptions((prev) => {
+        if (prev.some((option) => option.key === initialHabit.tag)) {
+          return prev;
+        }
+        return [...prev, { key: initialHabit.tag, label: initialHabit.tagLabel }];
+      });
+    }
+  }, [initialHabit, visible]);
+
+  useEffect(() => {
     if (visible) {
       setIsMounted(true);
       isClosingRef.current = false;
@@ -594,31 +687,31 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
         Animated.timing(backdropOpacity, {
           toValue: BACKDROP_MAX_OPACITY,
           duration: SHEET_OPEN_DURATION,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.spring(translateY, {
           toValue: 0,
           damping: 18,
           stiffness: 220,
           mass: 0.9,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
       ]).start(() => {
         titleInputRef.current?.focus();
       });
-      AccessibilityInfo.announceForAccessibility('Create habit');
+      AccessibilityInfo.announceForAccessibility(accessibilityAnnouncement);
     } else if (isMounted) {
       isClosingRef.current = true;
       Animated.parallel([
         Animated.timing(backdropOpacity, {
           toValue: 0,
           duration: SHEET_CLOSE_DURATION,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
         Animated.timing(translateY, {
           toValue: sheetHeight || height,
           duration: SHEET_CLOSE_DURATION,
-          useNativeDriver: true,
+          useNativeDriver: USE_NATIVE_DRIVER,
         }),
       ]).start(() => {
         if (isClosingRef.current) {
@@ -641,12 +734,21 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
           });
           setReminderOption('none');
           setSelectedTag('none');
+          setTagOptions([...DEFAULT_TAG_OPTIONS]);
           setPendingTag('none');
           setSubtasks([]);
         }
       });
     }
-  }, [backdropOpacity, height, isMounted, sheetHeight, translateY, visible]);
+  }, [
+    accessibilityAnnouncement,
+    backdropOpacity,
+    height,
+    isMounted,
+    sheetHeight,
+    translateY,
+    visible,
+  ]);
 
   useEffect(() => {
     if (!visible) {
@@ -675,13 +777,13 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     }
   }, [height, isMounted, sheetHeight, translateY]);
 
-  const handleCreate = useCallback(() => {
+  const handleSubmit = useCallback(() => {
     if (!title.trim()) {
       return;
     }
     const selectedTagOption =
       tagOptions.find((option) => option.key === selectedTag) ?? tagOptions[0];
-    onCreate?.({
+    const payload = {
       title: title.trim(),
       color: selectedColor,
       emoji: selectedEmoji,
@@ -697,25 +799,32 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
       tag: selectedTagOption.key,
       tagLabel: selectedTagOption.label,
       subtasks,
-    });
+    };
+    if (isEditMode) {
+      onUpdate?.(payload);
+    } else {
+      onCreate?.(payload);
+    }
     handleClose();
   }, [
+    isEditMode,
     handleClose,
     hasSpecifiedTime,
     onCreate,
+    onUpdate,
     periodTime,
     pointTime,
     repeatOption,
     selectedColor,
     selectedEmoji,
     selectedTag,
-    tagOptions,
     selectedWeekdays,
     startDate,
     timeMode,
     title,
     reminderOption,
     subtasks,
+    tagOptions,
   ]);
 
   const panResponder = useMemo(
@@ -746,7 +855,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
               damping: 18,
               stiffness: 220,
               mass: 0.9,
-              useNativeDriver: true,
+              useNativeDriver: USE_NATIVE_DRIVER,
             }).start();
           }
         },
@@ -763,7 +872,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
               damping: 18,
               stiffness: 220,
               mass: 0.9,
-              useNativeDriver: true,
+              useNativeDriver: USE_NATIVE_DRIVER,
             }).start();
           }
         },
@@ -771,7 +880,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
     [activePanel, handleClose, sheetHeight, translateY, visible]
   );
 
-  const isCreateDisabled = !title.trim();
+  const isSubmitDisabled = !title.trim();
 
   const dateLabel = useMemo(() => formatDateLabel(startDate), [startDate]);
   const repeatLabel = useMemo(
@@ -847,7 +956,7 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
       <Animated.View
         style={[styles.backdrop, { opacity: backdropOpacity }]}
         accessibilityRole="button"
-        accessibilityLabel="Close create habit"
+        accessibilityLabel={closeSheetAccessibilityLabel}
       >
         <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
       </Animated.View>
@@ -881,15 +990,17 @@ export default function AddHabitSheet({ visible, onClose, onCreate }) {
                 <Ionicons name="close" size={26} color="#6f7a86" />
               </Pressable>
               <Pressable
-                style={[styles.createButton, isCreateDisabled && styles.createButtonDisabled]}
+                style={[styles.createButton, isSubmitDisabled && styles.createButtonDisabled]}
                 accessibilityRole="button"
-                accessibilityState={{ disabled: isCreateDisabled }}
-                onPress={handleCreate}
-                disabled={isCreateDisabled}
+                accessibilityState={{ disabled: isSubmitDisabled }}
+                onPress={handleSubmit}
+                disabled={isSubmitDisabled}
                 hitSlop={12}
               >
-                <Text style={[styles.createButtonText, isCreateDisabled && styles.createButtonTextDisabled]}>
-                  Create
+                <Text
+                  style={[styles.createButtonText, isSubmitDisabled && styles.createButtonTextDisabled]}
+                >
+                  {submitLabel}
                 </Text>
               </Pressable>
             </View>
@@ -1850,8 +1961,12 @@ function WheelColumn({
 
       if (clampedIndex !== selectedIndex) {
         onSelect(values[clampedIndex]);
-        if (typeof Haptics.selectionAsync === 'function') {
-          Haptics.selectionAsync();
+        if (HAPTICS_SUPPORTED && typeof Haptics.selectionAsync === 'function') {
+          try {
+            Haptics.selectionAsync();
+          } catch (error) {
+            // Ignore missing haptics support on web
+          }
         }
       }
     },
