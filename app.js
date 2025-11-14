@@ -23,7 +23,6 @@ import { BlurView } from 'expo-blur';
 import * as NavigationBar from 'expo-navigation-bar';
 import * as Haptics from 'expo-haptics';
 import AddHabitSheet from './components/AddHabitSheet';
-import { EMPTY_STATE_ANIMATION_DATA_URI } from './assets/emptyStateAnimation';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -193,6 +192,7 @@ function ScheduleApp() {
   const actionsScale = useRef(new Animated.Value(0.85)).current;
   const actionsOpacity = useRef(new Animated.Value(0)).current;
   const actionsTranslateY = useRef(new Animated.Value(12)).current;
+  const emptyStateIconSize = isCompact ? 98 : 112;
 
   useEffect(() => {
     if (Platform.OS !== 'android') {
@@ -227,9 +227,10 @@ function ScheduleApp() {
         fontSize: isCompact ? 15 : 16,
         lineHeight: isCompact ? 20 : 22,
       },
-      emptyStateImage: {
+      emptyStateIllustration: {
         width: isCompact ? 220 : 260,
         height: isCompact ? 220 : 260,
+        borderRadius: isCompact ? 110 : 130,
       },
       bottomBarContainer: {
         paddingHorizontal: Math.max(12, horizontalPadding / 2),
@@ -626,13 +627,14 @@ function ScheduleApp() {
               <View style={styles.tasksSection}>
                 {tasksForSelectedDate.length === 0 ? (
                   <View style={styles.emptyStateContainer}>
-                    <Image
-                      source={{ uri: EMPTY_STATE_ANIMATION_DATA_URI }}
-                      style={[styles.emptyStateImage, dynamicStyles.emptyStateImage]}
-                      resizeMode="contain"
+                    <View
+                      style={[styles.emptyStateIllustration, dynamicStyles.emptyStateIllustration]}
                       accessible
+                      accessibilityRole="image"
                       accessibilityLabel="Illustration showing an empty schedule"
-                    />
+                    >
+                      <Ionicons name="calendar-clear-outline" size={emptyStateIconSize} color="#3c2ba7" />
+                    </View>
                     <Text style={styles.emptyState}>
                       No tasks for this day yet. Use the add button to create one.
                     </Text>
@@ -1425,8 +1427,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 20,
   },
-  emptyStateImage: {
+  emptyStateIllustration: {
     marginBottom: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#e7e9f8',
+    borderWidth: 1,
+    borderColor: '#d7dbeb',
   },
   taskCard: {
     flexDirection: 'row',
