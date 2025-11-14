@@ -475,6 +475,18 @@ function ScheduleApp() {
   }, [activeTaskId, tasks]);
 
   useEffect(() => {
+    if (activeTaskId && !tasks.some((task) => task.id === activeTaskId)) {
+      setActiveTaskId(null);
+    }
+  }, [activeTaskId, tasks]);
+
+  useEffect(() => {
+    if (activeTaskId && !tasks.some((task) => task.id === activeTaskId)) {
+      setActiveTaskId(null);
+    }
+  }, [activeTaskId, tasks]);
+
+  useEffect(() => {
     if (!isFabOpen || Platform.OS !== 'android') {
       return undefined;
     }
