@@ -123,6 +123,143 @@ const formatTaskTime = (time) => {
   return 'Anytime';
 };
 
+const normalizeTaskTagKey = (task) => {
+  if (!task) {
+    return null;
+  }
+  if (task.tag && typeof task.tag === 'string') {
+    const normalized = task.tag.trim();
+    if (!normalized || normalized.toLowerCase() === 'none' || normalized.toLowerCase() === 'no_tag') {
+      return null;
+    }
+    return normalized;
+  }
+  if (task.tagLabel && typeof task.tagLabel === 'string') {
+    const label = task.tagLabel.trim();
+    if (!label || label.toLowerCase() === 'no tag') {
+      return null;
+    }
+    return label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '');
+  }
+  return null;
+};
+
+const getTaskTagDisplayLabel = (task) => {
+  if (!task) {
+    return null;
+  }
+  if (task.tagLabel && typeof task.tagLabel === 'string') {
+    const label = task.tagLabel.trim();
+    if (!label || label.toLowerCase() === 'no tag') {
+      return null;
+    }
+    return label;
+  }
+  if (task.tag && typeof task.tag === 'string') {
+    const normalized = task.tag.trim();
+    if (!normalized || normalized.toLowerCase() === 'none' || normalized.toLowerCase() === 'no_tag') {
+      return null;
+    }
+    return normalized
+      .split('_')
+      .filter(Boolean)
+      .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+      .join(' ');
+  }
+  return null;
+};
+
+const normalizeDateValue = (value) => {
+  if (!value) {
+    return null;
+  }
+  if (value instanceof Date) {
+    const date = new Date(value);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split('-').map((part) => Number.parseInt(part, 10));
+    const date = new Date(year, month - 1, day);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const isSameDay = (dateA, dateB) => {
+  if (!dateA || !dateB) {
+    return false;
+  }
+  return dateA.getTime() === dateB.getTime();
+};
+
+const getWeekdayKeyFromDate = (date) => {
+  const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  return WEEKDAY_KEYS[date.getDay()] ?? null;
+};
+
+const shouldTaskAppearOnDate = (task, targetDate) => {
+  if (!task || !targetDate) {
+    return false;
+  }
+
+  const normalizedTargetDate = normalizeDateValue(targetDate);
+  const normalizedStartDate = normalizeDateValue(task.date ?? task.dateKey);
+
+  if (!normalizedTargetDate || !normalizedStartDate) {
+    return false;
+  }
+
+  if (isSameDay(normalizedStartDate, normalizedTargetDate)) {
+    return true;
+  }
+
+  const repeat = task.repeat;
+  if (!repeat || !repeat.option || repeat.option === 'off') {
+    return false;
+  }
+
+  if (normalizedTargetDate.getTime() < normalizedStartDate.getTime()) {
+    return false;
+  }
+
+  switch (repeat.option) {
+    case 'daily':
+      return true;
+    case 'weekly':
+      return normalizedTargetDate.getDay() === normalizedStartDate.getDay();
+    case 'monthly':
+      return normalizedTargetDate.getDate() === normalizedStartDate.getDate();
+    case 'weekend': {
+      const day = normalizedTargetDate.getDay();
+      return day === 0 || day === 6;
+    }
+    case 'weekdays': {
+      const day = normalizedTargetDate.getDay();
+      return day >= 1 && day <= 5;
+    }
+    case 'custom': {
+      const weekdays = Array.isArray(repeat.weekdays) ? repeat.weekdays : [];
+      if (!weekdays.length) {
+        return false;
+      }
+      const weekdayKey = getWeekdayKeyFromDate(normalizedTargetDate);
+      return weekdayKey ? weekdays.includes(weekdayKey) : false;
+    }
+    default:
+      return false;
+  }
+};
+
 function ScheduleApp() {
   const [activeTab, setActiveTab] = useState('today');
   const [isFabOpen, setIsFabOpen] = useState(false);
@@ -137,6 +274,7 @@ function ScheduleApp() {
   });
   const [tasks, setTasks] = useState([]);
   const [activeTaskId, setActiveTaskId] = useState(null);
+  const [selectedTagFilter, setSelectedTagFilter] = useState('all');
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isCompact = width < 360;
@@ -174,7 +312,7 @@ function ScheduleApp() {
       const date = new Date(base);
       date.setDate(base.getDate() + offset);
       const key = getDateKey(date);
-      const dayTasks = tasks.filter((task) => task.dateKey === key);
+      const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, date));
       const allCompleted = dayTasks.length > 0 && dayTasks.every((task) => task.completed);
       return {
         date,
@@ -186,7 +324,7 @@ function ScheduleApp() {
     });
   }, [tasks, today]);
   const tasksForSelectedDate = useMemo(() => {
-    const filtered = tasks.filter((task) => task.dateKey === selectedDateKey);
+    const filtered = tasks.filter((task) => shouldTaskAppearOnDate(task, selectedDate));
     const getSortValue = (task) => {
       if (!task.time || !task.time.specified) {
         return Number.MAX_SAFE_INTEGER;
@@ -200,7 +338,33 @@ function ScheduleApp() {
       return Number.MAX_SAFE_INTEGER;
     };
     return filtered.slice().sort((a, b) => getSortValue(a) - getSortValue(b));
-  }, [selectedDateKey, tasks]);
+  }, [selectedDate, tasks]);
+  const tagOptions = useMemo(() => {
+    const seen = new Set();
+    return tasksForSelectedDate.reduce((options, task) => {
+      const key = normalizeTaskTagKey(task);
+      if (!key || seen.has(key)) {
+        return options;
+      }
+      seen.add(key);
+      options.push({
+        key,
+        label: getTaskTagDisplayLabel(task) ?? 'Tag',
+      });
+      return options;
+    }, []);
+  }, [tasksForSelectedDate]);
+  useEffect(() => {
+    if (selectedTagFilter !== 'all' && !tagOptions.some((option) => option.key === selectedTagFilter)) {
+      setSelectedTagFilter('all');
+    }
+  }, [selectedTagFilter, tagOptions]);
+  const visibleTasks = useMemo(() => {
+    if (selectedTagFilter === 'all') {
+      return tasksForSelectedDate;
+    }
+    return tasksForSelectedDate.filter((task) => normalizeTaskTagKey(task) === selectedTagFilter);
+  }, [selectedTagFilter, tasksForSelectedDate]);
   const allTasksCompletedForSelectedDay =
     tasksForSelectedDate.length > 0 && tasksForSelectedDate.every((task) => task.completed);
   const completedTaskCount = useMemo(
@@ -656,8 +820,69 @@ function ScheduleApp() {
                 })}
               </View>
 
+              {tagOptions.length > 0 && (
+                <View style={styles.tagFilterContainer}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.tagFilterScroll}
+                  >
+                    <Pressable
+                      key="all"
+                      style={[
+                        styles.tagPill,
+                        selectedTagFilter === 'all' && styles.tagPillSelected,
+                      ]}
+                      onPress={() => {
+                        if (selectedTagFilter !== 'all') {
+                          triggerSelection();
+                          setSelectedTagFilter('all');
+                        }
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Show all tags"
+                      accessibilityState={{ selected: selectedTagFilter === 'all' }}
+                    >
+                      <Text
+                        style={[
+                          styles.tagPillText,
+                          selectedTagFilter === 'all' && styles.tagPillTextSelected,
+                        ]}
+                      >
+                        All
+                      </Text>
+                    </Pressable>
+                    {tagOptions.map((option) => {
+                      const isSelected = selectedTagFilter === option.key;
+                      return (
+                        <Pressable
+                          key={option.key}
+                          style={[styles.tagPill, isSelected && styles.tagPillSelected]}
+                          onPress={() => {
+                            if (!isSelected) {
+                              triggerSelection();
+                              setSelectedTagFilter(option.key);
+                            }
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Show tasks tagged ${option.label}`}
+                          accessibilityState={{ selected: isSelected }}
+                        >
+                          <Text
+                            style={[styles.tagPillText, isSelected && styles.tagPillTextSelected]}
+                            numberOfLines={1}
+                          >
+                            {option.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
+
               <View style={styles.tasksSection}>
-                {tasksForSelectedDate.length === 0 ? (
+                {visibleTasks.length === 0 ? (
                   <View style={styles.emptyStateContainer}>
                     <View
                       style={[styles.emptyStateIllustration, dynamicStyles.emptyStateIllustration]}
@@ -668,11 +893,13 @@ function ScheduleApp() {
                       <Ionicons name="calendar-clear-outline" size={emptyStateIconSize} color="#3c2ba7" />
                     </View>
                     <Text style={styles.emptyState}>
-                      No tasks for this day yet. Use the add button to create one.
+                      {selectedTagFilter === 'all'
+                        ? 'No tasks for this day yet. Use the add button to create one.'
+                        : 'No tasks with this tag for this day yet.'}
                     </Text>
                   </View>
                 ) : (
-                  tasksForSelectedDate.map((task) => {
+                  visibleTasks.map((task) => {
                     const backgroundColor = lightenColor(task.color, 0.75);
                     const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
                     const completedSubtasks = Array.isArray(task.subtasks)
@@ -1042,9 +1269,20 @@ function SwipeableTaskCard({
   }, [translateX]);
 
   const handlePanRelease = useCallback(() => {
-    const currentValue = Math.min(0, Math.max(-actionWidth, currentOffsetRef.current));
-    translateX.setValue(currentValue);
-    setIsOpen(currentValue <= -actionWidth * 0.35);
+    const clampedValue = Math.min(0, Math.max(-actionWidth, currentOffsetRef.current));
+    const shouldOpen = clampedValue <= -actionWidth * 0.5;
+    const targetValue = shouldOpen ? -actionWidth : 0;
+
+    setIsOpen(shouldOpen);
+    currentOffsetRef.current = targetValue;
+
+    Animated.spring(translateX, {
+      toValue: targetValue,
+      damping: 20,
+      stiffness: 220,
+      mass: 0.9,
+      useNativeDriver: USE_NATIVE_DRIVER,
+    }).start();
   }, [actionWidth, translateX]);
 
   const panResponder = useMemo(
@@ -1338,6 +1576,32 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-end',
     marginBottom: 24,
+  },
+  tagFilterContainer: {
+    marginBottom: 16,
+  },
+  tagFilterScroll: {
+    paddingHorizontal: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tagPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: '#edefff',
+  },
+  tagPillSelected: {
+    backgroundColor: '#3c2ba7',
+  },
+  tagPillText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#3c2ba7',
+  },
+  tagPillTextSelected: {
+    color: '#ffffff',
   },
   dayItem: {
     flex: 1,
