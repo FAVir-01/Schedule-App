@@ -128,12 +128,19 @@ const normalizeTaskTagKey = (task) => {
     return null;
   }
   if (task.tag && typeof task.tag === 'string') {
-    return task.tag;
+    const normalized = task.tag.trim();
+    if (!normalized || normalized.toLowerCase() === 'none' || normalized.toLowerCase() === 'no_tag') {
+      return null;
+    }
+    return normalized;
   }
   if (task.tagLabel && typeof task.tagLabel === 'string') {
-    return task.tagLabel
+    const label = task.tagLabel.trim();
+    if (!label || label.toLowerCase() === 'no tag') {
+      return null;
+    }
+    return label
       .toLowerCase()
-      .trim()
       .replace(/[^a-z0-9]+/g, '_')
       .replace(/^_|_$/g, '');
   }
@@ -145,10 +152,18 @@ const getTaskTagDisplayLabel = (task) => {
     return null;
   }
   if (task.tagLabel && typeof task.tagLabel === 'string') {
-    return task.tagLabel;
+    const label = task.tagLabel.trim();
+    if (!label || label.toLowerCase() === 'no tag') {
+      return null;
+    }
+    return label;
   }
   if (task.tag && typeof task.tag === 'string') {
-    return task.tag
+    const normalized = task.tag.trim();
+    if (!normalized || normalized.toLowerCase() === 'none' || normalized.toLowerCase() === 'no_tag') {
+      return null;
+    }
+    return normalized
       .split('_')
       .filter(Boolean)
       .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
