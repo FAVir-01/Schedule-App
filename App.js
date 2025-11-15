@@ -172,6 +172,94 @@ const getTaskTagDisplayLabel = (task) => {
   return null;
 };
 
+const normalizeDateValue = (value) => {
+  if (!value) {
+    return null;
+  }
+  if (value instanceof Date) {
+    const date = new Date(value);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split('-').map((part) => Number.parseInt(part, 10));
+    const date = new Date(year, month - 1, day);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const isSameDay = (dateA, dateB) => {
+  if (!dateA || !dateB) {
+    return false;
+  }
+  return dateA.getTime() === dateB.getTime();
+};
+
+const getWeekdayKeyFromDate = (date) => {
+  const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  return WEEKDAY_KEYS[date.getDay()] ?? null;
+};
+
+const shouldTaskAppearOnDate = (task, targetDate) => {
+  if (!task || !targetDate) {
+    return false;
+  }
+
+  const normalizedTargetDate = normalizeDateValue(targetDate);
+  const normalizedStartDate = normalizeDateValue(task.date ?? task.dateKey);
+
+  if (!normalizedTargetDate || !normalizedStartDate) {
+    return false;
+  }
+
+  if (isSameDay(normalizedStartDate, normalizedTargetDate)) {
+    return true;
+  }
+
+  const repeat = task.repeat;
+  if (!repeat || !repeat.option || repeat.option === 'off') {
+    return false;
+  }
+
+  if (normalizedTargetDate.getTime() < normalizedStartDate.getTime()) {
+    return false;
+  }
+
+  switch (repeat.option) {
+    case 'daily':
+      return true;
+    case 'weekly':
+      return normalizedTargetDate.getDay() === normalizedStartDate.getDay();
+    case 'monthly':
+      return normalizedTargetDate.getDate() === normalizedStartDate.getDate();
+    case 'weekend': {
+      const day = normalizedTargetDate.getDay();
+      return day === 0 || day === 6;
+    }
+    case 'weekdays': {
+      const day = normalizedTargetDate.getDay();
+      return day >= 1 && day <= 5;
+    }
+    case 'custom': {
+      const weekdays = Array.isArray(repeat.weekdays) ? repeat.weekdays : [];
+      if (!weekdays.length) {
+        return false;
+      }
+      const weekdayKey = getWeekdayKeyFromDate(normalizedTargetDate);
+      return weekdayKey ? weekdays.includes(weekdayKey) : false;
+    }
+    default:
+      return false;
+  }
+};
+
 function ScheduleApp() {
   const [activeTab, setActiveTab] = useState('today');
   const [isFabOpen, setIsFabOpen] = useState(false);
@@ -224,7 +312,7 @@ function ScheduleApp() {
       const date = new Date(base);
       date.setDate(base.getDate() + offset);
       const key = getDateKey(date);
-      const dayTasks = tasks.filter((task) => task.dateKey === key);
+      const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, date));
       const allCompleted = dayTasks.length > 0 && dayTasks.every((task) => task.completed);
       return {
         date,
@@ -236,7 +324,7 @@ function ScheduleApp() {
     });
   }, [tasks, today]);
   const tasksForSelectedDate = useMemo(() => {
-    const filtered = tasks.filter((task) => task.dateKey === selectedDateKey);
+    const filtered = tasks.filter((task) => shouldTaskAppearOnDate(task, selectedDate));
     const getSortValue = (task) => {
       if (!task.time || !task.time.specified) {
         return Number.MAX_SAFE_INTEGER;
@@ -250,7 +338,7 @@ function ScheduleApp() {
       return Number.MAX_SAFE_INTEGER;
     };
     return filtered.slice().sort((a, b) => getSortValue(a) - getSortValue(b));
-  }, [selectedDateKey, tasks]);
+  }, [selectedDate, tasks]);
   const tagOptions = useMemo(() => {
     const seen = new Set();
     return tasksForSelectedDate.reduce((options, task) => {
