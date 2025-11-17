@@ -380,9 +380,9 @@ export default function AddHabitSheet({
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const sheetHeight = useMemo(() => {
-    const usableHeight = height - insets.top - insets.bottom;
-    return Math.min(usableHeight * 0.92, usableHeight - 24);
-  }, [height, insets.bottom, insets.top]);
+    const usableHeight = height - insets.top;
+    return usableHeight;
+  }, [height, insets.top]);
   const [title, setTitle] = useState('');
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
   const [selectedEmoji, setSelectedEmoji] = useState(DEFAULT_EMOJI);
@@ -976,8 +976,9 @@ export default function AddHabitSheet({
       >
         <KeyboardAvoidingView
           style={styles.keyboardAvoiding}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior="padding"
           enabled
+          keyboardVerticalOffset={insets.top}
         >
           <SafeAreaView style={[styles.safeArea, { backgroundColor: sheetBackgroundColor }]}>
             <View style={styles.header}>
@@ -1006,9 +1007,13 @@ export default function AddHabitSheet({
             </View>
             <ScrollView
               style={styles.scrollView}
-              contentContainerStyle={styles.scrollViewContent}
+              contentContainerStyle={[
+                styles.scrollViewContent,
+                { paddingBottom: Math.max(insets.bottom, 24) + 240 },
+              ]}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
             >
               <Pressable
                 style={[styles.emojiButton, isEmojiPickerVisible && styles.emojiButtonActive]}
