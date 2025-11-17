@@ -1426,10 +1426,9 @@ function SubtasksPanel({ value, onChange }) {
     handleAdd();
   }, [handleAdd]);
 
-  const placeholder = list.length === 0 ? 'Subtasks' : 'Add subtask';
-
   return (
     <View style={styles.subtasksPanel}>
+      <Text style={styles.subtasksTitle}>Subtasks</Text>
       <View style={styles.subtasksCard}>
         {list.length > 0 && (
           <View style={styles.subtasksList}>
@@ -1451,27 +1450,29 @@ function SubtasksPanel({ value, onChange }) {
           </View>
         )}
         <View style={styles.subtaskComposer}>
-          <Ionicons name="add-circle-outline" size={22} color="#61708A" />
           <TextInput
             style={styles.subtaskComposerInput}
-            placeholder={placeholder}
-            placeholderTextColor="#7F8A9A"
+            placeholder="Add subtask"
+            placeholderTextColor="#9AA5B5"
             value={draft}
             onChangeText={setDraft}
             onSubmitEditing={handleSubmitEditing}
             returnKeyType="done"
             accessibilityLabel="Add subtask"
           />
-          {trimmedDraft.length > 0 && (
-            <Pressable
-              onPress={handleAdd}
-              accessibilityRole="button"
-              accessibilityLabel="Confirm subtask"
-              style={styles.subtaskComposerConfirm}
-            >
-              <Ionicons name="checkmark-circle" size={22} color="#1F2742" />
-            </Pressable>
-          )}
+          <Pressable
+            onPress={handleAdd}
+            accessibilityRole="button"
+            accessibilityLabel="Add subtask"
+            style={[styles.subtaskComposerAdd, trimmedDraft.length === 0 && styles.subtaskComposerAddDisabled]}
+            disabled={trimmedDraft.length === 0}
+          >
+            <Ionicons
+              name="add"
+              size={20}
+              color={trimmedDraft.length === 0 ? '#B8C4D6' : '#1F2742'}
+            />
+          </Pressable>
         </View>
       </View>
       <Text style={styles.subtasksPanelHint}>Subtasks can be set as your daily routine or checklist</Text>
@@ -2195,6 +2196,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
     gap: 12,
   },
+  subtasksTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2742',
+    marginLeft: 6,
+  },
   subtasksCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
@@ -2424,11 +2431,13 @@ const styles = StyleSheet.create({
   subtaskComposer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    backgroundColor: '#EEF3FF',
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    gap: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#E5EAF2',
   },
   subtaskComposerInput: {
     flex: 1,
@@ -2436,8 +2445,16 @@ const styles = StyleSheet.create({
     color: '#1F2742',
     paddingVertical: 0,
   },
-  subtaskComposerConfirm: {
-    padding: 4,
+  subtaskComposerAdd: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#E4ECFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subtaskComposerAddDisabled: {
+    backgroundColor: '#F0F4FB',
   },
   subtasksPanelHint: {
     color: '#7F8A9A',
