@@ -389,11 +389,6 @@ function ScheduleApp() {
 
     const applyNavigationBarTheme = async () => {
       try {
-        await NavigationBar.setBackgroundColorAsync('#000000');
-      } catch (error) {
-        // Ignore when navigation bar background can't be controlled (edge-to-edge devices)
-      }
-      try {
         await NavigationBar.setButtonStyleAsync('light');
       } catch (error) {
         // Ignore when navigation bar button style can't be updated
