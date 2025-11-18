@@ -353,6 +353,7 @@ function ScheduleApp() {
   const insets = useSafeAreaInsets();
   const isCompact = width < 360;
   const fabSize = isCompact ? 52 : 60;
+  const centerGap = isCompact ? fabSize * 0.9 : fabSize * 1.05;
   const horizontalPadding = useMemo(() => Math.max(16, Math.min(32, width * 0.06)), [width]);
   const bottomBarPadding = useMemo(() => Math.max(20, horizontalPadding), [horizontalPadding]);
   const iconSize = isCompact ? 22 : 24;
@@ -592,6 +593,7 @@ function ScheduleApp() {
 
     const applyNavigationBarTheme = async () => {
       try {
+        await NavigationBar.setBackgroundColorAsync('#000000');
         await NavigationBar.setButtonStyleAsync('light');
       } catch (error) {
         // Ignore when navigation bar button style can't be updated
@@ -633,11 +635,19 @@ function ScheduleApp() {
       },
       bottomBar: {
         paddingHorizontal: bottomBarPadding,
-        paddingVertical: isCompact ? 6 : 8,
+        paddingVertical: isCompact ? 10 : 12,
       },
       tabLabel: {
         fontSize: isCompact ? 11 : 12,
         marginTop: isCompact ? 4 : 6,
+      },
+      tabGroupLeft: {
+        paddingRight: centerGap / 2,
+        marginRight: centerGap / 4,
+      },
+      tabGroupRight: {
+        paddingLeft: centerGap / 2,
+        marginLeft: centerGap / 4,
       },
       addButton: {
         width: fabSize,
@@ -646,7 +656,14 @@ function ScheduleApp() {
         top: isCompact ? -20 : -24,
       },
     }),
-    [bottomBarPadding, fabSize, horizontalPadding, insets.bottom, isCompact]
+    [
+      bottomBarPadding,
+      centerGap,
+      fabSize,
+      horizontalPadding,
+      insets.bottom,
+      isCompact,
+    ]
   );
 
   const openFabMenu = useCallback(() => {
@@ -1275,8 +1292,12 @@ function ScheduleApp() {
               isFabOpen && styles.bottomBarDimmed,
             ]}
           >
-            <View style={styles.tabGroup}>{LEFT_TABS.map(renderTabButton)}</View>
-            <View style={styles.tabGroup}>{RIGHT_TABS.map(renderTabButton)}</View>
+            <View style={[styles.tabGroup, dynamicStyles.tabGroupLeft]}>
+              {LEFT_TABS.map(renderTabButton)}
+            </View>
+            <View style={[styles.tabGroup, dynamicStyles.tabGroupRight]}>
+              {RIGHT_TABS.map(renderTabButton)}
+            </View>
           </View>
 
           <TouchableOpacity
@@ -2256,13 +2277,14 @@ const styles = StyleSheet.create({
   tabGroup: {
     flexDirection: 'row',
     flex: 1,
-    justifyContent: 'space-evenly',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 8,
+    gap: 16,
   },
   tabButton: {
     flex: 1,
     alignItems: 'center',
+    paddingVertical: 4,
   },
   tabLabel: {
     letterSpacing: 0.5,
