@@ -1410,6 +1410,7 @@ function SubtasksPanel({ value, onChange }) {
   const [draft, setDraft] = useState('');
   const trimmedDraft = draft.trim();
   const list = Array.isArray(value) ? value : [];
+  const hasSubtasks = list.length > 0;
 
   const handleAdd = useCallback(() => {
     if (!trimmedDraft) {
@@ -1438,10 +1439,13 @@ function SubtasksPanel({ value, onChange }) {
     <View style={styles.subtasksPanel}>
       <Text style={styles.subtasksTitle}>Subtasks</Text>
       <View style={styles.subtasksCard}>
-        {list.length > 0 && (
+        {hasSubtasks && (
           <View style={styles.subtasksList}>
             {list.map((item, index) => (
-              <View key={`${item}-${index}`} style={styles.subtaskItem}>
+              <View
+                key={`${item}-${index}`}
+                style={[styles.subtaskItem, index === list.length - 1 && styles.subtaskItemLast]}
+              >
                 <Ionicons name="ellipse-outline" size={18} color="#94A3B8" />
                 <Text style={styles.subtaskText}>{item}</Text>
                 <Pressable
@@ -1457,7 +1461,7 @@ function SubtasksPanel({ value, onChange }) {
             ))}
           </View>
         )}
-        <View style={styles.subtaskComposer}>
+        <View style={[styles.subtaskComposer, hasSubtasks && styles.subtaskComposerWithDivider]}>
           <TextInput
             style={styles.subtaskComposerInput}
             placeholder="Add subtask"
@@ -2211,12 +2215,17 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   subtasksCard: {
-    backgroundColor: '#F9FBFF',
-    borderRadius: 18,
-    padding: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     gap: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F5',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 6,
+    overflow: 'hidden',
   },
   row: {
     flexDirection: 'row',
@@ -2414,23 +2423,25 @@ const styles = StyleSheet.create({
     backgroundColor: '#1F2742',
   },
   subtasksList: {
-    gap: 10,
+    gap: 0,
   },
   subtaskItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F5',
+    paddingHorizontal: 4,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E2E8F5',
+  },
+  subtaskItemLast: {
+    borderBottomWidth: 0,
   },
   subtaskText: {
     flex: 1,
     color: '#1F2742',
     fontSize: 15,
+    fontWeight: '600',
   },
   subtaskRemoveButton: {
     padding: 4,
@@ -2439,21 +2450,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#EDF3FF',
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: '#D7E3FF',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 6,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+  },
+  subtaskComposerWithDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E2E8F5',
+    paddingTop: 10,
   },
   subtaskComposerInput: {
     flex: 1,
     fontSize: 15,
+    fontWeight: '600',
     color: '#1F2742',
     paddingVertical: 0,
   },
@@ -2461,15 +2470,15 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: '#F6F9FF',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#D0DBF3',
+    borderColor: '#E2E8F5',
   },
   subtaskComposerAddDisabled: {
-    backgroundColor: '#EEF3FF',
-    borderColor: '#DDE7FF',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#EDF1F7',
   },
   subtasksPanelHint: {
     color: '#7F8A9A',
