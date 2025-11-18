@@ -12,6 +12,7 @@ import {
   StatusBar,
   StyleSheet,
   Text,
+  FlatList,
   TouchableOpacity,
   View,
   useWindowDimensions,
@@ -415,6 +416,24 @@ function ScheduleApp() {
         completed: getTaskCompletionStatus(task, selectedDateKey),
       })),
     [selectedDateKey, visibleTasks]
+  );
+  const visibleTasksWithStats = useMemo(
+    () =>
+      visibleTasksForSelectedDay.map((task) => {
+        const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
+        const completedSubtasks = Array.isArray(task.subtasks)
+          ? task.subtasks.filter((item) => getSubtaskCompletionStatus(item, selectedDateKey)).length
+          : 0;
+
+        return {
+          ...task,
+          totalSubtasks,
+          completedSubtasks,
+          backgroundColor: lightenColor(task.color, 0.75),
+          borderColor: task.color,
+        };
+      }),
+    [selectedDateKey, visibleTasksForSelectedDay]
   );
   const allTasksCompletedForSelectedDay =
     tasksForSelectedDate.length > 0 &&
@@ -993,7 +1012,7 @@ function ScheduleApp() {
               )}
 
               <View style={styles.tasksSection}>
-                {visibleTasksForSelectedDay.length === 0 ? (
+                {visibleTasksWithStats.length === 0 ? (
                   <View style={styles.emptyStateContainer}>
                     <View
                       style={[styles.emptyStateIllustration, dynamicStyles.emptyStateIllustration]}
@@ -1010,22 +1029,15 @@ function ScheduleApp() {
                     </Text>
                   </View>
                 ) : (
-                  visibleTasksForSelectedDay.map((task) => {
-                    const backgroundColor = lightenColor(task.color, 0.75);
-                    const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
-                    const completedSubtasks = Array.isArray(task.subtasks)
-                      ? task.subtasks.filter((item) =>
-                          getSubtaskCompletionStatus(item, selectedDateKey)
-                        ).length
-                      : 0;
-                    return (
+                  <FlatList
+                    data={visibleTasksWithStats}
+                    renderItem={({ item: task }) => (
                       <SwipeableTaskCard
-                        key={task.id}
                         task={task}
-                        backgroundColor={backgroundColor}
-                        borderColor={task.color}
-                        totalSubtasks={totalSubtasks}
-                        completedSubtasks={completedSubtasks}
+                        backgroundColor={task.backgroundColor}
+                        borderColor={task.borderColor}
+                        totalSubtasks={task.totalSubtasks}
+                        completedSubtasks={task.completedSubtasks}
                         onPress={() => setActiveTaskId(task.id)}
                         onToggleCompletion={() => handleToggleTaskCompletion(task.id, selectedDateKey)}
                         onCopy={() => {
@@ -1049,8 +1061,11 @@ function ScheduleApp() {
                           openHabitSheet('edit', editable);
                         }}
                       />
-                    );
-                  })
+                    )}
+                    keyExtractor={(task) => task.id}
+                    scrollEnabled={false}
+                    contentContainerStyle={styles.tasksList}
+                  />
                 )}
               </View>
             </ScrollView>
@@ -1770,6 +1785,9 @@ const styles = StyleSheet.create({
   },
   tasksSection: {
     marginTop: 8,
+  },
+  tasksList: {
+    paddingBottom: 4,
   },
   emptyState: {
     fontSize: 15,
