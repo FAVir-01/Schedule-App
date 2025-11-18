@@ -1441,7 +1441,10 @@ function SubtasksPanel({ value, onChange }) {
         {list.length > 0 && (
           <View style={styles.subtasksList}>
             {list.map((item, index) => (
-              <View key={`${item}-${index}`} style={styles.subtaskItem}>
+              <View
+                key={`${item}-${index}`}
+                style={[styles.subtaskItem, index === list.length - 1 && styles.subtaskItemLast]}
+              >
                 <Ionicons name="ellipse-outline" size={18} color="#94A3B8" />
                 <Text style={styles.subtaskText}>{item}</Text>
                 <Pressable
@@ -2211,7 +2214,7 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   subtasksCard: {
-    backgroundColor: '#F9FBFF',
+    backgroundColor: '#FFFFFF',
     borderRadius: 18,
     padding: 14,
     gap: 12,
@@ -2414,18 +2417,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#1F2742',
   },
   subtasksList: {
-    gap: 10,
+    gap: 0,
   },
   subtaskItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F5',
+    paddingHorizontal: 4,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E2E8F5',
+  },
+  subtaskItemLast: {
+    borderBottomWidth: 0,
   },
   subtaskText: {
     flex: 1,
@@ -2439,17 +2443,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#EDF3FF',
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: '#D7E3FF',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 6,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E2E8F5',
+    paddingHorizontal: 4,
+    paddingTop: 6,
+    paddingBottom: 2,
   },
   subtaskComposerInput: {
     flex: 1,
@@ -2461,15 +2460,15 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: '#F6F9FF',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#D0DBF3',
+    borderColor: '#E2E8F5',
   },
   subtaskComposerAddDisabled: {
-    backgroundColor: '#EEF3FF',
-    borderColor: '#DDE7FF',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#EDF1F7',
   },
   subtasksPanelHint: {
     color: '#7F8A9A',
