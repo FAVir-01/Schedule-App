@@ -17,7 +17,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import * as NavigationBar from 'expo-navigation-bar';
@@ -121,6 +121,27 @@ const formatTaskTime = (time) => {
   }
 
   return 'Anytime';
+};
+
+const getTaskCompletionStatus = (task, date) => {
+  if (!task || !date) {
+    return false;
+  }
+
+  const dateKey = typeof date === 'string' ? date : getDateKey(date);
+  if (!dateKey) {
+    return false;
+  }
+
+  if (task.completedDates && typeof task.completedDates === 'object') {
+    return Boolean(task.completedDates[dateKey]);
+  }
+
+  if (!task.repeat && task.dateKey) {
+    return task.dateKey === dateKey ? Boolean(task.completed) : false;
+  }
+
+  return false;
 };
 
 const normalizeTaskTagKey = (task) => {
@@ -313,7 +334,8 @@ function ScheduleApp() {
       date.setDate(base.getDate() + offset);
       const key = getDateKey(date);
       const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, date));
-      const allCompleted = dayTasks.length > 0 && dayTasks.every((task) => task.completed);
+      const allCompleted =
+        dayTasks.length > 0 && dayTasks.every((task) => getTaskCompletionStatus(task, key));
       return {
         date,
         key,
@@ -365,15 +387,34 @@ function ScheduleApp() {
     }
     return tasksForSelectedDate.filter((task) => normalizeTaskTagKey(task) === selectedTagFilter);
   }, [selectedTagFilter, tasksForSelectedDate]);
+  const visibleTasksForSelectedDay = useMemo(
+    () =>
+      visibleTasks.map((task) => ({
+        ...task,
+        completed: getTaskCompletionStatus(task, selectedDateKey),
+      })),
+    [selectedDateKey, visibleTasks]
+  );
   const allTasksCompletedForSelectedDay =
-    tasksForSelectedDate.length > 0 && tasksForSelectedDate.every((task) => task.completed);
+    tasksForSelectedDate.length > 0 &&
+    tasksForSelectedDate.every((task) => getTaskCompletionStatus(task, selectedDateKey));
   const completedTaskCount = useMemo(
-    () => tasksForSelectedDate.filter((task) => task.completed).length,
-    [tasksForSelectedDate]
+    () => tasksForSelectedDate.filter((task) => getTaskCompletionStatus(task, selectedDateKey)).length,
+    [selectedDateKey, tasksForSelectedDate]
   );
   const activeTask = useMemo(
     () => tasks.find((task) => task.id === activeTaskId) ?? null,
     [activeTaskId, tasks]
+  );
+  const activeTaskForSelectedDate = useMemo(
+    () =>
+      activeTask
+        ? {
+            ...activeTask,
+            completed: getTaskCompletionStatus(activeTask, selectedDateKey),
+          }
+        : null,
+    [activeTask, selectedDateKey]
   );
   const lastToggleRef = useRef(0);
   const overlayOpacity = useRef(new Animated.Value(0)).current;
@@ -507,14 +548,35 @@ function ScheduleApp() {
     setSelectedDate(normalized);
   }, []);
 
-  const handleToggleTaskCompletion = useCallback((taskId) => {
-    triggerImpact(Haptics.ImpactFeedbackStyle.Light);
-    setTasks((previous) =>
-      previous.map((task) =>
-        task.id === taskId ? { ...task, completed: !task.completed } : task
-      )
-    );
-  }, []);
+  const handleToggleTaskCompletion = useCallback(
+    (taskId, dateKey = selectedDateKey) => {
+      const targetDateKey = dateKey ?? selectedDateKey;
+      triggerImpact(Haptics.ImpactFeedbackStyle.Light);
+      setTasks((previous) =>
+        previous.map((task) => {
+          if (task.id !== taskId) {
+            return task;
+          }
+
+          const completedDates = { ...(task.completedDates ?? {}) };
+          const isCompletedForDate = getTaskCompletionStatus(task, targetDateKey);
+
+          if (isCompletedForDate) {
+            delete completedDates[targetDateKey];
+          } else if (targetDateKey) {
+            completedDates[targetDateKey] = true;
+          }
+
+          return {
+            ...task,
+            completedDates,
+            completed: Boolean(completedDates[targetDateKey]),
+          };
+        })
+      );
+    },
+    [selectedDateKey]
+  );
 
   const convertSubtasks = useCallback((subtasks, existing = []) => {
     const remainingExisting = [...existing];
@@ -550,6 +612,7 @@ function ScheduleApp() {
       date: normalizedDate,
       dateKey,
       completed: false,
+      completedDates: {},
       subtasks: convertSubtasks(habit?.subtasks ?? []),
       repeat: habit?.repeat,
       reminder: habit?.reminder,
@@ -745,7 +808,16 @@ function ScheduleApp() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }} edges={['top', 'left', 'right']}>
+    <View
+      style={[
+        styles.appFrame,
+        {
+          paddingTop: insets.top,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        },
+      ]}
+    >
       <StatusBar barStyle="light-content" backgroundColor="#000" />
 
       <View style={styles.container}>
@@ -877,7 +949,7 @@ function ScheduleApp() {
               )}
 
               <View style={styles.tasksSection}>
-                {visibleTasks.length === 0 ? (
+                {visibleTasksForSelectedDay.length === 0 ? (
                   <View style={styles.emptyStateContainer}>
                     <View
                       style={[styles.emptyStateIllustration, dynamicStyles.emptyStateIllustration]}
@@ -894,7 +966,7 @@ function ScheduleApp() {
                     </Text>
                   </View>
                 ) : (
-                  visibleTasks.map((task) => {
+                  visibleTasksForSelectedDay.map((task) => {
                     const backgroundColor = lightenColor(task.color, 0.75);
                     const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
                     const completedSubtasks = Array.isArray(task.subtasks)
@@ -909,7 +981,7 @@ function ScheduleApp() {
                         totalSubtasks={totalSubtasks}
                         completedSubtasks={completedSubtasks}
                         onPress={() => setActiveTaskId(task.id)}
-                        onToggleCompletion={() => handleToggleTaskCompletion(task.id)}
+                        onToggleCompletion={() => handleToggleTaskCompletion(task.id, selectedDateKey)}
                         onCopy={() => {
                           const duplicated = {
                             ...task,
@@ -1188,11 +1260,11 @@ function ScheduleApp() {
         )}
       </View>
       <TaskDetailModal
-        visible={Boolean(activeTask)}
-        task={activeTask}
+        visible={Boolean(activeTaskForSelectedDate)}
+        task={activeTaskForSelectedDate}
         onClose={closeTaskDetail}
         onToggleSubtask={handleToggleSubtask}
-        onToggleCompletion={handleToggleTaskCompletion}
+        onToggleCompletion={(taskId) => handleToggleTaskCompletion(taskId, selectedDateKey)}
         onEdit={(taskId) => {
           const taskToEdit = tasks.find((task) => task.id === taskId);
           if (!taskToEdit) {
@@ -1223,7 +1295,7 @@ function ScheduleApp() {
         mode={habitSheetMode}
         initialHabit={habitSheetInitialTask}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1489,23 +1561,15 @@ function TaskDetailModal({
                 ))
               )}
             </ScrollView>
-            <TouchableOpacity
-              style={styles.detailEditButton}
+            <Pressable
+              style={styles.detailEditLink}
               onPress={() => onEdit?.(task.id)}
               accessibilityRole="button"
               accessibilityLabel="Edit task"
             >
               <Ionicons name="create-outline" size={18} color="#3c2ba7" />
               <Text style={styles.detailEditButtonText}>Edit Task</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.detailCloseButton}
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel="Close task details"
-            >
-              <Text style={styles.detailCloseButtonText}>Close</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
       </View>
@@ -1526,6 +1590,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f6f6fb',
     position: 'relative',
+  },
+  appFrame: {
+    flex: 1,
+    backgroundColor: '#000',
   },
   content: {
     flex: 1,
@@ -1895,28 +1963,14 @@ const styles = StyleSheet.create({
     color: '#6f7a86',
     textDecorationLine: 'line-through',
   },
-  detailEditButton: {
+  detailEditLink: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 12,
-    borderRadius: 16,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#cfd3eb',
-    marginBottom: 12,
   },
   detailEditButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#3c2ba7',
-  },
-  detailCloseButton: {
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  detailCloseButtonText: {
     fontSize: 15,
     fontWeight: '600',
     color: '#3c2ba7',

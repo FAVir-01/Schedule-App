@@ -15,7 +15,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
@@ -380,9 +380,9 @@ export default function AddHabitSheet({
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const sheetHeight = useMemo(() => {
-    const usableHeight = height - insets.top - insets.bottom;
-    return Math.min(usableHeight * 0.92, usableHeight - 24);
-  }, [height, insets.bottom, insets.top]);
+    const usableHeight = height - insets.top;
+    return usableHeight;
+  }, [height, insets.top]);
   const [title, setTitle] = useState('');
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
   const [selectedEmoji, setSelectedEmoji] = useState(DEFAULT_EMOJI);
@@ -976,10 +976,19 @@ export default function AddHabitSheet({
       >
         <KeyboardAvoidingView
           style={styles.keyboardAvoiding}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior="padding"
           enabled
+          keyboardVerticalOffset={insets.top}
         >
-          <SafeAreaView style={[styles.safeArea, { backgroundColor: sheetBackgroundColor }]}>
+          <View
+            style={[
+              styles.safeArea,
+              {
+                paddingTop: Math.max(insets.top, 12),
+                backgroundColor: sheetBackgroundColor,
+              },
+            ]}
+          >
             <View style={styles.header}>
               <Pressable
                 accessibilityRole="button"
@@ -1006,9 +1015,13 @@ export default function AddHabitSheet({
             </View>
             <ScrollView
               style={styles.scrollView}
-              contentContainerStyle={styles.scrollViewContent}
+              contentContainerStyle={[
+                styles.scrollViewContent,
+                { paddingBottom: Math.max(insets.bottom, 24) + 240 },
+              ]}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
             >
               <Pressable
                 style={[styles.emojiButton, isEmojiPickerVisible && styles.emojiButtonActive]}
@@ -1202,9 +1215,9 @@ export default function AddHabitSheet({
                 />
               </OptionOverlay>
             )}
-            {activePanel === 'tag' && (
-              <OptionOverlay
-                title="Tag"
+              {activePanel === 'tag' && (
+                <OptionOverlay
+                  title="Tag"
                 onClose={closePanel}
                 onApply={handleApplyTag}
               >
@@ -1216,7 +1229,7 @@ export default function AddHabitSheet({
                 />
               </OptionOverlay>
             )}
-          </SafeAreaView>
+          </View>
         </KeyboardAvoidingView>
       </Animated.View>
     </View>
@@ -1421,10 +1434,9 @@ function SubtasksPanel({ value, onChange }) {
     handleAdd();
   }, [handleAdd]);
 
-  const placeholder = list.length === 0 ? 'Subtasks' : 'Add subtask';
-
   return (
     <View style={styles.subtasksPanel}>
+      <Text style={styles.subtasksTitle}>Subtasks</Text>
       <View style={styles.subtasksCard}>
         {list.length > 0 && (
           <View style={styles.subtasksList}>
@@ -1446,27 +1458,29 @@ function SubtasksPanel({ value, onChange }) {
           </View>
         )}
         <View style={styles.subtaskComposer}>
-          <Ionicons name="add-circle-outline" size={22} color="#61708A" />
           <TextInput
             style={styles.subtaskComposerInput}
-            placeholder={placeholder}
-            placeholderTextColor="#7F8A9A"
+            placeholder="Add subtask"
+            placeholderTextColor="#9AA5B5"
             value={draft}
             onChangeText={setDraft}
             onSubmitEditing={handleSubmitEditing}
             returnKeyType="done"
             accessibilityLabel="Add subtask"
           />
-          {trimmedDraft.length > 0 && (
-            <Pressable
-              onPress={handleAdd}
-              accessibilityRole="button"
-              accessibilityLabel="Confirm subtask"
-              style={styles.subtaskComposerConfirm}
-            >
-              <Ionicons name="checkmark-circle" size={22} color="#1F2742" />
-            </Pressable>
-          )}
+          <Pressable
+            onPress={handleAdd}
+            accessibilityRole="button"
+            accessibilityLabel="Add subtask"
+            style={[styles.subtaskComposerAdd, trimmedDraft.length === 0 && styles.subtaskComposerAddDisabled]}
+            disabled={trimmedDraft.length === 0}
+          >
+            <Ionicons
+              name="add"
+              size={20}
+              color={trimmedDraft.length === 0 ? '#C3CCDC' : '#6B7288'}
+            />
+          </Pressable>
         </View>
       </View>
       <Text style={styles.subtasksPanelHint}>Subtasks can be set as your daily routine or checklist</Text>
@@ -2190,16 +2204,19 @@ const styles = StyleSheet.create({
     marginTop: 4,
     gap: 12,
   },
+  subtasksTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2742',
+    marginLeft: 6,
+  },
   subtasksCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 6,
+    backgroundColor: '#F9FBFF',
+    borderRadius: 18,
+    padding: 14,
     gap: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F5',
   },
   row: {
     flexDirection: 'row',
@@ -2403,10 +2420,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 18,
-    backgroundColor: '#F5F7FF',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F5',
   },
   subtaskText: {
     flex: 1,
@@ -2419,11 +2438,13 @@ const styles = StyleSheet.create({
   subtaskComposer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    backgroundColor: '#EEF3FF',
+    gap: 10,
+    backgroundColor: '#FFFFFF',
     borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F5',
   },
   subtaskComposerInput: {
     flex: 1,
@@ -2431,8 +2452,19 @@ const styles = StyleSheet.create({
     color: '#1F2742',
     paddingVertical: 0,
   },
-  subtaskComposerConfirm: {
-    padding: 4,
+  subtaskComposerAdd: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#D7DEED',
+  },
+  subtaskComposerAddDisabled: {
+    backgroundColor: '#F7F9FD',
+    borderColor: '#E5EAF2',
   },
   subtasksPanelHint: {
     color: '#7F8A9A',
