@@ -23,6 +23,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import * as NavigationBar from 'expo-navigation-bar';
 import * as Haptics from 'expo-haptics';
+import {
+  loadHistory,
+  loadTasks,
+  loadUserSettings,
+  saveHistory,
+  saveTasks,
+  saveUserSettings,
+} from './storage';
 import AddHabitSheet from './components/AddHabitSheet';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -66,6 +74,11 @@ const TABS = [
     icon: 'calendar-clear-outline',
   },
 ];
+
+const DEFAULT_USER_SETTINGS = {
+  activeTab: 'today',
+  selectedTagFilter: 'all',
+};
 
 const getDateKey = (date) => {
   const normalized = new Date(date);
@@ -304,7 +317,8 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
 };
 
 function ScheduleApp() {
-  const [activeTab, setActiveTab] = useState('today');
+  const [userSettings, setUserSettings] = useState(DEFAULT_USER_SETTINGS);
+  const [activeTab, setActiveTab] = useState(DEFAULT_USER_SETTINGS.activeTab);
   const [isFabOpen, setIsFabOpen] = useState(false);
   const [isFabMenuMounted, setIsFabMenuMounted] = useState(false);
   const [isHabitSheetOpen, setIsHabitSheetOpen] = useState(false);
@@ -317,7 +331,11 @@ function ScheduleApp() {
   });
   const [tasks, setTasks] = useState([]);
   const [activeTaskId, setActiveTaskId] = useState(null);
-  const [selectedTagFilter, setSelectedTagFilter] = useState('all');
+  const [selectedTagFilter, setSelectedTagFilter] = useState(
+    DEFAULT_USER_SETTINGS.selectedTagFilter
+  );
+  const [history, setHistory] = useState([]);
+  const [isHydrated, setIsHydrated] = useState(false);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isCompact = width < 360;
@@ -401,8 +419,9 @@ function ScheduleApp() {
   useEffect(() => {
     if (selectedTagFilter !== 'all' && !tagOptions.some((option) => option.key === selectedTagFilter)) {
       setSelectedTagFilter('all');
+      updateUserSettings({ selectedTagFilter: 'all' });
     }
-  }, [selectedTagFilter, tagOptions]);
+  }, [selectedTagFilter, tagOptions, updateUserSettings]);
   const visibleTasks = useMemo(() => {
     if (selectedTagFilter === 'all') {
       return tasksForSelectedDate;
@@ -468,6 +487,90 @@ function ScheduleApp() {
   const actionsOpacity = useRef(new Animated.Value(0)).current;
   const actionsTranslateY = useRef(new Animated.Value(12)).current;
   const emptyStateIconSize = isCompact ? 98 : 112;
+
+  useEffect(() => {
+    let isMounted = true;
+    const hydrateFromStorage = async () => {
+      try {
+        const [storedTasks, storedSettings, storedHistory] = await Promise.all([
+          loadTasks(),
+          loadUserSettings(),
+          loadHistory(),
+        ]);
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (Array.isArray(storedTasks)) {
+          setTasks(storedTasks);
+        }
+
+        if (storedSettings) {
+          const mergedSettings = { ...DEFAULT_USER_SETTINGS, ...storedSettings };
+          setUserSettings(mergedSettings);
+          setActiveTab(mergedSettings.activeTab ?? DEFAULT_USER_SETTINGS.activeTab);
+          setSelectedTagFilter(
+            mergedSettings.selectedTagFilter ?? DEFAULT_USER_SETTINGS.selectedTagFilter
+          );
+        }
+
+        if (Array.isArray(storedHistory)) {
+          setHistory(storedHistory);
+        }
+      } catch (error) {
+        console.warn('Failed to load stored data', error);
+      } finally {
+        if (isMounted) {
+          setIsHydrated(true);
+        }
+      }
+    };
+
+    void hydrateFromStorage();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+    void saveTasks(tasks);
+  }, [isHydrated, tasks]);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+    void saveUserSettings(userSettings);
+  }, [isHydrated, userSettings]);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+    void saveHistory(history);
+  }, [history, isHydrated]);
+
+  const appendHistoryEntry = useCallback((type, details = {}) => {
+    const entry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type,
+      timestamp: new Date().toISOString(),
+      details,
+    };
+    setHistory((previous) => [entry, ...previous].slice(0, 200));
+  }, []);
+
+  const updateUserSettings = useCallback((updates) => {
+    setUserSettings((previous) => ({
+      ...previous,
+      ...updates,
+    }));
+  }, []);
 
   useEffect(() => {
     if (Platform.OS !== 'android') {
@@ -594,9 +697,31 @@ function ScheduleApp() {
     setSelectedDate(normalized);
   }, []);
 
+  const handleChangeTab = useCallback(
+    (tabKey) => {
+      triggerImpact(Haptics.ImpactFeedbackStyle.Light);
+      setActiveTab(tabKey);
+      updateUserSettings({ activeTab: tabKey });
+    },
+    [updateUserSettings]
+  );
+
+  const handleSelectTagFilter = useCallback(
+    (filterKey) => {
+      setSelectedTagFilter(filterKey);
+      updateUserSettings({ selectedTagFilter: filterKey });
+    },
+    [updateUserSettings]
+  );
+
   const handleToggleTaskCompletion = useCallback(
     (taskId, dateKey = selectedDateKey) => {
       const targetDateKey = dateKey ?? selectedDateKey;
+      const targetTask = tasks.find((task) => task.id === taskId);
+      const wasCompleted = targetTask
+        ? getTaskCompletionStatus(targetTask, targetDateKey)
+        : false;
+
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
       setTasks((previous) =>
         previous.map((task) => {
@@ -620,8 +745,14 @@ function ScheduleApp() {
           };
         })
       );
+
+      appendHistoryEntry('task_completion_toggled', {
+        taskId,
+        dateKey: targetDateKey,
+        completed: !wasCompleted,
+      });
     },
-    [selectedDateKey]
+    [appendHistoryEntry, selectedDateKey, tasks]
   );
 
   const convertSubtasks = useCallback((subtasks, existing = []) => {
@@ -669,7 +800,12 @@ function ScheduleApp() {
     setTasks((previous) => [...previous, newTask]);
     setSelectedDate(normalizedDate);
     triggerImpact(Haptics.ImpactFeedbackStyle.Light);
-  }, [convertSubtasks]);
+    appendHistoryEntry('task_created', {
+      taskId: newTask.id,
+      title: newTask.title,
+      dateKey: newTask.dateKey,
+    });
+  }, [appendHistoryEntry, convertSubtasks]);
 
   const handleUpdateHabit = useCallback(
     (taskId, habit) => {
@@ -704,14 +840,24 @@ function ScheduleApp() {
       if (normalizedDate) {
         setSelectedDate(normalizedDate);
       }
+      appendHistoryEntry('task_updated', {
+        taskId,
+        title: habit?.title,
+        dateKey: normalizedDate ? getDateKey(normalizedDate) : undefined,
+      });
     },
-    [convertSubtasks]
+    [appendHistoryEntry, convertSubtasks]
   );
 
   const handleToggleSubtask = useCallback(
     (taskId, subtaskId) => {
       triggerSelection();
       const targetDateKey = selectedDateKey;
+      const targetTask = tasks.find((task) => task.id === taskId);
+      const targetSubtask = targetTask?.subtasks?.find((item) => item.id === subtaskId);
+      const wasCompleted = targetSubtask
+        ? getSubtaskCompletionStatus(targetSubtask, targetDateKey)
+        : false;
       setTasks((previous) =>
         previous.map((task) => {
           if (task.id !== taskId) {
@@ -739,8 +885,14 @@ function ScheduleApp() {
           };
         })
       );
+      appendHistoryEntry('subtask_completion_toggled', {
+        taskId,
+        subtaskId,
+        dateKey: targetDateKey,
+        completed: !wasCompleted,
+      });
     },
-    [selectedDateKey]
+    [appendHistoryEntry, selectedDateKey, tasks]
   );
 
   const openHabitSheet = useCallback((mode, task = null) => {
@@ -844,10 +996,7 @@ function ScheduleApp() {
       <TouchableOpacity
         key={key}
         style={styles.tabButton}
-        onPress={() => {
-          triggerImpact(Haptics.ImpactFeedbackStyle.Light);
-          setActiveTab(key);
-        }}
+        onPress={() => handleChangeTab(key)}
         accessibilityRole="button"
         accessibilityLabel={`${label} tab`}
         disabled={isFabOpen}
@@ -966,7 +1115,7 @@ function ScheduleApp() {
                       onPress={() => {
                         if (selectedTagFilter !== 'all') {
                           triggerSelection();
-                          setSelectedTagFilter('all');
+                          handleSelectTagFilter('all');
                         }
                       }}
                       accessibilityRole="button"
@@ -991,7 +1140,7 @@ function ScheduleApp() {
                           onPress={() => {
                             if (!isSelected) {
                               triggerSelection();
-                              setSelectedTagFilter(option.key);
+                              handleSelectTagFilter(option.key);
                             }
                           }}
                           accessibilityRole="button"
