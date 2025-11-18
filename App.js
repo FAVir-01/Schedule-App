@@ -144,6 +144,27 @@ const getTaskCompletionStatus = (task, date) => {
   return false;
 };
 
+const getSubtaskCompletionStatus = (subtask, dateKey) => {
+  if (!subtask) {
+    return false;
+  }
+
+  if (dateKey && subtask.completedDates && typeof subtask.completedDates === 'object') {
+    if (subtask.completedDates[dateKey] === true) {
+      return true;
+    }
+    if (subtask.completedDates[dateKey] === false) {
+      return false;
+    }
+  }
+
+  if (dateKey) {
+    return false;
+  }
+
+  return Boolean(subtask.completed);
+};
+
 const normalizeTaskTagKey = (task) => {
   if (!task) {
     return null;
@@ -412,6 +433,12 @@ function ScheduleApp() {
         ? {
             ...activeTask,
             completed: getTaskCompletionStatus(activeTask, selectedDateKey),
+            subtasks: Array.isArray(activeTask.subtasks)
+              ? activeTask.subtasks.map((subtask) => ({
+                  ...subtask,
+                  completed: getSubtaskCompletionStatus(subtask, selectedDateKey),
+                }))
+              : activeTask.subtasks,
           }
         : null,
     [activeTask, selectedDateKey]
@@ -588,12 +615,13 @@ function ScheduleApp() {
         const existingIndex = remainingExisting.findIndex((subtask) => subtask.title === title);
         if (existingIndex >= 0) {
           const [found] = remainingExisting.splice(existingIndex, 1);
-          return { ...found, title };
+          return { ...found, title, completedDates: found.completedDates ?? {} };
         }
         return {
           id: `${now}-${index}-${Math.random().toString(36).slice(2, 8)}`,
           title,
           completed: false,
+          completedDates: {},
         };
       });
   }, []);
@@ -661,24 +689,40 @@ function ScheduleApp() {
     [convertSubtasks]
   );
 
-  const handleToggleSubtask = useCallback((taskId, subtaskId) => {
-    triggerSelection();
-    setTasks((previous) =>
-      previous.map((task) => {
-        if (task.id !== taskId) {
-          return task;
-        }
-        return {
-          ...task,
-          subtasks: (task.subtasks ?? []).map((subtask) =>
-            subtask.id === subtaskId
-              ? { ...subtask, completed: !subtask.completed }
-              : subtask
-          ),
-        };
-      })
-    );
-  }, []);
+  const handleToggleSubtask = useCallback(
+    (taskId, subtaskId) => {
+      triggerSelection();
+      const targetDateKey = selectedDateKey;
+      setTasks((previous) =>
+        previous.map((task) => {
+          if (task.id !== taskId) {
+            return task;
+          }
+          return {
+            ...task,
+            subtasks: (task.subtasks ?? []).map((subtask) => {
+              if (subtask.id !== subtaskId) {
+                return subtask;
+              }
+              const completedDates = { ...(subtask.completedDates ?? {}) };
+              const isCompletedForDate = getSubtaskCompletionStatus(subtask, targetDateKey);
+              if (isCompletedForDate) {
+                delete completedDates[targetDateKey];
+              } else if (targetDateKey) {
+                completedDates[targetDateKey] = true;
+              }
+              return {
+                ...subtask,
+                completedDates,
+                completed: Boolean(targetDateKey && completedDates[targetDateKey]),
+              };
+            }),
+          };
+        })
+      );
+    },
+    [selectedDateKey]
+  );
 
   const openHabitSheet = useCallback((mode, task = null) => {
     setHabitSheetMode(mode);
@@ -970,7 +1014,9 @@ function ScheduleApp() {
                     const backgroundColor = lightenColor(task.color, 0.75);
                     const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
                     const completedSubtasks = Array.isArray(task.subtasks)
-                      ? task.subtasks.filter((item) => item.completed).length
+                      ? task.subtasks.filter((item) =>
+                          getSubtaskCompletionStatus(item, selectedDateKey)
+                        ).length
                       : 0;
                     return (
                       <SwipeableTaskCard
@@ -1262,6 +1308,7 @@ function ScheduleApp() {
       <TaskDetailModal
         visible={Boolean(activeTaskForSelectedDate)}
         task={activeTaskForSelectedDate}
+        dateKey={selectedDateKey}
         onClose={closeTaskDetail}
         onToggleSubtask={handleToggleSubtask}
         onToggleCompletion={(taskId) => handleToggleTaskCompletion(taskId, selectedDateKey)}
@@ -1469,6 +1516,7 @@ function SwipeableTaskCard({
 function TaskDetailModal({
   visible,
   task,
+  dateKey,
   onClose,
   onToggleSubtask,
   onToggleCompletion,
@@ -1480,7 +1528,7 @@ function TaskDetailModal({
 
   const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
   const completedSubtasks = Array.isArray(task.subtasks)
-    ? task.subtasks.filter((item) => item.completed).length
+    ? task.subtasks.filter((item) => getSubtaskCompletionStatus(item, dateKey)).length
     : 0;
   const cardBackground = lightenColor(task.color, 0.85);
 
@@ -1532,9 +1580,9 @@ function TaskDetailModal({
                     style={styles.detailSubtaskRow}
                     onPress={() => onToggleSubtask?.(task.id, subtask.id)}
                     accessibilityRole="checkbox"
-                    accessibilityState={{ checked: subtask.completed }}
+                    accessibilityState={{ checked: getSubtaskCompletionStatus(subtask, dateKey) }}
                     accessibilityLabel={
-                      subtask.completed
+                      getSubtaskCompletionStatus(subtask, dateKey)
                         ? `Mark ${subtask.title} as incomplete`
                         : `Mark ${subtask.title} as complete`
                     }
@@ -1542,17 +1590,19 @@ function TaskDetailModal({
                     <View
                       style={[
                         styles.detailSubtaskIndicator,
-                        subtask.completed && styles.detailSubtaskIndicatorCompleted,
+                        getSubtaskCompletionStatus(subtask, dateKey) &&
+                          styles.detailSubtaskIndicatorCompleted,
                       ]}
                     >
-                      {subtask.completed && (
+                      {getSubtaskCompletionStatus(subtask, dateKey) && (
                         <Ionicons name="checkmark" size={16} color="#ffffff" />
                       )}
                     </View>
                     <Text
                       style={[
                         styles.detailSubtaskText,
-                        subtask.completed && styles.detailSubtaskTextCompleted,
+                        getSubtaskCompletionStatus(subtask, dateKey) &&
+                          styles.detailSubtaskTextCompleted,
                       ]}
                     >
                       {subtask.title}
