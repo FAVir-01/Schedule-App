@@ -17,7 +17,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import * as NavigationBar from 'expo-navigation-bar';
@@ -808,7 +808,16 @@ function ScheduleApp() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }} edges={['top', 'left', 'right']}>
+    <View
+      style={[
+        styles.appFrame,
+        {
+          paddingTop: insets.top,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        },
+      ]}
+    >
       <StatusBar barStyle="light-content" backgroundColor="#000" />
 
       <View style={styles.container}>
@@ -1286,7 +1295,7 @@ function ScheduleApp() {
         mode={habitSheetMode}
         initialHabit={habitSheetInitialTask}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1581,6 +1590,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f6f6fb',
     position: 'relative',
+  },
+  appFrame: {
+    flex: 1,
+    backgroundColor: '#000',
   },
   content: {
     flex: 1,
