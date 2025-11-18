@@ -1410,6 +1410,7 @@ function SubtasksPanel({ value, onChange }) {
   const [draft, setDraft] = useState('');
   const trimmedDraft = draft.trim();
   const list = Array.isArray(value) ? value : [];
+  const hasSubtasks = list.length > 0;
 
   const handleAdd = useCallback(() => {
     if (!trimmedDraft) {
@@ -1438,7 +1439,7 @@ function SubtasksPanel({ value, onChange }) {
     <View style={styles.subtasksPanel}>
       <Text style={styles.subtasksTitle}>Subtasks</Text>
       <View style={styles.subtasksCard}>
-        {list.length > 0 && (
+        {hasSubtasks && (
           <View style={styles.subtasksList}>
             {list.map((item, index) => (
               <View
@@ -1460,7 +1461,7 @@ function SubtasksPanel({ value, onChange }) {
             ))}
           </View>
         )}
-        <View style={styles.subtaskComposer}>
+        <View style={[styles.subtaskComposer, hasSubtasks && styles.subtaskComposerWithDivider]}>
           <TextInput
             style={styles.subtaskComposerInput}
             placeholder="Add subtask"
@@ -2215,11 +2216,16 @@ const styles = StyleSheet.create({
   },
   subtasksCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 14,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     gap: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F5',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 6,
+    overflow: 'hidden',
   },
   row: {
     flexDirection: 'row',
@@ -2435,6 +2441,7 @@ const styles = StyleSheet.create({
     flex: 1,
     color: '#1F2742',
     fontSize: 15,
+    fontWeight: '600',
   },
   subtaskRemoveButton: {
     padding: 4,
@@ -2444,15 +2451,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     backgroundColor: '#FFFFFF',
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+  },
+  subtaskComposerWithDivider: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#E2E8F5',
-    paddingHorizontal: 4,
-    paddingTop: 6,
-    paddingBottom: 2,
+    paddingTop: 10,
   },
   subtaskComposerInput: {
     flex: 1,
     fontSize: 15,
+    fontWeight: '600',
     color: '#1F2742',
     paddingVertical: 0,
   },
