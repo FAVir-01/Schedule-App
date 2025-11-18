@@ -62,7 +62,7 @@ const triggerSelection = () => {
   }
 };
 
-const TABS = [
+const LEFT_TABS = [
   {
     key: 'today',
     label: 'Today',
@@ -72,6 +72,19 @@ const TABS = [
     key: 'calendar',
     label: 'Calendar',
     icon: 'calendar-clear-outline',
+  },
+];
+
+const RIGHT_TABS = [
+  {
+    key: 'discover',
+    label: 'Discover',
+    icon: 'compass-outline',
+  },
+  {
+    key: 'profile',
+    label: 'Profile',
+    icon: 'person-outline',
   },
 ];
 
@@ -1219,12 +1232,35 @@ function ScheduleApp() {
               </View>
             </ScrollView>
           ) : (
-            <>
-              <Text style={styles.heading}>Daily Routine</Text>
-              <Text style={[styles.description, dynamicStyles.description]}>
-                Open the calendar to plan ahead, review upcoming routines, and adjust your schedule.
+            <View style={styles.placeholderContainer}>
+              <View style={styles.placeholderIconWrapper}>
+                <Ionicons
+                  name={
+                    activeTab === 'calendar'
+                      ? 'calendar-outline'
+                      : activeTab === 'discover'
+                      ? 'planet-outline'
+                      : 'person-circle-outline'
+                  }
+                  size={48}
+                  color="#3c2ba7"
+                />
+              </View>
+              <Text style={styles.heading}>
+                {activeTab === 'calendar'
+                  ? 'Calendar Overview'
+                  : activeTab === 'discover'
+                  ? 'Discover'
+                  : 'Profile'}
               </Text>
-            </>
+              <Text style={[styles.description, dynamicStyles.description, styles.placeholderDescription]}>
+                {activeTab === 'calendar'
+                  ? 'Plan ahead and review your upcoming schedule from the calendar view.'
+                  : activeTab === 'discover'
+                  ? 'Explore new routines, templates, and ideas to add to your day.'
+                  : 'View and personalize your profile, preferences, and progress.'}
+              </Text>
+            </View>
           )}
         </View>
 
@@ -1239,7 +1275,8 @@ function ScheduleApp() {
               isFabOpen && styles.bottomBarDimmed,
             ]}
           >
-            {TABS.map(renderTabButton)}
+            <View style={styles.tabGroup}>{LEFT_TABS.map(renderTabButton)}</View>
+            <View style={styles.tabGroup}>{RIGHT_TABS.map(renderTabButton)}</View>
           </View>
 
           <TouchableOpacity
@@ -2205,6 +2242,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingVertical: 12,
+    paddingHorizontal: 20,
     width: '100%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
@@ -2214,6 +2252,13 @@ const styles = StyleSheet.create({
   },
   bottomBarDimmed: {
     opacity: 0.4,
+  },
+  tabGroup: {
+    flexDirection: 'row',
+    flex: 1,
+    justifyContent: 'space-evenly',
+    alignItems: 'center',
+    gap: 8,
   },
   tabButton: {
     flex: 1,
@@ -2251,6 +2296,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 10,
     elevation: 10,
+  },
+  placeholderContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 40,
+    gap: 8,
+  },
+  placeholderIconWrapper: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#f0efff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  placeholderDescription: {
+    textAlign: 'center',
+    marginTop: 2,
   },
   addButtonBase: {
     position: 'absolute',
