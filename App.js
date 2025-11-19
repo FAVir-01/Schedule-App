@@ -352,11 +352,11 @@ function ScheduleApp() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isCompact = width < 360;
-  const fabSize = isCompact ? 52 : 60;
-  const centerGap = isCompact ? fabSize * 0.9 : fabSize * 1.05;
+  const fabSize = isCompact ? 48 : 56;
+  const centerGap = isCompact ? fabSize * 0.8 : fabSize * 0.95;
   const horizontalPadding = useMemo(() => Math.max(16, Math.min(32, width * 0.06)), [width]);
-  const bottomBarPadding = useMemo(() => Math.max(20, horizontalPadding), [horizontalPadding]);
-  const iconSize = isCompact ? 22 : 24;
+  const bottomBarPadding = useMemo(() => Math.max(16, horizontalPadding * 0.75), [horizontalPadding]);
+  const iconSize = isCompact ? 18 : 20;
   const cardSize = isCompact ? 136 : 152;
   const cardIconSize = Math.round(cardSize * 0.75);
   const cardSpacing = isCompact ? 16 : 24;
@@ -629,17 +629,25 @@ function ScheduleApp() {
         borderRadius: isCompact ? 110 : 130,
       },
       bottomBarContainer: {
-        paddingHorizontal: Math.max(12, horizontalPadding / 2),
-        // Quanto menor, mais a barra desce/encosta no fundo:
+        paddingHorizontal: 0,
         paddingBottom: insets.bottom,
+        backgroundColor: '#ffffff',
       },
       bottomBar: {
         paddingHorizontal: bottomBarPadding,
-        paddingVertical: isCompact ? 10 : 12,
+        paddingVertical: isCompact ? 8 : 10,
       },
       tabLabel: {
-        fontSize: isCompact ? 11 : 12,
-        marginTop: isCompact ? 4 : 6,
+        fontSize: isCompact ? 10 : 11,
+        marginTop: isCompact ? 2 : 4,
+      },
+      tabGroupLeft: {
+        paddingRight: centerGap / 2,
+        marginRight: centerGap / 4,
+      },
+      tabGroupRight: {
+        paddingLeft: centerGap / 2,
+        marginLeft: centerGap / 4,
       },
       tabGroupLeft: {
         paddingRight: centerGap / 2,
@@ -2253,17 +2261,15 @@ const styles = StyleSheet.create({
   bottomBarContainer: {
     width: '100%',
     alignItems: 'stretch',
-    backgroundColor: 'transparent',
+    backgroundColor: '#ffffff',
   },
   bottomBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#ffffff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     width: '100%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
@@ -2279,15 +2285,15 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
   },
   tabButton: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 4,
+    paddingVertical: 2,
   },
   tabLabel: {
-    letterSpacing: 0.5,
+    letterSpacing: 0.2,
     textTransform: 'uppercase',
     fontWeight: '600',
   },
