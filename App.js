@@ -88,6 +88,29 @@ const RIGHT_TABS = [
   },
 ];
 
+const NAV_BAR_THEMES = {
+  today: {
+    backgroundColor: '#000000',
+    buttonStyle: 'light',
+  },
+  calendar: {
+    backgroundColor: '#f6f6fb',
+    buttonStyle: 'dark',
+  },
+  discover: {
+    backgroundColor: '#f6f6fb',
+    buttonStyle: 'dark',
+  },
+  profile: {
+    backgroundColor: '#f6f6fb',
+    buttonStyle: 'dark',
+  },
+};
+
+const DEFAULT_NAV_BAR_THEME = NAV_BAR_THEMES.calendar;
+
+const getNavigationBarThemeForTab = (tabKey) => NAV_BAR_THEMES[tabKey] ?? DEFAULT_NAV_BAR_THEME;
+
 const DEFAULT_USER_SETTINGS = {
   activeTab: 'today',
   selectedTagFilter: 'all',
@@ -592,9 +615,10 @@ function ScheduleApp() {
     }
 
     const applyNavigationBarTheme = async () => {
+      const theme = getNavigationBarThemeForTab(activeTab);
       try {
-        await NavigationBar.setBackgroundColorAsync('#000000');
-        await NavigationBar.setButtonStyleAsync('light');
+        await NavigationBar.setBackgroundColorAsync(theme.backgroundColor);
+        await NavigationBar.setButtonStyleAsync(theme.buttonStyle);
       } catch (error) {
         // Ignore when navigation bar button style can't be updated
       }
@@ -611,7 +635,7 @@ function ScheduleApp() {
     return () => {
       subscription.remove();
     };
-  }, []);
+  }, [activeTab]);
 
   const dynamicStyles = useMemo(
     () => ({
@@ -640,14 +664,6 @@ function ScheduleApp() {
       tabLabel: {
         fontSize: isCompact ? 10 : 11,
         marginTop: isCompact ? 2 : 4,
-      },
-      tabGroupLeft: {
-        paddingRight: centerGap / 2,
-        marginRight: centerGap / 4,
-      },
-      tabGroupRight: {
-        paddingLeft: centerGap / 2,
-        marginLeft: centerGap / 4,
       },
       tabGroupLeft: {
         paddingRight: centerGap / 2,
