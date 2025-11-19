@@ -649,6 +649,14 @@ function ScheduleApp() {
         paddingLeft: centerGap / 2,
         marginLeft: centerGap / 4,
       },
+      tabGroupLeft: {
+        paddingRight: centerGap / 2,
+        marginRight: centerGap / 4,
+      },
+      tabGroupRight: {
+        paddingLeft: centerGap / 2,
+        marginLeft: centerGap / 4,
+      },
       addButton: {
         width: fabSize,
         height: fabSize,
