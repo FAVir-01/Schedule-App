@@ -747,7 +747,7 @@ function ScheduleApp() {
     }
 
     const theme = getNavigationBarThemeForTab(tabKey);
-    let isRelativePosition = true;
+    let isRelativePosition = false;
 
     try {
       await NavigationBar.setPositionAsync('relative');
@@ -755,9 +755,11 @@ function ScheduleApp() {
         const position = await NavigationBar.getPositionAsync();
         isRelativePosition = position === 'relative';
       }
+      if (!NavigationBar.getPositionAsync) {
+        isRelativePosition = true;
+      }
     } catch (error) {
       // Ignore when navigation bar position can't be updated
-      isRelativePosition = false;
     }
 
     if (isRelativePosition && NavigationBar.setBackgroundColorAsync) {
