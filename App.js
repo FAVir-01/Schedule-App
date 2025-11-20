@@ -62,7 +62,7 @@ const triggerSelection = () => {
   }
 };
 
-const TABS = [
+const LEFT_TABS = [
   {
     key: 'today',
     label: 'Today',
@@ -74,6 +74,42 @@ const TABS = [
     icon: 'calendar-clear-outline',
   },
 ];
+
+const RIGHT_TABS = [
+  {
+    key: 'discover',
+    label: 'Discover',
+    icon: 'compass-outline',
+  },
+  {
+    key: 'profile',
+    label: 'Profile',
+    icon: 'person-outline',
+  },
+];
+
+const NAV_BAR_THEMES = {
+  today: {
+    backgroundColor: '#000000',
+    buttonStyle: 'light',
+  },
+  calendar: {
+    backgroundColor: '#f6f6fb',
+    buttonStyle: 'dark',
+  },
+  discover: {
+    backgroundColor: '#f6f6fb',
+    buttonStyle: 'dark',
+  },
+  profile: {
+    backgroundColor: '#f6f6fb',
+    buttonStyle: 'dark',
+  },
+};
+
+const DEFAULT_NAV_BAR_THEME = NAV_BAR_THEMES.calendar;
+
+const getNavigationBarThemeForTab = (tabKey) => NAV_BAR_THEMES[tabKey] ?? DEFAULT_NAV_BAR_THEME;
 
 const DEFAULT_USER_SETTINGS = {
   activeTab: 'today',
@@ -339,10 +375,11 @@ function ScheduleApp() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isCompact = width < 360;
-  const fabSize = isCompact ? 52 : 60;
+  const fabSize = isCompact ? 48 : 56;
+  const centerGap = isCompact ? fabSize * 0.8 : fabSize * 0.95;
   const horizontalPadding = useMemo(() => Math.max(16, Math.min(32, width * 0.06)), [width]);
-  const bottomBarPadding = useMemo(() => Math.max(20, horizontalPadding), [horizontalPadding]);
-  const iconSize = isCompact ? 22 : 24;
+  const bottomBarPadding = useMemo(() => Math.max(16, horizontalPadding * 0.75), [horizontalPadding]);
+  const iconSize = isCompact ? 18 : 20;
   const cardSize = isCompact ? 136 : 152;
   const cardIconSize = Math.round(cardSize * 0.75);
   const cardSpacing = isCompact ? 16 : 24;
@@ -577,26 +614,18 @@ function ScheduleApp() {
       return undefined;
     }
 
-    const applyNavigationBarTheme = async () => {
-      try {
-        await NavigationBar.setButtonStyleAsync('light');
-      } catch (error) {
-        // Ignore when navigation bar button style can't be updated
-      }
-    };
-
-    void applyNavigationBarTheme();
+    void applyNavigationBarThemeForTab(activeTab);
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        void applyNavigationBarTheme();
+        void applyNavigationBarThemeForTab(activeTab);
       }
     });
 
     return () => {
       subscription.remove();
     };
-  }, []);
+  }, [activeTab, applyNavigationBarThemeForTab]);
 
   const dynamicStyles = useMemo(
     () => ({
@@ -614,17 +643,25 @@ function ScheduleApp() {
         borderRadius: isCompact ? 110 : 130,
       },
       bottomBarContainer: {
-        paddingHorizontal: Math.max(12, horizontalPadding / 2),
-        // Quanto menor, mais a barra desce/encosta no fundo:
+        paddingHorizontal: 0,
         paddingBottom: insets.bottom,
+        backgroundColor: '#ffffff',
       },
       bottomBar: {
         paddingHorizontal: bottomBarPadding,
-        paddingVertical: isCompact ? 6 : 8,
+        paddingVertical: isCompact ? 8 : 10,
       },
       tabLabel: {
-        fontSize: isCompact ? 11 : 12,
-        marginTop: isCompact ? 4 : 6,
+        fontSize: isCompact ? 10 : 11,
+        marginTop: isCompact ? 2 : 4,
+      },
+      tabGroupLeft: {
+        paddingRight: centerGap / 2,
+        marginRight: centerGap / 4,
+      },
+      tabGroupRight: {
+        paddingLeft: centerGap / 2,
+        marginLeft: centerGap / 4,
       },
       addButton: {
         width: fabSize,
@@ -633,7 +670,14 @@ function ScheduleApp() {
         top: isCompact ? -20 : -24,
       },
     }),
-    [bottomBarPadding, fabSize, horizontalPadding, insets.bottom, isCompact]
+    [
+      bottomBarPadding,
+      centerGap,
+      fabSize,
+      horizontalPadding,
+      insets.bottom,
+      isCompact,
+    ]
   );
 
   const openFabMenu = useCallback(() => {
@@ -697,13 +741,28 @@ function ScheduleApp() {
     setSelectedDate(normalized);
   }, []);
 
+  const applyNavigationBarThemeForTab = useCallback(async (tabKey) => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+
+    const theme = getNavigationBarThemeForTab(tabKey);
+    try {
+      await NavigationBar.setBackgroundColorAsync(theme.backgroundColor);
+      await NavigationBar.setButtonStyleAsync(theme.buttonStyle);
+    } catch (error) {
+      // Ignore when navigation bar button style can't be updated
+    }
+  }, []);
+
   const handleChangeTab = useCallback(
     (tabKey) => {
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
       setActiveTab(tabKey);
       updateUserSettings({ activeTab: tabKey });
+      void applyNavigationBarThemeForTab(tabKey);
     },
-    [updateUserSettings]
+    [applyNavigationBarThemeForTab, updateUserSettings]
   );
 
   const handleSelectTagFilter = useCallback(
@@ -1219,12 +1278,35 @@ function ScheduleApp() {
               </View>
             </ScrollView>
           ) : (
-            <>
-              <Text style={styles.heading}>Daily Routine</Text>
-              <Text style={[styles.description, dynamicStyles.description]}>
-                Open the calendar to plan ahead, review upcoming routines, and adjust your schedule.
+            <View style={styles.placeholderContainer}>
+              <View style={styles.placeholderIconWrapper}>
+                <Ionicons
+                  name={
+                    activeTab === 'calendar'
+                      ? 'calendar-outline'
+                      : activeTab === 'discover'
+                      ? 'planet-outline'
+                      : 'person-circle-outline'
+                  }
+                  size={48}
+                  color="#3c2ba7"
+                />
+              </View>
+              <Text style={styles.heading}>
+                {activeTab === 'calendar'
+                  ? 'Calendar Overview'
+                  : activeTab === 'discover'
+                  ? 'Discover'
+                  : 'Profile'}
               </Text>
-            </>
+              <Text style={[styles.description, dynamicStyles.description, styles.placeholderDescription]}>
+                {activeTab === 'calendar'
+                  ? 'Plan ahead and review your upcoming schedule from the calendar view.'
+                  : activeTab === 'discover'
+                  ? 'Explore new routines, templates, and ideas to add to your day.'
+                  : 'View and personalize your profile, preferences, and progress.'}
+              </Text>
+            </View>
           )}
         </View>
 
@@ -1239,7 +1321,12 @@ function ScheduleApp() {
               isFabOpen && styles.bottomBarDimmed,
             ]}
           >
-            {TABS.map(renderTabButton)}
+            <View style={[styles.tabGroup, dynamicStyles.tabGroupLeft]}>
+              {LEFT_TABS.map(renderTabButton)}
+            </View>
+            <View style={[styles.tabGroup, dynamicStyles.tabGroupRight]}>
+              {RIGHT_TABS.map(renderTabButton)}
+            </View>
           </View>
 
           <TouchableOpacity
@@ -2195,16 +2282,15 @@ const styles = StyleSheet.create({
   bottomBarContainer: {
     width: '100%',
     alignItems: 'stretch',
-    backgroundColor: 'transparent',
+    backgroundColor: '#ffffff',
   },
   bottomBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#ffffff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingVertical: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     width: '100%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
@@ -2215,12 +2301,20 @@ const styles = StyleSheet.create({
   bottomBarDimmed: {
     opacity: 0.4,
   },
+  tabGroup: {
+    flexDirection: 'row',
+    flex: 1,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
   tabButton: {
     flex: 1,
     alignItems: 'center',
+    paddingVertical: 2,
   },
   tabLabel: {
-    letterSpacing: 0.5,
+    letterSpacing: 0.2,
     textTransform: 'uppercase',
     fontWeight: '600',
   },
@@ -2251,6 +2345,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 10,
     elevation: 10,
+  },
+  placeholderContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 40,
+    gap: 8,
+  },
+  placeholderIconWrapper: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#f0efff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  placeholderDescription: {
+    textAlign: 'center',
+    marginTop: 2,
   },
   addButtonBase: {
     position: 'absolute',
