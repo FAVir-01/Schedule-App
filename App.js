@@ -18,7 +18,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import * as NavigationBar from 'expo-navigation-bar';
@@ -747,16 +747,25 @@ function ScheduleApp() {
     }
 
     const theme = getNavigationBarThemeForTab(tabKey);
-    try {
-      await NavigationBar.setPositionAsync('relative');
-    } catch (error) {
-      // Ignore when navigation bar position can't be updated
-    }
+    let isRelativePosition = true;
 
     try {
-      await NavigationBar.setBackgroundColorAsync(theme.backgroundColor);
+      await NavigationBar.setPositionAsync('relative');
+      if (NavigationBar.getPositionAsync) {
+        const position = await NavigationBar.getPositionAsync();
+        isRelativePosition = position === 'relative';
+      }
     } catch (error) {
-      // Ignore when navigation bar background can't be updated
+      // Ignore when navigation bar position can't be updated
+      isRelativePosition = false;
+    }
+
+    if (isRelativePosition && NavigationBar.setBackgroundColorAsync) {
+      try {
+        await NavigationBar.setBackgroundColorAsync(theme.backgroundColor);
+      } catch (error) {
+        // Ignore when navigation bar background can't be updated
+      }
     }
 
     try {
@@ -1892,7 +1901,9 @@ function TaskDetailModal({
 export default function App() {
   return (
     <SafeAreaProvider>
-      <ScheduleApp />
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <ScheduleApp />
+      </SafeAreaView>
     </SafeAreaProvider>
   );
 }
@@ -1902,6 +1913,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f6f6fb',
     position: 'relative',
+  },
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#000',
   },
   appFrame: {
     flex: 1,
