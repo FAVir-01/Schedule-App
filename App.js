@@ -614,28 +614,18 @@ function ScheduleApp() {
       return undefined;
     }
 
-    const applyNavigationBarTheme = async () => {
-      const theme = getNavigationBarThemeForTab(activeTab);
-      try {
-        await NavigationBar.setBackgroundColorAsync(theme.backgroundColor);
-        await NavigationBar.setButtonStyleAsync(theme.buttonStyle);
-      } catch (error) {
-        // Ignore when navigation bar button style can't be updated
-      }
-    };
-
-    void applyNavigationBarTheme();
+    void applyNavigationBarThemeForTab(activeTab);
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        void applyNavigationBarTheme();
+        void applyNavigationBarThemeForTab(activeTab);
       }
     });
 
     return () => {
       subscription.remove();
     };
-  }, [activeTab]);
+  }, [activeTab, applyNavigationBarThemeForTab]);
 
   const dynamicStyles = useMemo(
     () => ({
@@ -751,13 +741,28 @@ function ScheduleApp() {
     setSelectedDate(normalized);
   }, []);
 
+  const applyNavigationBarThemeForTab = useCallback(async (tabKey) => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+
+    const theme = getNavigationBarThemeForTab(tabKey);
+    try {
+      await NavigationBar.setBackgroundColorAsync(theme.backgroundColor);
+      await NavigationBar.setButtonStyleAsync(theme.buttonStyle);
+    } catch (error) {
+      // Ignore when navigation bar button style can't be updated
+    }
+  }, []);
+
   const handleChangeTab = useCallback(
     (tabKey) => {
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
       setActiveTab(tabKey);
       updateUserSettings({ activeTab: tabKey });
+      void applyNavigationBarThemeForTab(tabKey);
     },
-    [updateUserSettings]
+    [applyNavigationBarThemeForTab, updateUserSettings]
   );
 
   const handleSelectTagFilter = useCallback(
