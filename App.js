@@ -747,22 +747,13 @@ function ScheduleApp() {
     }
 
     const theme = getNavigationBarThemeForTab(tabKey);
-    let isRelativePosition = false;
-
     try {
       await NavigationBar.setPositionAsync('relative');
-      if (NavigationBar.getPositionAsync) {
-        const position = await NavigationBar.getPositionAsync();
-        isRelativePosition = position === 'relative';
-      }
-      if (!NavigationBar.getPositionAsync) {
-        isRelativePosition = true;
-      }
     } catch (error) {
       // Ignore when navigation bar position can't be updated
     }
 
-    if (isRelativePosition && NavigationBar.setBackgroundColorAsync) {
+    if (NavigationBar.setBackgroundColorAsync) {
       try {
         await NavigationBar.setBackgroundColorAsync(theme.backgroundColor);
       } catch (error) {
