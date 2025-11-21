@@ -2345,10 +2345,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   activeColor: {
-    color: '#3c2ba7',
+    color: '#ffffff',
   },
   inactiveColor: {
-    color: '#9ba0b0',
+    color: '#888888',
   },
   addButton: {
     position: 'absolute',
