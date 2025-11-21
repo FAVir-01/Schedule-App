@@ -90,19 +90,19 @@ const RIGHT_TABS = [
 
 const NAV_BAR_THEMES = {
   today: {
-    backgroundColor: '#000000',
-    buttonStyle: 'light',
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
   calendar: {
-    backgroundColor: '#f6f6fb',
+    backgroundColor: '#ffffff',
     buttonStyle: 'dark',
   },
   discover: {
-    backgroundColor: '#f6f6fb',
+    backgroundColor: '#ffffff',
     buttonStyle: 'dark',
   },
   profile: {
-    backgroundColor: '#f6f6fb',
+    backgroundColor: '#ffffff',
     buttonStyle: 'dark',
   },
 };
@@ -1111,7 +1111,11 @@ function ScheduleApp() {
         },
       ]}
     >
-      <StatusBar barStyle="light-content" backgroundColor="#000" />
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor="transparent"
+        translucent
+      />
 
       <View style={styles.container}>
         <View
@@ -1918,11 +1922,11 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#f6f6fb',
   },
   appFrame: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#f6f6fb',
   },
   content: {
     flex: 1,
@@ -2325,6 +2329,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 12,
     elevation: 8,
+    borderTopWidth: 0,
   },
   bottomBarDimmed: {
     opacity: 0.4,
@@ -2350,7 +2355,7 @@ const styles = StyleSheet.create({
     color: '#3c2ba7',
   },
   inactiveColor: {
-    color: '#9ba0b0',
+    color: '#888888',
   },
   addButton: {
     position: 'absolute',
