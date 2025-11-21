@@ -94,16 +94,16 @@ const NAV_BAR_THEMES = {
     buttonStyle: 'light',
   },
   calendar: {
-    backgroundColor: '#f6f6fb',
-    buttonStyle: 'dark',
+    backgroundColor: '#000000',
+    buttonStyle: 'light',
   },
   discover: {
-    backgroundColor: '#f6f6fb',
-    buttonStyle: 'dark',
+    backgroundColor: '#000000',
+    buttonStyle: 'light',
   },
   profile: {
-    backgroundColor: '#f6f6fb',
-    buttonStyle: 'dark',
+    backgroundColor: '#000000',
+    buttonStyle: 'light',
   },
 };
 
@@ -645,7 +645,7 @@ function ScheduleApp() {
       bottomBarContainer: {
         paddingHorizontal: 0,
         paddingBottom: insets.bottom,
-        backgroundColor: '#ffffff',
+        backgroundColor: '#000000',
       },
       bottomBar: {
         paddingHorizontal: bottomBarPadding,
@@ -1111,7 +1111,11 @@ function ScheduleApp() {
         },
       ]}
     >
-      <StatusBar barStyle="light-content" backgroundColor="#000" />
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor="transparent"
+        translucent
+      />
 
       <View style={styles.container}>
         <View
@@ -1918,11 +1922,11 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#f6f6fb',
   },
   appFrame: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#f6f6fb',
   },
   content: {
     flex: 1,
@@ -2310,13 +2314,13 @@ const styles = StyleSheet.create({
   bottomBarContainer: {
     width: '100%',
     alignItems: 'stretch',
-    backgroundColor: '#ffffff',
+    backgroundColor: '#000000',
   },
   bottomBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: '#000000',
     paddingVertical: 10,
     paddingHorizontal: 16,
     width: '100%',
@@ -2325,6 +2329,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 12,
     elevation: 8,
+    borderTopWidth: 0,
   },
   bottomBarDimmed: {
     opacity: 0.4,
@@ -2347,10 +2352,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   activeColor: {
-    color: '#3c2ba7',
+    color: '#ffffff',
   },
   inactiveColor: {
-    color: '#9ba0b0',
+    color: '#b5b9c9',
   },
   addButton: {
     position: 'absolute',
