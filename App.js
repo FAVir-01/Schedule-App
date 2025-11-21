@@ -90,20 +90,20 @@ const RIGHT_TABS = [
 
 const NAV_BAR_THEMES = {
   today: {
-    backgroundColor: '#f6f6fb', // Cor de fundo da tela (quase branco)
+    backgroundColor: '#ffffff', // Cor de fundo clara para harmonizar com a tela
     buttonStyle: 'dark', // Botões do Android escuros para aparecer no fundo claro
   },
   calendar: {
-    backgroundColor: '#000000',
-    buttonStyle: 'light',
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
   discover: {
-    backgroundColor: '#000000',
-    buttonStyle: 'light',
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
   profile: {
-    backgroundColor: '#000000',
-    buttonStyle: 'light',
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
 };
 
