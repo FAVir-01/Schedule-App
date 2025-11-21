@@ -645,7 +645,7 @@ function ScheduleApp() {
       bottomBarContainer: {
         paddingHorizontal: 0,
         paddingBottom: insets.bottom,
-        backgroundColor: '#ffffff',
+        backgroundColor: '#000000',
       },
       bottomBar: {
         paddingHorizontal: bottomBarPadding,
