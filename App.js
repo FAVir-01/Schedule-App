@@ -645,7 +645,7 @@ function ScheduleApp() {
       bottomBarContainer: {
         paddingHorizontal: 0,
         paddingBottom: insets.bottom,
-        backgroundColor: '#000000',
+        backgroundColor: '#ffffff',
       },
       bottomBar: {
         paddingHorizontal: bottomBarPadding,
@@ -2305,13 +2305,13 @@ const styles = StyleSheet.create({
   bottomBarContainer: {
     width: '100%',
     alignItems: 'stretch',
-    backgroundColor: '#000000',
+    backgroundColor: '#ffffff',
   },
   bottomBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#000000',
+    backgroundColor: '#ffffff',
     paddingVertical: 10,
     paddingHorizontal: 16,
     width: '100%',
@@ -2343,10 +2343,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   activeColor: {
-    color: '#ffffff',
+    color: '#1a1a2e',
   },
   inactiveColor: {
-    color: '#888888',
+    color: '#6f7a86',
   },
   addButton: {
     position: 'absolute',
