@@ -2346,7 +2346,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   inactiveColor: {
-    color: '#888888',
+    color: '#b5b9c9',
   },
   addButton: {
     position: 'absolute',
