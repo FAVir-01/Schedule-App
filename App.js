@@ -107,6 +107,8 @@ const NAV_BAR_THEMES = {
   },
 };
 
+const TAB_BAR_BACKGROUND = '#ffffff';
+
 const DEFAULT_NAV_BAR_THEME = NAV_BAR_THEMES.calendar;
 
 const getNavigationBarThemeForTab = (tabKey) => NAV_BAR_THEMES[tabKey] ?? DEFAULT_NAV_BAR_THEME;
@@ -645,7 +647,7 @@ function ScheduleApp() {
       bottomBarContainer: {
         paddingHorizontal: 0,
         paddingBottom: insets.bottom,
-        backgroundColor: '#000000',
+        backgroundColor: TAB_BAR_BACKGROUND,
       },
       bottomBar: {
         paddingHorizontal: bottomBarPadding,
@@ -2305,13 +2307,13 @@ const styles = StyleSheet.create({
   bottomBarContainer: {
     width: '100%',
     alignItems: 'stretch',
-    backgroundColor: '#000000',
+    backgroundColor: TAB_BAR_BACKGROUND,
   },
   bottomBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#000000',
+    backgroundColor: TAB_BAR_BACKGROUND,
     paddingVertical: 10,
     paddingHorizontal: 16,
     width: '100%',
