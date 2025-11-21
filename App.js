@@ -90,20 +90,20 @@ const RIGHT_TABS = [
 
 const NAV_BAR_THEMES = {
   today: {
-    backgroundColor: '#ffffff',
-    buttonStyle: 'dark',
+    backgroundColor: '#000000',
+    buttonStyle: 'light',
   },
   calendar: {
-    backgroundColor: '#ffffff',
-    buttonStyle: 'dark',
+    backgroundColor: '#000000',
+    buttonStyle: 'light',
   },
   discover: {
-    backgroundColor: '#ffffff',
-    buttonStyle: 'dark',
+    backgroundColor: '#000000',
+    buttonStyle: 'light',
   },
   profile: {
-    backgroundColor: '#ffffff',
-    buttonStyle: 'dark',
+    backgroundColor: '#000000',
+    buttonStyle: 'light',
   },
 };
 
@@ -2355,7 +2355,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   inactiveColor: {
-    color: '#888888',
+    color: '#b5b9c9',
   },
   addButton: {
     position: 'absolute',
