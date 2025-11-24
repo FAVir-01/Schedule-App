@@ -91,20 +91,20 @@ const RIGHT_TABS = [
 
 const NAV_BAR_THEMES = {
   today: {
-    backgroundColor: '#000000', // Barra de navegação do Android em preto
-    buttonStyle: 'light', // Botões claros para contraste no fundo escuro
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
   calendar: {
-    backgroundColor: '#000000',
-    buttonStyle: 'light',
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
   discover: {
-    backgroundColor: '#000000',
-    buttonStyle: 'light',
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
   profile: {
-    backgroundColor: '#000000',
-    buttonStyle: 'light',
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
 };
 
@@ -1105,8 +1105,8 @@ function ScheduleApp() {
     >
       <StatusBar
         barStyle="dark-content"
-        backgroundColor="transparent"
-        translucent
+        backgroundColor="#f6f6fb"
+        translucent={false}
       />
 
       <View style={styles.container}>
