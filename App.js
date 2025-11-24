@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import * as NavigationBar from 'expo-navigation-bar';
 import * as Haptics from 'expo-haptics';
 import {
@@ -90,20 +91,20 @@ const RIGHT_TABS = [
 
 const NAV_BAR_THEMES = {
   today: {
-    backgroundColor: '#000000', // Barra de navegação do Android em preto
-    buttonStyle: 'light', // Botões claros para contraste no fundo escuro
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
   calendar: {
-    backgroundColor: '#000000',
-    buttonStyle: 'light',
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
   discover: {
-    backgroundColor: '#000000',
-    buttonStyle: 'light',
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
   profile: {
-    backgroundColor: '#000000',
-    buttonStyle: 'light',
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
 };
 
@@ -1104,8 +1105,8 @@ function ScheduleApp() {
     >
       <StatusBar
         barStyle="dark-content"
-        backgroundColor="transparent"
-        translucent
+        backgroundColor="#f6f6fb"
+        translucent={false}
       />
 
       <View style={styles.container}>
@@ -1896,6 +1897,18 @@ function TaskDetailModal({
 }
 
 export default function App() {
+  useEffect(() => {
+    const lockOrientation = async () => {
+      try {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+      } catch {
+        // Orientation lock best effort only
+      }
+    };
+
+    void lockOrientation();
+  }, []);
+
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
