@@ -20,7 +20,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import * as NavigationBar from 'expo-navigation-bar';
 import * as Haptics from 'expo-haptics';
 import {
@@ -90,20 +90,20 @@ const RIGHT_TABS = [
 
 const NAV_BAR_THEMES = {
   today: {
-    backgroundColor: '#000000', // Barra de navegação do Android em preto
-    buttonStyle: 'light', // Botões claros para contraste no fundo escuro
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
   calendar: {
-    backgroundColor: '#000000',
-    buttonStyle: 'light',
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
   discover: {
-    backgroundColor: '#000000',
-    buttonStyle: 'light',
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
   profile: {
-    backgroundColor: '#000000',
-    buttonStyle: 'light',
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
 };
 
@@ -1404,9 +1404,6 @@ function ScheduleApp() {
             pointerEvents="auto"
             accessibilityHint="Tap to dismiss the add options"
           >
-            {Platform.OS === 'ios' && (
-              <BlurView intensity={60} tint="dark" style={styles.overlayBlur} />
-            )}
           </AnimatedPressable>
         )}
 
@@ -1896,6 +1893,18 @@ function TaskDetailModal({
 }
 
 export default function App() {
+  useEffect(() => {
+    const lockOrientation = async () => {
+      try {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+      } catch {
+        // Orientation lock best effort only
+      }
+    };
+
+    void lockOrientation();
+  }, []);
+
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -2408,12 +2417,9 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(26, 26, 46, 0.28)',
+    backgroundColor: 'transparent',
     zIndex: 10,
     overflow: 'hidden',
-  },
-  overlayBlur: {
-    ...StyleSheet.absoluteFillObject,
   },
   fabActionsContainer: {
     position: 'absolute',
