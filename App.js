@@ -1104,8 +1104,8 @@ function ScheduleApp() {
     >
       <StatusBar
         barStyle="dark-content"
-        backgroundColor="transparent"
-        translucent
+        backgroundColor="#f6f6fb"
+        translucent={false}
       />
 
       <View style={styles.container}>
