@@ -20,7 +20,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as NavigationBar from 'expo-navigation-bar';
 import * as Haptics from 'expo-haptics';
@@ -1405,9 +1404,6 @@ function ScheduleApp() {
             pointerEvents="auto"
             accessibilityHint="Tap to dismiss the add options"
           >
-            {Platform.OS === 'ios' && (
-              <BlurView intensity={60} tint="dark" style={styles.overlayBlur} />
-            )}
           </AnimatedPressable>
         )}
 
@@ -2421,12 +2417,9 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(26, 26, 46, 0.28)',
+    backgroundColor: 'transparent',
     zIndex: 10,
     overflow: 'hidden',
-  },
-  overlayBlur: {
-    ...StyleSheet.absoluteFillObject,
   },
   fabActionsContainer: {
     position: 'absolute',
