@@ -116,6 +116,8 @@ const DEFAULT_USER_SETTINGS = {
   selectedTagFilter: 'all',
 };
 
+const CALENDAR_WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
 const getDateKey = (date) => {
   const normalized = new Date(date);
   normalized.setHours(0, 0, 0, 0);
@@ -123,6 +125,18 @@ const getDateKey = (date) => {
   const month = String(normalized.getMonth() + 1).padStart(2, '0');
   const day = String(normalized.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const getMonthStart = (date) => {
+  const normalized = new Date(date);
+  normalized.setHours(0, 0, 0, 0);
+  normalized.setDate(1);
+  return normalized;
+};
+
+const getMonthId = (date) => {
+  const normalized = getMonthStart(date);
+  return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}`;
 };
 
 const hexToRgb = (hex) => {
@@ -372,6 +386,16 @@ function ScheduleApp() {
   );
   const [history, setHistory] = useState([]);
   const [isHydrated, setIsHydrated] = useState(false);
+  const [calendarMonths, setCalendarMonths] = useState(() => {
+    const base = getMonthStart(new Date());
+    const months = [];
+    for (let offset = -2; offset <= 2; offset += 1) {
+      const monthDate = new Date(base);
+      monthDate.setMonth(base.getMonth() + offset, 1);
+      months.push(monthDate);
+    }
+    return months;
+  });
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isCompact = width < 360;
@@ -422,6 +446,142 @@ function ScheduleApp() {
       };
     });
   }, [tasks, today]);
+  const viewabilityConfigRef = useRef({ itemVisiblePercentThreshold: 25 });
+
+  const prependMonth = useCallback(() => {
+    setCalendarMonths((previous) => {
+      if (previous.length === 0) {
+        return previous;
+      }
+      const first = previous[0];
+      const prevMonth = new Date(first);
+      prevMonth.setMonth(first.getMonth() - 1, 1);
+      const exists = previous.some((month) => getMonthId(month) === getMonthId(prevMonth));
+      return exists ? previous : [prevMonth, ...previous];
+    });
+  }, []);
+
+  const appendMonth = useCallback(() => {
+    setCalendarMonths((previous) => {
+      if (previous.length === 0) {
+        return previous;
+      }
+      const last = previous[previous.length - 1];
+      const nextMonth = new Date(last);
+      nextMonth.setMonth(last.getMonth() + 1, 1);
+      const exists = previous.some((month) => getMonthId(month) === getMonthId(nextMonth));
+      return exists ? previous : [...previous, nextMonth];
+    });
+  }, []);
+
+  const handleViewableItemsChanged = useCallback(
+    ({ viewableItems }) => {
+      if (!viewableItems || viewableItems.length === 0) {
+        return;
+      }
+      const indexes = viewableItems
+        .map((item) => item.index)
+        .filter((index) => typeof index === 'number');
+      if (indexes.length === 0) {
+        return;
+      }
+      const minIndex = Math.min(...indexes);
+      const maxIndex = Math.max(...indexes);
+      if (minIndex <= 1) {
+        prependMonth();
+      }
+      if (maxIndex >= calendarMonths.length - 2) {
+        appendMonth();
+      }
+    },
+    [appendMonth, calendarMonths.length, prependMonth]
+  );
+  const renderCalendarMonth = useCallback(
+    ({ item }) => {
+      const monthDate = getMonthStart(item);
+      const monthLabel = monthDate.toLocaleDateString('en-US', {
+        month: 'long',
+        year: 'numeric',
+      });
+      const year = monthDate.getFullYear();
+      const monthIndex = monthDate.getMonth();
+      const startWeekday = new Date(year, monthIndex, 1).getDay();
+      const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+      const totalCells = Math.ceil((startWeekday + daysInMonth) / 7) * 7;
+      const cells = [];
+      for (let i = 0; i < startWeekday; i += 1) {
+        cells.push(null);
+      }
+      for (let day = 1; day <= daysInMonth; day += 1) {
+        cells.push(new Date(year, monthIndex, day));
+      }
+      while (cells.length < totalCells) {
+        cells.push(null);
+      }
+      const weeks = [];
+      for (let index = 0; index < cells.length; index += 7) {
+        weeks.push(cells.slice(index, index + 7));
+      }
+
+      return (
+        <View style={styles.calendarMonthSection}>
+          <View style={styles.calendarMonthSeparator} />
+          <View style={styles.calendarMonthHeader}>
+            <Text style={styles.calendarMonthLabel}>{monthLabel}</Text>
+          </View>
+          <View style={styles.calendarWeekdayRow}>
+            {CALENDAR_WEEKDAYS.map((weekday) => (
+              <Text key={`${getMonthId(monthDate)}-${weekday}`} style={styles.calendarWeekdayLabel}>
+                {weekday}
+              </Text>
+            ))}
+          </View>
+          {weeks.map((week, weekIndex) => (
+            <View key={`${getMonthId(monthDate)}-week-${weekIndex}`} style={styles.calendarWeekRow}>
+              {week.map((date, dayIndex) => {
+                if (!date) {
+                  return (
+                    <View
+                      key={`empty-${weekIndex}-${dayIndex}`}
+                      style={[styles.calendarDayCell, styles.calendarDayCellEmpty]}
+                    />
+                  );
+                }
+                const dateKey = getDateKey(date);
+                const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, date));
+                const completedTasks = dayTasks.filter((task) => getTaskCompletionStatus(task, dateKey));
+                const isAllDone = dayTasks.length > 0 && completedTasks.length === dayTasks.length;
+                const isTodayDay = isSameDay(date, today);
+                const isSelected = dateKey === selectedDateKey;
+                const dayStyles = [styles.calendarDayCell];
+                if (isTodayDay) {
+                  dayStyles.push(styles.calendarDayCellToday);
+                }
+                if (isSelected) {
+                  dayStyles.push(styles.calendarDayCellSelected);
+                }
+                return (
+                  <Pressable
+                    key={dateKey}
+                    style={dayStyles}
+                    onPress={() => handleSelectCalendarDate(date)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                    accessibilityLabel={`Day ${date.getDate()}`}
+                  >
+                    <Text style={[styles.calendarDayNumber, isSelected && styles.calendarDayNumberSelected]}>
+                      {isAllDone ? '✅' : date.getDate()}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ))}
+        </View>
+      );
+    },
+    [handleSelectCalendarDate, selectedDateKey, tasks, today]
+  );
   const tasksForSelectedDate = useMemo(() => {
     const filtered = tasks.filter((task) => shouldTaskAppearOnDate(task, selectedDate));
     const getSortValue = (task) => {
@@ -633,6 +793,11 @@ function ScheduleApp() {
         paddingHorizontal: horizontalPadding,
         paddingTop: isCompact ? 32 : 48,
       },
+      calendarListContent: {
+        paddingHorizontal: horizontalPadding,
+        paddingTop: isCompact ? 24 : 32,
+        paddingBottom: isCompact ? 56 : 72,
+      },
       description: {
         fontSize: isCompact ? 15 : 16,
         lineHeight: isCompact ? 20 : 22,
@@ -740,6 +905,12 @@ function ScheduleApp() {
     normalized.setHours(0, 0, 0, 0);
     setSelectedDate(normalized);
   }, []);
+  const handleSelectCalendarDate = useCallback(
+    (date) => {
+      handleSelectDate(date);
+    },
+    [handleSelectDate]
+  );
 
   const applyNavigationBarThemeForTab = useCallback(async (tabKey) => {
     if (Platform.OS !== 'android') {
@@ -1294,6 +1465,16 @@ function ScheduleApp() {
                 )}
               </View>
             </ScrollView>
+          ) : activeTab === 'calendar' ? (
+            <FlatList
+              data={calendarMonths}
+              renderItem={renderCalendarMonth}
+              keyExtractor={(month) => getMonthId(month)}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={[styles.calendarListContent, dynamicStyles.calendarListContent]}
+              onViewableItemsChanged={handleViewableItemsChanged}
+              viewabilityConfig={viewabilityConfigRef.current}
+            />
           ) : (
             <View style={styles.placeholderContainer}>
               <View style={styles.placeholderIconWrapper}>
@@ -2309,6 +2490,84 @@ const styles = StyleSheet.create({
   detailEditButtonText: {
     fontSize: 15,
     fontWeight: '600',
+    color: '#3c2ba7',
+  },
+  calendarListContent: {
+    paddingBottom: 60,
+    gap: 12,
+  },
+  calendarMonthSection: {
+    marginBottom: 24,
+  },
+  calendarMonthSeparator: {
+    height: 12,
+    backgroundColor: '#000000',
+    borderRadius: 6,
+    marginBottom: 12,
+  },
+  calendarMonthHeader: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: '#f7f8fb',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7f5',
+    marginBottom: 12,
+  },
+  calendarMonthLabel: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1a1a2e',
+  },
+  calendarWeekdayRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingHorizontal: 2,
+  },
+  calendarWeekdayLabel: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6f7a86',
+    letterSpacing: 0.3,
+  },
+  calendarWeekRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'stretch',
+    marginBottom: 8,
+  },
+  calendarDayCell: {
+    flex: 1,
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e5e7f5',
+    marginHorizontal: 4,
+  },
+  calendarDayCellEmpty: {
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+  },
+  calendarDayCellToday: {
+    borderColor: '#3c2ba7',
+  },
+  calendarDayCellSelected: {
+    backgroundColor: '#f1f4ff',
+    borderColor: '#3c2ba7',
+  },
+  calendarDayNumber: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  calendarDayNumberSelected: {
     color: '#3c2ba7',
   },
   bottomBarContainer: {
