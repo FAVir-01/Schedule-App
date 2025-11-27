@@ -1538,6 +1538,21 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatOpt
     [repeatWeekdays]
   );
 
+  const isRepeatingDay = useCallback(
+    (targetDate) => {
+      if (!repeatOption || repeatOption === 'off') {
+        return false;
+      }
+      const normalizedStart = normalizeDate(selectedDate);
+      const normalizedTarget = normalizeDate(targetDate);
+      if (!normalizedStart || !normalizedTarget) {
+        return false;
+      }
+      return doesDateRepeat(normalizedTarget, normalizedStart, repeatOption, repeatingWeekdays);
+    },
+    [repeatOption, repeatingWeekdays, selectedDate]
+  );
+
   const daysMatrix = useMemo(() => {
     const totalCells = monthInfo.startWeekday + monthInfo.days;
     const filledCells = Math.ceil(totalCells / 7) * 7;
@@ -1637,7 +1652,7 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatOpt
 
             const disabled = isBeforeDay(date, today);
             const selected = isSameDay(date, selectedDate);
-            const repeating = isRepeatingDay(date, repeatOption, repeatingWeekdays);
+            const repeating = isRepeatingDay(date);
             const disabledStyle = disabled ? styles.dayCellDisabled : null;
             const selectedStyle = selected ? styles.dayCellSelected : null;
             const repeatingStyle = repeating ? styles.dayCellRepeating : null;
