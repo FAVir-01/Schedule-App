@@ -1498,17 +1498,26 @@ function SubtasksPanel({ value, onChange }) {
 
 function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatOption, repeatWeekdays }) {
   const today = useMemo(() => normalizeDate(new Date()), []);
-  const monthInfo = useMemo(() => getMonthMetadata(month), [month]);
+  const [visibleMonth, setVisibleMonth] = useState(() => normalizeDate(month));
+
+  useEffect(() => {
+    const normalized = normalizeDate(month);
+    if (normalized && normalized.getTime() !== visibleMonth.getTime()) {
+      setVisibleMonth(normalized);
+    }
+  }, [month, visibleMonth]);
+
+  const monthInfo = useMemo(() => getMonthMetadata(visibleMonth), [visibleMonth]);
   const monthLabel = useMemo(
     () =>
-      month.toLocaleDateString(undefined, {
+      visibleMonth.toLocaleDateString(undefined, {
         month: 'long',
         year: 'numeric',
       }),
-    [month]
+    [visibleMonth]
   );
-  const previousMonth = useMemo(() => addMonths(month, -1), [month]);
-  const nextMonth = useMemo(() => addMonths(month, 1), [month]);
+  const previousMonth = useMemo(() => addMonths(visibleMonth, -1), [visibleMonth]);
+  const nextMonth = useMemo(() => addMonths(visibleMonth, 1), [visibleMonth]);
   const previousMonthDisabled = useMemo(() => {
     const lastDayPrev = new Date(previousMonth.getFullYear(), previousMonth.getMonth() + 1, 0);
     return isBeforeDay(lastDayPrev, today);
@@ -1551,10 +1560,17 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatOpt
 
   const handleChangeMonth = useCallback(
     (nextMonth) => {
-      if (typeof onChangeMonth !== 'function' || !nextMonth) {
+      if (!nextMonth) {
         return;
       }
-      onChangeMonth(new Date(nextMonth.getFullYear(), nextMonth.getMonth(), 1));
+      const normalized = normalizeDate(new Date(nextMonth.getFullYear(), nextMonth.getMonth(), 1));
+      if (!normalized) {
+        return;
+      }
+      setVisibleMonth(normalized);
+      if (typeof onChangeMonth === 'function') {
+        onChangeMonth(normalized);
+      }
     },
     [onChangeMonth]
   );
@@ -1563,14 +1579,14 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatOpt
     (targetDate) => {
       const normalizedTarget = normalizeDate(targetDate);
       if (
-        normalizedTarget.getFullYear() !== month.getFullYear() ||
-        normalizedTarget.getMonth() !== month.getMonth()
+        normalizedTarget.getFullYear() !== visibleMonth.getFullYear() ||
+        normalizedTarget.getMonth() !== visibleMonth.getMonth()
       ) {
         handleChangeMonth(normalizedTarget);
       }
       onSelectDate(normalizedTarget);
     },
-    [handleChangeMonth, month, onSelectDate]
+    [handleChangeMonth, onSelectDate, visibleMonth]
   );
 
   return (
