@@ -127,6 +127,18 @@ const getDateKey = (date) => {
   return `${year}-${month}-${day}`;
 };
 
+const getMonthStart = (date) => {
+  const normalized = new Date(date);
+  normalized.setHours(0, 0, 0, 0);
+  normalized.setDate(1);
+  return normalized;
+};
+
+const getMonthId = (date) => {
+  const normalized = getMonthStart(date);
+  return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}`;
+};
+
 const hexToRgb = (hex) => {
   const sanitized = hex.replace('#', '');
   const bigint = parseInt(sanitized, 16);
@@ -374,10 +386,15 @@ function ScheduleApp() {
   );
   const [history, setHistory] = useState([]);
   const [isHydrated, setIsHydrated] = useState(false);
-  const [calendarMonth, setCalendarMonth] = useState(() => {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    return new Date(now.getFullYear(), now.getMonth(), 1);
+  const [calendarMonths, setCalendarMonths] = useState(() => {
+    const base = getMonthStart(new Date());
+    const months = [];
+    for (let offset = -2; offset <= 2; offset += 1) {
+      const monthDate = new Date(base);
+      monthDate.setMonth(base.getMonth() + offset, 1);
+      months.push(monthDate);
+    }
+    return months;
   });
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -432,79 +449,142 @@ function ScheduleApp() {
       };
     });
   }, [tasks, today]);
-  const calendarMonthInfo = useMemo(() => {
-    const year = calendarMonth.getFullYear();
-    const month = calendarMonth.getMonth();
-    const startWeekday = new Date(year, month, 1).getDay();
-    const days = new Date(year, month + 1, 0).getDate();
-    return { year, month, startWeekday, days };
-  }, [calendarMonth]);
-  const calendarMonthLabel = useMemo(
-    () =>
-      calendarMonth.toLocaleDateString('en-US', {
+  const viewabilityConfigRef = useRef({ itemVisiblePercentThreshold: 25 });
+
+  const prependMonth = useCallback(() => {
+    setCalendarMonths((previous) => {
+      if (previous.length === 0) {
+        return previous;
+      }
+      const first = previous[0];
+      const prevMonth = new Date(first);
+      prevMonth.setMonth(first.getMonth() - 1, 1);
+      const exists = previous.some((month) => getMonthId(month) === getMonthId(prevMonth));
+      return exists ? previous : [prevMonth, ...previous];
+    });
+  }, []);
+
+  const appendMonth = useCallback(() => {
+    setCalendarMonths((previous) => {
+      if (previous.length === 0) {
+        return previous;
+      }
+      const last = previous[previous.length - 1];
+      const nextMonth = new Date(last);
+      nextMonth.setMonth(last.getMonth() + 1, 1);
+      const exists = previous.some((month) => getMonthId(month) === getMonthId(nextMonth));
+      return exists ? previous : [...previous, nextMonth];
+    });
+  }, []);
+
+  const handleViewableItemsChanged = useCallback(
+    ({ viewableItems }) => {
+      if (!viewableItems || viewableItems.length === 0) {
+        return;
+      }
+      const indexes = viewableItems
+        .map((item) => item.index)
+        .filter((index) => typeof index === 'number');
+      if (indexes.length === 0) {
+        return;
+      }
+      const minIndex = Math.min(...indexes);
+      const maxIndex = Math.max(...indexes);
+      if (minIndex <= 1) {
+        prependMonth();
+      }
+      if (maxIndex >= calendarMonths.length - 2) {
+        appendMonth();
+      }
+    },
+    [appendMonth, calendarMonths.length, prependMonth]
+  );
+  const renderCalendarMonth = useCallback(
+    ({ item }) => {
+      const monthDate = getMonthStart(item);
+      const monthLabel = monthDate.toLocaleDateString('en-US', {
         month: 'long',
         year: 'numeric',
-      }),
-    [calendarMonth]
-  );
-  const calendarMonthWeeks = useMemo(() => {
-    const totalCells = Math.ceil((calendarMonthInfo.startWeekday + calendarMonthInfo.days) / 7) * 7;
-    const cells = [];
-    for (let i = 0; i < calendarMonthInfo.startWeekday; i += 1) {
-      cells.push(null);
-    }
-    for (let day = 1; day <= calendarMonthInfo.days; day += 1) {
-      cells.push(new Date(calendarMonthInfo.year, calendarMonthInfo.month, day));
-    }
-    while (cells.length < totalCells) {
-      cells.push(null);
-    }
-    const weeks = [];
-    for (let index = 0; index < cells.length; index += 7) {
-      const week = cells.slice(index, index + 7).map((date) => {
-        if (!date) {
-          return null;
-        }
-        const dateKey = getDateKey(date);
-        const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, date));
-        const completedTasks = dayTasks.filter((task) => getTaskCompletionStatus(task, dateKey));
-        return {
-          date,
-          key: dateKey,
-          dayNumber: date.getDate(),
-          isToday: isSameDay(date, today),
-          isSelected: dateKey === selectedDateKey,
-          totalTasks: dayTasks.length,
-          completedTasks: completedTasks.length,
-          allCompleted: dayTasks.length > 0 && completedTasks.length === dayTasks.length,
-        };
       });
-      weeks.push(week);
-    }
-    return weeks;
-  }, [calendarMonthInfo.days, calendarMonthInfo.month, calendarMonthInfo.startWeekday, calendarMonthInfo.year, selectedDateKey, tasks, today]);
-  const calendarMonthStats = useMemo(() => {
-    let totalTasks = 0;
-    let completedTasks = 0;
-    let scheduledDays = 0;
-    for (let day = 1; day <= calendarMonthInfo.days; day += 1) {
-      const date = new Date(calendarMonthInfo.year, calendarMonthInfo.month, day);
-      const dateKey = getDateKey(date);
-      const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, date));
-      if (dayTasks.length > 0) {
-        scheduledDays += 1;
+      const year = monthDate.getFullYear();
+      const monthIndex = monthDate.getMonth();
+      const startWeekday = new Date(year, monthIndex, 1).getDay();
+      const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+      const totalCells = Math.ceil((startWeekday + daysInMonth) / 7) * 7;
+      const cells = [];
+      for (let i = 0; i < startWeekday; i += 1) {
+        cells.push(null);
       }
-      totalTasks += dayTasks.length;
-      completedTasks += dayTasks.filter((task) => getTaskCompletionStatus(task, dateKey)).length;
-    }
-    const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-    return { totalTasks, completedTasks, completionRate, scheduledDays };
-  }, [calendarMonthInfo.days, calendarMonthInfo.month, calendarMonthInfo.year, tasks]);
-  const calendarSelectedDaySummary = useMemo(() => {
-    const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, selectedDate));
-    const completed = dayTasks.filter((task) => getTaskCompletionStatus(task, selectedDateKey)).length;
-    return { totalTasks: dayTasks.length, completed };
-  }, [selectedDate, selectedDateKey, tasks]);
+      for (let day = 1; day <= daysInMonth; day += 1) {
+        cells.push(new Date(year, monthIndex, day));
+      }
+      while (cells.length < totalCells) {
+        cells.push(null);
+      }
+      const weeks = [];
+      for (let index = 0; index < cells.length; index += 7) {
+        weeks.push(cells.slice(index, index + 7));
+      }
+
+      return (
+        <View style={styles.calendarMonthSection}>
+          <View style={styles.calendarMonthSeparator} />
+          <View style={styles.calendarMonthHeader}>
+            <Text style={styles.calendarMonthLabel}>{monthLabel}</Text>
+          </View>
+          <View style={styles.calendarWeekdayRow}>
+            {CALENDAR_WEEKDAYS.map((weekday) => (
+              <Text key={`${getMonthId(monthDate)}-${weekday}`} style={styles.calendarWeekdayLabel}>
+                {weekday}
+              </Text>
+            ))}
+          </View>
+          {weeks.map((week, weekIndex) => (
+            <View key={`${getMonthId(monthDate)}-week-${weekIndex}`} style={styles.calendarWeekRow}>
+              {week.map((date, dayIndex) => {
+                if (!date) {
+                  return (
+                    <View
+                      key={`empty-${weekIndex}-${dayIndex}`}
+                      style={[styles.calendarDayCell, styles.calendarDayCellEmpty]}
+                    />
+                  );
+                }
+                const dateKey = getDateKey(date);
+                const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, date));
+                const completedTasks = dayTasks.filter((task) => getTaskCompletionStatus(task, dateKey));
+                const isAllDone = dayTasks.length > 0 && completedTasks.length === dayTasks.length;
+                const isTodayDay = isSameDay(date, today);
+                const isSelected = dateKey === selectedDateKey;
+                const dayStyles = [styles.calendarDayCell];
+                if (isTodayDay) {
+                  dayStyles.push(styles.calendarDayCellToday);
+                }
+                if (isSelected) {
+                  dayStyles.push(styles.calendarDayCellSelected);
+                }
+                return (
+                  <Pressable
+                    key={dateKey}
+                    style={dayStyles}
+                    onPress={() => handleSelectCalendarDate(date)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                    accessibilityLabel={`Day ${date.getDate()}`}
+                  >
+                    <Text style={[styles.calendarDayNumber, isSelected && styles.calendarDayNumberSelected]}>
+                      {isAllDone ? '✅' : date.getDate()}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ))}
+        </View>
+      );
+    },
+    [handleSelectCalendarDate, selectedDateKey, tasks, today]
+  );
   const tasksForSelectedDate = useMemo(() => {
     const filtered = tasks.filter((task) => shouldTaskAppearOnDate(task, selectedDate));
     const getSortValue = (task) => {
@@ -716,10 +796,10 @@ function ScheduleApp() {
         paddingHorizontal: horizontalPadding,
         paddingTop: isCompact ? 32 : 48,
       },
-      calendarContent: {
+      calendarListContent: {
         paddingHorizontal: horizontalPadding,
-        paddingTop: isCompact ? 28 : 36,
-        paddingBottom: isCompact ? 48 : 64,
+        paddingTop: isCompact ? 24 : 32,
+        paddingBottom: isCompact ? 56 : 72,
       },
       description: {
         fontSize: isCompact ? 15 : 16,
@@ -834,18 +914,6 @@ function ScheduleApp() {
     },
     [handleSelectDate]
   );
-  const goToPreviousMonth = useCallback(() => {
-    triggerSelection();
-    const previous = new Date(calendarMonth);
-    previous.setMonth(calendarMonth.getMonth() - 1, 1);
-    setCalendarMonth(previous);
-  }, [calendarMonth]);
-  const goToNextMonth = useCallback(() => {
-    triggerSelection();
-    const next = new Date(calendarMonth);
-    next.setMonth(calendarMonth.getMonth() + 1, 1);
-    setCalendarMonth(next);
-  }, [calendarMonth]);
 
   const applyNavigationBarThemeForTab = useCallback(async (tabKey) => {
     if (Platform.OS !== 'android') {
@@ -1401,162 +1469,15 @@ function ScheduleApp() {
               </View>
             </ScrollView>
           ) : activeTab === 'calendar' ? (
-            <ScrollView
-              contentContainerStyle={[styles.calendarContent, dynamicStyles.calendarContent]}
+            <FlatList
+              data={calendarMonths}
+              renderItem={renderCalendarMonth}
+              keyExtractor={(month) => getMonthId(month)}
               showsVerticalScrollIndicator={false}
-            >
-              <LinearGradient
-                colors={['#f1f4ff', '#ffffff']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.calendarHero}
-              >
-                <View style={styles.calendarHeroTextGroup}>
-                  <Text style={styles.calendarHeroTitle}>Calendar</Text>
-                  <Text style={styles.calendarHeroMonth}>{calendarMonthLabel}</Text>
-                  <Text style={styles.calendarHeroSubtitle}>
-                    {calendarMonthStats.totalTasks > 0
-                      ? `${calendarMonthStats.completedTasks}/${calendarMonthStats.totalTasks} tasks completed`
-                      : 'No tasks scheduled this month'}
-                  </Text>
-                  {calendarMonthStats.scheduledDays > 0 && (
-                    <Text style={styles.calendarHeroMeta}>
-                      Active on {calendarMonthStats.scheduledDays} day
-                      {calendarMonthStats.scheduledDays === 1 ? '' : 's'}
-                    </Text>
-                  )}
-                </View>
-                <View style={styles.calendarHeroIcon}>
-                  <Ionicons name="calendar-outline" size={40} color="#3c2ba7" />
-                </View>
-              </LinearGradient>
-
-              <View style={styles.calendarToolbar}>
-                <Pressable
-                  style={styles.calendarNavButton}
-                  onPress={goToPreviousMonth}
-                  accessibilityRole="button"
-                  accessibilityLabel="Go to previous month"
-                >
-                  <Ionicons name="chevron-back" size={18} color="#1a1a2e" />
-                </Pressable>
-                <Text style={styles.calendarToolbarLabel}>{calendarMonthLabel}</Text>
-                <Pressable
-                  style={styles.calendarNavButton}
-                  onPress={goToNextMonth}
-                  accessibilityRole="button"
-                  accessibilityLabel="Go to next month"
-                >
-                  <Ionicons name="chevron-forward" size={18} color="#1a1a2e" />
-                </Pressable>
-              </View>
-
-              <View style={styles.calendarLegendRow}>
-                <View style={styles.calendarLegendItem}>
-                  <View style={[styles.calendarLegendSwatch, styles.calendarLegendSwatchComplete]} />
-                  <Text style={styles.calendarLegendText}>All done</Text>
-                </View>
-                <View style={styles.calendarLegendItem}>
-                  <View style={[styles.calendarLegendSwatch, styles.calendarLegendSwatchActive]} />
-                  <Text style={styles.calendarLegendText}>Scheduled</Text>
-                </View>
-                <View style={styles.calendarLegendItem}>
-                  <View style={[styles.calendarLegendSwatch, styles.calendarLegendSwatchToday]} />
-                  <Text style={styles.calendarLegendText}>Today</Text>
-                </View>
-              </View>
-
-              <View style={styles.calendarWeekdayRow}>
-                {CALENDAR_WEEKDAYS.map((weekday) => (
-                  <Text key={weekday} style={styles.calendarWeekdayLabel}>
-                    {weekday}
-                  </Text>
-                ))}
-              </View>
-
-              {calendarMonthWeeks.map((week, weekIndex) => (
-                <View key={`calendar-week-${weekIndex}`} style={styles.calendarWeekRow}>
-                  {week.map((day, dayIndex) => {
-                    if (!day) {
-                      return <View key={`empty-${weekIndex}-${dayIndex}`} style={styles.calendarDayCell} />;
-                    }
-                    const hasTasks = day.totalTasks > 0;
-                    const dayStyles = [styles.calendarDayCell];
-                    if (day.isSelected) {
-                      dayStyles.push(styles.calendarDayCellSelected);
-                    } else if (day.isToday) {
-                      dayStyles.push(styles.calendarDayCellToday);
-                    } else if (day.allCompleted) {
-                      dayStyles.push(styles.calendarDayCellCompleted);
-                    } else if (hasTasks) {
-                      dayStyles.push(styles.calendarDayCellActive);
-                    }
-                    return (
-                      <Pressable
-                        key={day.key}
-                        style={dayStyles}
-                        onPress={() => handleSelectCalendarDate(day.date)}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: day.isSelected }}
-                        accessibilityLabel={`View ${day.dayNumber}`}
-                      >
-                        <Text
-                          style={[
-                            styles.calendarDayNumber,
-                            (day.isSelected || day.isToday) && styles.calendarDayNumberSelected,
-                          ]}
-                        >
-                          {day.dayNumber}
-                        </Text>
-                        {hasTasks ? (
-                          <View style={styles.calendarDayDotRow}>
-                            <View
-                              style={[
-                                styles.calendarDayDot,
-                                day.allCompleted
-                                  ? styles.calendarDayDotComplete
-                                  : styles.calendarDayDotPending,
-                              ]}
-                            />
-                            <Text style={styles.calendarDayDotLabel}>
-                              {day.completedTasks}/{day.totalTasks}
-                            </Text>
-                          </View>
-                        ) : (
-                          <Text style={styles.calendarDayDotLabel}>—</Text>
-                        )}
-                        {day.isToday && <Text style={styles.calendarTodayLabel}>Today</Text>}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ))}
-
-              <View style={styles.calendarSelectedSummary}>
-                <View style={styles.calendarSelectedHeader}>
-                  <Text style={styles.calendarSelectedTitle}>
-                    {selectedDate.toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
-                  </Text>
-                  <View style={styles.calendarSelectedBadge}>
-                    <Ionicons name="checkmark-circle" size={16} color="#3dd598" />
-                    <Text style={styles.calendarSelectedBadgeText}>
-                      {calendarSelectedDaySummary.completed}/{calendarSelectedDaySummary.totalTasks}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={styles.calendarSelectedDescription}>
-                  {calendarSelectedDaySummary.totalTasks > 0
-                    ? `You have ${calendarSelectedDaySummary.totalTasks} task${
-                        calendarSelectedDaySummary.totalTasks === 1 ? '' : 's'
-                      } scheduled. Tap a day to focus your plan.`
-                    : 'Nothing scheduled for this day yet. Use the add button to plan ahead.'}
-                </Text>
-              </View>
-            </ScrollView>
+              contentContainerStyle={[styles.calendarListContent, dynamicStyles.calendarListContent]}
+              onViewableItemsChanged={handleViewableItemsChanged}
+              viewabilityConfig={viewabilityConfigRef.current}
+            />
           ) : (
             <View style={styles.placeholderContainer}>
               <View style={styles.placeholderIconWrapper}>
@@ -2574,165 +2495,75 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#3c2ba7',
   },
-  calendarContent: {
+  calendarListContent: {
     paddingBottom: 60,
+    gap: 12,
   },
-  calendarHero: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 18,
-    padding: 16,
+  calendarMonthSection: {
+    marginBottom: 24,
+  },
+  calendarMonthSeparator: {
+    height: 12,
+    backgroundColor: '#000000',
+    borderRadius: 6,
+    marginBottom: 12,
+  },
+  calendarMonthHeader: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: '#f7f8fb',
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e5e7f5',
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  calendarHeroTextGroup: {
-    flex: 1,
-    gap: 2,
-  },
-  calendarHeroTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#3c2ba7',
-    letterSpacing: 0.2,
-  },
-  calendarHeroMonth: {
-    fontSize: 22,
+  calendarMonthLabel: {
+    fontSize: 18,
     fontWeight: '800',
     color: '#1a1a2e',
   },
-  calendarHeroSubtitle: {
-    marginTop: 6,
-    fontSize: 14,
-    color: '#3c3c4e',
-  },
-  calendarHeroMeta: {
-    fontSize: 13,
-    color: '#6f7a86',
-  },
-  calendarHeroIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 16,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e5e7f5',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 12,
-  },
-  calendarToolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  calendarNavButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#e5e7f5',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ffffff',
-  },
-  calendarToolbarLabel: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1a2e',
-    letterSpacing: 0.2,
-  },
-  calendarLegendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    marginBottom: 6,
-  },
-  calendarLegendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  calendarLegendSwatch: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 1,
-    borderColor: '#d7dbeb',
-    backgroundColor: '#f6f8ff',
-  },
-  calendarLegendSwatchComplete: {
-    backgroundColor: '#e8f9f1',
-    borderColor: '#3dd598',
-  },
-  calendarLegendSwatchActive: {
-    backgroundColor: '#efe9ff',
-    borderColor: '#8b5cf6',
-  },
-  calendarLegendSwatchToday: {
-    backgroundColor: '#fef4e6',
-    borderColor: '#f9a826',
-  },
-  calendarLegendText: {
-    fontSize: 13,
-    color: '#3c3c4e',
-  },
   calendarWeekdayRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 6,
-    marginBottom: 6,
-    paddingHorizontal: 6,
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingHorizontal: 2,
   },
   calendarWeekdayLabel: {
+    flex: 1,
+    textAlign: 'center',
     fontSize: 12,
     fontWeight: '700',
     color: '#6f7a86',
-    width: `${100 / 7}%`,
-    textAlign: 'center',
-    letterSpacing: 0.4,
+    letterSpacing: 0.3,
   },
   calendarWeekRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'stretch',
+    marginBottom: 8,
   },
   calendarDayCell: {
-    width: `${100 / 7}%`,
+    flex: 1,
     aspectRatio: 1,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#f0f1f7',
-    backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
-    padding: 4,
-    gap: 2,
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e5e7f5',
+    marginHorizontal: 4,
   },
-  calendarDayCellActive: {
-    backgroundColor: '#f6f4ff',
-    borderColor: '#e8e5ff',
-  },
-  calendarDayCellCompleted: {
-    backgroundColor: '#e9f8f0',
-    borderColor: '#d3f1e1',
+  calendarDayCellEmpty: {
+    borderWidth: 0,
+    backgroundColor: 'transparent',
   },
   calendarDayCellToday: {
-    backgroundColor: '#fff5e6',
-    borderColor: '#ffd9a0',
+    borderColor: '#3c2ba7',
   },
   calendarDayCellSelected: {
-    backgroundColor: '#3c2ba7',
+    backgroundColor: '#f1f4ff',
     borderColor: '#3c2ba7',
-    shadowColor: '#3c2ba7',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 10,
-    elevation: 6,
   },
   calendarDayNumber: {
     fontSize: 16,
@@ -2740,80 +2571,7 @@ const styles = StyleSheet.create({
     color: '#1a1a2e',
   },
   calendarDayNumberSelected: {
-    color: '#ffffff',
-  },
-  calendarDayDotRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  calendarDayDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#c5cadb',
-  },
-  calendarDayDotComplete: {
-    backgroundColor: '#3dd598',
-  },
-  calendarDayDotPending: {
-    backgroundColor: '#8b5cf6',
-  },
-  calendarDayDotLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#6f7a86',
-  },
-  calendarTodayLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#f9a826',
-    letterSpacing: 0.3,
-  },
-  calendarSelectedSummary: {
-    marginTop: 12,
-    padding: 14,
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#e5e7f5',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  calendarSelectedHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  calendarSelectedTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1a2e',
-    flex: 1,
-    paddingRight: 8,
-  },
-  calendarSelectedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    backgroundColor: '#f2fbf6',
-  },
-  calendarSelectedBadgeText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#1a1a2e',
-  },
-  calendarSelectedDescription: {
-    fontSize: 14,
-    color: '#3c3c4e',
-    lineHeight: 20,
+    color: '#3c2ba7',
   },
   bottomBarContainer: {
     width: '100%',
