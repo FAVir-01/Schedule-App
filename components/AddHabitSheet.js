@@ -404,7 +404,9 @@ export default function AddHabitSheet({
   const [selectedTag, setSelectedTag] = useState('none');
   const [subtasks, setSubtasks] = useState([]);
 
-  const [calendarMonth, setCalendarMonth] = useState(() => new Date(startDate.getFullYear(), startDate.getMonth(), 1));
+  const [calendarMonth, setCalendarMonthState] = useState(
+    () => new Date(startDate.getFullYear(), startDate.getMonth(), 1)
+  );
   const [pendingDate, setPendingDate] = useState(startDate);
   const [pendingRepeatOption, setPendingRepeatOption] = useState(repeatOption);
   const [pendingWeekdays, setPendingWeekdays] = useState(() => new Set(selectedWeekdays));
@@ -482,7 +484,7 @@ export default function AddHabitSheet({
     (panel) => {
       setActivePanel(panel);
       if (panel === 'date') {
-        setCalendarMonth(new Date(startDate.getFullYear(), startDate.getMonth(), 1));
+        setCalendarMonthState(new Date(startDate.getFullYear(), startDate.getMonth(), 1));
         setPendingDate(new Date(startDate));
       } else if (panel === 'repeat') {
         setPendingRepeatOption(repeatOption);
@@ -524,9 +526,11 @@ export default function AddHabitSheet({
   }, []);
 
   const handleApplyDate = useCallback(() => {
-    setStartDate(pendingDate);
+    const normalizedDate = normalizeDate(pendingDate);
+    setStartDate(normalizedDate);
+    setCalendarMonthState(new Date(normalizedDate.getFullYear(), normalizedDate.getMonth(), 1));
     if (repeatOption === 'weekly') {
-      setSelectedWeekdays(new Set([getWeekdayKeyFromDate(pendingDate)]));
+      setSelectedWeekdays(new Set([getWeekdayKeyFromDate(normalizedDate)]));
     }
     closePanel();
   }, [closePanel, pendingDate, repeatOption]);
@@ -658,7 +662,7 @@ export default function AddHabitSheet({
     setPendingTag(resolvedTagKey);
     setSubtasks(resolvedSubtasks);
 
-    setCalendarMonth(new Date(resolvedStartDate.getFullYear(), resolvedStartDate.getMonth(), 1));
+    setCalendarMonthState(new Date(resolvedStartDate.getFullYear(), resolvedStartDate.getMonth(), 1));
     setPendingDate(resolvedStartDate);
     setPendingRepeatOption(resolvedRepeatOption);
     setPendingWeekdays(new Set(resolvedWeekdays));
@@ -1153,7 +1157,7 @@ export default function AddHabitSheet({
                   month={calendarMonth}
                   selectedDate={pendingDate}
                   onSelectDate={setPendingDate}
-                  onChangeMonth={setCalendarMonth}
+                  onChangeMonth={setCalendarMonthState}
                   repeatOption={repeatOption}
                   repeatWeekdays={selectedWeekdays}
                 />
@@ -1545,6 +1549,16 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatOpt
     return rows;
   }, [monthInfo.days, monthInfo.month, monthInfo.startWeekday, monthInfo.year]);
 
+  const handleChangeMonth = useCallback(
+    (nextMonth) => {
+      if (typeof onChangeMonth !== 'function' || !nextMonth) {
+        return;
+      }
+      onChangeMonth(new Date(nextMonth.getFullYear(), nextMonth.getMonth(), 1));
+    },
+    [onChangeMonth]
+  );
+
   const handleSelectQuick = useCallback(
     (targetDate) => {
       const normalizedTarget = normalizeDate(targetDate);
@@ -1552,11 +1566,11 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatOpt
         normalizedTarget.getFullYear() !== month.getFullYear() ||
         normalizedTarget.getMonth() !== month.getMonth()
       ) {
-        onChangeMonth(new Date(normalizedTarget.getFullYear(), normalizedTarget.getMonth(), 1));
+        handleChangeMonth(normalizedTarget);
       }
       onSelectDate(normalizedTarget);
     },
-    [month, onChangeMonth, onSelectDate]
+    [handleChangeMonth, month, onSelectDate]
   );
 
   return (
@@ -1579,11 +1593,7 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatOpt
         />
       </View>
       <View style={styles.calendarHeader}>
-        <Pressable
-          onPress={() => onChangeMonth(previousMonth)}
-          disabled={previousMonthDisabled}
-          hitSlop={12}
-        >
+        <Pressable onPress={() => handleChangeMonth(previousMonth)} disabled={previousMonthDisabled} hitSlop={12}>
           <Ionicons
             name="chevron-back"
             size={22}
@@ -1591,7 +1601,7 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatOpt
           />
         </Pressable>
         <Text style={styles.calendarHeaderText}>{monthLabel}</Text>
-        <Pressable onPress={() => onChangeMonth(nextMonth)} hitSlop={12}>
+        <Pressable onPress={() => handleChangeMonth(nextMonth)} hitSlop={12}>
           <Ionicons name="chevron-forward" size={22} color="#1F2742" />
         </Pressable>
       </View>
@@ -1603,40 +1613,27 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatOpt
         ))}
       </View>
       {daysMatrix.map((week, rowIndex) => (
-        <View key={`week-${rowIndex}`} style={styles.calendarWeekRow}>
-          {week.map((date, cellIndex) => {
+        <View key={`week-${rowIndex}`} style={styles.weekRow}>
+          {week.map((date) => {
             if (!date) {
-              return <View key={`empty-${rowIndex}-${cellIndex}`} style={styles.calendarDay} />;
+              return <View key={`empty-${rowIndex}-${Math.random().toString(36).slice(2, 6)}`} style={styles.dayCellEmpty} />;
             }
-            const isDisabled = isBeforeDay(date, today);
-            const isSelected = isSameDay(date, selectedDate);
-            const isToday = isSameDay(date, today);
-            const isRepeating = doesDateRepeat(date, selectedDate, repeatOption, repeatingWeekdays);
+
+            const disabled = isBeforeDay(date, today);
+            const selected = isSameDay(date, selectedDate);
+            const repeating = isRepeatingDay(date, repeatOption, repeatingWeekdays);
+            const disabledStyle = disabled ? styles.dayCellDisabled : null;
+            const selectedStyle = selected ? styles.dayCellSelected : null;
+            const repeatingStyle = repeating ? styles.dayCellRepeating : null;
+
             return (
               <Pressable
                 key={date.toISOString()}
-                style={[
-                  styles.calendarDay,
-                  isSelected && styles.calendarDaySelected,
-                  isToday && styles.calendarDayToday,
-                  isDisabled && styles.calendarDayDisabled,
-                  !isSelected && isRepeating && styles.calendarDayRepeating,
-                ]}
-                onPress={() => onSelectDate(normalizeDate(date))}
-                disabled={isDisabled}
-                accessibilityRole="button"
-                accessibilityState={{ selected: isSelected, disabled: isDisabled }}
+                style={[styles.dayCell, disabledStyle, selectedStyle, repeatingStyle]}
+                disabled={disabled}
+                onPress={() => onSelectDate(date)}
               >
-                <Text
-                  style={[
-                    styles.calendarDayText,
-                    isSelected && styles.calendarDayTextSelected,
-                    isDisabled && styles.calendarDayTextDisabled,
-                    !isSelected && isRepeating && styles.calendarDayTextRepeating,
-                  ]}
-                >
-                  {date.getDate()}
-                </Text>
+                <Text style={[styles.dayCellText, disabled && styles.dayCellTextDisabled]}>{date.getDate()}</Text>
               </Pressable>
             );
           })}
