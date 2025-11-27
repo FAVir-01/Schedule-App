@@ -922,20 +922,6 @@ function ScheduleApp() {
 
     const theme = getNavigationBarThemeForTab(tabKey);
     try {
-      await NavigationBar.setPositionAsync('relative');
-    } catch (error) {
-      // Ignore when navigation bar position can't be updated
-    }
-
-    if (NavigationBar.setBackgroundColorAsync) {
-      try {
-        await NavigationBar.setBackgroundColorAsync(theme.backgroundColor);
-      } catch (error) {
-        // Ignore when navigation bar background can't be updated
-      }
-    }
-
-    try {
       await NavigationBar.setButtonStyleAsync(theme.buttonStyle);
     } catch (error) {
       // Ignore when navigation bar button style can't be updated
