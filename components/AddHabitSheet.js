@@ -404,7 +404,9 @@ export default function AddHabitSheet({
   const [selectedTag, setSelectedTag] = useState('none');
   const [subtasks, setSubtasks] = useState([]);
 
-  const [calendarMonth, setCalendarMonth] = useState(() => new Date(startDate.getFullYear(), startDate.getMonth(), 1));
+  const [calendarMonth, setCalendarMonthState] = useState(
+    () => new Date(startDate.getFullYear(), startDate.getMonth(), 1)
+  );
   const [pendingDate, setPendingDate] = useState(startDate);
   const [pendingRepeatOption, setPendingRepeatOption] = useState(repeatOption);
   const [pendingWeekdays, setPendingWeekdays] = useState(() => new Set(selectedWeekdays));
@@ -482,7 +484,7 @@ export default function AddHabitSheet({
     (panel) => {
       setActivePanel(panel);
       if (panel === 'date') {
-        setCalendarMonth(new Date(startDate.getFullYear(), startDate.getMonth(), 1));
+        setCalendarMonthState(new Date(startDate.getFullYear(), startDate.getMonth(), 1));
         setPendingDate(new Date(startDate));
       } else if (panel === 'repeat') {
         setPendingRepeatOption(repeatOption);
@@ -524,9 +526,11 @@ export default function AddHabitSheet({
   }, []);
 
   const handleApplyDate = useCallback(() => {
-    setStartDate(pendingDate);
+    const normalizedDate = normalizeDate(pendingDate);
+    setStartDate(normalizedDate);
+    setCalendarMonthState(new Date(normalizedDate.getFullYear(), normalizedDate.getMonth(), 1));
     if (repeatOption === 'weekly') {
-      setSelectedWeekdays(new Set([getWeekdayKeyFromDate(pendingDate)]));
+      setSelectedWeekdays(new Set([getWeekdayKeyFromDate(normalizedDate)]));
     }
     closePanel();
   }, [closePanel, pendingDate, repeatOption]);
@@ -658,7 +662,7 @@ export default function AddHabitSheet({
     setPendingTag(resolvedTagKey);
     setSubtasks(resolvedSubtasks);
 
-    setCalendarMonth(new Date(resolvedStartDate.getFullYear(), resolvedStartDate.getMonth(), 1));
+    setCalendarMonthState(new Date(resolvedStartDate.getFullYear(), resolvedStartDate.getMonth(), 1));
     setPendingDate(resolvedStartDate);
     setPendingRepeatOption(resolvedRepeatOption);
     setPendingWeekdays(new Set(resolvedWeekdays));
@@ -1153,7 +1157,7 @@ export default function AddHabitSheet({
                   month={calendarMonth}
                   selectedDate={pendingDate}
                   onSelectDate={setPendingDate}
-                  onChangeMonth={setCalendarMonth}
+                  onChangeMonth={setCalendarMonthState}
                   repeatOption={repeatOption}
                   repeatWeekdays={selectedWeekdays}
                 />
