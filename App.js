@@ -21,7 +21,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import * as NavigationBar from 'expo-navigation-bar';
 import * as Haptics from 'expo-haptics';
 import {
   loadHistory,
@@ -90,19 +89,15 @@ const RIGHT_TABS = [
 
 const NAV_BAR_THEMES = {
   today: {
-    backgroundColor: '#ffffff',
     buttonStyle: 'dark',
   },
   calendar: {
-    backgroundColor: '#ffffff',
     buttonStyle: 'dark',
   },
   discover: {
-    backgroundColor: '#ffffff',
     buttonStyle: 'dark',
   },
   profile: {
-    backgroundColor: '#ffffff',
     buttonStyle: 'dark',
   },
 };
@@ -921,10 +916,19 @@ function ScheduleApp() {
     }
 
     const theme = getNavigationBarThemeForTab(tabKey);
-    try {
-      await NavigationBar.setButtonStyleAsync(theme.buttonStyle);
-    } catch (error) {
-      // Ignore when navigation bar button style can't be updated
+    // Only adjust navigation bar button style. Android edge-to-edge prevents background/position
+    // tweaks, and some devices warn when unsupported methods are called.
+    if (!theme || !theme.buttonStyle) {
+      return;
+    }
+    // Lazy-require to avoid importing when not available on platform
+    const NavigationBar = require('expo-navigation-bar');
+    if (NavigationBar?.setButtonStyleAsync) {
+      try {
+        await NavigationBar.setButtonStyleAsync(theme.buttonStyle);
+      } catch (error) {
+        // Ignore when navigation bar button style can't be updated
+      }
     }
   }, []);
 
