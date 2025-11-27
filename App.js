@@ -391,6 +391,9 @@ function ScheduleApp() {
     }
     return months;
   });
+  // Backwards-compatible alias to avoid ReferenceErrors from legacy calls
+  // that still expect a singular month setter name.
+  const setCalendarMonth = useCallback((updater) => setCalendarMonths(updater), []);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isCompact = width < 360;
