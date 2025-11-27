@@ -20,7 +20,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import * as NavigationBar from 'expo-navigation-bar';
 import * as Haptics from 'expo-haptics';
 import {
@@ -90,20 +90,20 @@ const RIGHT_TABS = [
 
 const NAV_BAR_THEMES = {
   today: {
-    backgroundColor: '#000000',
-    buttonStyle: 'light',
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
   calendar: {
-    backgroundColor: '#000000',
-    buttonStyle: 'light',
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
   discover: {
-    backgroundColor: '#000000',
-    buttonStyle: 'light',
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
   profile: {
-    backgroundColor: '#000000',
-    buttonStyle: 'light',
+    backgroundColor: '#ffffff',
+    buttonStyle: 'dark',
   },
 };
 
@@ -747,22 +747,13 @@ function ScheduleApp() {
     }
 
     const theme = getNavigationBarThemeForTab(tabKey);
-    let isRelativePosition = false;
-
     try {
       await NavigationBar.setPositionAsync('relative');
-      if (NavigationBar.getPositionAsync) {
-        const position = await NavigationBar.getPositionAsync();
-        isRelativePosition = position === 'relative';
-      }
-      if (!NavigationBar.getPositionAsync) {
-        isRelativePosition = true;
-      }
     } catch (error) {
       // Ignore when navigation bar position can't be updated
     }
 
-    if (isRelativePosition && NavigationBar.setBackgroundColorAsync) {
+    if (NavigationBar.setBackgroundColorAsync) {
       try {
         await NavigationBar.setBackgroundColorAsync(theme.backgroundColor);
       } catch (error) {
@@ -1113,8 +1104,8 @@ function ScheduleApp() {
     >
       <StatusBar
         barStyle="dark-content"
-        backgroundColor="transparent"
-        translucent
+        backgroundColor="#f6f6fb"
+        translucent={false}
       />
 
       <View style={styles.container}>
@@ -1413,9 +1404,6 @@ function ScheduleApp() {
             pointerEvents="auto"
             accessibilityHint="Tap to dismiss the add options"
           >
-            {Platform.OS === 'ios' && (
-              <BlurView intensity={60} tint="dark" style={styles.overlayBlur} />
-            )}
           </AnimatedPressable>
         )}
 
@@ -1905,6 +1893,18 @@ function TaskDetailModal({
 }
 
 export default function App() {
+  useEffect(() => {
+    const lockOrientation = async () => {
+      try {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+      } catch {
+        // Orientation lock best effort only
+      }
+    };
+
+    void lockOrientation();
+  }, []);
+
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -2314,13 +2314,13 @@ const styles = StyleSheet.create({
   bottomBarContainer: {
     width: '100%',
     alignItems: 'stretch',
-    backgroundColor: '#000000',
+    backgroundColor: '#ffffff',
   },
   bottomBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#000000',
+    backgroundColor: '#ffffff',
     paddingVertical: 10,
     paddingHorizontal: 16,
     width: '100%',
@@ -2352,10 +2352,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   activeColor: {
-    color: '#ffffff',
+    color: '#1a1a2e',
   },
   inactiveColor: {
-    color: '#b5b9c9',
+    color: '#6f7a86',
   },
   addButton: {
     position: 'absolute',
@@ -2417,12 +2417,9 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(26, 26, 46, 0.28)',
+    backgroundColor: 'transparent',
     zIndex: 10,
     overflow: 'hidden',
-  },
-  overlayBlur: {
-    ...StyleSheet.absoluteFillObject,
   },
   fabActionsContainer: {
     position: 'absolute',
