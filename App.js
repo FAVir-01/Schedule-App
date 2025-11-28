@@ -446,7 +446,7 @@ function ScheduleApp() {
     const today = new Date();
     const months = [];
 
-    for (let i = -12; i <= 0; i++) {
+    for (let i = -60; i <= 24; i++) {
       const date = getMonthStart(addMonthsDateFns(today, i));
       months.push({ id: i, date: date });
     }
@@ -1243,7 +1243,7 @@ function ScheduleApp() {
           style={[
             styles.content,
             dynamicStyles.content,
-            activeTab === 'calendar' && { paddingHorizontal: 0, paddingTop: 0 },
+            activeTab === 'calendar' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
           ]}
           importantForAccessibility={isFabOpen ? 'no-hide-descendants' : 'auto'}
         >
@@ -1434,7 +1434,14 @@ function ScheduleApp() {
               renderItem={renderCalendarMonth}
               keyExtractor={(item) => item.id.toString()}
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={[styles.calendarListContent, dynamicStyles.calendarListContent]}
+              contentContainerStyle={[
+                styles.calendarListContent,
+                {
+                  paddingTop: isCompact ? 24 : 32,
+                  paddingBottom: isCompact ? 56 : 72,
+                  paddingHorizontal: 0,
+                },
+              ]}
               onEndReached={loadMoreCalendarMonths}
               onEndReachedThreshold={0.5}
             />
@@ -2470,14 +2477,16 @@ const styles = StyleSheet.create({
   },
   calendarMonthContainer: {
     marginBottom: 20,
+    marginHorizontal: 0,
   },
   calendarMonthHeader: {
-    height: 120,
+    height: 100,
     backgroundColor: '#000',
     justifyContent: 'flex-end',
     padding: 20,
-    borderRadius: 12,
     marginBottom: 10,
+    marginHorizontal: 0,
+    borderRadius: 0,
   },
   calendarMonthTitle: {
     color: '#fff',
@@ -2488,6 +2497,7 @@ const styles = StyleSheet.create({
   calendarDaysGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    width: '100%',
   },
   calendarDayCellWrapper: {
     width: CALENDAR_DAY_SIZE,
