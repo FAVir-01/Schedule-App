@@ -442,9 +442,17 @@ function ScheduleApp() {
   );
   const [history, setHistory] = useState([]);
   const [isHydrated, setIsHydrated] = useState(false);
-  const [calendarMonths, setCalendarMonths] = useState(() => [
-    { id: 0, date: getMonthStart(new Date()) },
-  ]);
+  const [calendarMonths, setCalendarMonths] = useState(() => {
+    const today = new Date();
+    const months = [];
+
+    for (let i = -60; i <= 24; i++) {
+      const date = getMonthStart(addMonthsDateFns(today, i));
+      months.push({ id: i, date: date });
+    }
+
+    return months;
+  });
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isCompact = width < 360;
@@ -1232,7 +1240,11 @@ function ScheduleApp() {
 
       <View style={styles.container}>
         <View
-          style={[styles.content, dynamicStyles.content]}
+          style={[
+            styles.content,
+            dynamicStyles.content,
+            activeTab === 'calendar' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
+          ]}
           importantForAccessibility={isFabOpen ? 'no-hide-descendants' : 'auto'}
         >
           {activeTab === 'today' ? (
@@ -1422,7 +1434,14 @@ function ScheduleApp() {
               renderItem={renderCalendarMonth}
               keyExtractor={(item) => item.id.toString()}
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={[styles.calendarListContent, dynamicStyles.calendarListContent]}
+              contentContainerStyle={[
+                styles.calendarListContent,
+                {
+                  paddingTop: isCompact ? 24 : 32,
+                  paddingBottom: isCompact ? 56 : 72,
+                  paddingHorizontal: 0,
+                },
+              ]}
               onEndReached={loadMoreCalendarMonths}
               onEndReachedThreshold={0.5}
             />
@@ -2458,13 +2477,16 @@ const styles = StyleSheet.create({
   },
   calendarMonthContainer: {
     marginBottom: 20,
+    marginHorizontal: 0,
   },
   calendarMonthHeader: {
-    height: 120,
+    height: 100,
     backgroundColor: '#000',
     justifyContent: 'flex-end',
-    padding: 16,
-    borderRadius: 12,
+    padding: 20,
+    marginBottom: 10,
+    marginHorizontal: 0,
+    borderRadius: 0,
   },
   calendarMonthTitle: {
     color: '#fff',
@@ -2475,6 +2497,7 @@ const styles = StyleSheet.create({
   calendarDaysGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    width: '100%',
   },
   calendarDayCellWrapper: {
     width: CALENDAR_DAY_SIZE,
