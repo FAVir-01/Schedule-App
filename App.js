@@ -442,9 +442,17 @@ function ScheduleApp() {
   );
   const [history, setHistory] = useState([]);
   const [isHydrated, setIsHydrated] = useState(false);
-  const [calendarMonths, setCalendarMonths] = useState(() => [
-    { id: 0, date: getMonthStart(new Date()) },
-  ]);
+  const [calendarMonths, setCalendarMonths] = useState(() => {
+    const today = new Date();
+    const months = [];
+
+    for (let i = -12; i <= 0; i++) {
+      const date = getMonthStart(addMonthsDateFns(today, i));
+      months.push({ id: i, date: date });
+    }
+
+    return months;
+  });
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isCompact = width < 360;
@@ -1232,7 +1240,11 @@ function ScheduleApp() {
 
       <View style={styles.container}>
         <View
-          style={[styles.content, dynamicStyles.content]}
+          style={[
+            styles.content,
+            dynamicStyles.content,
+            activeTab === 'calendar' && { paddingHorizontal: 0, paddingTop: 0 },
+          ]}
           importantForAccessibility={isFabOpen ? 'no-hide-descendants' : 'auto'}
         >
           {activeTab === 'today' ? (
@@ -2463,8 +2475,9 @@ const styles = StyleSheet.create({
     height: 120,
     backgroundColor: '#000',
     justifyContent: 'flex-end',
-    padding: 16,
+    padding: 20,
     borderRadius: 12,
+    marginBottom: 10,
   },
   calendarMonthTitle: {
     color: '#fff',
