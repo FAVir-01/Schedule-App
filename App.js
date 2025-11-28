@@ -3,6 +3,7 @@ import {
   Animated,
   AppState,
   BackHandler,
+  Dimensions,
   Platform,
   Image,
   Modal,
@@ -22,6 +23,16 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as Haptics from 'expo-haptics';
+import {
+  addMonths as addMonthsDateFns,
+  eachDayOfInterval,
+  endOfMonth,
+  endOfWeek,
+  format,
+  startOfMonth,
+  startOfWeek,
+} from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import {
   loadHistory,
   loadTasks,
@@ -59,6 +70,58 @@ const triggerSelection = () => {
   } catch (error) {
     // Ignore web environments without haptics support
   }
+};
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const CALENDAR_DAY_SIZE = SCREEN_WIDTH / 7;
+
+const CalendarDayCell = ({ date, isCurrentMonth, status }) => {
+  if (!isCurrentMonth) {
+    return <View style={{ width: CALENDAR_DAY_SIZE, height: CALENDAR_DAY_SIZE }} />;
+  }
+
+  const isSuccess = status === 'success';
+
+  return (
+    <View style={styles.calendarDayCellWrapper}>
+      {isSuccess ? (
+        <View style={styles.calendarSuccessCircle}>
+          <Ionicons name="checkmark" size={20} color="white" />
+        </View>
+      ) : (
+        <Text style={styles.calendarDayText}>{format(date, 'd')}</Text>
+      )}
+    </View>
+  );
+};
+
+const CalendarMonthItem = ({ item, getDayStatus }) => {
+  const monthStart = startOfMonth(item.date);
+  const monthEnd = endOfMonth(item.date);
+
+  const days = eachDayOfInterval({
+    start: startOfWeek(monthStart),
+    end: endOfWeek(monthEnd),
+  });
+
+  return (
+    <View style={styles.calendarMonthContainer}>
+      <View style={styles.calendarMonthHeader}>
+        <Text style={styles.calendarMonthTitle}>{format(item.date, 'MMMM yyyy', { locale: ptBR })}</Text>
+      </View>
+
+      <View style={styles.calendarDaysGrid}>
+        {days.map((day) => (
+          <CalendarDayCell
+            key={day.toISOString()}
+            date={day}
+            isCurrentMonth={day.getMonth() === item.date.getMonth()}
+            status={getDayStatus ? getDayStatus(day) : 'pending'}
+          />
+        ))}
+      </View>
+    </View>
+  );
 };
 
 const LEFT_TABS = [
@@ -110,8 +173,6 @@ const DEFAULT_USER_SETTINGS = {
   activeTab: 'today',
   selectedTagFilter: 'all',
 };
-
-const CALENDAR_WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
 const getDateKey = (date) => {
   const normalized = new Date(date);
@@ -381,19 +442,9 @@ function ScheduleApp() {
   );
   const [history, setHistory] = useState([]);
   const [isHydrated, setIsHydrated] = useState(false);
-  const [calendarMonths, setCalendarMonths] = useState(() => {
-    const base = getMonthStart(new Date());
-    const months = [];
-    for (let offset = -2; offset <= 2; offset += 1) {
-      const monthDate = new Date(base);
-      monthDate.setMonth(base.getMonth() + offset, 1);
-      months.push(monthDate);
-    }
-    return months;
-  });
-  // Backwards-compatible alias to avoid ReferenceErrors from legacy calls
-  // that still expect a singular month setter name.
-  const setCalendarMonth = useCallback((updater) => setCalendarMonths(updater), []);
+  const [calendarMonths, setCalendarMonths] = useState(() => [
+    { id: 0, date: getMonthStart(new Date()) },
+  ]);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isCompact = width < 360;
@@ -426,7 +477,16 @@ function ScheduleApp() {
     return `${weekday}, ${selectedDate.getDate()}`;
   }, [isSelectedToday, selectedDate]);
   useEffect(() => {
-    setCalendarMonth(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+    const monthStart = getMonthStart(selectedDate);
+    setCalendarMonths((previous) => {
+      const exists = previous.some(({ date }) => getMonthId(date) === getMonthId(monthStart));
+      if (exists) {
+        return previous;
+      }
+      const nextId = previous.reduce((max, month) => Math.max(max, month.id), -1) + 1;
+      const updated = [...previous, { id: nextId, date: monthStart }];
+      return updated.sort((a, b) => a.date.getTime() - b.date.getTime());
+    });
   }, [selectedDate]);
   const weekDays = useMemo(() => {
     const base = new Date(today);
@@ -447,141 +507,36 @@ function ScheduleApp() {
       };
     });
   }, [tasks, today]);
-  const viewabilityConfigRef = useRef({ itemVisiblePercentThreshold: 25 });
-
-  const prependMonth = useCallback(() => {
-    setCalendarMonths((previous) => {
-      if (previous.length === 0) {
-        return previous;
-      }
-      const first = previous[0];
-      const prevMonth = new Date(first);
-      prevMonth.setMonth(first.getMonth() - 1, 1);
-      const exists = previous.some((month) => getMonthId(month) === getMonthId(prevMonth));
-      return exists ? previous : [prevMonth, ...previous];
-    });
-  }, []);
-
-  const appendMonth = useCallback(() => {
-    setCalendarMonths((previous) => {
-      if (previous.length === 0) {
-        return previous;
-      }
-      const last = previous[previous.length - 1];
-      const nextMonth = new Date(last);
-      nextMonth.setMonth(last.getMonth() + 1, 1);
-      const exists = previous.some((month) => getMonthId(month) === getMonthId(nextMonth));
-      return exists ? previous : [...previous, nextMonth];
-    });
-  }, []);
-
-  const handleViewableItemsChanged = useCallback(
-    ({ viewableItems }) => {
-      if (!viewableItems || viewableItems.length === 0) {
-        return;
-      }
-      const indexes = viewableItems
-        .map((item) => item.index)
-        .filter((index) => typeof index === 'number');
-      if (indexes.length === 0) {
-        return;
-      }
-      const minIndex = Math.min(...indexes);
-      const maxIndex = Math.max(...indexes);
-      if (minIndex <= 1) {
-        prependMonth();
-      }
-      if (maxIndex >= calendarMonths.length - 2) {
-        appendMonth();
-      }
+  const getDayStatusForCalendar = useCallback(
+    (day) => {
+      const dateKey = getDateKey(day);
+      const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, day));
+      const allCompleted =
+        dayTasks.length > 0 && dayTasks.every((task) => getTaskCompletionStatus(task, dateKey));
+      return allCompleted ? 'success' : 'pending';
     },
-    [appendMonth, calendarMonths.length, prependMonth]
+    [tasks]
   );
-  const renderCalendarMonth = useCallback(
-    ({ item }) => {
-      const monthDate = getMonthStart(item);
-      const monthLabel = monthDate.toLocaleDateString('en-US', {
-        month: 'long',
-        year: 'numeric',
-      });
-      const year = monthDate.getFullYear();
-      const monthIndex = monthDate.getMonth();
-      const startWeekday = new Date(year, monthIndex, 1).getDay();
-      const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
-      const totalCells = Math.ceil((startWeekday + daysInMonth) / 7) * 7;
-      const cells = [];
-      for (let i = 0; i < startWeekday; i += 1) {
-        cells.push(null);
-      }
-      for (let day = 1; day <= daysInMonth; day += 1) {
-        cells.push(new Date(year, monthIndex, day));
-      }
-      while (cells.length < totalCells) {
-        cells.push(null);
-      }
-      const weeks = [];
-      for (let index = 0; index < cells.length; index += 7) {
-        weeks.push(cells.slice(index, index + 7));
-      }
 
-      return (
-        <View style={styles.calendarMonthSection}>
-          <View style={styles.calendarMonthSeparator} />
-          <View style={styles.calendarMonthHeader}>
-            <Text style={styles.calendarMonthLabel}>{monthLabel}</Text>
-          </View>
-          <View style={styles.calendarWeekdayRow}>
-            {CALENDAR_WEEKDAYS.map((weekday) => (
-              <Text key={`${getMonthId(monthDate)}-${weekday}`} style={styles.calendarWeekdayLabel}>
-                {weekday}
-              </Text>
-            ))}
-          </View>
-          {weeks.map((week, weekIndex) => (
-            <View key={`${getMonthId(monthDate)}-week-${weekIndex}`} style={styles.calendarWeekRow}>
-              {week.map((date, dayIndex) => {
-                if (!date) {
-                  return (
-                    <View
-                      key={`empty-${weekIndex}-${dayIndex}`}
-                      style={[styles.calendarDayCell, styles.calendarDayCellEmpty]}
-                    />
-                  );
-                }
-                const dateKey = getDateKey(date);
-                const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, date));
-                const completedTasks = dayTasks.filter((task) => getTaskCompletionStatus(task, dateKey));
-                const isAllDone = dayTasks.length > 0 && completedTasks.length === dayTasks.length;
-                const isTodayDay = isSameDay(date, today);
-                const isSelected = dateKey === selectedDateKey;
-                const dayStyles = [styles.calendarDayCell];
-                if (isTodayDay) {
-                  dayStyles.push(styles.calendarDayCellToday);
-                }
-                if (isSelected) {
-                  dayStyles.push(styles.calendarDayCellSelected);
-                }
-                return (
-                  <Pressable
-                    key={dateKey}
-                    style={dayStyles}
-                    onPress={() => handleSelectCalendarDate(date)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: isSelected }}
-                    accessibilityLabel={`Day ${date.getDate()}`}
-                  >
-                    <Text style={[styles.calendarDayNumber, isSelected && styles.calendarDayNumberSelected]}>
-                      {isAllDone ? '✅' : date.getDate()}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          ))}
-        </View>
-      );
-    },
-    [handleSelectCalendarDate, selectedDateKey, tasks, today]
+  const loadMoreCalendarMonths = useCallback(() => {
+    setCalendarMonths((previous) => {
+      if (previous.length === 0) {
+        return previous;
+      }
+      const lastMonth = previous[previous.length - 1].date;
+      const nextId = previous.reduce((max, month) => Math.max(max, month.id), -1) + 1;
+      const nextMonthDate = getMonthStart(addMonthsDateFns(lastMonth, 1));
+      const exists = previous.some(({ date }) => getMonthId(date) === getMonthId(nextMonthDate));
+      if (exists) {
+        return previous;
+      }
+      return [...previous, { id: nextId, date: nextMonthDate }];
+    });
+  }, []);
+
+  const renderCalendarMonth = useCallback(
+    ({ item }) => <CalendarMonthItem item={item} getDayStatus={getDayStatusForCalendar} />,
+    [getDayStatusForCalendar]
   );
   const tasksForSelectedDate = useMemo(() => {
     const filtered = tasks.filter((task) => shouldTaskAppearOnDate(task, selectedDate));
@@ -1465,11 +1420,11 @@ function ScheduleApp() {
             <FlatList
               data={calendarMonths}
               renderItem={renderCalendarMonth}
-              keyExtractor={(month) => getMonthId(month)}
+              keyExtractor={(item) => item.id.toString()}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={[styles.calendarListContent, dynamicStyles.calendarListContent]}
-              onViewableItemsChanged={handleViewableItemsChanged}
-              viewabilityConfig={viewabilityConfigRef.current}
+              onEndReached={loadMoreCalendarMonths}
+              onEndReachedThreshold={0.5}
             />
           ) : (
             <View style={styles.placeholderContainer}>
@@ -2501,70 +2456,44 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginBottom: 12,
   },
+  calendarMonthContainer: {
+    marginBottom: 20,
+  },
   calendarMonthHeader: {
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    backgroundColor: '#f7f8fb',
+    height: 120,
+    backgroundColor: '#000',
+    justifyContent: 'flex-end',
+    padding: 16,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7f5',
-    marginBottom: 12,
   },
-  calendarMonthLabel: {
-    fontSize: 18,
+  calendarMonthTitle: {
+    color: '#fff',
+    fontSize: 24,
     fontWeight: '800',
-    color: '#1a1a2e',
+    textTransform: 'capitalize',
   },
-  calendarWeekdayRow: {
+  calendarDaysGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-    paddingHorizontal: 2,
+    flexWrap: 'wrap',
   },
-  calendarWeekdayLabel: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#6f7a86',
-    letterSpacing: 0.3,
-  },
-  calendarWeekRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'stretch',
-    marginBottom: 8,
-  },
-  calendarDayCell: {
-    flex: 1,
-    aspectRatio: 1,
-    alignItems: 'center',
+  calendarDayCellWrapper: {
+    width: CALENDAR_DAY_SIZE,
+    height: CALENDAR_DAY_SIZE,
     justifyContent: 'center',
-    borderRadius: 12,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e5e7f5',
-    marginHorizontal: 4,
+    alignItems: 'center',
   },
-  calendarDayCellEmpty: {
-    borderWidth: 0,
-    backgroundColor: 'transparent',
-  },
-  calendarDayCellToday: {
-    borderColor: '#3c2ba7',
-  },
-  calendarDayCellSelected: {
-    backgroundColor: '#f1f4ff',
-    borderColor: '#3c2ba7',
-  },
-  calendarDayNumber: {
+  calendarDayText: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#1a1a2e',
+    color: '#333',
+    fontWeight: '600',
   },
-  calendarDayNumberSelected: {
-    color: '#3c2ba7',
+  calendarSuccessCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#a2e76f',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   bottomBarContainer: {
     width: '100%',
