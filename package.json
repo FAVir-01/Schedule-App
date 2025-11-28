@@ -1,0 +1,16 @@
+{
+  "name": "schedule-app",
+  "version": "1.0.0",
+  "description": "Este projeto contém dois arquivos pensados para serem copiados diretamente no [Snack Expo](https://snack.expo.dev/):",
+  "main": "App.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "date-fns": "^4.1.0"
+  }
+}
