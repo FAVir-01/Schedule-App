@@ -453,6 +453,10 @@ function ScheduleApp() {
 
     return months;
   });
+  const initialCalendarIndex = useMemo(() => {
+    const todayId = getMonthId(new Date());
+    return calendarMonths.findIndex((month) => getMonthId(month.date) === todayId);
+  }, [calendarMonths]);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isCompact = width < 360;
@@ -469,6 +473,11 @@ function ScheduleApp() {
   const fabHaloSize = fabSize + (isCompact ? 26 : 30);
   const fabBaseSize = fabSize + (isCompact ? 14 : 18);
   const fabIconSize = isCompact ? 28 : 30;
+  const getItemLayout = useCallback((_, index) => ({
+    length: 400,
+    offset: 400 * index,
+    index,
+  }), []);
   const today = useMemo(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -1434,10 +1443,18 @@ function ScheduleApp() {
               renderItem={renderCalendarMonth}
               keyExtractor={(item) => item.id.toString()}
               showsVerticalScrollIndicator={false}
+              initialScrollIndex={initialCalendarIndex !== -1 ? initialCalendarIndex : 60}
+              getItemLayout={getItemLayout}
+              onScrollToIndexFailed={(info) => {
+                const wait = new Promise((resolve) => setTimeout(resolve, 500));
+                wait.then(() => {
+                  // Retry can be added here if a ref is available
+                });
+              }}
               contentContainerStyle={[
                 styles.calendarListContent,
                 {
-                  paddingTop: isCompact ? 24 : 32,
+                  paddingTop: 0,
                   paddingBottom: isCompact ? 56 : 72,
                   paddingHorizontal: 0,
                 },
