@@ -108,7 +108,8 @@ const triggerSelection = () => {
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CALENDAR_DAY_SIZE = Math.floor(SCREEN_WIDTH / 7);
 
-const CalendarDayCell = ({ date, isCurrentMonth, status }) => {
+// --- CÉLULA DO DIA ATUALIZADA (COM PRESSABLE) ---
+const CalendarDayCell = ({ date, isCurrentMonth, status, onPress }) => {
   if (!isCurrentMonth) {
     return <View style={{ width: CALENDAR_DAY_SIZE, height: CALENDAR_DAY_SIZE }} />;
   }
@@ -116,7 +117,13 @@ const CalendarDayCell = ({ date, isCurrentMonth, status }) => {
   const isSuccess = status === 'success';
 
   return (
-    <View style={styles.calendarDayCellWrapper}>
+    <Pressable
+      onPress={() => onPress(date)}
+      style={({ pressed }) => [
+        styles.calendarDayCellWrapper,
+        pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] },
+      ]}
+    >
       {isSuccess ? (
         <View style={styles.calendarSuccessCircle}>
           <Ionicons name="checkmark" size={20} color="white" />
@@ -124,11 +131,12 @@ const CalendarDayCell = ({ date, isCurrentMonth, status }) => {
       ) : (
         <Text style={styles.calendarDayText}>{format(date, 'd')}</Text>
       )}
-    </View>
+    </Pressable>
   );
 };
 
-const CalendarMonthItem = ({ item, getDayStatus }) => {
+// --- ITEM DO MÊS ATUALIZADO ---
+const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
   const monthStart = startOfMonth(item.date);
   const monthEnd = endOfMonth(item.date);
 
@@ -150,6 +158,7 @@ const CalendarMonthItem = ({ item, getDayStatus }) => {
             date={day}
             isCurrentMonth={day.getMonth() === item.date.getMonth()}
             status={getDayStatus ? getDayStatus(day) : 'pending'}
+            onPress={onDayPress}
           />
         ))}
       </View>
@@ -470,6 +479,110 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
   }
 };
 
+// --- NOVO COMPONENTE: MODAL DE RELATÓRIO DO DIA ---
+function DayReportModal({ visible, date, tasks, onClose }) {
+  const { height } = useWindowDimensions();
+
+  if (!visible || !date) return null;
+
+  const totalTasks = tasks.length;
+  const completedTasks = tasks.filter((t) => t.completed).length;
+  const successRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+  const getSummaryText = () => {
+    if (totalTasks === 0) return 'No habits scheduled for this day.';
+    if (successRate === 100) return 'Incredible! You crushed all your habits!';
+    if (successRate === 0)
+      return `You had ${totalTasks} habit(s) and completed none. Let's see what they were 👀`;
+    return `You completed ${completedTasks} out of ${totalTasks} habit(s). Keep going!`;
+  };
+
+  return (
+    <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
+      <View style={styles.reportOverlay}>
+        <Pressable style={styles.reportBackdrop} onPress={onClose} />
+
+        <View style={[styles.reportSheet, { maxHeight: height * 0.9 }]}>
+          <View style={styles.reportHeaderImage}>
+            <View style={styles.reportDateContainer}>
+              <Text style={styles.reportDateBig}>{format(date, 'd MMM')}</Text>
+              <Text style={styles.reportYear}>{format(date, 'yyyy')}</Text>
+            </View>
+            <Pressable onPress={onClose} style={styles.reportCloseButton}>
+              <Ionicons name="close-circle" size={32} color="rgba(255,255,255,0.8)" />
+            </Pressable>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.reportScrollContent}>
+            <Text style={styles.reportSummaryText}>{getSummaryText()}</Text>
+
+            <Text style={styles.reportSectionTitle}>Daily stats</Text>
+
+            <View style={styles.statsCard}>
+              <View style={styles.gaugeContainer}>
+                <View style={styles.gaugeBackground}>
+                  <View style={[styles.gaugeFill, { width: `${successRate}%` }]} />
+                </View>
+                <Text style={styles.gaugePercentage}>{successRate}%</Text>
+                <Text style={styles.gaugeLabel}>Success rate</Text>
+              </View>
+
+              <View style={styles.statsRow}>
+                <View style={styles.statBox}>
+                  <Text style={styles.statLabel}>Committed</Text>
+                  <View style={styles.statValueRow}>
+                    <Text style={styles.statNumber}>{totalTasks}</Text>
+                    <Text style={{ fontSize: 20 }}>✍️</Text>
+                  </View>
+                </View>
+                <View style={styles.statBox}>
+                  <Text style={styles.statLabel}>Completed</Text>
+                  <View style={styles.statValueRow}>
+                    <Text style={styles.statNumber}>{completedTasks}</Text>
+                    <Ionicons name="checkbox" size={24} color="#3dd598" />
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {totalTasks > 0 && (
+              <>
+                <Text style={styles.reportSectionTitle}>Habits</Text>
+                <View style={styles.reportTaskList}>
+                  {tasks.map((task, index) => (
+                    <View
+                      key={index}
+                      style={styles.reportTaskRow}
+                    >
+                      <View
+                        style={[
+                          styles.reportTaskIcon,
+                          { backgroundColor: lightenColor(task.color || '#3c2ba7', 0.8) },
+                        ]}
+                      >
+                        <Text style={{ fontSize: 16 }}>{task.emoji || '📝'}</Text>
+                      </View>
+                      <Text
+                        style={[
+                          styles.reportTaskTitle,
+                          task.completed && { textDecorationLine: 'line-through', color: '#999' },
+                        ]}
+                      >
+                        {task.title}
+                      </Text>
+                      {task.completed && <Ionicons name="checkmark-circle" size={20} color="#3dd598" />}
+                    </View>
+                  ))}
+                </View>
+              </>
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function ScheduleApp() {
   const [userSettings, setUserSettings] = useState(DEFAULT_USER_SETTINGS);
   const [activeTab, setActiveTab] = useState(DEFAULT_USER_SETTINGS.activeTab);
@@ -484,6 +597,7 @@ function ScheduleApp() {
     return now;
   });
   const [tasks, setTasks] = useState([]);
+  const [reportDate, setReportDate] = useState(null);
   const [activeTaskId, setActiveTaskId] = useState(null);
   const [selectedTagFilter, setSelectedTagFilter] = useState(
     DEFAULT_USER_SETTINGS.selectedTagFilter
@@ -614,6 +728,21 @@ function ScheduleApp() {
     [tasks]
   );
 
+  const reportTasks = useMemo(() => {
+    if (!reportDate) return [];
+    const dateKey = getDateKey(reportDate);
+    return tasks
+      .filter((task) => shouldTaskAppearOnDate(task, reportDate))
+      .map((task) => ({
+        ...task,
+        completed: getTaskCompletionStatus(task, dateKey),
+      }));
+  }, [reportDate, tasks]);
+
+  const handleOpenReport = useCallback((date) => {
+    setReportDate(date);
+  }, []);
+
   const loadMoreCalendarMonths = useCallback(() => {
     setCalendarMonths((previous) => {
       if (previous.length === 0) {
@@ -631,8 +760,14 @@ function ScheduleApp() {
   }, []);
 
   const renderCalendarMonth = useCallback(
-    ({ item }) => <CalendarMonthItem item={item} getDayStatus={getDayStatusForCalendar} />,
-    [getDayStatusForCalendar]
+    ({ item }) => (
+      <CalendarMonthItem
+        item={item}
+        getDayStatus={getDayStatusForCalendar}
+        onDayPress={handleOpenReport}
+      />
+    ),
+    [getDayStatusForCalendar, handleOpenReport]
   );
   const tasksForSelectedDate = useMemo(() => {
     const filtered = tasks.filter((task) => shouldTaskAppearOnDate(task, selectedDate));
@@ -1856,6 +1991,12 @@ function ScheduleApp() {
           closeTaskDetail();
         }}
       />
+      <DayReportModal
+        visible={!!reportDate}
+        date={reportDate}
+        tasks={reportTasks}
+        onClose={() => setReportDate(null)}
+      />
       <AddHabitSheet
         visible={isHabitSheetOpen}
         onClose={handleCloseCreateHabit}
@@ -2805,5 +2946,151 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  // --- ESTILOS DO RELATÓRIO ---
+  reportOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  reportBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  reportSheet: {
+    backgroundColor: '#F6F6FB',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  reportHeaderImage: {
+    height: 180,
+    backgroundColor: '#1a1a1a',
+    padding: 24,
+    justifyContent: 'flex-end',
+    position: 'relative',
+  },
+  reportCloseButton: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    zIndex: 10,
+  },
+  reportDateContainer: {
+    marginBottom: 10,
+  },
+  reportDateBig: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  reportYear: {
+    fontSize: 18,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '600',
+  },
+  reportScrollContent: {
+    padding: 24,
+    paddingBottom: 50,
+  },
+  reportSummaryText: {
+    fontSize: 16,
+    color: '#4b4b63',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  reportSectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a2e',
+    marginBottom: 12,
+  },
+  statsCard: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 20,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  gaugeContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  gaugePercentage: {
+    fontSize: 48,
+    fontWeight: '800',
+    color: '#1a1a2e',
+  },
+  gaugeLabel: {
+    fontSize: 14,
+    color: '#6f7a86',
+    marginTop: -4,
+  },
+  gaugeBackground: {
+    width: '100%',
+    height: 12,
+    backgroundColor: '#f0efff',
+    borderRadius: 6,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  gaugeFill: {
+    height: '100%',
+    backgroundColor: '#3c2ba7',
+    borderRadius: 6,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: '#F8F9FE',
+    borderRadius: 16,
+    padding: 16,
+  },
+  statLabel: {
+    fontSize: 13,
+    color: '#6f7a86',
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  statValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  reportTaskList: {
+    gap: 12,
+  },
+  reportTaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 16,
+    gap: 12,
+  },
+  reportTaskIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportTaskTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a2e',
   },
 });
