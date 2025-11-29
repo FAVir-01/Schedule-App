@@ -29,6 +29,7 @@ import {
   endOfMonth,
   endOfWeek,
   format,
+  getWeeksInMonth,
   startOfMonth,
   startOfWeek,
 } from 'date-fns';
@@ -225,6 +226,21 @@ const getMonthStart = (date) => {
 const getMonthId = (date) => {
   const normalized = getMonthStart(date);
   return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const calculateWeeksInMonth = (date) => {
+  try {
+    if (typeof getWeeksInMonth === 'function') {
+      return getWeeksInMonth(date, { weekStartsOn: 0 });
+    }
+  } catch (error) {
+    // Fallback to manual calculation below
+  }
+
+  const start = startOfWeek(startOfMonth(date));
+  const end = endOfWeek(endOfMonth(date));
+  const days = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24) + 1;
+  return Math.round(days / 7);
 };
 
 const hexToRgb = (hex) => {
@@ -506,13 +522,30 @@ function ScheduleApp() {
   const fabHaloSize = fabSize + (isCompact ? 26 : 30);
   const fabBaseSize = fabSize + (isCompact ? 14 : 18);
   const fabIconSize = isCompact ? 28 : 30;
+  const monthLayouts = useMemo(() => {
+    let currentOffset = 0;
+    const layouts = [];
+    const HEADER_HEIGHT = 100;
+    const PADDING_BOTTOM = 20;
+
+    calendarMonths.forEach((month, index) => {
+      const weeks = calculateWeeksInMonth(month.date);
+      const height = HEADER_HEIGHT + weeks * CALENDAR_DAY_SIZE + PADDING_BOTTOM;
+      layouts.push({ length: height, offset: currentOffset, index });
+      currentOffset += height;
+    });
+
+    return layouts;
+  }, [calendarMonths, width]);
+
   const getItemLayout = useCallback(
-    (_, index) => ({
-      length: 380,
-      offset: 380 * index,
-      index,
-    }),
-    []
+    (data, index) => {
+      if (!monthLayouts[index]) {
+        return { length: 380, offset: 380 * index, index };
+      }
+      return monthLayouts[index];
+    },
+    [monthLayouts]
   );
   const today = useMemo(() => {
     const now = new Date();
@@ -692,6 +725,10 @@ function ScheduleApp() {
   const actionsScale = useRef(new Animated.Value(0.85)).current;
   const actionsOpacity = useRef(new Animated.Value(0)).current;
   const actionsTranslateY = useRef(new Animated.Value(12)).current;
+  const viewabilityConfig = useRef({
+    viewAreaCoveragePercentThreshold: 10,
+    waitForInteraction: false,
+  }).current;
   const onViewableItemsChanged = useRef(({ viewableItems }) => {
     if (viewableItems && viewableItems.length > 0) {
       const topItem = viewableItems[0];
@@ -699,10 +736,6 @@ function ScheduleApp() {
         setVisibleCalendarDate(topItem.item.date);
       }
     }
-  }).current;
-  const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 10,
-    waitForInteraction: false,
   }).current;
   const emptyStateIconSize = isCompact ? 98 : 112;
 
