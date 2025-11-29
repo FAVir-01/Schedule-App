@@ -479,23 +479,54 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
   }
 };
 
-// --- NOVO COMPONENTE: MODAL DE RELATÓRIO DO DIA ---
+// --- COMPONENTE ATUALIZADO: RELATÓRIO DO DIA ---
 function DayReportModal({ visible, date, tasks, onClose }) {
   const { height } = useWindowDimensions();
 
-  if (!visible || !date) return null;
+  // 1. Configuração da Animação
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  const [displayRate, setDisplayRate] = useState(0);
 
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter((t) => t.completed).length;
-  const successRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const targetSuccessRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+  // Efeito para rodar a animação toda vez que abrir
+  useEffect(() => {
+    if (visible) {
+      progressAnim.setValue(0);
+      setDisplayRate(0);
+
+      Animated.timing(progressAnim, {
+        toValue: targetSuccessRate,
+        duration: 1000,
+        useNativeDriver: false,
+      }).start();
+
+      const listenerId = progressAnim.addListener(({ value }) => {
+        setDisplayRate(Math.round(value));
+      });
+
+      return () => {
+        progressAnim.removeListener(listenerId);
+      };
+    }
+  }, [visible, targetSuccessRate, progressAnim]);
+
+  if (!visible || !date) return null;
 
   const getSummaryText = () => {
     if (totalTasks === 0) return 'No habits scheduled for this day.';
-    if (successRate === 100) return 'Incredible! You crushed all your habits!';
-    if (successRate === 0)
+    if (targetSuccessRate === 100) return 'Incredible! You crushed all your habits!';
+    if (targetSuccessRate === 0)
       return `You had ${totalTasks} habit(s) and completed none. Let's see what they were 👀`;
     return `You completed ${completedTasks} out of ${totalTasks} habit(s). Keep going!`;
   };
+
+  const widthInterpolated = progressAnim.interpolate({
+    inputRange: [0, 100],
+    outputRange: ['0%', '100%'],
+  });
 
   return (
     <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
@@ -521,9 +552,9 @@ function DayReportModal({ visible, date, tasks, onClose }) {
             <View style={styles.statsCard}>
               <View style={styles.gaugeContainer}>
                 <View style={styles.gaugeBackground}>
-                  <View style={[styles.gaugeFill, { width: `${successRate}%` }]} />
+                  <Animated.View style={[styles.gaugeFill, { width: widthInterpolated }]} />
                 </View>
-                <Text style={styles.gaugePercentage}>{successRate}%</Text>
+                <Text style={styles.gaugePercentage}>{displayRate}%</Text>
                 <Text style={styles.gaugeLabel}>Success rate</Text>
               </View>
 
@@ -549,30 +580,60 @@ function DayReportModal({ visible, date, tasks, onClose }) {
               <>
                 <Text style={styles.reportSectionTitle}>Habits</Text>
                 <View style={styles.reportTaskList}>
-                  {tasks.map((task, index) => (
-                    <View
-                      key={index}
-                      style={styles.reportTaskRow}
-                    >
+                  {tasks.map((task, index) => {
+                    const baseColor = task.color || '#3c2ba7';
+                    const lightBg = lightenColor(baseColor, 0.85);
+
+                    return (
                       <View
+                        key={index}
                         style={[
-                          styles.reportTaskIcon,
-                          { backgroundColor: lightenColor(task.color || '#3c2ba7', 0.8) },
+                          styles.reportTaskRow,
+                          { backgroundColor: lightBg, borderColor: lightenColor(baseColor, 0.6), borderWidth: 1 },
                         ]}
                       >
-                        <Text style={{ fontSize: 16 }}>{task.emoji || '📝'}</Text>
+                        <View
+                          style={[
+                            styles.reportTaskIcon,
+                            { backgroundColor: '#fff' },
+                          ]}
+                        >
+                          <Text style={{ fontSize: 18 }}>{task.emoji || '📝'}</Text>
+                        </View>
+
+                        <View style={{ flex: 1 }}>
+                          <Text
+                            style={[
+                              styles.reportTaskTitle,
+                              task.completed && { textDecorationLine: 'line-through', color: '#888' },
+                            ]}
+                          >
+                            {task.title}
+                          </Text>
+
+                          {task.totalSubtasks > 0 && (
+                            <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
+                              {task.completedSubtasks}/{task.totalSubtasks} subtasks
+                            </Text>
+                          )}
+                        </View>
+
+                        {task.completed ? (
+                          <Ionicons name="checkmark-circle" size={24} color={baseColor} />
+                        ) : (
+                          <View
+                            style={{
+                              width: 20,
+                              height: 20,
+                              borderRadius: 10,
+                              borderWidth: 2,
+                              borderColor: '#ddd',
+                            }}
+                          />
+                        )}
                       </View>
-                      <Text
-                        style={[
-                          styles.reportTaskTitle,
-                          task.completed && { textDecorationLine: 'line-through', color: '#999' },
-                        ]}
-                      >
-                        {task.title}
-                      </Text>
-                      {task.completed && <Ionicons name="checkmark-circle" size={20} color="#3dd598" />}
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
               </>
             )}
@@ -582,7 +643,6 @@ function DayReportModal({ visible, date, tasks, onClose }) {
     </Modal>
   );
 }
-
 function ScheduleApp() {
   const [userSettings, setUserSettings] = useState(DEFAULT_USER_SETTINGS);
   const [activeTab, setActiveTab] = useState(DEFAULT_USER_SETTINGS.activeTab);
@@ -731,12 +791,23 @@ function ScheduleApp() {
   const reportTasks = useMemo(() => {
     if (!reportDate) return [];
     const dateKey = getDateKey(reportDate);
+
     return tasks
       .filter((task) => shouldTaskAppearOnDate(task, reportDate))
-      .map((task) => ({
-        ...task,
-        completed: getTaskCompletionStatus(task, dateKey),
-      }));
+      .map((task) => {
+        const isCompleted = getTaskCompletionStatus(task, dateKey);
+
+        const subtasks = Array.isArray(task.subtasks) ? task.subtasks : [];
+        const totalSubtasks = subtasks.length;
+        const completedSubtasks = subtasks.filter((s) => getSubtaskCompletionStatus(s, dateKey)).length;
+
+        return {
+          ...task,
+          completed: isCompleted,
+          totalSubtasks,
+          completedSubtasks,
+        };
+      });
   }, [reportDate, tasks]);
 
   const handleOpenReport = useCallback((date) => {
