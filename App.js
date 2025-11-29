@@ -29,6 +29,7 @@ import {
   endOfMonth,
   endOfWeek,
   format,
+  getWeeksInMonth,
   startOfMonth,
   startOfWeek,
 } from 'date-fns';
@@ -42,6 +43,38 @@ import {
   saveUserSettings,
 } from './storage';
 import AddHabitSheet from './components/AddHabitSheet';
+
+// --- CORES PASTÉIS PARA OS MESES ---
+const MONTH_COLORS = [
+  '#FFCF70',
+  '#F7A6A1',
+  '#B39DD6',
+  '#79C3FF',
+  '#A8E6CF',
+  '#FDE2A6',
+  '#FFABAB',
+  '#85E3FF',
+  '#C3B1E1',
+  '#F6D186',
+  '#B5EAD7',
+  '#E2F0CB',
+];
+
+// --- COMPONENTE DA FAIXA DO TOPO ---
+const StickyMonthHeader = ({ date }) => {
+  if (!date) return null;
+
+  const monthIndex = date.getMonth();
+  const backgroundColor = MONTH_COLORS[monthIndex % MONTH_COLORS.length];
+
+  return (
+    <View style={[styles.stickyHeader, { backgroundColor }]}>
+      <Text style={styles.stickyHeaderText}>
+        {format(date, 'MMMM', { locale: ptBR })}
+      </Text>
+    </View>
+  );
+};
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -193,6 +226,21 @@ const getMonthStart = (date) => {
 const getMonthId = (date) => {
   const normalized = getMonthStart(date);
   return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const calculateWeeksInMonth = (date) => {
+  try {
+    if (typeof getWeeksInMonth === 'function') {
+      return getWeeksInMonth(date, { weekStartsOn: 0 });
+    }
+  } catch (error) {
+    // Fallback to manual calculation below
+  }
+
+  const start = startOfWeek(startOfMonth(date));
+  const end = endOfWeek(endOfMonth(date));
+  const days = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24) + 1;
+  return Math.round(days / 7);
 };
 
 const hexToRgb = (hex) => {
@@ -442,9 +490,22 @@ function ScheduleApp() {
   );
   const [history, setHistory] = useState([]);
   const [isHydrated, setIsHydrated] = useState(false);
-  const [calendarMonths, setCalendarMonths] = useState(() => [
-    { id: 0, date: getMonthStart(new Date()) },
-  ]);
+  const [calendarMonths, setCalendarMonths] = useState(() => {
+    const today = new Date();
+    const months = [];
+
+    for (let i = -60; i <= 24; i++) {
+      const date = getMonthStart(addMonthsDateFns(today, i));
+      months.push({ id: i, date: date });
+    }
+
+    return months;
+  });
+  const [visibleCalendarDate, setVisibleCalendarDate] = useState(new Date());
+  const initialCalendarIndex = useMemo(() => {
+    const todayId = getMonthId(new Date());
+    return calendarMonths.findIndex((month) => getMonthId(month.date) === todayId);
+  }, [calendarMonths]);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isCompact = width < 360;
@@ -461,6 +522,31 @@ function ScheduleApp() {
   const fabHaloSize = fabSize + (isCompact ? 26 : 30);
   const fabBaseSize = fabSize + (isCompact ? 14 : 18);
   const fabIconSize = isCompact ? 28 : 30;
+  const monthLayouts = useMemo(() => {
+    let currentOffset = 0;
+    const layouts = [];
+    const HEADER_HEIGHT = 100;
+    const PADDING_BOTTOM = 20;
+
+    calendarMonths.forEach((month, index) => {
+      const weeks = calculateWeeksInMonth(month.date);
+      const height = HEADER_HEIGHT + weeks * CALENDAR_DAY_SIZE + PADDING_BOTTOM;
+      layouts.push({ length: height, offset: currentOffset, index });
+      currentOffset += height;
+    });
+
+    return layouts;
+  }, [calendarMonths, width]);
+
+  const getItemLayout = useCallback(
+    (data, index) => {
+      if (!monthLayouts[index]) {
+        return { length: 380, offset: 380 * index, index };
+      }
+      return monthLayouts[index];
+    },
+    [monthLayouts]
+  );
   const today = useMemo(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -639,6 +725,18 @@ function ScheduleApp() {
   const actionsScale = useRef(new Animated.Value(0.85)).current;
   const actionsOpacity = useRef(new Animated.Value(0)).current;
   const actionsTranslateY = useRef(new Animated.Value(12)).current;
+  const viewabilityConfig = useRef({
+    viewAreaCoveragePercentThreshold: 10,
+    waitForInteraction: false,
+  }).current;
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    if (viewableItems && viewableItems.length > 0) {
+      const topItem = viewableItems[0];
+      if (topItem && topItem.item && topItem.item.date) {
+        setVisibleCalendarDate(topItem.item.date);
+      }
+    }
+  }).current;
   const emptyStateIconSize = isCompact ? 98 : 112;
 
   useEffect(() => {
@@ -1232,7 +1330,11 @@ function ScheduleApp() {
 
       <View style={styles.container}>
         <View
-          style={[styles.content, dynamicStyles.content]}
+          style={[
+            styles.content,
+            dynamicStyles.content,
+            activeTab === 'calendar' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
+          ]}
           importantForAccessibility={isFabOpen ? 'no-hide-descendants' : 'auto'}
         >
           {activeTab === 'today' ? (
@@ -1417,15 +1519,36 @@ function ScheduleApp() {
               </View>
             </ScrollView>
           ) : activeTab === 'calendar' ? (
-            <FlatList
-              data={calendarMonths}
-              renderItem={renderCalendarMonth}
-              keyExtractor={(item) => item.id.toString()}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={[styles.calendarListContent, dynamicStyles.calendarListContent]}
-              onEndReached={loadMoreCalendarMonths}
-              onEndReachedThreshold={0.5}
-            />
+            <View style={{ flex: 1 }}>
+              <StickyMonthHeader date={visibleCalendarDate} />
+
+              <FlatList
+                data={calendarMonths}
+                renderItem={renderCalendarMonth}
+                keyExtractor={(item) => item.id.toString()}
+                showsVerticalScrollIndicator={false}
+                initialScrollIndex={initialCalendarIndex !== -1 ? initialCalendarIndex : 60}
+                onViewableItemsChanged={onViewableItemsChanged}
+                viewabilityConfig={viewabilityConfig}
+                getItemLayout={getItemLayout}
+                onScrollToIndexFailed={(info) => {
+                  const wait = new Promise((resolve) => setTimeout(resolve, 500));
+                  wait.then(() => {
+                    // Retry can be added here if a ref is available
+                  });
+                }}
+                contentContainerStyle={[
+                  styles.calendarListContent,
+                  {
+                    paddingTop: 0,
+                    paddingBottom: isCompact ? 56 : 72,
+                    paddingHorizontal: 0,
+                  },
+                ]}
+                onEndReached={loadMoreCalendarMonths}
+                onEndReachedThreshold={0.5}
+              />
+            </View>
           ) : (
             <View style={styles.placeholderContainer}>
               <View style={styles.placeholderIconWrapper}>
@@ -2458,13 +2581,16 @@ const styles = StyleSheet.create({
   },
   calendarMonthContainer: {
     marginBottom: 20,
+    marginHorizontal: 0,
   },
   calendarMonthHeader: {
-    height: 120,
+    height: 100,
     backgroundColor: '#000',
     justifyContent: 'flex-end',
-    padding: 16,
-    borderRadius: 12,
+    padding: 20,
+    marginBottom: 10,
+    marginHorizontal: 0,
+    borderRadius: 0,
   },
   calendarMonthTitle: {
     color: '#fff',
@@ -2475,6 +2601,7 @@ const styles = StyleSheet.create({
   calendarDaysGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    width: '100%',
   },
   calendarDayCellWrapper: {
     width: CALENDAR_DAY_SIZE,
@@ -2649,5 +2776,24 @@ const styles = StyleSheet.create({
   },
   fabCardIcon: {
     alignSelf: 'center',
+  },
+  stickyHeader: {
+    width: '100%',
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  stickyHeaderText: {
+    color: '#1a1a2e',
+    fontSize: 14,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
 });
