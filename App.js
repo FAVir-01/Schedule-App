@@ -43,6 +43,38 @@ import {
 } from './storage';
 import AddHabitSheet from './components/AddHabitSheet';
 
+// --- CORES PASTÉIS PARA OS MESES ---
+const MONTH_COLORS = [
+  '#FFCF70',
+  '#F7A6A1',
+  '#B39DD6',
+  '#79C3FF',
+  '#A8E6CF',
+  '#FDE2A6',
+  '#FFABAB',
+  '#85E3FF',
+  '#C3B1E1',
+  '#F6D186',
+  '#B5EAD7',
+  '#E2F0CB',
+];
+
+// --- COMPONENTE DA FAIXA DO TOPO ---
+const StickyMonthHeader = ({ date }) => {
+  if (!date) return null;
+
+  const monthIndex = date.getMonth();
+  const backgroundColor = MONTH_COLORS[monthIndex % MONTH_COLORS.length];
+
+  return (
+    <View style={[styles.stickyHeader, { backgroundColor }]}>
+      <Text style={styles.stickyHeaderText}>
+        {format(date, 'MMMM', { locale: ptBR })}
+      </Text>
+    </View>
+  );
+};
+
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const habitImage = require('./assets/add-habit.png');
@@ -453,6 +485,7 @@ function ScheduleApp() {
 
     return months;
   });
+  const [visibleCalendarDate, setVisibleCalendarDate] = useState(new Date());
   const initialCalendarIndex = useMemo(() => {
     const todayId = getMonthId(new Date());
     return calendarMonths.findIndex((month) => getMonthId(month.date) === todayId);
@@ -473,11 +506,14 @@ function ScheduleApp() {
   const fabHaloSize = fabSize + (isCompact ? 26 : 30);
   const fabBaseSize = fabSize + (isCompact ? 14 : 18);
   const fabIconSize = isCompact ? 28 : 30;
-  const getItemLayout = useCallback((_, index) => ({
-    length: 400,
-    offset: 400 * index,
-    index,
-  }), []);
+  const getItemLayout = useCallback(
+    (_, index) => ({
+      length: 380,
+      offset: 380 * index,
+      index,
+    }),
+    []
+  );
   const today = useMemo(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -656,6 +692,18 @@ function ScheduleApp() {
   const actionsScale = useRef(new Animated.Value(0.85)).current;
   const actionsOpacity = useRef(new Animated.Value(0)).current;
   const actionsTranslateY = useRef(new Animated.Value(12)).current;
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    if (viewableItems && viewableItems.length > 0) {
+      const topItem = viewableItems[0];
+      if (topItem && topItem.item && topItem.item.date) {
+        setVisibleCalendarDate(topItem.item.date);
+      }
+    }
+  }).current;
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 10,
+    waitForInteraction: false,
+  }).current;
   const emptyStateIconSize = isCompact ? 98 : 112;
 
   useEffect(() => {
@@ -1438,30 +1486,36 @@ function ScheduleApp() {
               </View>
             </ScrollView>
           ) : activeTab === 'calendar' ? (
-            <FlatList
-              data={calendarMonths}
-              renderItem={renderCalendarMonth}
-              keyExtractor={(item) => item.id.toString()}
-              showsVerticalScrollIndicator={false}
-              initialScrollIndex={initialCalendarIndex !== -1 ? initialCalendarIndex : 60}
-              getItemLayout={getItemLayout}
-              onScrollToIndexFailed={(info) => {
-                const wait = new Promise((resolve) => setTimeout(resolve, 500));
-                wait.then(() => {
-                  // Retry can be added here if a ref is available
-                });
-              }}
-              contentContainerStyle={[
-                styles.calendarListContent,
-                {
-                  paddingTop: 0,
-                  paddingBottom: isCompact ? 56 : 72,
-                  paddingHorizontal: 0,
-                },
-              ]}
-              onEndReached={loadMoreCalendarMonths}
-              onEndReachedThreshold={0.5}
-            />
+            <View style={{ flex: 1 }}>
+              <StickyMonthHeader date={visibleCalendarDate} />
+
+              <FlatList
+                data={calendarMonths}
+                renderItem={renderCalendarMonth}
+                keyExtractor={(item) => item.id.toString()}
+                showsVerticalScrollIndicator={false}
+                initialScrollIndex={initialCalendarIndex !== -1 ? initialCalendarIndex : 60}
+                onViewableItemsChanged={onViewableItemsChanged}
+                viewabilityConfig={viewabilityConfig}
+                getItemLayout={getItemLayout}
+                onScrollToIndexFailed={(info) => {
+                  const wait = new Promise((resolve) => setTimeout(resolve, 500));
+                  wait.then(() => {
+                    // Retry can be added here if a ref is available
+                  });
+                }}
+                contentContainerStyle={[
+                  styles.calendarListContent,
+                  {
+                    paddingTop: 0,
+                    paddingBottom: isCompact ? 56 : 72,
+                    paddingHorizontal: 0,
+                  },
+                ]}
+                onEndReached={loadMoreCalendarMonths}
+                onEndReachedThreshold={0.5}
+              />
+            </View>
           ) : (
             <View style={styles.placeholderContainer}>
               <View style={styles.placeholderIconWrapper}>
@@ -2689,5 +2743,24 @@ const styles = StyleSheet.create({
   },
   fabCardIcon: {
     alignSelf: 'center',
+  },
+  stickyHeader: {
+    width: '100%',
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  stickyHeaderText: {
+    color: '#1a1a2e',
+    fontSize: 14,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
 });
