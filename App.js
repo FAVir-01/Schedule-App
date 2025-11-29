@@ -106,7 +106,7 @@ const triggerSelection = () => {
 };
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const CALENDAR_DAY_SIZE = SCREEN_WIDTH / 7;
+const CALENDAR_DAY_SIZE = Math.floor(SCREEN_WIDTH / 7);
 
 const CalendarDayCell = ({ date, isCurrentMonth, status }) => {
   if (!isCurrentMonth) {
@@ -525,12 +525,22 @@ function ScheduleApp() {
   const monthLayouts = useMemo(() => {
     let currentOffset = 0;
     const layouts = [];
+
     const HEADER_HEIGHT = 100;
-    const PADDING_BOTTOM = 20;
+    const MARGINS = 30;
+    const BASE_HEIGHT = HEADER_HEIGHT + MARGINS;
 
     calendarMonths.forEach((month, index) => {
-      const weeks = calculateWeeksInMonth(month.date);
-      const height = HEADER_HEIGHT + weeks * CALENDAR_DAY_SIZE + PADDING_BOTTOM;
+      const start = startOfMonth(month.date);
+      const end = endOfMonth(month.date);
+      const startWeek = startOfWeek(start);
+      const endWeek = endOfWeek(end);
+
+      const days = (endWeek.getTime() - startWeek.getTime()) / (1000 * 60 * 60 * 24) + 1;
+      const weeks = Math.round(days / 7);
+
+      const height = BASE_HEIGHT + weeks * CALENDAR_DAY_SIZE;
+
       layouts.push({ length: height, offset: currentOffset, index });
       currentOffset += height;
     });
@@ -726,7 +736,7 @@ function ScheduleApp() {
   const actionsOpacity = useRef(new Animated.Value(0)).current;
   const actionsTranslateY = useRef(new Animated.Value(12)).current;
   const viewabilityConfig = useRef({
-    viewAreaCoveragePercentThreshold: 10,
+    itemVisiblePercentThreshold: 50,
     waitForInteraction: false,
   }).current;
   const onViewableItemsChanged = useRef(({ viewableItems }) => {
