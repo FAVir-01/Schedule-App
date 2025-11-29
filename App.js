@@ -17,6 +17,7 @@ import {
   TouchableOpacity,
   View,
   useWindowDimensions,
+  ImageBackground,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -44,20 +45,20 @@ import {
 } from './storage';
 import AddHabitSheet from './components/AddHabitSheet';
 
-// --- CORES PASTÉIS PARA OS MESES ---
-const MONTH_COLORS = [
-  '#FFCF70',
-  '#F7A6A1',
-  '#B39DD6',
-  '#79C3FF',
-  '#A8E6CF',
-  '#FDE2A6',
-  '#FFABAB',
-  '#85E3FF',
-  '#C3B1E1',
-  '#F6D186',
-  '#B5EAD7',
-  '#E2F0CB',
+// --- IMAGENS ANIMADAS PARA OS MESES ---
+const MONTH_IMAGES = [
+  require('./assets/months/jan.gif'),
+  require('./assets/months/feb.gif'),
+  require('./assets/months/mar.gif'),
+  require('./assets/months/apr.gif'),
+  require('./assets/months/may.gif'),
+  require('./assets/months/jun.gif'),
+  require('./assets/months/jul.gif'),
+  require('./assets/months/aug.gif'),
+  require('./assets/months/sep.gif'),
+  require('./assets/months/oct.gif'),
+  require('./assets/months/nov.gif'),
+  require('./assets/months/dec.gif'),
 ];
 
 // --- COMPONENTE DA FAIXA DO TOPO ---
@@ -65,14 +66,19 @@ const StickyMonthHeader = ({ date }) => {
   if (!date) return null;
 
   const monthIndex = date.getMonth();
-  const backgroundColor = MONTH_COLORS[monthIndex % MONTH_COLORS.length];
+  const imageSource = MONTH_IMAGES[monthIndex % MONTH_IMAGES.length];
 
   return (
-    <View style={[styles.stickyHeader, { backgroundColor }]}>
+    <ImageBackground
+      source={imageSource}
+      style={styles.stickyHeader}
+      imageStyle={{ resizeMode: 'cover' }}
+    >
+      <View style={styles.headerOverlay} />
       <Text style={styles.stickyHeaderText}>
         {format(date, 'MMMM', { locale: ptBR })}
       </Text>
-    </View>
+    </ImageBackground>
   );
 };
 
@@ -139,6 +145,7 @@ const CalendarDayCell = ({ date, isCurrentMonth, status, onPress }) => {
 const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
   const monthStart = startOfMonth(item.date);
   const monthEnd = endOfMonth(item.date);
+  const imageSource = MONTH_IMAGES[item.date.getMonth() % MONTH_IMAGES.length];
 
   const days = eachDayOfInterval({
     start: startOfWeek(monthStart),
@@ -147,9 +154,14 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
 
   return (
     <View style={styles.calendarMonthContainer}>
-      <View style={styles.calendarMonthHeader}>
+      <ImageBackground
+        source={imageSource}
+        style={styles.calendarMonthHeader}
+        imageStyle={{ resizeMode: 'cover' }}
+      >
+        <View style={styles.headerOverlay} />
         <Text style={styles.calendarMonthTitle}>{format(item.date, 'MMMM yyyy', { locale: ptBR })}</Text>
-      </View>
+      </ImageBackground>
 
       <View style={styles.calendarDaysGrid}>
         {days.map((day) => (
@@ -2807,12 +2819,12 @@ const styles = StyleSheet.create({
   },
   calendarMonthHeader: {
     height: 100,
-    backgroundColor: '#000',
     justifyContent: 'flex-end',
     padding: 20,
     marginBottom: 10,
     marginHorizontal: 0,
     borderRadius: 0,
+    overflow: 'hidden',
   },
   calendarMonthTitle: {
     color: '#fff',
@@ -3001,7 +3013,7 @@ const styles = StyleSheet.create({
   },
   stickyHeader: {
     width: '100%',
-    paddingVertical: 8,
+    height: 50,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
@@ -3010,13 +3022,19 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
+    overflow: 'hidden',
   },
   stickyHeaderText: {
-    color: '#1a1a2e',
+    color: '#fff',
     fontSize: 14,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  headerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 0,
   },
   // --- ESTILOS DO RELATÓRIO ---
   reportOverlay: {
