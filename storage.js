@@ -19,8 +19,13 @@ const parseStoredJson = (value, fallback) => {
 };
 
 export async function loadTasks() {
-  const raw = await AsyncStorage.getItem(STORAGE_KEYS.TASKS);
-  return parseStoredJson(raw, []);
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.TASKS);
+    return parseStoredJson(raw, []);
+  } catch (error) {
+    console.warn('Failed to load tasks', error);
+    return [];
+  }
 }
 
 export async function saveTasks(tasks) {
@@ -32,8 +37,13 @@ export async function saveTasks(tasks) {
 }
 
 export async function loadUserSettings() {
-  const raw = await AsyncStorage.getItem(STORAGE_KEYS.SETTINGS);
-  return parseStoredJson(raw, null);
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.SETTINGS);
+    return parseStoredJson(raw, null);
+  } catch (error) {
+    console.warn('Failed to load settings', error);
+    return null;
+  }
 }
 
 export async function saveUserSettings(settings) {
@@ -45,8 +55,13 @@ export async function saveUserSettings(settings) {
 }
 
 export async function loadHistory() {
-  const raw = await AsyncStorage.getItem(STORAGE_KEYS.HISTORY);
-  return parseStoredJson(raw, []);
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.HISTORY);
+    return parseStoredJson(raw, []);
+  } catch (error) {
+    console.warn('Failed to load history', error);
+    return [];
+  }
 }
 
 export async function saveHistory(history) {
