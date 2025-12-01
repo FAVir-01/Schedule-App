@@ -25,6 +25,8 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as Haptics from 'expo-haptics';
+import * as FileSystem from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
 import {
   addMonths as addMonthsDateFns,
   eachDayOfInterval,
@@ -43,11 +45,13 @@ import {
   saveHistory,
   saveTasks,
   saveUserSettings,
+  loadCalendarThemes,
+  saveCalendarThemes,
 } from './storage';
 import AddHabitSheet from './components/AddHabitSheet';
 
 // --- IMAGENS ANIMADAS PARA OS MESES ---
-const MONTH_IMAGES = [
+const DEFAULT_MONTH_IMAGES = [
   require('./assets/months/jan.gif'),
   require('./assets/months/feb.gif'),
   require('./assets/months/mar.gif'),
@@ -61,13 +65,34 @@ const MONTH_IMAGES = [
   require('./assets/months/nov.gif'),
   require('./assets/months/dec.gif'),
 ];
+const MONTH_NAMES = [
+  'JANEIRO',
+  'FEVEREIRO',
+  'MARÇO',
+  'ABRIL',
+  'MAIO',
+  'JUNHO',
+  'JULHO',
+  'AGOSTO',
+  'SETEMBRO',
+  'OUTUBRO',
+  'NOVEMBRO',
+  'DEZEMBRO',
+];
+const getMonthImageSource = (monthIndex, customThemes = {}) => {
+  const customUri = customThemes?.[monthIndex];
+  if (customUri) {
+    return { uri: customUri };
+  }
+  return DEFAULT_MONTH_IMAGES[monthIndex % DEFAULT_MONTH_IMAGES.length];
+};
 
 // --- COMPONENTE DA FAIXA DO TOPO ---
-const StickyMonthHeader = ({ date }) => {
+const StickyMonthHeader = ({ date, customThemes }) => {
   if (!date) return null;
 
   const monthIndex = date.getMonth();
-  const imageSource = MONTH_IMAGES[monthIndex % MONTH_IMAGES.length];
+  const imageSource = getMonthImageSource(monthIndex, customThemes);
 
   return (
     <ImageBackground
@@ -147,10 +172,10 @@ const CalendarDayCell = ({ date, isCurrentMonth, status, onPress, isToday }) => 
 };
 
 // --- ITEM DO MÊS ATUALIZADO ---
-const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
+const CalendarMonthItem = ({ item, getDayStatus, onDayPress, customThemes }) => {
   const monthStart = startOfMonth(item.date);
   const monthEnd = endOfMonth(item.date);
-  const imageSource = MONTH_IMAGES[item.date.getMonth() % MONTH_IMAGES.length];
+  const imageSource = getMonthImageSource(item.date.getMonth(), customThemes);
 
   const days = eachDayOfInterval({
     start: startOfWeek(monthStart),
@@ -193,6 +218,65 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
     </View>
   );
 };
+
+function EditCalendarThemeModal({ visible, onClose, customThemes, onUpdateTheme }) {
+  const handlePickImage = useCallback(
+    async (monthIndex) => {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [16, 5],
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        onUpdateTheme?.(monthIndex, result.assets[0].uri);
+      }
+    },
+    [onUpdateTheme]
+  );
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+      <View style={styles.editCalendarContainer}>
+        <View style={styles.editCalendarHeader}>
+          <Text style={styles.editCalendarTitle}>Customize Calendar</Text>
+          <TouchableOpacity onPress={onClose} style={styles.closeButton} accessibilityRole="button">
+            <Ionicons name="close" size={28} color="#000" />
+          </TouchableOpacity>
+        </View>
+        <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+          {MONTH_NAMES.map((name, index) => {
+            const customUri = customThemes?.[index];
+            const source = customUri ? { uri: customUri } : getMonthImageSource(index, customThemes);
+
+            return (
+              <View key={name} style={styles.themeRow}>
+                <ImageBackground
+                  source={source}
+                  style={styles.themePreview}
+                  imageStyle={{ borderRadius: 12 }}
+                >
+                  <View style={styles.themeOverlay} />
+                  <Text style={styles.themeMonthName}>{name}</Text>
+                </ImageBackground>
+
+                <TouchableOpacity
+                  style={styles.themeEditButton}
+                  onPress={() => handlePickImage(index)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Change background for ${name}`}
+                >
+                  <Ionicons name="add" size={24} color="#3c2ba7" />
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
 
 const LEFT_TABS = [
   {
@@ -298,6 +382,27 @@ const lightenColor = (hex, amount = 0.7) => {
     return `#${mixed.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
   } catch (error) {
     return '#f2f3f8';
+  }
+};
+
+const ensureLocalImage = async (uri, prefix = 'image') => {
+  if (!uri) {
+    return null;
+  }
+
+  try {
+    const baseDir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
+    const targetDir = `${baseDir}schedule-app/`;
+    await FileSystem.makeDirectoryAsync(targetDir, { intermediates: true });
+
+    const extension = uri.split('.').pop()?.split('?')[0] || 'jpg';
+    const destination = `${targetDir}${prefix}-${Date.now()}.${extension}`;
+
+    await FileSystem.copyAsync({ from: uri, to: destination });
+    return destination;
+  } catch (error) {
+    console.warn('Failed to persist image', error);
+    return uri;
   }
 };
 
@@ -508,7 +613,7 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
 };
 
 // --- COMPONENTE ATUALIZADO: RELATÓRIO DO DIA COM GIF ---
-function DayReportModal({ visible, date, tasks, onClose }) {
+function DayReportModal({ visible, date, tasks, onClose, customThemes }) {
   const { height } = useWindowDimensions();
 
   // 1. Configuração da Animação
@@ -517,7 +622,7 @@ function DayReportModal({ visible, date, tasks, onClose }) {
 
   // 2. Lógica para pegar o GIF do mês correto
   // Se 'date' for nulo, não quebra o app
-  const imageSource = date ? MONTH_IMAGES[date.getMonth() % MONTH_IMAGES.length] : null;
+  const imageSource = date ? getMonthImageSource(date.getMonth(), customThemes) : null;
 
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter((t) => t.completed).length;
@@ -742,6 +847,8 @@ function ScheduleApp() {
     DEFAULT_USER_SETTINGS.selectedTagFilter
   );
   const [history, setHistory] = useState([]);
+  const [calendarThemes, setCalendarThemes] = useState({});
+  const [isEditCalendarOpen, setIsEditCalendarOpen] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const [calendarMonths, setCalendarMonths] = useState(() => {
     const today = new Date();
@@ -915,9 +1022,10 @@ function ScheduleApp() {
         item={item}
         getDayStatus={getDayStatusForCalendar}
         onDayPress={handleOpenReport}
+        customThemes={calendarThemes}
       />
     ),
-    [getDayStatusForCalendar, handleOpenReport]
+    [calendarThemes, getDayStatusForCalendar, handleOpenReport]
   );
   const tasksForSelectedDate = useMemo(() => {
     const filtered = tasks.filter((task) => shouldTaskAppearOnDate(task, selectedDate));
@@ -1038,10 +1146,11 @@ function ScheduleApp() {
     let isMounted = true;
     const hydrateFromStorage = async () => {
       try {
-        const [storedTasks, storedSettings, storedHistory] = await Promise.all([
+        const [storedTasks, storedSettings, storedHistory, storedThemes] = await Promise.all([
           loadTasks(),
           loadUserSettings(),
           loadHistory(),
+          loadCalendarThemes(),
         ]);
 
         if (!isMounted) {
@@ -1063,6 +1172,10 @@ function ScheduleApp() {
 
         if (Array.isArray(storedHistory)) {
           setHistory(storedHistory);
+        }
+
+        if (storedThemes) {
+          setCalendarThemes(storedThemes);
         }
       } catch (error) {
         console.warn('Failed to load stored data', error);
@@ -1101,6 +1214,13 @@ function ScheduleApp() {
     void saveHistory(history);
   }, [history, isHydrated]);
 
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+    void saveCalendarThemes(calendarThemes);
+  }, [calendarThemes, isHydrated]);
+
   const appendHistoryEntry = useCallback((type, details = {}) => {
     const entry = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -1116,6 +1236,22 @@ function ScheduleApp() {
       ...previous,
       ...updates,
     }));
+  }, []);
+
+  const handleUpdateCalendarTheme = useCallback((monthIndex, uri) => {
+    if (!uri) {
+      return;
+    }
+
+    const persistTheme = async () => {
+      const savedUri = await ensureLocalImage(uri, 'calendar-theme');
+      setCalendarThemes((previous) => ({
+        ...previous,
+        [monthIndex]: savedUri ?? uri,
+      }));
+    };
+
+    void persistTheme();
   }, []);
 
   useEffect(() => {
@@ -1363,75 +1499,101 @@ function ScheduleApp() {
       });
   }, []);
 
-  const handleCreateHabit = useCallback((habit) => {
-    const normalizedDate = new Date(habit?.startDate ?? new Date());
-    normalizedDate.setHours(0, 0, 0, 0);
-    const dateKey = getDateKey(normalizedDate);
-    const color = habit?.color ?? '#d1d7ff';
-    const newTask = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      title: habit?.title ?? 'Untitled task',
-      color,
-      emoji: habit?.emoji ?? '✅',
-      time: habit?.time,
-      date: normalizedDate,
-      dateKey,
-      completed: false,
-      completedDates: {},
-      subtasks: convertSubtasks(habit?.subtasks ?? []),
-      repeat: habit?.repeat,
-      reminder: habit?.reminder,
-      tag: habit?.tag,
-      tagLabel: habit?.tagLabel,
-    };
-    setTasks((previous) => [...previous, newTask]);
-    setSelectedDate(normalizedDate);
-    triggerImpact(Haptics.ImpactFeedbackStyle.Light);
-    appendHistoryEntry('task_created', {
-      taskId: newTask.id,
-      title: newTask.title,
-      dateKey: newTask.dateKey,
-    });
-  }, [appendHistoryEntry, convertSubtasks]);
+  const handleCreateHabit = useCallback(
+    (habit) => {
+      const persistAndCreate = async () => {
+        const normalizedDate = new Date(habit?.startDate ?? new Date());
+        normalizedDate.setHours(0, 0, 0, 0);
+        const dateKey = getDateKey(normalizedDate);
+        const color = habit?.color ?? '#d1d7ff';
+        const persistedBackground = habit?.backgroundImage
+          ? await ensureLocalImage(habit.backgroundImage, 'task-bg')
+          : null;
+
+        const newTask = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          title: habit?.title ?? 'Untitled task',
+          color,
+          emoji: habit?.emoji ?? '✅',
+          time: habit?.time,
+          date: normalizedDate,
+          dateKey,
+          completed: false,
+          completedDates: {},
+          subtasks: convertSubtasks(habit?.subtasks ?? []),
+          repeat: habit?.repeat,
+          reminder: habit?.reminder,
+          tag: habit?.tag,
+          tagLabel: habit?.tagLabel,
+          backgroundImage: persistedBackground ?? habit?.backgroundImage,
+        };
+        setTasks((previous) => [...previous, newTask]);
+        setSelectedDate(normalizedDate);
+        triggerImpact(Haptics.ImpactFeedbackStyle.Light);
+        appendHistoryEntry('task_created', {
+          taskId: newTask.id,
+          title: newTask.title,
+          dateKey: newTask.dateKey,
+        });
+      };
+
+      void persistAndCreate();
+    },
+    [appendHistoryEntry, convertSubtasks]
+  );
 
   const handleUpdateHabit = useCallback(
     (taskId, habit) => {
-      const normalizedDate = habit?.startDate ? new Date(habit.startDate) : null;
-      if (normalizedDate) {
-        normalizedDate.setHours(0, 0, 0, 0);
-      }
-      setTasks((previous) =>
-        previous.map((task) => {
-          if (task.id !== taskId) {
-            return task;
-          }
-          const nextDate = normalizedDate ? new Date(normalizedDate) : new Date(task.date);
-          nextDate.setHours(0, 0, 0, 0);
-          return {
-            ...task,
-            title: habit?.title ?? task.title,
-            color: habit?.color ?? task.color,
-            emoji: habit?.emoji ?? task.emoji,
-            time: habit?.time,
-            subtasks: convertSubtasks(habit?.subtasks ?? [], task.subtasks ?? []),
-            repeat: habit?.repeat,
-            reminder: habit?.reminder,
-            tag: habit?.tag,
-            tagLabel: habit?.tagLabel,
-            date: nextDate,
-            dateKey: getDateKey(nextDate),
-          };
-        })
-      );
-      triggerImpact(Haptics.ImpactFeedbackStyle.Light);
-      if (normalizedDate) {
-        setSelectedDate(normalizedDate);
-      }
-      appendHistoryEntry('task_updated', {
-        taskId,
-        title: habit?.title,
-        dateKey: normalizedDate ? getDateKey(normalizedDate) : undefined,
-      });
+      const persistAndUpdate = async () => {
+        const normalizedDate = habit?.startDate ? new Date(habit.startDate) : null;
+        if (normalizedDate) {
+          normalizedDate.setHours(0, 0, 0, 0);
+        }
+
+        let resolvedBackgroundImage = undefined;
+        if (habit && Object.prototype.hasOwnProperty.call(habit, 'backgroundImage')) {
+          resolvedBackgroundImage = habit.backgroundImage
+            ? await ensureLocalImage(habit.backgroundImage, 'task-bg')
+            : null;
+        }
+
+        setTasks((previous) =>
+          previous.map((task) => {
+            if (task.id !== taskId) {
+              return task;
+            }
+            const nextDate = normalizedDate ? new Date(normalizedDate) : new Date(task.date);
+            nextDate.setHours(0, 0, 0, 0);
+            return {
+              ...task,
+              title: habit?.title ?? task.title,
+              color: habit?.color ?? task.color,
+              emoji: habit?.emoji ?? task.emoji,
+              time: habit?.time,
+              subtasks: convertSubtasks(habit?.subtasks ?? [], task.subtasks ?? []),
+              repeat: habit?.repeat,
+              reminder: habit?.reminder,
+              tag: habit?.tag,
+              tagLabel: habit?.tagLabel,
+              date: nextDate,
+              dateKey: getDateKey(nextDate),
+              backgroundImage:
+                resolvedBackgroundImage !== undefined ? resolvedBackgroundImage : task.backgroundImage,
+            };
+          })
+        );
+        triggerImpact(Haptics.ImpactFeedbackStyle.Light);
+        if (normalizedDate) {
+          setSelectedDate(normalizedDate);
+        }
+        appendHistoryEntry('task_updated', {
+          taskId,
+          title: habit?.title,
+          dateKey: normalizedDate ? getDateKey(normalizedDate) : undefined,
+        });
+      };
+
+      void persistAndUpdate();
     },
     [appendHistoryEntry, convertSubtasks]
   );
@@ -1815,7 +1977,7 @@ function ScheduleApp() {
             </ScrollView>
           ) : activeTab === 'calendar' ? (
             <View style={{ flex: 1 }}>
-              <StickyMonthHeader date={visibleCalendarDate} />
+              <StickyMonthHeader date={visibleCalendarDate} customThemes={calendarThemes} />
 
               <FlatList
                 data={calendarMonths}
@@ -1844,34 +2006,33 @@ function ScheduleApp() {
                 onEndReachedThreshold={0.5}
               />
             </View>
+          ) : activeTab === 'profile' ? (
+            <View style={styles.placeholderContainer}>
+              <View style={styles.placeholderIconWrapper}>
+                <Ionicons name="person-circle-outline" size={48} color="#3c2ba7" />
+              </View>
+              <Text style={styles.heading}>Profile</Text>
+              <Text style={[styles.description, dynamicStyles.description, styles.placeholderDescription]}>
+                Personalize your experience and tweak how your calendar looks.
+              </Text>
+              <TouchableOpacity
+                style={styles.profileActionButton}
+                onPress={() => setIsEditCalendarOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Customize calendar backgrounds"
+              >
+                <Ionicons name="images-outline" size={20} color="#fff" />
+                <Text style={styles.profileActionText}>Customize Calendar</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
             <View style={styles.placeholderContainer}>
               <View style={styles.placeholderIconWrapper}>
-                <Ionicons
-                  name={
-                    activeTab === 'calendar'
-                      ? 'calendar-outline'
-                      : activeTab === 'discover'
-                      ? 'planet-outline'
-                      : 'person-circle-outline'
-                  }
-                  size={48}
-                  color="#3c2ba7"
-                />
+                <Ionicons name="planet-outline" size={48} color="#3c2ba7" />
               </View>
-              <Text style={styles.heading}>
-                {activeTab === 'calendar'
-                  ? 'Calendar Overview'
-                  : activeTab === 'discover'
-                  ? 'Discover'
-                  : 'Profile'}
-              </Text>
+              <Text style={styles.heading}>Discover</Text>
               <Text style={[styles.description, dynamicStyles.description, styles.placeholderDescription]}>
-                {activeTab === 'calendar'
-                  ? 'Plan ahead and review your upcoming schedule from the calendar view.'
-                  : activeTab === 'discover'
-                  ? 'Explore new routines, templates, and ideas to add to your day.'
-                  : 'View and personalize your profile, preferences, and progress.'}
+                Explore new routines, templates, and ideas to add to your day.
               </Text>
             </View>
           )}
@@ -2146,6 +2307,7 @@ function ScheduleApp() {
         date={reportDate}
         tasks={reportTasks}
         onClose={() => setReportDate(null)}
+        customThemes={calendarThemes}
       />
       <AddHabitSheet
         visible={isHabitSheetOpen}
@@ -2162,6 +2324,12 @@ function ScheduleApp() {
         }}
         mode={habitSheetMode}
         initialHabit={habitSheetInitialTask}
+      />
+      <EditCalendarThemeModal
+        visible={isEditCalendarOpen}
+        onClose={() => setIsEditCalendarOpen(false)}
+        customThemes={calendarThemes}
+        onUpdateTheme={handleUpdateCalendarTheme}
       />
     </View>
   );
@@ -2268,6 +2436,12 @@ function SwipeableTaskCard({
     return `${completedSubtasks}/${totalSubtasks}`;
   }, [completedSubtasks, totalSubtasks]);
 
+  const usesImage = Boolean(task.backgroundImage);
+  const ContentWrapper = usesImage ? ImageBackground : View;
+  const contentProps = usesImage
+    ? { source: { uri: task.backgroundImage }, style: styles.taskCardBg, imageStyle: { borderRadius: 18 } }
+    : { style: styles.taskCardBg };
+
   return (
     <View style={styles.swipeableWrapper}>
       <View style={styles.swipeableActions}>
@@ -2295,40 +2469,65 @@ function SwipeableTaskCard({
         style={[
           styles.taskCard,
           {
-            backgroundColor,
-            borderColor,
+            backgroundColor: usesImage ? 'transparent' : backgroundColor,
+            borderColor: usesImage ? 'transparent' : borderColor,
             transform: [{ translateX }],
           },
         ]}
       >
-        <Pressable style={styles.taskCardContent} onPress={handlePress}>
-          <View style={styles.taskInfo}>
-            <Text style={styles.taskEmoji}>{task.emoji}</Text>
-            <View style={styles.taskDetails}>
-              <Text
-                style={[styles.taskTitle, task.completed && styles.taskTitleCompleted]}
-                numberOfLines={1}
-              >
-                {task.title}
-              </Text>
-              <Text style={styles.taskTime}>{formatTaskTime(task.time)}</Text>
-              {totalLabel && (
-                <View style={styles.taskSubtaskSummary}>
-                  <Text style={styles.taskSubtaskSummaryText}>{totalLabel}</Text>
-                </View>
-              )}
+        <ContentWrapper {...contentProps}>
+          {usesImage && <View style={styles.taskImageOverlay} pointerEvents="none" />}
+          <Pressable style={styles.taskCardInner} onPress={handlePress}>
+            <View style={styles.taskInfo}>
+              <Text style={styles.taskEmoji}>{task.emoji}</Text>
+              <View style={styles.taskDetails}>
+                <Text
+                  style={[
+                    styles.taskTitle,
+                    task.completed && styles.taskTitleCompleted,
+                    usesImage && styles.taskTitleOnImage,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {task.title}
+                </Text>
+                <Text style={[styles.taskTime, usesImage && styles.taskTimeOnImage]}>
+                  {formatTaskTime(task.time)}
+                </Text>
+                {totalLabel && (
+                  <View
+                    style={[
+                      styles.taskSubtaskSummary,
+                      usesImage && styles.taskSubtaskSummaryOnImage,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.taskSubtaskSummaryText,
+                        usesImage && styles.taskSubtaskSummaryTextOnImage,
+                      ]}
+                    >
+                      {totalLabel}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
-          </View>
-        </Pressable>
-        <Pressable
-          onPress={() => handleAction(onToggleCompletion)}
-          style={[styles.taskToggle, task.completed && styles.taskToggleCompleted]}
-          accessibilityRole="checkbox"
-          accessibilityLabel={task.completed ? 'Mark task as incomplete' : 'Mark task as complete'}
-          accessibilityState={{ checked: task.completed }}
-        >
-          {task.completed && <Ionicons name="checkmark" size={18} color="#ffffff" />}
-        </Pressable>
+          </Pressable>
+          <Pressable
+            onPress={() => handleAction(onToggleCompletion)}
+            style={[
+              styles.taskToggle,
+              task.completed && styles.taskToggleCompleted,
+              usesImage && styles.taskToggleOnImage,
+            ]}
+            accessibilityRole="checkbox"
+            accessibilityLabel={task.completed ? 'Mark task as incomplete' : 'Mark task as complete'}
+            accessibilityState={{ checked: task.completed }}
+          >
+            {task.completed && <Ionicons name="checkmark" size={18} color="#ffffff" />}
+          </Pressable>
+        </ContentWrapper>
       </Animated.View>
     </View>
   );
@@ -2635,12 +2834,31 @@ const styles = StyleSheet.create({
   },
   taskCard: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
     justifyContent: 'space-between',
     borderRadius: 18,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  taskCardBg: {
+    flexDirection: 'row',
+    width: '100%',
+    height: '100%',
+    borderRadius: 18,
+    overflow: 'hidden',
+    alignItems: 'center',
+  },
+  taskCardInner: {
+    flex: 1,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  taskImageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 18,
   },
   swipeableWrapper: {
     marginBottom: 14,
@@ -2710,10 +2928,16 @@ const styles = StyleSheet.create({
     color: '#6f7a86',
     textDecorationLine: 'line-through',
   },
+  taskTitleOnImage: {
+    color: '#ffffff',
+  },
   taskTime: {
     marginTop: 4,
     fontSize: 13,
     color: '#6f7a86',
+  },
+  taskTimeOnImage: {
+    color: 'rgba(255,255,255,0.9)',
   },
   taskSubtaskSummary: {
     marginTop: 6,
@@ -2730,6 +2954,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#3c2ba7',
   },
+  taskSubtaskSummaryOnImage: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderColor: 'rgba(255,255,255,0.9)',
+  },
+  taskSubtaskSummaryTextOnImage: {
+    color: '#1a1a2e',
+  },
   taskToggle: {
     width: 32,
     height: 32,
@@ -2743,6 +2974,10 @@ const styles = StyleSheet.create({
   taskToggleCompleted: {
     backgroundColor: '#3dd598',
     borderColor: '#3dd598',
+  },
+  taskToggleOnImage: {
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderColor: 'rgba(255,255,255,0.92)',
   },
   detailOverlay: {
     flex: 1,
@@ -3029,6 +3264,22 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 2,
   },
+  profileActionButton: {
+    marginTop: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3c2ba7',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+    gap: 10,
+    elevation: 3,
+  },
+  profileActionText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   addButtonBase: {
     position: 'absolute',
     backgroundColor: '#ffffff',
@@ -3259,5 +3510,68 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#1a1a2e',
+  },
+  editCalendarContainer: {
+    flex: 1,
+    backgroundColor: '#f6f6fb',
+    paddingTop: 20,
+  },
+  editCalendarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    marginBottom: 20,
+  },
+  editCalendarTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  themeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginBottom: 16,
+  },
+  themePreview: {
+    flex: 1,
+    height: 80,
+    justifyContent: 'center',
+    marginRight: 12,
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  themeOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  themeMonthName: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '800',
+    marginLeft: 16,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
+  },
+  themeEditButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#3c2ba7',
+    elevation: 2,
   },
 });

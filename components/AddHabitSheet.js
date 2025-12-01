@@ -12,12 +12,14 @@ import {
   Switch,
   Text,
   TextInput,
+  Image,
   View,
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 
 const SHEET_OPEN_DURATION = 300;
 const SHEET_CLOSE_DURATION = 220;
@@ -81,6 +83,19 @@ const EMOJIS = [
   // os que você já tinha
   '🌟','🔥','💪','🧘','📚','🥗','🛏️','🚰','🎯','📝'
 ];
+const pickImage = async () => {
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsEditing: true,
+    aspect: [4, 3],
+    quality: 1,
+  });
+
+  if (!result.canceled) {
+    return result.assets[0].uri;
+  }
+  return null;
+};
 const DEFAULT_EMOJI = EMOJIS[0];
 
 const WEEKDAYS = [
@@ -386,6 +401,7 @@ export default function AddHabitSheet({
   const [title, setTitle] = useState('');
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
   const [selectedEmoji, setSelectedEmoji] = useState(DEFAULT_EMOJI);
+  const [backgroundImage, setBackgroundImage] = useState(null);
   const [isEmojiPickerVisible, setEmojiPickerVisible] = useState(false);
   const [isMounted, setIsMounted] = useState(visible);
   const [activePanel, setActivePanel] = useState(null);
@@ -478,6 +494,13 @@ export default function AddHabitSheet({
 
   const handleToggleEmojiPicker = useCallback(() => {
     setEmojiPickerVisible((prev) => !prev);
+  }, []);
+
+  const handlePickImage = useCallback(async () => {
+    const uri = await pickImage();
+    if (uri) {
+      setBackgroundImage(uri);
+    }
   }, []);
 
   const handleOpenPanel = useCallback(
@@ -650,6 +673,7 @@ export default function AddHabitSheet({
     setTitle(initialHabit.title ?? '');
     setSelectedColor(initialHabit.color ?? COLORS[0]);
     setSelectedEmoji(initialHabit.emoji ?? DEFAULT_EMOJI);
+    setBackgroundImage(initialHabit.backgroundImage ?? null);
     setStartDate(resolvedStartDate);
     setRepeatOption(resolvedRepeatOption);
     setSelectedWeekdays(new Set(resolvedWeekdays));
@@ -724,6 +748,7 @@ export default function AddHabitSheet({
           setTitle('');
           setSelectedColor(COLORS[0]);
           setSelectedEmoji(DEFAULT_EMOJI);
+          setBackgroundImage(null);
           setEmojiPickerVisible(false);
           setActivePanel(null);
           setStartDate(normalizeDate(new Date()));
@@ -791,6 +816,7 @@ export default function AddHabitSheet({
       title: title.trim(),
       color: selectedColor,
       emoji: selectedEmoji,
+      backgroundImage,
       startDate,
       repeat: { option: repeatOption, weekdays: Array.from(selectedWeekdays) },
       time: {
@@ -829,6 +855,7 @@ export default function AddHabitSheet({
     reminderOption,
     subtasks,
     tagOptions,
+    backgroundImage,
   ]);
 
   const panResponder = useMemo(
@@ -1075,21 +1102,47 @@ export default function AddHabitSheet({
               />
               <Text style={styles.counter}>{`${title.length}/50`}</Text>
               <View style={styles.paletteContainer}>
-                {COLORS.map((color) => {
-                  const isSelected = selectedColor === color;
-                  return (
-                    <Pressable
-                      key={color}
-                      style={[styles.colorDot, { backgroundColor: color }, isSelected && styles.colorDotSelected]}
-                      onPress={() => setSelectedColor(color)}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: isSelected }}
-                      accessibilityLabel={`Select color ${color}`}
-                    >
-                      {isSelected && <Ionicons name="checkmark" size={18} color="#1F2742" />}
-                    </Pressable>
-                  );
-                })}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 12, paddingHorizontal: 4 }}
+                >
+                  {COLORS.map((color) => {
+                    const isSelected = selectedColor === color && !backgroundImage;
+                    return (
+                      <Pressable
+                        key={color}
+                        style={[styles.colorDot, { backgroundColor: color }, isSelected && styles.colorDotSelected]}
+                        onPress={() => {
+                          setSelectedColor(color);
+                          setBackgroundImage(null);
+                        }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isSelected }}
+                        accessibilityLabel={`Select color ${color}`}
+                      >
+                        {isSelected && <Ionicons name="checkmark" size={18} color="#1F2742" />}
+                      </Pressable>
+                    );
+                  })}
+
+                  <Pressable
+                    style={[
+                      styles.colorDot,
+                      { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#ccc' },
+                      backgroundImage && styles.colorDotSelected,
+                    ]}
+                    onPress={handlePickImage}
+                    accessibilityRole="button"
+                    accessibilityLabel="Pick a background image"
+                  >
+                    {backgroundImage ? (
+                      <Image source={{ uri: backgroundImage }} style={{ width: 38, height: 38, borderRadius: 19 }} />
+                    ) : (
+                      <Ionicons name="add" size={24} color="#1F2742" />
+                    )}
+                  </Pressable>
+                </ScrollView>
               </View>
               <View style={styles.listContainer}>
                 <SheetRow
@@ -2201,9 +2254,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   paletteContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: 28,
   },
   colorDot: {
