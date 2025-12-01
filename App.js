@@ -121,7 +121,6 @@ const CalendarDayCell = ({ date, isCurrentMonth, status, onPress }) => {
   }
 
   const isSuccess = status === 'success';
-  const isToday = isSameDay(date, new Date());
 
   return (
     <Pressable
@@ -134,12 +133,6 @@ const CalendarDayCell = ({ date, isCurrentMonth, status, onPress }) => {
       {isSuccess ? (
         <View style={styles.calendarSuccessCircle}>
           <Ionicons name="checkmark" size={20} color="white" />
-        </View>
-      ) : isToday ? (
-        <View style={[styles.todayCircle, { width: 36, height: 36, borderRadius: 18 }]}>
-          <Text style={[styles.todayText, { fontSize: 16 }]}>
-            {format(date, 'd')}
-          </Text>
         </View>
       ) : (
         <Text style={styles.calendarDayText}>{format(date, 'd')}</Text>
@@ -498,7 +491,7 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
   }
 };
 
-// --- COMPONENTE ATUALIZADO: RELATÓRIO DO DIA ---
+// --- COMPONENTE ATUALIZADO: RELATÓRIO DO DIA COM GIF ---
 function DayReportModal({ visible, date, tasks, onClose }) {
   const { height } = useWindowDimensions();
 
@@ -506,11 +499,14 @@ function DayReportModal({ visible, date, tasks, onClose }) {
   const progressAnim = useRef(new Animated.Value(0)).current;
   const [displayRate, setDisplayRate] = useState(0);
 
+  // 2. Lógica para pegar o GIF do mês correto
+  // Se 'date' for nulo, não quebra o app
+  const imageSource = date ? MONTH_IMAGES[date.getMonth() % MONTH_IMAGES.length] : null;
+
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter((t) => t.completed).length;
   const targetSuccessRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-  // Efeito para rodar a animação toda vez que abrir
   useEffect(() => {
     if (visible) {
       progressAnim.setValue(0);
@@ -553,15 +549,22 @@ function DayReportModal({ visible, date, tasks, onClose }) {
         <Pressable style={styles.reportBackdrop} onPress={onClose} />
 
         <View style={[styles.reportSheet, { maxHeight: height * 0.9 }]}>
-          <View style={styles.reportHeaderImage}>
+          <ImageBackground
+            source={imageSource}
+            style={styles.reportHeaderImage}
+            imageStyle={{ resizeMode: 'cover' }}
+          >
+            <View style={styles.headerOverlay} />
+
             <View style={styles.reportDateContainer}>
               <Text style={styles.reportDateBig}>{format(date, 'd MMM')}</Text>
               <Text style={styles.reportYear}>{format(date, 'yyyy')}</Text>
             </View>
+
             <Pressable onPress={onClose} style={styles.reportCloseButton}>
               <Ionicons name="close-circle" size={32} color="rgba(255,255,255,0.8)" />
             </Pressable>
-          </View>
+          </ImageBackground>
 
           <ScrollView contentContainerStyle={styles.reportScrollContent}>
             <Text style={styles.reportSummaryText}>{getSummaryText()}</Text>
@@ -1599,6 +1602,20 @@ function ScheduleApp() {
                 {weekDays.map((day) => {
                   const isSelected = day.key === selectedDateKey;
                   const isToday = day.key === todayKey;
+                  const dayContainerStyles = [styles.dayNumber];
+                  const dayTextStyles = [styles.dayNumberText];
+                  if (isSelected) {
+                    dayContainerStyles.push(styles.dayNumberSelected);
+                    dayTextStyles.push(styles.dayNumberTextSelected);
+                  }
+                  if (day.allCompleted) {
+                    dayContainerStyles.push(styles.dayNumberCompleted);
+                    dayTextStyles.push(styles.dayNumberTextCompleted);
+                  }
+                  const indicatorStyles = [styles.todayIndicator];
+                  if (day.allCompleted) {
+                    indicatorStyles.push(styles.todayIndicatorOnCompleted);
+                  }
                   return (
                     <Pressable
                       key={day.key}
@@ -1611,24 +1628,9 @@ function ScheduleApp() {
                       <Text style={[styles.dayLabel, isSelected && styles.dayLabelSelected]}>
                         {day.label}
                       </Text>
-                      <View
-                        style={[
-                          styles.dayNumber,
-                          isSelected && styles.dayNumberSelected,
-                          day.allCompleted && styles.dayNumberCompleted,
-                          isToday && styles.todayCircle,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.dayNumberText,
-                            isSelected && styles.dayNumberTextSelected,
-                            day.allCompleted && styles.dayNumberTextCompleted,
-                            isToday && styles.todayText,
-                          ]}
-                        >
-                          {day.dayNumber}
-                        </Text>
+                      <View style={dayContainerStyles}>
+                        <Text style={dayTextStyles}>{day.dayNumber}</Text>
+                        {isToday && <View style={indicatorStyles} />}
                       </View>
                     </Pressable>
                   );
@@ -2496,21 +2498,6 @@ const styles = StyleSheet.create({
   tagPillTextSelected: {
     color: '#ffffff',
   },
-  // --- ESTILOS DO DIA "HOJE" (Círculo Roxo) ---
-  todayCircle: {
-    backgroundColor: '#3c2ba7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#3c2ba7',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 6,
-  },
-  todayText: {
-    color: '#ffffff',
-    fontWeight: '800',
-  },
   dayItem: {
     flex: 1,
     alignItems: 'center',
@@ -3053,6 +3040,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  headerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 0,
   },
   // --- ESTILOS DO RELATÓRIO ---
   reportOverlay: {
