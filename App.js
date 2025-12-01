@@ -6,8 +6,6 @@ import {
   Dimensions,
   Platform,
   Image,
-  Modal,
-  PanResponder,
   Pressable,
   ScrollView,
   StatusBar,
@@ -44,6 +42,9 @@ import {
   saveUserSettings,
 } from './storage';
 import AddHabitSheet from './components/AddHabitSheet';
+import DayReportModal from './components/DayReportModal';
+import TaskDetailModal from './components/TaskDetailModal';
+import SwipeableTaskCard from './components/SwipeableTaskCard';
 
 // --- IMAGENS ANIMADAS PARA OS MESES ---
 const MONTH_IMAGES = [
@@ -74,7 +75,6 @@ const StickyMonthHeader = ({ date }) => {
       style={styles.stickyHeader}
       imageStyle={{ resizeMode: 'cover' }}
     >
-      <View style={styles.headerOverlay} />
       <Text style={styles.stickyHeaderText}>
         {format(date, 'MMMM', { locale: ptBR })}
       </Text>
@@ -142,7 +142,7 @@ const CalendarDayCell = ({ date, isCurrentMonth, status, onPress }) => {
 };
 
 // --- ITEM DO MÊS ATUALIZADO ---
-const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
+const CalendarMonthItem = React.memo(({ item, getDayStatus, onDayPress }) => {
   const monthStart = startOfMonth(item.date);
   const monthEnd = endOfMonth(item.date);
   const imageSource = MONTH_IMAGES[item.date.getMonth() % MONTH_IMAGES.length];
@@ -159,7 +159,6 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
         style={styles.calendarMonthHeader}
         imageStyle={{ resizeMode: 'cover' }}
       >
-        <View style={styles.headerOverlay} />
         <Text style={styles.calendarMonthTitle}>{format(item.date, 'MMMM yyyy', { locale: ptBR })}</Text>
       </ImageBackground>
 
@@ -176,7 +175,7 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
       </View>
     </View>
   );
-};
+});
 
 const LEFT_TABS = [
   {
@@ -491,180 +490,6 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
   }
 };
 
-// --- COMPONENTE ATUALIZADO: RELATÓRIO DO DIA COM GIF ---
-function DayReportModal({ visible, date, tasks, onClose }) {
-  const { height } = useWindowDimensions();
-
-  // 1. Configuração da Animação
-  const progressAnim = useRef(new Animated.Value(0)).current;
-  const [displayRate, setDisplayRate] = useState(0);
-
-  // 2. Lógica para pegar o GIF do mês correto
-  // Se 'date' for nulo, não quebra o app
-  const imageSource = date ? MONTH_IMAGES[date.getMonth() % MONTH_IMAGES.length] : null;
-
-  const totalTasks = tasks.length;
-  const completedTasks = tasks.filter((t) => t.completed).length;
-  const targetSuccessRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-
-  useEffect(() => {
-    if (visible) {
-      progressAnim.setValue(0);
-      setDisplayRate(0);
-
-      Animated.timing(progressAnim, {
-        toValue: targetSuccessRate,
-        duration: 1000,
-        useNativeDriver: false,
-      }).start();
-
-      const listenerId = progressAnim.addListener(({ value }) => {
-        setDisplayRate(Math.round(value));
-      });
-
-      return () => {
-        progressAnim.removeListener(listenerId);
-      };
-    }
-  }, [visible, targetSuccessRate, progressAnim]);
-
-  if (!visible || !date) return null;
-
-  const getSummaryText = () => {
-    if (totalTasks === 0) return 'No habits scheduled for this day.';
-    if (targetSuccessRate === 100) return 'Incredible! You crushed all your habits!';
-    if (targetSuccessRate === 0)
-      return `You had ${totalTasks} habit(s) and completed none. Let's see what they were 👀`;
-    return `You completed ${completedTasks} out of ${totalTasks} habit(s). Keep going!`;
-  };
-
-  const widthInterpolated = progressAnim.interpolate({
-    inputRange: [0, 100],
-    outputRange: ['0%', '100%'],
-  });
-
-  return (
-    <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
-      <View style={styles.reportOverlay}>
-        <Pressable style={styles.reportBackdrop} onPress={onClose} />
-
-        <View style={[styles.reportSheet, { maxHeight: height * 0.9 }]}>
-          <ImageBackground
-            source={imageSource}
-            style={styles.reportHeaderImage}
-            imageStyle={{ resizeMode: 'cover' }}
-          >
-            <View style={styles.headerOverlay} />
-
-            <View style={styles.reportDateContainer}>
-              <Text style={styles.reportDateBig}>{format(date, 'd MMM')}</Text>
-              <Text style={styles.reportYear}>{format(date, 'yyyy')}</Text>
-            </View>
-
-            <Pressable onPress={onClose} style={styles.reportCloseButton}>
-              <Ionicons name="close-circle" size={32} color="rgba(255,255,255,0.8)" />
-            </Pressable>
-          </ImageBackground>
-
-          <ScrollView contentContainerStyle={styles.reportScrollContent}>
-            <Text style={styles.reportSummaryText}>{getSummaryText()}</Text>
-
-            <Text style={styles.reportSectionTitle}>Daily stats</Text>
-
-            <View style={styles.statsCard}>
-              <View style={styles.gaugeContainer}>
-                <View style={styles.gaugeBackground}>
-                  <Animated.View style={[styles.gaugeFill, { width: widthInterpolated }]} />
-                </View>
-                <Text style={styles.gaugePercentage}>{displayRate}%</Text>
-                <Text style={styles.gaugeLabel}>Success rate</Text>
-              </View>
-
-              <View style={styles.statsRow}>
-                <View style={styles.statBox}>
-                  <Text style={styles.statLabel}>Committed</Text>
-                  <View style={styles.statValueRow}>
-                    <Text style={styles.statNumber}>{totalTasks}</Text>
-                    <Text style={{ fontSize: 20 }}>✍️</Text>
-                  </View>
-                </View>
-                <View style={styles.statBox}>
-                  <Text style={styles.statLabel}>Completed</Text>
-                  <View style={styles.statValueRow}>
-                    <Text style={styles.statNumber}>{completedTasks}</Text>
-                    <Ionicons name="checkbox" size={24} color="#3dd598" />
-                  </View>
-                </View>
-              </View>
-            </View>
-
-            {totalTasks > 0 && (
-              <>
-                <Text style={styles.reportSectionTitle}>Habits</Text>
-                <View style={styles.reportTaskList}>
-                  {tasks.map((task, index) => {
-                    const baseColor = task.color || '#3c2ba7';
-                    const lightBg = lightenColor(baseColor, 0.85);
-
-                    return (
-                      <View
-                        key={index}
-                        style={[
-                          styles.reportTaskRow,
-                          { backgroundColor: lightBg, borderColor: lightenColor(baseColor, 0.6), borderWidth: 1 },
-                        ]}
-                      >
-                        <View
-                          style={[
-                            styles.reportTaskIcon,
-                            { backgroundColor: '#fff' },
-                          ]}
-                        >
-                          <Text style={{ fontSize: 18 }}>{task.emoji || '📝'}</Text>
-                        </View>
-
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={[
-                              styles.reportTaskTitle,
-                              task.completed && { textDecorationLine: 'line-through', color: '#888' },
-                            ]}
-                          >
-                            {task.title}
-                          </Text>
-
-                          {task.totalSubtasks > 0 && (
-                            <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
-                              {task.completedSubtasks}/{task.totalSubtasks} subtasks
-                            </Text>
-                          )}
-                        </View>
-
-                        {task.completed ? (
-                          <Ionicons name="checkmark-circle" size={24} color={baseColor} />
-                        ) : (
-                          <View
-                            style={{
-                              width: 20,
-                              height: 20,
-                              borderRadius: 10,
-                              borderWidth: 2,
-                              borderColor: '#ddd',
-                            }}
-                          />
-                        )}
-                      </View>
-                    );
-                  })}
-                </View>
-              </>
-            )}
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
-  );
-}
 function ScheduleApp() {
   const [userSettings, setUserSettings] = useState(DEFAULT_USER_SETTINGS);
   const [activeTab, setActiveTab] = useState(DEFAULT_USER_SETTINGS.activeTab);
@@ -1747,6 +1572,10 @@ function ScheduleApp() {
                           };
                           openHabitSheet('edit', editable);
                         }}
+                        styles={styles}
+                        formatTaskTime={formatTaskTime}
+                        triggerSelection={triggerSelection}
+                        useNativeDriver={USE_NATIVE_DRIVER}
                       />
                     )}
                     keyExtractor={(task) => task.id}
@@ -2083,12 +1912,18 @@ function ScheduleApp() {
           openHabitSheet('edit', editable);
           closeTaskDetail();
         }}
+        styles={styles}
+        formatTaskTime={formatTaskTime}
+        getSubtaskCompletionStatus={getSubtaskCompletionStatus}
+        lightenColor={lightenColor}
       />
       <DayReportModal
         visible={!!reportDate}
         date={reportDate}
         tasks={reportTasks}
         onClose={() => setReportDate(null)}
+        styles={styles}
+        monthImages={MONTH_IMAGES}
       />
       <AddHabitSheet
         visible={isHabitSheetOpen}
@@ -2107,287 +1942,6 @@ function ScheduleApp() {
         initialHabit={habitSheetInitialTask}
       />
     </View>
-  );
-}
-
-function SwipeableTaskCard({
-  task,
-  backgroundColor,
-  borderColor,
-  totalSubtasks,
-  completedSubtasks,
-  onPress,
-  onToggleCompletion,
-  onCopy,
-  onDelete,
-  onEdit,
-}) {
-  const translateX = useRef(new Animated.Value(0)).current;
-  const actionWidth = 168;
-  const [isOpen, setIsOpen] = useState(false);
-  const currentOffsetRef = useRef(0);
-
-  useEffect(() => {
-    const id = translateX.addListener(({ value }) => {
-      currentOffsetRef.current = value;
-    });
-    return () => {
-      translateX.removeListener(id);
-    };
-  }, [translateX]);
-
-  const closeActions = useCallback(() => {
-    Animated.spring(translateX, {
-      toValue: 0,
-      damping: 20,
-      stiffness: 220,
-      mass: 0.9,
-      useNativeDriver: USE_NATIVE_DRIVER,
-    }).start(() => setIsOpen(false));
-  }, [translateX]);
-
-  const handlePanRelease = useCallback(() => {
-    const clampedValue = Math.min(0, Math.max(-actionWidth, currentOffsetRef.current));
-    const shouldOpen = clampedValue <= -actionWidth * 0.5;
-    const targetValue = shouldOpen ? -actionWidth : 0;
-
-    setIsOpen(shouldOpen);
-    currentOffsetRef.current = targetValue;
-
-    Animated.spring(translateX, {
-      toValue: targetValue,
-      damping: 20,
-      stiffness: 220,
-      mass: 0.9,
-      useNativeDriver: USE_NATIVE_DRIVER,
-    }).start();
-  }, [actionWidth, translateX]);
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gesture) =>
-          Math.abs(gesture.dx) > 6 && Math.abs(gesture.dy) < 10,
-        onPanResponderMove: (_, gesture) => {
-          if (gesture.dx < 0) {
-            translateX.setValue(Math.max(-actionWidth, gesture.dx));
-          } else if (isOpen) {
-            translateX.setValue(Math.min(0, -actionWidth + gesture.dx));
-          }
-        },
-        onPanResponderRelease: () => {
-          handlePanRelease();
-        },
-        onPanResponderTerminate: () => {
-          handlePanRelease();
-        },
-      }),
-    [actionWidth, handlePanRelease, isOpen, translateX]
-  );
-
-  const handlePress = useCallback(() => {
-    if (isOpen) {
-      closeActions();
-      return;
-    }
-    onPress?.();
-  }, [closeActions, isOpen, onPress]);
-
-  const handleAction = useCallback(
-    (callback) => {
-      closeActions();
-      if (callback) {
-        triggerSelection();
-        callback();
-      }
-    },
-    [closeActions]
-  );
-
-  const totalLabel = useMemo(() => {
-    if (!totalSubtasks) {
-      return null;
-    }
-    return `${completedSubtasks}/${totalSubtasks}`;
-  }, [completedSubtasks, totalSubtasks]);
-
-  return (
-    <View style={styles.swipeableWrapper}>
-      <View style={styles.swipeableActions}>
-        <TouchableOpacity
-          style={[styles.swipeActionButton, styles.swipeActionCopy]}
-          onPress={() => handleAction(onCopy)}
-          accessibilityRole="button"
-          accessibilityLabel="Copy task"
-        >
-          <Ionicons name="copy-outline" size={18} color="#3c2ba7" />
-          <Text style={styles.swipeActionText}>Copy</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.swipeActionButton, styles.swipeActionDelete]}
-          onPress={() => handleAction(onDelete)}
-          accessibilityRole="button"
-          accessibilityLabel="Delete task"
-        >
-          <Ionicons name="trash-outline" size={18} color="#fff" />
-          <Text style={[styles.swipeActionText, styles.swipeActionTextDelete]}>Delete</Text>
-        </TouchableOpacity>
-      </View>
-      <Animated.View
-        {...panResponder.panHandlers}
-        style={[
-          styles.taskCard,
-          {
-            backgroundColor,
-            borderColor,
-            transform: [{ translateX }],
-          },
-        ]}
-      >
-        <Pressable style={styles.taskCardContent} onPress={handlePress}>
-          <View style={styles.taskInfo}>
-            <Text style={styles.taskEmoji}>{task.emoji}</Text>
-            <View style={styles.taskDetails}>
-              <Text
-                style={[styles.taskTitle, task.completed && styles.taskTitleCompleted]}
-                numberOfLines={1}
-              >
-                {task.title}
-              </Text>
-              <Text style={styles.taskTime}>{formatTaskTime(task.time)}</Text>
-              {totalLabel && (
-                <View style={styles.taskSubtaskSummary}>
-                  <Text style={styles.taskSubtaskSummaryText}>{totalLabel}</Text>
-                </View>
-              )}
-            </View>
-          </View>
-        </Pressable>
-        <Pressable
-          onPress={() => handleAction(onToggleCompletion)}
-          style={[styles.taskToggle, task.completed && styles.taskToggleCompleted]}
-          accessibilityRole="checkbox"
-          accessibilityLabel={task.completed ? 'Mark task as incomplete' : 'Mark task as complete'}
-          accessibilityState={{ checked: task.completed }}
-        >
-          {task.completed && <Ionicons name="checkmark" size={18} color="#ffffff" />}
-        </Pressable>
-      </Animated.View>
-    </View>
-  );
-}
-
-function TaskDetailModal({
-  visible,
-  task,
-  dateKey,
-  onClose,
-  onToggleSubtask,
-  onToggleCompletion,
-  onEdit,
-}) {
-  if (!visible || !task) {
-    return null;
-  }
-
-  const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
-  const completedSubtasks = Array.isArray(task.subtasks)
-    ? task.subtasks.filter((item) => getSubtaskCompletionStatus(item, dateKey)).length
-    : 0;
-  const cardBackground = lightenColor(task.color, 0.85);
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View style={styles.detailOverlay}>
-        <Pressable style={styles.detailBackdrop} onPress={onClose} accessibilityRole="button" />
-        <View style={styles.detailCardContainer}>
-          <View style={[styles.detailCard, { backgroundColor: cardBackground, borderColor: task.color }]}>
-            <View style={styles.detailHeaderRow}>
-              <View style={styles.detailHeaderInfo}>
-                <Text style={styles.detailEmoji}>{task.emoji}</Text>
-                <View style={styles.detailTitleContainer}>
-                  <Text style={styles.detailTitle}>{task.title}</Text>
-                  <Text style={styles.detailTime}>{formatTaskTime(task.time)}</Text>
-                  {totalSubtasks > 0 && (
-                    <Text style={styles.detailSubtaskSummaryLabel}>
-                      {completedSubtasks}/{totalSubtasks} subtasks completed
-                    </Text>
-                  )}
-                </View>
-              </View>
-              <Pressable
-                onPress={() => {
-                  onToggleCompletion?.(task.id);
-                }}
-                style={[styles.detailToggle, task.completed && styles.detailToggleCompleted]}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: task.completed }}
-                accessibilityLabel={
-                  task.completed ? 'Mark task as incomplete' : 'Mark task as complete'
-                }
-              >
-                {task.completed && <Ionicons name="checkmark" size={18} color="#fff" />}
-              </Pressable>
-            </View>
-            <ScrollView style={styles.detailSubtasksContainer}>
-              {totalSubtasks === 0 ? (
-                <Text style={styles.detailEmptySubtasks}>No subtasks added yet.</Text>
-              ) : (
-                task.subtasks.map((subtask) => (
-                  <Pressable
-                    key={subtask.id}
-                    style={styles.detailSubtaskRow}
-                    onPress={() => onToggleSubtask?.(task.id, subtask.id)}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: getSubtaskCompletionStatus(subtask, dateKey) }}
-                    accessibilityLabel={
-                      getSubtaskCompletionStatus(subtask, dateKey)
-                        ? `Mark ${subtask.title} as incomplete`
-                        : `Mark ${subtask.title} as complete`
-                    }
-                  >
-                    <View
-                      style={[
-                        styles.detailSubtaskIndicator,
-                        getSubtaskCompletionStatus(subtask, dateKey) &&
-                          styles.detailSubtaskIndicatorCompleted,
-                      ]}
-                    >
-                      {getSubtaskCompletionStatus(subtask, dateKey) && (
-                        <Ionicons name="checkmark" size={16} color="#ffffff" />
-                      )}
-                    </View>
-                    <Text
-                      style={[
-                        styles.detailSubtaskText,
-                        getSubtaskCompletionStatus(subtask, dateKey) &&
-                          styles.detailSubtaskTextCompleted,
-                      ]}
-                    >
-                      {subtask.title}
-                    </Text>
-                  </Pressable>
-                ))
-              )}
-            </ScrollView>
-            <Pressable
-              style={styles.detailEditLink}
-              onPress={() => onEdit?.(task.id)}
-              accessibilityRole="button"
-              accessibilityLabel="Edit task"
-            >
-              <Ionicons name="create-outline" size={18} color="#3c2ba7" />
-              <Text style={styles.detailEditButtonText}>Edit Task</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
   );
 }
 
@@ -2841,6 +2395,9 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '800',
     textTransform: 'capitalize',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   calendarDaysGrid: {
     flexDirection: 'row',
@@ -3040,6 +2597,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   headerOverlay: {
     ...StyleSheet.absoluteFillObject,
