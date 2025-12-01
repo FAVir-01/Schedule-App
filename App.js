@@ -120,6 +120,7 @@ const CalendarDayCell = ({ date, isCurrentMonth, status, onPress }) => {
   }
 
   const isSuccess = status === 'success';
+  const isToday = isSameDay(date, new Date());
 
   return (
     <Pressable
@@ -132,6 +133,12 @@ const CalendarDayCell = ({ date, isCurrentMonth, status, onPress }) => {
       {isSuccess ? (
         <View style={styles.calendarSuccessCircle}>
           <Ionicons name="checkmark" size={20} color="white" />
+        </View>
+      ) : isToday ? (
+        <View style={[styles.todayCircle, { width: 36, height: 36, borderRadius: 18 }]}>
+          <Text style={[styles.todayText, { fontSize: 16 }]}>
+            {format(date, 'd')}
+          </Text>
         </View>
       ) : (
         <Text style={styles.calendarDayText}>{format(date, 'd')}</Text>
@@ -1600,20 +1607,6 @@ function ScheduleApp() {
                 {weekDays.map((day) => {
                   const isSelected = day.key === selectedDateKey;
                   const isToday = day.key === todayKey;
-                  const dayContainerStyles = [styles.dayNumber];
-                  const dayTextStyles = [styles.dayNumberText];
-                  if (isSelected) {
-                    dayContainerStyles.push(styles.dayNumberSelected);
-                    dayTextStyles.push(styles.dayNumberTextSelected);
-                  }
-                  if (day.allCompleted) {
-                    dayContainerStyles.push(styles.dayNumberCompleted);
-                    dayTextStyles.push(styles.dayNumberTextCompleted);
-                  }
-                  const indicatorStyles = [styles.todayIndicator];
-                  if (day.allCompleted) {
-                    indicatorStyles.push(styles.todayIndicatorOnCompleted);
-                  }
                   return (
                     <Pressable
                       key={day.key}
@@ -1626,9 +1619,24 @@ function ScheduleApp() {
                       <Text style={[styles.dayLabel, isSelected && styles.dayLabelSelected]}>
                         {day.label}
                       </Text>
-                      <View style={dayContainerStyles}>
-                        <Text style={dayTextStyles}>{day.dayNumber}</Text>
-                        {isToday && <View style={indicatorStyles} />}
+                      <View
+                        style={[
+                          styles.dayNumber,
+                          isSelected && styles.dayNumberSelected,
+                          day.allCompleted && styles.dayNumberCompleted,
+                          isToday && styles.todayCircle,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.dayNumberText,
+                            isSelected && styles.dayNumberTextSelected,
+                            day.allCompleted && styles.dayNumberTextCompleted,
+                            isToday && styles.todayText,
+                          ]}
+                        >
+                          {day.dayNumber}
+                        </Text>
                       </View>
                     </Pressable>
                   );
@@ -2496,6 +2504,21 @@ const styles = StyleSheet.create({
   tagPillTextSelected: {
     color: '#ffffff',
   },
+  // --- ESTILOS DO DIA "HOJE" (Círculo Roxo) ---
+  todayCircle: {
+    backgroundColor: '#3c2ba7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#3c2ba7',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 6,
+  },
+  todayText: {
+    color: '#ffffff',
+    fontWeight: '800',
+  },
   dayItem: {
     flex: 1,
     alignItems: 'center',
@@ -3044,11 +3067,6 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 3,
-  },
-  headerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: 0,
   },
   headerOverlay: {
     ...StyleSheet.absoluteFillObject,
