@@ -2841,6 +2841,9 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '800',
     textTransform: 'capitalize',
+    textShadowColor: 'rgba(0, 0, 0, 0.9)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 8,
   },
   calendarDaysGrid: {
     flexDirection: 'row',
@@ -3040,10 +3043,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1,
+    textShadowColor: 'rgba(0, 0, 0, 0.9)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 4,
   },
   headerOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.15)',
     borderRadius: 0,
   },
   // --- ESTILOS DO RELATÓRIO ---
