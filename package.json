@@ -11,6 +11,8 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "date-fns": "^4.1.0"
+    "date-fns": "^4.1.0",
+    "expo-file-system": "^17.0.1",
+    "expo-image-picker": "^15.0.2"
   }
 }
