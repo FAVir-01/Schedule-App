@@ -3050,6 +3050,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.4)',
     borderRadius: 0,
   },
+  headerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 0,
+  },
   // --- ESTILOS DO RELATÓRIO ---
   reportOverlay: {
     flex: 1,
