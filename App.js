@@ -74,6 +74,7 @@ const StickyMonthHeader = ({ date }) => {
       style={styles.stickyHeader}
       imageStyle={{ resizeMode: 'cover' }}
     >
+      <View style={styles.headerOverlay} />
       <Text style={styles.stickyHeaderText}>
         {format(date, 'MMMM', { locale: ptBR })}
       </Text>
@@ -165,6 +166,7 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
         style={styles.calendarMonthHeader}
         imageStyle={{ resizeMode: 'cover' }}
       >
+        <View style={styles.headerOverlay} />
         <Text style={styles.calendarMonthTitle}>{format(item.date, 'MMMM yyyy', { locale: ptBR })}</Text>
       </ImageBackground>
 
@@ -2862,9 +2864,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '800',
     textTransform: 'capitalize',
-    textShadowColor: 'rgba(0, 0, 0, 0.9)',
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 4,
   },
   calendarDaysGrid: {
     flexDirection: 'row',
@@ -3064,14 +3063,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1,
-    textShadowColor: 'rgba(0, 0, 0, 0.75)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 3,
-  },
-  headerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: 0,
   },
   // --- ESTILOS DO RELATÓRIO ---
   reportOverlay: {
