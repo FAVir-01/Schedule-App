@@ -114,8 +114,8 @@ const triggerSelection = () => {
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CALENDAR_DAY_SIZE = Math.floor(SCREEN_WIDTH / 7);
 
-// --- CÉLULA DO DIA ATUALIZADA (COM PRESSABLE) ---
-const CalendarDayCell = ({ date, isCurrentMonth, status, onPress }) => {
+// --- CÉLULA DO DIA ATUALIZADA (COM DESTAQUE PARA HOJE) ---
+const CalendarDayCell = ({ date, isCurrentMonth, status, onPress, isToday }) => {
   if (!isCurrentMonth) {
     return <View style={{ width: CALENDAR_DAY_SIZE, height: CALENDAR_DAY_SIZE }} />;
   }
@@ -134,6 +134,10 @@ const CalendarDayCell = ({ date, isCurrentMonth, status, onPress }) => {
         <View style={styles.calendarSuccessCircle}>
           <Ionicons name="checkmark" size={20} color="white" />
         </View>
+      ) : isToday ? (
+        <View style={styles.calendarTodayCircle}>
+          <Text style={styles.calendarTodayText}>{format(date, 'd')}</Text>
+        </View>
       ) : (
         <Text style={styles.calendarDayText}>{format(date, 'd')}</Text>
       )}
@@ -151,6 +155,16 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
     start: startOfWeek(monthStart),
     end: endOfWeek(monthEnd),
   });
+
+  // Função simples para checar se é hoje
+  const checkIsToday = (date) => {
+    const now = new Date();
+    return (
+      date.getDate() === now.getDate() &&
+      date.getMonth() === now.getMonth() &&
+      date.getFullYear() === now.getFullYear()
+    );
+  };
 
   return (
     <View style={styles.calendarMonthContainer}>
@@ -171,6 +185,7 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
             isCurrentMonth={day.getMonth() === item.date.getMonth()}
             status={getDayStatus ? getDayStatus(day) : 'pending'}
             onPress={onDayPress}
+            isToday={checkIsToday(day)}
           />
         ))}
       </View>
@@ -2868,6 +2883,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#a2e76f',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  // Adicione estes estilos para o dia atual:
+  calendarTodayCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#3c2ba7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  calendarTodayText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
   },
   bottomBarContainer: {
     width: '100%',
