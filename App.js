@@ -20,6 +20,7 @@ import {
   ImageBackground,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Circle } from 'react-native-svg';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -114,8 +115,8 @@ const triggerSelection = () => {
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CALENDAR_DAY_SIZE = Math.floor(SCREEN_WIDTH / 7);
 
-// --- CÉLULA DO DIA ATUALIZADA (COM PRESSABLE) ---
-const CalendarDayCell = ({ date, isCurrentMonth, status, onPress }) => {
+// --- CÉLULA DO DIA ATUALIZADA (COM DESTAQUE PARA HOJE) ---
+const CalendarDayCell = ({ date, isCurrentMonth, status, onPress, isToday }) => {
   if (!isCurrentMonth) {
     return <View style={{ width: CALENDAR_DAY_SIZE, height: CALENDAR_DAY_SIZE }} />;
   }
@@ -134,6 +135,10 @@ const CalendarDayCell = ({ date, isCurrentMonth, status, onPress }) => {
         <View style={styles.calendarSuccessCircle}>
           <Ionicons name="checkmark" size={20} color="white" />
         </View>
+      ) : isToday ? (
+        <View style={styles.calendarTodayCircle}>
+          <Text style={styles.calendarTodayText}>{format(date, 'd')}</Text>
+        </View>
       ) : (
         <Text style={styles.calendarDayText}>{format(date, 'd')}</Text>
       )}
@@ -151,6 +156,16 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
     start: startOfWeek(monthStart),
     end: endOfWeek(monthEnd),
   });
+
+  // Função simples para checar se é hoje
+  const checkIsToday = (date) => {
+    const now = new Date();
+    return (
+      date.getDate() === now.getDate() &&
+      date.getMonth() === now.getMonth() &&
+      date.getFullYear() === now.getFullYear()
+    );
+  };
 
   return (
     <View style={styles.calendarMonthContainer}>
@@ -171,6 +186,7 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
             isCurrentMonth={day.getMonth() === item.date.getMonth()}
             status={getDayStatus ? getDayStatus(day) : 'pending'}
             onPress={onDayPress}
+            isToday={checkIsToday(day)}
           />
         ))}
       </View>
@@ -528,6 +544,14 @@ function DayReportModal({ visible, date, tasks, onClose }) {
     }
   }, [visible, targetSuccessRate, progressAnim]);
 
+  // Configurações do Círculo
+  const radius = 60; // Raio do círculo
+  const strokeWidth = 14; // Espessura da barra
+  const circleSize = radius * 2 + strokeWidth;
+  const circumference = 2 * Math.PI * radius;
+  // Calcula o offset do traço baseado na porcentagem (inverso porque strokeDashoffset esconde o traço)
+  const strokeDashoffset = circumference - (displayRate / 100) * circumference;
+
   if (!visible || !date) return null;
 
   const getSummaryText = () => {
@@ -537,11 +561,6 @@ function DayReportModal({ visible, date, tasks, onClose }) {
       return `You had ${totalTasks} habit(s) and completed none. Let's see what they were 👀`;
     return `You completed ${completedTasks} out of ${totalTasks} habit(s). Keep going!`;
   };
-
-  const widthInterpolated = progressAnim.interpolate({
-    inputRange: [0, 100],
-    outputRange: ['0%', '100%'],
-  });
 
   return (
     <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
@@ -573,11 +592,49 @@ function DayReportModal({ visible, date, tasks, onClose }) {
 
             <View style={styles.statsCard}>
               <View style={styles.gaugeContainer}>
-                <View style={styles.gaugeBackground}>
-                  <Animated.View style={[styles.gaugeFill, { width: widthInterpolated }]} />
+                <View
+                  style={{
+                    width: circleSize,
+                    height: circleSize,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Svg width={circleSize} height={circleSize} viewBox={`0 0 ${circleSize} ${circleSize}`}>
+                    <Circle
+                      cx={circleSize / 2}
+                      cy={circleSize / 2}
+                      r={radius}
+                      stroke="#f0efff"
+                      strokeWidth={strokeWidth}
+                      fill="transparent"
+                    />
+                    <Circle
+                      cx={circleSize / 2}
+                      cy={circleSize / 2}
+                      r={radius}
+                      stroke="#3c2ba7"
+                      strokeWidth={strokeWidth}
+                      fill="transparent"
+                      strokeDasharray={circumference}
+                      strokeDashoffset={strokeDashoffset}
+                      strokeLinecap="round"
+                      rotation="-90"
+                      origin={`${circleSize / 2}, ${circleSize / 2}`}
+                    />
+                  </Svg>
+
+                  <View
+                    style={{
+                      position: 'absolute',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={styles.gaugePercentage}>{displayRate}</Text>
+                    <Text style={styles.gaugeLabel}>Success rate</Text>
+                  </View>
                 </View>
-                <Text style={styles.gaugePercentage}>{displayRate}%</Text>
-                <Text style={styles.gaugeLabel}>Success rate</Text>
               </View>
 
               <View style={styles.statsRow}>
@@ -2841,6 +2898,9 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '800',
     textTransform: 'capitalize',
+    textShadowColor: 'rgba(0, 0, 0, 0.9)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 8,
   },
   calendarDaysGrid: {
     flexDirection: 'row',
@@ -2865,6 +2925,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#a2e76f',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  // Adicione estes estilos para o dia atual:
+  calendarTodayCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#3c2ba7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  calendarTodayText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
   },
   bottomBarContainer: {
     width: '100%',
@@ -3040,10 +3114,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1,
+    textShadowColor: 'rgba(0, 0, 0, 0.9)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 4,
   },
   headerOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.15)',
     borderRadius: 0,
   },
   // --- ESTILOS DO RELATÓRIO ---
@@ -3118,29 +3195,20 @@ const styles = StyleSheet.create({
   gaugeContainer: {
     alignItems: 'center',
     marginBottom: 20,
+    justifyContent: 'center',
+    minHeight: 150,
   },
   gaugePercentage: {
-    fontSize: 48,
+    fontSize: 42,
     fontWeight: '800',
     color: '#1a1a2e',
+    textAlign: 'center',
   },
   gaugeLabel: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#6f7a86',
-    marginTop: -4,
-  },
-  gaugeBackground: {
-    width: '100%',
-    height: 12,
-    backgroundColor: '#f0efff',
-    borderRadius: 6,
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-  gaugeFill: {
-    height: '100%',
-    backgroundColor: '#3c2ba7',
-    borderRadius: 6,
+    marginTop: 0,
+    textAlign: 'center',
   },
   statsRow: {
     flexDirection: 'row',
