@@ -498,7 +498,7 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
   }
 };
 
-// --- COMPONENTE ATUALIZADO: RELATÓRIO DO DIA COM GIF ---
+// --- COMPONENTE ATUALIZADO: RELATÓRIO DO DIA ---
 function DayReportModal({ visible, date, tasks, onClose }) {
   const { height } = useWindowDimensions();
 
@@ -506,14 +506,11 @@ function DayReportModal({ visible, date, tasks, onClose }) {
   const progressAnim = useRef(new Animated.Value(0)).current;
   const [displayRate, setDisplayRate] = useState(0);
 
-  // 2. Lógica para pegar o GIF do mês correto
-  // Se 'date' for nulo, não quebra o app
-  const imageSource = date ? MONTH_IMAGES[date.getMonth() % MONTH_IMAGES.length] : null;
-
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter((t) => t.completed).length;
   const targetSuccessRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
+  // Efeito para rodar a animação toda vez que abrir
   useEffect(() => {
     if (visible) {
       progressAnim.setValue(0);
@@ -556,22 +553,15 @@ function DayReportModal({ visible, date, tasks, onClose }) {
         <Pressable style={styles.reportBackdrop} onPress={onClose} />
 
         <View style={[styles.reportSheet, { maxHeight: height * 0.9 }]}>
-          <ImageBackground
-            source={imageSource}
-            style={styles.reportHeaderImage}
-            imageStyle={{ resizeMode: 'cover' }}
-          >
-            <View style={styles.headerOverlay} />
-
+          <View style={styles.reportHeaderImage}>
             <View style={styles.reportDateContainer}>
               <Text style={styles.reportDateBig}>{format(date, 'd MMM')}</Text>
               <Text style={styles.reportYear}>{format(date, 'yyyy')}</Text>
             </View>
-
             <Pressable onPress={onClose} style={styles.reportCloseButton}>
               <Ionicons name="close-circle" size={32} color="rgba(255,255,255,0.8)" />
             </Pressable>
-          </ImageBackground>
+          </View>
 
           <ScrollView contentContainerStyle={styles.reportScrollContent}>
             <Text style={styles.reportSummaryText}>{getSummaryText()}</Text>
