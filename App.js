@@ -17,6 +17,7 @@ import {
   TouchableOpacity,
   View,
   useWindowDimensions,
+  ImageBackground,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -44,20 +45,20 @@ import {
 } from './storage';
 import AddHabitSheet from './components/AddHabitSheet';
 
-// --- CORES PASTÉIS PARA OS MESES ---
-const MONTH_COLORS = [
-  '#FFCF70',
-  '#F7A6A1',
-  '#B39DD6',
-  '#79C3FF',
-  '#A8E6CF',
-  '#FDE2A6',
-  '#FFABAB',
-  '#85E3FF',
-  '#C3B1E1',
-  '#F6D186',
-  '#B5EAD7',
-  '#E2F0CB',
+// --- IMAGENS ANIMADAS PARA OS MESES ---
+const MONTH_IMAGES = [
+  require('./assets/months/jan.gif'),
+  require('./assets/months/feb.gif'),
+  require('./assets/months/mar.gif'),
+  require('./assets/months/apr.gif'),
+  require('./assets/months/may.gif'),
+  require('./assets/months/jun.gif'),
+  require('./assets/months/jul.gif'),
+  require('./assets/months/aug.gif'),
+  require('./assets/months/sep.gif'),
+  require('./assets/months/oct.gif'),
+  require('./assets/months/nov.gif'),
+  require('./assets/months/dec.gif'),
 ];
 
 // --- COMPONENTE DA FAIXA DO TOPO ---
@@ -65,14 +66,18 @@ const StickyMonthHeader = ({ date }) => {
   if (!date) return null;
 
   const monthIndex = date.getMonth();
-  const backgroundColor = MONTH_COLORS[monthIndex % MONTH_COLORS.length];
+  const imageSource = MONTH_IMAGES[monthIndex % MONTH_IMAGES.length];
 
   return (
-    <View style={[styles.stickyHeader, { backgroundColor }]}>
+    <ImageBackground
+      source={imageSource}
+      style={styles.stickyHeader}
+      imageStyle={{ resizeMode: 'cover' }}
+    >
       <Text style={styles.stickyHeaderText}>
         {format(date, 'MMMM', { locale: ptBR })}
       </Text>
-    </View>
+    </ImageBackground>
   );
 };
 
@@ -139,6 +144,7 @@ const CalendarDayCell = ({ date, isCurrentMonth, status, onPress }) => {
 const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
   const monthStart = startOfMonth(item.date);
   const monthEnd = endOfMonth(item.date);
+  const imageSource = MONTH_IMAGES[item.date.getMonth() % MONTH_IMAGES.length];
 
   const days = eachDayOfInterval({
     start: startOfWeek(monthStart),
@@ -147,9 +153,13 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
 
   return (
     <View style={styles.calendarMonthContainer}>
-      <View style={styles.calendarMonthHeader}>
+      <ImageBackground
+        source={imageSource}
+        style={styles.calendarMonthHeader}
+        imageStyle={{ resizeMode: 'cover' }}
+      >
         <Text style={styles.calendarMonthTitle}>{format(item.date, 'MMMM yyyy', { locale: ptBR })}</Text>
-      </View>
+      </ImageBackground>
 
       <View style={styles.calendarDaysGrid}>
         {days.map((day) => (
@@ -479,7 +489,7 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
   }
 };
 
-// --- COMPONENTE ATUALIZADO: RELATÓRIO DO DIA ---
+// --- COMPONENTE ATUALIZADO: RELATÓRIO DO DIA COM GIF ---
 function DayReportModal({ visible, date, tasks, onClose }) {
   const { height } = useWindowDimensions();
 
@@ -487,11 +497,14 @@ function DayReportModal({ visible, date, tasks, onClose }) {
   const progressAnim = useRef(new Animated.Value(0)).current;
   const [displayRate, setDisplayRate] = useState(0);
 
+  // 2. Lógica para pegar o GIF do mês correto
+  // Se 'date' for nulo, não quebra o app
+  const imageSource = date ? MONTH_IMAGES[date.getMonth() % MONTH_IMAGES.length] : null;
+
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter((t) => t.completed).length;
   const targetSuccessRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-  // Efeito para rodar a animação toda vez que abrir
   useEffect(() => {
     if (visible) {
       progressAnim.setValue(0);
@@ -534,15 +547,22 @@ function DayReportModal({ visible, date, tasks, onClose }) {
         <Pressable style={styles.reportBackdrop} onPress={onClose} />
 
         <View style={[styles.reportSheet, { maxHeight: height * 0.9 }]}>
-          <View style={styles.reportHeaderImage}>
+          <ImageBackground
+            source={imageSource}
+            style={styles.reportHeaderImage}
+            imageStyle={{ resizeMode: 'cover' }}
+          >
+            <View style={styles.headerOverlay} />
+
             <View style={styles.reportDateContainer}>
               <Text style={styles.reportDateBig}>{format(date, 'd MMM')}</Text>
               <Text style={styles.reportYear}>{format(date, 'yyyy')}</Text>
             </View>
+
             <Pressable onPress={onClose} style={styles.reportCloseButton}>
               <Ionicons name="close-circle" size={32} color="rgba(255,255,255,0.8)" />
             </Pressable>
-          </View>
+          </ImageBackground>
 
           <ScrollView contentContainerStyle={styles.reportScrollContent}>
             <Text style={styles.reportSummaryText}>{getSummaryText()}</Text>
@@ -2807,18 +2827,21 @@ const styles = StyleSheet.create({
   },
   calendarMonthHeader: {
     height: 100,
-    backgroundColor: '#000',
     justifyContent: 'flex-end',
     padding: 20,
     marginBottom: 10,
     marginHorizontal: 0,
     borderRadius: 0,
+    overflow: 'hidden',
   },
   calendarMonthTitle: {
     color: '#fff',
     fontSize: 24,
     fontWeight: '800',
     textTransform: 'capitalize',
+    textShadowColor: 'rgba(0, 0, 0, 0.9)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 4,
   },
   calendarDaysGrid: {
     flexDirection: 'row',
@@ -3001,7 +3024,7 @@ const styles = StyleSheet.create({
   },
   stickyHeader: {
     width: '100%',
-    paddingVertical: 8,
+    height: 50,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
@@ -3010,13 +3033,22 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
+    overflow: 'hidden',
   },
   stickyHeaderText: {
-    color: '#1a1a2e',
+    color: '#fff',
     fontSize: 14,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1,
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
+  },
+  headerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 0,
   },
   // --- ESTILOS DO RELATÓRIO ---
   reportOverlay: {
