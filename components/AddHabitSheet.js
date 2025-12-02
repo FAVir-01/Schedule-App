@@ -2611,47 +2611,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#7F8A9A',
   },
-  calendarWeekRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  calendarDay: {
-    flex: 1,
-    marginHorizontal: 4,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  calendarDaySelected: {
-    backgroundColor: '#1F2742',
-  },
-  calendarDayToday: {
-    borderWidth: 2,
-    borderColor: '#1F2742',
-  },
-  calendarDayDisabled: {
-    opacity: 0.3,
-  },
-  calendarDayRepeating: {
-    backgroundColor: 'rgba(31, 39, 66, 0.18)',
-  },
-  calendarDayText: {
-    fontSize: 16,
-    color: '#1F2742',
-    fontWeight: '600',
-  },
-  calendarDayTextSelected: {
-    color: '#FFFFFF',
-  },
-  calendarDayTextDisabled: {
-    color: '#1F2742',
-  },
-  calendarDayTextRepeating: {
-    color: '#1F2742',
-    fontWeight: '600',
-  },
   repeatPanel: {
     backgroundColor: '#F5F7FF',
     borderRadius: 20,
