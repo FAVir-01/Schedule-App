@@ -1,16 +1,22 @@
 {
   "name": "schedule-app",
   "version": "1.0.0",
-  "description": "Este projeto contém dois arquivos pensados para serem copiados diretamente no [Snack Expo](https://snack.expo.dev/):",
+  "description": "Schedule App SDK 54",
   "main": "App.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "date-fns": "^4.1.0"
+    "expo": "~52.0.0",
+    "react": "18.3.1",
+    "react-native": "0.76.3",
+    "date-fns": "^4.1.0",
+    "expo-file-system": "~18.0.0",
+    "expo-image-picker": "~16.0.3",
+    "expo-haptics": "~14.0.0",
+    "expo-linear-gradient": "~14.0.1",
+    "expo-screen-orientation": "~8.0.0",
+    "expo-navigation-bar": "~4.0.3",
+    "react-native-svg": "15.8.0",
+    "react-native-safe-area-context": "4.12.0",
+    "@react-native-async-storage/async-storage": "1.23.1",
+    "@expo/vector-icons": "^14.0.2"
   }
 }

@@ -4,6 +4,7 @@ const STORAGE_KEYS = {
   TASKS: '@schedule_app/tasks',
   SETTINGS: '@schedule_app/settings',
   HISTORY: '@schedule_app/history',
+  CALENDAR_THEMES: '@schedule_app/calendar_themes',
 };
 
 const parseStoredJson = (value, fallback) => {
@@ -69,6 +70,24 @@ export async function saveHistory(history) {
     await AsyncStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(history));
   } catch (error) {
     console.warn('Failed to save history', error);
+  }
+}
+
+export async function loadCalendarThemes() {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.CALENDAR_THEMES);
+    return parseStoredJson(raw, {});
+  } catch (error) {
+    console.warn('Failed to load calendar themes', error);
+    return {};
+  }
+}
+
+export async function saveCalendarThemes(themes) {
+  try {
+    await AsyncStorage.setItem(STORAGE_KEYS.CALENDAR_THEMES, JSON.stringify(themes));
+  } catch (error) {
+    console.warn('Failed to save calendar themes', error);
   }
 }
 
