@@ -27,7 +27,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system'; // Legacy import compatible with SDK 54 for this use case
+import * as FileSystem from 'expo-file-system/legacy';
 
 import {
   addMonths as addMonthsDateFns,
