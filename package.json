@@ -11,8 +11,13 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
     "date-fns": "^4.1.0",
+    "expo": "^54.0.25",
     "expo-file-system": "^16.0.5",
-    "expo-image-picker": "^15.0.7"
+    "expo-haptics": "^15.0.7",
+    "expo-image-picker": "^15.0.7",
+    "expo-linear-gradient": "^15.0.7",
+    "expo-screen-orientation": "^9.0.7"
   }
 }
