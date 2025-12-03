@@ -62,6 +62,11 @@ const MONTH_IMAGES = [
   require('./assets/months/dec.gif'),
 ];
 
+const MONTH_NAMES = [
+  'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO',
+  'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'
+];
+
 // --- COMPONENTE DA FAIXA DO TOPO ---
 const StickyMonthHeader = ({ date }) => {
   if (!date) return null;
@@ -193,6 +198,44 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
     </View>
   );
 };
+
+// --- COMPONENTE CUSTOMIZE CALENDAR MODAL ---
+function CustomizeCalendarModal({ visible, onClose }) {
+  if (!visible) return null;
+
+  return (
+    <Modal animationType="slide" transparent={false} visible={visible} onRequestClose={onClose}>
+      <SafeAreaView style={styles.customizeModalContainer}>
+        <View style={styles.customizeHeader}>
+          <Text style={styles.customizeTitle}>Customize Calendar</Text>
+          <Pressable onPress={onClose} hitSlop={12}>
+            <Ionicons name="close" size={28} color="#1a1a2e" />
+          </Pressable>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.customizeScrollContent} showsVerticalScrollIndicator={false}>
+          {MONTH_NAMES.map((name, index) => (
+            <View key={name} style={styles.customizeRow}>
+              <ImageBackground
+                source={MONTH_IMAGES[index]}
+                style={styles.customizeCard}
+                imageStyle={{ borderRadius: 16 }}
+              >
+                <View style={styles.customizeCardOverlay} />
+                <Text style={styles.customizeCardText}>{name}</Text>
+              </ImageBackground>
+
+              <TouchableOpacity style={styles.customizeAddButton} activeOpacity={0.7}>
+                 <Ionicons name="add" size={24} color="#3c2ba7" />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 
 const LEFT_TABS = [
   {
@@ -730,6 +773,7 @@ function ScheduleApp() {
   const [isHabitSheetOpen, setIsHabitSheetOpen] = useState(false);
   const [habitSheetMode, setHabitSheetMode] = useState('create');
   const [habitSheetInitialTask, setHabitSheetInitialTask] = useState(null);
+  const [isCustomizeCalendarOpen, setCustomizeCalendarOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -1629,6 +1673,7 @@ function ScheduleApp() {
             styles.content,
             dynamicStyles.content,
             activeTab === 'calendar' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
+            activeTab === 'profile' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, alignItems: 'center', justifyContent: 'center' },
           ]}
           importantForAccessibility={isFabOpen ? 'no-hide-descendants' : 'auto'}
         >
@@ -1844,14 +1889,32 @@ function ScheduleApp() {
                 onEndReachedThreshold={0.5}
               />
             </View>
+          ) : activeTab === 'profile' ? (
+             <View style={styles.profileContainer}>
+                <View style={styles.avatarContainer}>
+                  <Ionicons name="person" size={40} color="#3c2ba7" />
+                </View>
+
+                <Text style={styles.profileTitle}>Profile</Text>
+                <Text style={styles.profileSubtitle}>
+                  Personalize your experience and tweak how your calendar looks.
+                </Text>
+
+                <TouchableOpacity
+                  style={styles.customizeButton}
+                  onPress={() => setCustomizeCalendarOpen(true)}
+                  activeOpacity={0.8}
+                >
+                   <Ionicons name="images-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                   <Text style={styles.customizeButtonText}>Customize Calendar</Text>
+                </TouchableOpacity>
+             </View>
           ) : (
             <View style={styles.placeholderContainer}>
               <View style={styles.placeholderIconWrapper}>
                 <Ionicons
                   name={
-                    activeTab === 'calendar'
-                      ? 'calendar-outline'
-                      : activeTab === 'discover'
+                    activeTab === 'discover'
                       ? 'planet-outline'
                       : 'person-circle-outline'
                   }
@@ -1860,16 +1923,12 @@ function ScheduleApp() {
                 />
               </View>
               <Text style={styles.heading}>
-                {activeTab === 'calendar'
-                  ? 'Calendar Overview'
-                  : activeTab === 'discover'
+                {activeTab === 'discover'
                   ? 'Discover'
                   : 'Profile'}
               </Text>
               <Text style={[styles.description, dynamicStyles.description, styles.placeholderDescription]}>
-                {activeTab === 'calendar'
-                  ? 'Plan ahead and review your upcoming schedule from the calendar view.'
-                  : activeTab === 'discover'
+                {activeTab === 'discover'
                   ? 'Explore new routines, templates, and ideas to add to your day.'
                   : 'View and personalize your profile, preferences, and progress.'}
               </Text>
@@ -2162,6 +2221,10 @@ function ScheduleApp() {
         }}
         mode={habitSheetMode}
         initialHabit={habitSheetInitialTask}
+      />
+      <CustomizeCalendarModal
+        visible={isCustomizeCalendarOpen}
+        onClose={() => setCustomizeCalendarOpen(false)}
       />
     </View>
   );
@@ -3259,5 +3322,114 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#1a1a2e',
+  },
+
+  // --- STYLES FOR PROFILE & CUSTOMIZE CALENDAR ---
+  profileContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  avatarContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#F0EFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  profileTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1a1a2e',
+    marginBottom: 8,
+  },
+  profileSubtitle: {
+    fontSize: 15,
+    color: '#6f7a86',
+    textAlign: 'center',
+    marginBottom: 32,
+    lineHeight: 22,
+  },
+  customizeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3c2ba7',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 30,
+    shadowColor: '#3c2ba7',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  customizeButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  
+  // Customize Modal Styles
+  customizeModalContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  customizeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  customizeTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  customizeScrollContent: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  customizeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  customizeCard: {
+    flex: 1,
+    height: 80,
+    borderRadius: 16,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  customizeCardOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  customizeCardText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '800',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 4,
+    zIndex: 1,
+  },
+  customizeAddButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    borderColor: '#3c2ba7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
+    backgroundColor: '#fff',
   },
 });
