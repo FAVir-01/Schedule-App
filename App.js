@@ -221,9 +221,8 @@ function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage 
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: 'images',
-        allowsEditing: true,
-        aspect: [16, 9],
-        quality: 0.8,
+        allowsEditing: false,
+        quality: 1,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
