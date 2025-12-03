@@ -4,6 +4,7 @@ const STORAGE_KEYS = {
   TASKS: '@schedule_app/tasks',
   SETTINGS: '@schedule_app/settings',
   HISTORY: '@schedule_app/history',
+  CUSTOM_IMAGES: '@schedule_app/custom_images', // Nova chave
 };
 
 const parseStoredJson = (value, fallback) => {
@@ -69,6 +70,27 @@ export async function saveHistory(history) {
     await AsyncStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(history));
   } catch (error) {
     console.warn('Failed to save history', error);
+  }
+}
+
+// --- NOVAS FUNÇÕES PARA IMAGENS ---
+
+export async function loadCustomImages() {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_IMAGES);
+    // Retorna um objeto: { 0: 'uri_janeiro', 1: 'uri_fevereiro', ... }
+    return parseStoredJson(raw, {});
+  } catch (error) {
+    console.warn('Failed to load custom images', error);
+    return {};
+  }
+}
+
+export async function saveCustomImages(imagesMap) {
+  try {
+    await AsyncStorage.setItem(STORAGE_KEYS.CUSTOM_IMAGES, JSON.stringify(imagesMap));
+  } catch (error) {
+    console.warn('Failed to save custom images', error);
   }
 }
 
