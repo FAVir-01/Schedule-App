@@ -227,8 +227,16 @@ function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage 
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        const selectedUri = result.assets[0].uri;
-        const fileName = `custom_month_${index}_${Date.now()}.jpg`;
+        const asset = result.assets[0];
+        const selectedUri = asset.uri;
+
+        if (Platform.OS === 'web') {
+          onUpdateImage(index, selectedUri);
+          return;
+        }
+
+        const extension = selectedUri.split('.').pop().split(/\#|\?/)[0] || 'jpg';
+        const fileName = `custom_month_${index}_${Date.now()}.${extension}`;
         const newPath = FileSystem.documentDirectory + fileName;
 
         await FileSystem.copyAsync({
