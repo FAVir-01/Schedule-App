@@ -221,14 +221,14 @@ function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage 
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: 'images',
-        allowsEditing: true,
-        aspect: [16, 9],
-        quality: 0.8,
+        allowsEditing: false,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const selectedUri = result.assets[0].uri;
-        const fileName = `custom_month_${index}_${Date.now()}.jpg`;
+        const extensionMatch = selectedUri.match(/\.([a-zA-Z0-9]+)(?:[?#]|$)/);
+        const extension = extensionMatch?.[1] ?? 'jpg';
+        const fileName = `custom_month_${index}_${Date.now()}.${extension}`;
         const newPath = FileSystem.documentDirectory + fileName;
 
         await FileSystem.copyAsync({
