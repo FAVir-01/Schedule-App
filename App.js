@@ -80,7 +80,7 @@ const StickyMonthHeader = ({ date }) => {
       style={styles.stickyHeader}
       imageStyle={{ resizeMode: 'cover' }}
     >
-      <View style={styles.headerOverlay} />
+      {/* Overlay removido aqui */}
       <Text style={styles.stickyHeaderText}>
         {format(date, 'MMMM', { locale: ptBR })}
       </Text>
@@ -179,7 +179,7 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
         style={styles.calendarMonthHeader}
         imageStyle={{ resizeMode: 'cover' }}
       >
-        <View style={styles.headerOverlay} />
+        {/* Overlay removido aqui */}
         <Text style={styles.calendarMonthTitle}>{format(item.date, 'MMMM yyyy', { locale: ptBR })}</Text>
       </ImageBackground>
 
@@ -221,7 +221,7 @@ function CustomizeCalendarModal({ visible, onClose }) {
                 style={styles.customizeCard}
                 imageStyle={{ borderRadius: 16 }}
               >
-                <View style={styles.customizeCardOverlay} />
+                {/* Overlay removido aqui */}
                 <Text style={styles.customizeCardText}>{name}</Text>
               </ImageBackground>
 
@@ -616,7 +616,7 @@ function DayReportModal({ visible, date, tasks, onClose }) {
             style={styles.reportHeaderImage}
             imageStyle={{ resizeMode: 'cover' }}
           >
-            <View style={styles.headerOverlay} />
+            {/* Overlay removido aqui */}
 
             <View style={styles.reportDateContainer}>
               <Text style={styles.reportDateBig}>{format(date, 'd MMM')}</Text>
