@@ -4,6 +4,7 @@ const STORAGE_KEYS = {
   TASKS: '@schedule_app/tasks',
   SETTINGS: '@schedule_app/settings',
   HISTORY: '@schedule_app/history',
+  MONTH_IMAGES: '@schedule_app/month_images',
 };
 
 const parseStoredJson = (value, fallback) => {
@@ -69,6 +70,24 @@ export async function saveHistory(history) {
     await AsyncStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(history));
   } catch (error) {
     console.warn('Failed to save history', error);
+  }
+}
+
+export async function loadMonthImages() {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.MONTH_IMAGES);
+    return parseStoredJson(raw, {});
+  } catch (error) {
+    console.warn('Failed to load month images', error);
+    return {};
+  }
+}
+
+export async function saveMonthImages(imagesMap) {
+  try {
+    await AsyncStorage.setItem(STORAGE_KEYS.MONTH_IMAGES, JSON.stringify(imagesMap));
+  } catch (error) {
+    console.warn('Failed to save month images', error);
   }
 }
 
