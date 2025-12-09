@@ -3,6 +3,7 @@ import {
   AccessibilityInfo,
   Animated,
   BackHandler,
+  Image,
   KeyboardAvoidingView,
   PanResponder,
   Platform,
@@ -18,6 +19,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 
 const SHEET_OPEN_DURATION = 300;
 const SHEET_CLOSE_DURATION = 220;
@@ -395,6 +397,8 @@ export default function AddHabitSheet({
   const [pendingReminder, setPendingReminder] = useState(reminderOption);
   const [pendingTag, setPendingTag] = useState(selectedTag);
   const [pendingSubtasks, setPendingSubtasks] = useState([]);
+  const [customImage, setCustomImage] = useState(null);
+  const [isLoadingImage, setIsLoadingImage] = useState(false);
   const titleInputRef = useRef(null);
   const translateY = useRef(new Animated.Value(sheetHeight || height)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -403,6 +407,7 @@ export default function AddHabitSheet({
   const isEditMode = mode === 'edit';
   const isCopyMode = mode === 'copy';
   const submitLabel = isEditMode ? 'Save' : 'Create';
+  const isDragCloseEnabled = false;
   const accessibilityAnnouncement = isEditMode
     ? 'Edit habit'
     : isCopyMode
@@ -451,11 +456,40 @@ export default function AddHabitSheet({
 
   const handleSelectEmoji = useCallback((emoji) => {
     setSelectedEmoji(emoji);
+    setCustomImage(null);
     setEmojiPickerVisible(false);
   }, []);
 
   const handleToggleEmojiPicker = useCallback(() => {
     setEmojiPickerVisible((prev) => !prev);
+  }, []);
+
+  const handlePickImage = useCallback(async () => {
+    if (isLoadingImage) {
+      return;
+    }
+
+    try {
+      setIsLoadingImage(true);
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets?.length) {
+        setCustomImage(result.assets[0].uri);
+        setEmojiPickerVisible(false);
+      }
+    } catch (error) {
+      console.error('Error selecting custom image:', error);
+    } finally {
+      setIsLoadingImage(false);
+    }
+  }, [isLoadingImage]);
+
+  const handleRemoveCustomImage = useCallback(() => {
+    setCustomImage(null);
   }, []);
 
   const handleOpenPanel = useCallback(
@@ -639,6 +673,7 @@ export default function AddHabitSheet({
     setSelectedTag(resolvedTagKey);
     setPendingTag(resolvedTagKey);
     setSubtasks(resolvedSubtasks);
+    setCustomImage(initialHabit.customImage ?? null);
 
     setCalendarMonthState(new Date(resolvedStartDate.getFullYear(), resolvedStartDate.getMonth(), 1));
     setPendingDate(resolvedStartDate);
@@ -719,6 +754,8 @@ export default function AddHabitSheet({
           setTagOptions([...DEFAULT_TAG_OPTIONS]);
           setPendingTag('none');
           setSubtasks([]);
+          setCustomImage(null);
+          setIsLoadingImage(false);
         }
       });
     }
@@ -769,6 +806,7 @@ export default function AddHabitSheet({
       title: title.trim(),
       color: selectedColor,
       emoji: selectedEmoji,
+      customImage,
       startDate,
       repeat: { option: repeatOption, weekdays: Array.from(selectedWeekdays) },
       time: {
@@ -806,6 +844,7 @@ export default function AddHabitSheet({
     title,
     reminderOption,
     subtasks,
+    customImage,
     tagOptions,
   ]);
 
@@ -813,19 +852,20 @@ export default function AddHabitSheet({
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, gestureState) =>
+          isDragCloseEnabled &&
           visible &&
           !activePanel &&
           gestureState.dy > 14 &&
           Math.abs(gestureState.dx) < 8,
         onPanResponderMove: (_, gestureState) => {
-          if (!visible) {
+          if (!isDragCloseEnabled || !visible) {
             return;
           }
           const offset = Math.max(0, gestureState.dy);
           translateY.setValue(offset);
         },
         onPanResponderRelease: (_, gestureState) => {
-          if (!visible) {
+          if (!isDragCloseEnabled || !visible) {
             return;
           }
           const shouldClose = gestureState.vy > 1.2 || gestureState.dy > sheetHeight * 0.25;
@@ -842,7 +882,7 @@ export default function AddHabitSheet({
           }
         },
         onPanResponderTerminate: (_, gestureState) => {
-          if (!visible) {
+          if (!isDragCloseEnabled || !visible) {
             return;
           }
           const shouldClose = gestureState.vy > 1.2 || gestureState.dy > sheetHeight * 0.25;
@@ -859,7 +899,7 @@ export default function AddHabitSheet({
           }
         },
       }),
-    [activePanel, handleClose, sheetHeight, translateY, visible]
+    [activePanel, handleClose, isDragCloseEnabled, sheetHeight, translateY, visible]
   );
 
   const isSubmitDisabled = !title.trim();
@@ -954,7 +994,7 @@ export default function AddHabitSheet({
         ]}
         accessibilityViewIsModal
         importantForAccessibility="yes"
-        {...(!activePanel ? panResponder.panHandlers : {})}
+        {...(!activePanel && isDragCloseEnabled ? panResponder.panHandlers : {})}
       >
         <KeyboardAvoidingView
           style={styles.keyboardAvoiding}
@@ -1008,12 +1048,16 @@ export default function AddHabitSheet({
               <Pressable
                 style={[styles.emojiButton, isEmojiPickerVisible && styles.emojiButtonActive]}
                 accessibilityRole="button"
-                accessibilityLabel={`Choose emoji, currently ${selectedEmoji}`}
+                accessibilityLabel={`Choose icon, currently ${customImage ? 'custom image' : selectedEmoji}`}
                 accessibilityHint="Opens a list of emoji options"
                 onPress={handleToggleEmojiPicker}
                 hitSlop={12}
               >
-                <Text style={styles.emoji}>{selectedEmoji}</Text>
+                {customImage ? (
+                  <Image source={{ uri: customImage }} style={styles.customIconImage} />
+                ) : (
+                  <Text style={styles.emoji}>{selectedEmoji}</Text>
+                )}
                 <Ionicons
                   name={isEmojiPickerVisible ? 'chevron-up' : 'chevron-down'}
                   size={18}
@@ -1023,6 +1067,27 @@ export default function AddHabitSheet({
               </Pressable>
               {isEmojiPickerVisible && (
                 <View style={styles.emojiPicker}>
+                  <Pressable
+                    style={[styles.emojiOption, styles.emojiUploadOption]}
+                    onPress={handlePickImage}
+                    accessibilityRole="button"
+                    accessibilityLabel="Upload custom image"
+                    accessibilityHint="Opens your gallery to choose an image"
+                    disabled={isLoadingImage}
+                  >
+                    <Ionicons name="image-outline" size={24} color="#1F2742" />
+                  </Pressable>
+                  {customImage && (
+                    <Pressable
+                      style={[styles.emojiOption, styles.emojiOptionSelected]}
+                      onPress={handleRemoveCustomImage}
+                      accessibilityRole="button"
+                      accessibilityLabel="Remove custom image"
+                      accessibilityHint="Revert to emoji icon"
+                    >
+                      <Ionicons name="close" size={20} color="#1F2742" />
+                    </Pressable>
+                  )}
                   {EMOJIS.map((emoji) => {
                     const isSelected = selectedEmoji === emoji;
                     return (
@@ -2130,6 +2195,12 @@ const styles = StyleSheet.create({
     // shadowRadius: 16,
     // elevation: 6,
   },
+  customIconImage: {
+    width: 67,
+    height: 67,
+    borderRadius: 33.5,
+    resizeMode: 'cover',
+  },
   emoji: {
     fontSize: 52,
     textAlign: 'center',
@@ -2151,6 +2222,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#F2F6FF',
+  },
+  emojiUploadOption: {
+    backgroundColor: '#E7F0FF',
   },
   emojiOptionSelected: {
     backgroundColor: '#DDE9FF',
