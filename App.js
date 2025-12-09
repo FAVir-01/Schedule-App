@@ -776,7 +776,14 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
                             { backgroundColor: '#fff' },
                           ]}
                         >
-                          <Text style={{ fontSize: 18 }}>{task.emoji || '📝'}</Text>
+                          {task.customImage ? (
+                            <Image
+                              source={{ uri: task.customImage }}
+                              style={styles.reportTaskIconImage}
+                            />
+                          ) : (
+                            <Text style={{ fontSize: 18 }}>{task.emoji || '📝'}</Text>
+                          )}
                         </View>
 
                         <View style={{ flex: 1 }}>
@@ -1493,6 +1500,7 @@ function ScheduleApp() {
       title: habit?.title ?? 'Untitled task',
       color,
       emoji: habit?.emoji ?? '✅',
+      customImage: habit?.customImage ?? null,
       time: habit?.time,
       date: normalizedDate,
       dateKey,
@@ -1532,6 +1540,7 @@ function ScheduleApp() {
             title: habit?.title ?? task.title,
             color: habit?.color ?? task.color,
             emoji: habit?.emoji ?? task.emoji,
+            customImage: habit?.customImage ?? task.customImage ?? null,
             time: habit?.time,
             subtasks: convertSubtasks(habit?.subtasks ?? [], task.subtasks ?? []),
             repeat: habit?.repeat,
@@ -2445,7 +2454,11 @@ function SwipeableTaskCard({
       >
         <Pressable style={styles.taskCardContent} onPress={handlePress}>
           <View style={styles.taskInfo}>
-            <Text style={styles.taskEmoji}>{task.emoji}</Text>
+            {task.customImage ? (
+              <Image source={{ uri: task.customImage }} style={styles.taskEmojiImage} />
+            ) : (
+              <Text style={styles.taskEmoji}>{task.emoji}</Text>
+            )}
             <View style={styles.taskDetails}>
               <Text
                 style={[styles.taskTitle, task.completed && styles.taskTitleCompleted]}
@@ -2508,7 +2521,11 @@ function TaskDetailModal({
           <View style={[styles.detailCard, { backgroundColor: cardBackground, borderColor: task.color }]}>
             <View style={styles.detailHeaderRow}>
               <View style={styles.detailHeaderInfo}>
+              {task.customImage ? (
+                <Image source={{ uri: task.customImage }} style={styles.detailEmojiImage} />
+              ) : (
                 <Text style={styles.detailEmoji}>{task.emoji}</Text>
+              )}
                 <View style={styles.detailTitleContainer}>
                   <Text style={styles.detailTitle}>{task.title}</Text>
                   <Text style={styles.detailTime}>{formatTaskTime(task.time)}</Text>
@@ -2839,6 +2856,12 @@ const styles = StyleSheet.create({
   taskEmoji: {
     fontSize: 28,
   },
+  taskEmojiImage: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    resizeMode: 'cover',
+  },
   taskDetails: {
     marginLeft: 12,
     flex: 1,
@@ -2920,6 +2943,12 @@ const styles = StyleSheet.create({
   },
   detailEmoji: {
     fontSize: 36,
+  },
+  detailEmojiImage: {
+    width: 53,
+    height: 53,
+    borderRadius: 26.5,
+    resizeMode: 'cover',
   },
   detailTitleContainer: {
     marginLeft: 12,
@@ -3401,6 +3430,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  reportTaskIconImage: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    resizeMode: 'cover',
   },
   reportTaskTitle: {
     flex: 1,
