@@ -872,7 +872,7 @@ function ScheduleApp() {
   const cardIconSize = Math.round(cardSize * 0.75);
   const cardSpacing = isCompact ? 16 : 24;
   const cardBorderRadius = isCompact ? 30 : 34;
-  const cardVerticalOffset = isCompact ? 340 : 380;
+  const cardVerticalOffset = isCompact ? 260 : 290;
   const fabHaloSize = fabSize + (isCompact ? 26 : 30);
   const fabBaseSize = fabSize + (isCompact ? 14 : 18);
   const fabIconSize = isCompact ? 28 : 30;
