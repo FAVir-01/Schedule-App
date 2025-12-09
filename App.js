@@ -872,7 +872,7 @@ function ScheduleApp() {
   const cardIconSize = Math.round(cardSize * 0.75);
   const cardSpacing = isCompact ? 16 : 24;
   const cardBorderRadius = isCompact ? 30 : 34;
-  const cardVerticalOffset = isCompact ? 124 : 140;
+  const cardVerticalOffset = isCompact ? 160 : 180;
   const fabHaloSize = fabSize + (isCompact ? 26 : 30);
   const fabBaseSize = fabSize + (isCompact ? 14 : 18);
   const fabIconSize = isCompact ? 28 : 30;
@@ -3228,11 +3228,17 @@ const styles = StyleSheet.create({
     color: '#fff',
     textAlign: 'center',
     letterSpacing: 0.1,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   fabCardSubtitle: {
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(255, 255, 255, 0.95)',
     textAlign: 'center',
     paddingHorizontal: 4,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   fabCardIcon: {
     alignSelf: 'center',
