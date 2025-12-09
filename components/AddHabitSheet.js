@@ -2196,9 +2196,9 @@ const styles = StyleSheet.create({
     // elevation: 6,
   },
   customIconImage: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 67,
+    height: 67,
+    borderRadius: 33.5,
     resizeMode: 'cover',
   },
   emoji: {

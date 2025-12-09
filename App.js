@@ -2857,9 +2857,9 @@ const styles = StyleSheet.create({
     fontSize: 28,
   },
   taskEmojiImage: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     resizeMode: 'cover',
   },
   taskDetails: {
@@ -2945,9 +2945,9 @@ const styles = StyleSheet.create({
     fontSize: 36,
   },
   detailEmojiImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 53,
+    height: 53,
+    borderRadius: 26.5,
     resizeMode: 'cover',
   },
   detailTitleContainer: {
@@ -3432,9 +3432,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   reportTaskIconImage: {
-    width: 32,
-    height: 32,
-    borderRadius: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 14,
     resizeMode: 'cover',
   },
   reportTaskTitle: {
