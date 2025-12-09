@@ -407,6 +407,7 @@ export default function AddHabitSheet({
   const isEditMode = mode === 'edit';
   const isCopyMode = mode === 'copy';
   const submitLabel = isEditMode ? 'Save' : 'Create';
+  const isDragCloseEnabled = false;
   const accessibilityAnnouncement = isEditMode
     ? 'Edit habit'
     : isCopyMode
@@ -851,19 +852,20 @@ export default function AddHabitSheet({
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, gestureState) =>
+          isDragCloseEnabled &&
           visible &&
           !activePanel &&
           gestureState.dy > 14 &&
           Math.abs(gestureState.dx) < 8,
         onPanResponderMove: (_, gestureState) => {
-          if (!visible) {
+          if (!isDragCloseEnabled || !visible) {
             return;
           }
           const offset = Math.max(0, gestureState.dy);
           translateY.setValue(offset);
         },
         onPanResponderRelease: (_, gestureState) => {
-          if (!visible) {
+          if (!isDragCloseEnabled || !visible) {
             return;
           }
           const shouldClose = gestureState.vy > 1.2 || gestureState.dy > sheetHeight * 0.25;
@@ -880,7 +882,7 @@ export default function AddHabitSheet({
           }
         },
         onPanResponderTerminate: (_, gestureState) => {
-          if (!visible) {
+          if (!isDragCloseEnabled || !visible) {
             return;
           }
           const shouldClose = gestureState.vy > 1.2 || gestureState.dy > sheetHeight * 0.25;
@@ -897,7 +899,7 @@ export default function AddHabitSheet({
           }
         },
       }),
-    [activePanel, handleClose, sheetHeight, translateY, visible]
+    [activePanel, handleClose, isDragCloseEnabled, sheetHeight, translateY, visible]
   );
 
   const isSubmitDisabled = !title.trim();
@@ -992,7 +994,7 @@ export default function AddHabitSheet({
         ]}
         accessibilityViewIsModal
         importantForAccessibility="yes"
-        {...(!activePanel ? panResponder.panHandlers : {})}
+        {...(!activePanel && isDragCloseEnabled ? panResponder.panHandlers : {})}
       >
         <KeyboardAvoidingView
           style={styles.keyboardAvoiding}
