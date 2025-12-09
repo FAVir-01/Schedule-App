@@ -25,6 +25,8 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import {
   addMonths as addMonthsDateFns,
   eachDayOfInterval,
@@ -38,9 +40,11 @@ import {
 import { ptBR } from 'date-fns/locale';
 import {
   loadHistory,
+  loadMonthImages,
   loadTasks,
   loadUserSettings,
   saveHistory,
+  saveMonthImages,
   saveTasks,
   saveUserSettings,
 } from './storage';
@@ -67,12 +71,22 @@ const MONTH_NAMES = [
   'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'
 ];
 
+const getMonthImageSource = (monthIndex, customImages) => {
+  const index = monthIndex % 12;
+
+  if (customImages && customImages[index]) {
+    return { uri: customImages[index] };
+  }
+
+  return MONTH_IMAGES[index];
+};
+
 // --- COMPONENTE DA FAIXA DO TOPO ---
-const StickyMonthHeader = ({ date }) => {
+const StickyMonthHeader = ({ date, customImages }) => {
   if (!date) return null;
 
   const monthIndex = date.getMonth();
-  const imageSource = MONTH_IMAGES[monthIndex % MONTH_IMAGES.length];
+  const imageSource = getMonthImageSource(monthIndex, customImages);
 
   return (
     <ImageBackground
@@ -152,10 +166,10 @@ const CalendarDayCell = ({ date, isCurrentMonth, status, onPress, isToday }) => 
 };
 
 // --- ITEM DO MÊS ATUALIZADO ---
-const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
+const CalendarMonthItem = ({ item, getDayStatus, onDayPress, customImages }) => {
   const monthStart = startOfMonth(item.date);
   const monthEnd = endOfMonth(item.date);
-  const imageSource = MONTH_IMAGES[item.date.getMonth() % MONTH_IMAGES.length];
+  const imageSource = getMonthImageSource(item.date.getMonth(), customImages);
 
   const days = eachDayOfInterval({
     start: startOfWeek(monthStart),
@@ -200,8 +214,42 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress }) => {
 };
 
 // --- COMPONENTE CUSTOMIZE CALENDAR MODAL ---
-function CustomizeCalendarModal({ visible, onClose }) {
+function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage }) {
   if (!visible) return null;
+
+  const handlePickImage = async (index) => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: 'images',
+        allowsEditing: false,
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const selectedUri = asset.uri;
+
+        if (Platform.OS === 'web') {
+          onUpdateImage(index, selectedUri);
+          return;
+        }
+
+        const extension = selectedUri.split('.').pop().split(/\#|\?/)[0] || 'jpg';
+        const fileName = `custom_month_${index}_${Date.now()}.${extension}`;
+        const newPath = FileSystem.documentDirectory + fileName;
+
+        await FileSystem.copyAsync({
+          from: selectedUri,
+          to: newPath,
+        });
+
+        onUpdateImage(index, newPath);
+      }
+    } catch (error) {
+      console.log('Erro ao selecionar imagem:', error);
+      alert('Não foi possível carregar a imagem.');
+    }
+  };
 
   return (
     <Modal animationType="slide" transparent={false} visible={visible} onRequestClose={onClose}>
@@ -214,22 +262,30 @@ function CustomizeCalendarModal({ visible, onClose }) {
         </View>
 
         <ScrollView contentContainerStyle={styles.customizeScrollContent} showsVerticalScrollIndicator={false}>
-          {MONTH_NAMES.map((name, index) => (
-            <View key={name} style={styles.customizeRow}>
-              <ImageBackground
-                source={MONTH_IMAGES[index]}
-                style={styles.customizeCard}
-                imageStyle={{ borderRadius: 16 }}
-              >
-                {/* Overlay removido aqui */}
-                <Text style={styles.customizeCardText}>{name}</Text>
-              </ImageBackground>
+          {MONTH_NAMES.map((name, index) => {
+            const source = getMonthImageSource(index, customImages);
 
-              <TouchableOpacity style={styles.customizeAddButton} activeOpacity={0.7}>
-                 <Ionicons name="add" size={24} color="#3c2ba7" />
-              </TouchableOpacity>
-            </View>
-          ))}
+            return (
+              <View key={name} style={styles.customizeRow}>
+                <ImageBackground
+                  source={source}
+                  style={styles.customizeCard}
+                  imageStyle={{ borderRadius: 16 }}
+                >
+                  {/* Overlay removido aqui */}
+                  <Text style={styles.customizeCardText}>{name}</Text>
+                </ImageBackground>
+
+                <TouchableOpacity
+                  style={styles.customizeAddButton}
+                  activeOpacity={0.7}
+                  onPress={() => handlePickImage(index)}
+                >
+                   <Ionicons name="add" size={24} color="#3c2ba7" />
+                </TouchableOpacity>
+              </View>
+            );
+          })}
         </ScrollView>
       </SafeAreaView>
     </Modal>
@@ -551,7 +607,7 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
 };
 
 // --- COMPONENTE ATUALIZADO: RELATÓRIO DO DIA COM GIF ---
-function DayReportModal({ visible, date, tasks, onClose }) {
+function DayReportModal({ visible, date, tasks, onClose, customImages }) {
   const { height } = useWindowDimensions();
 
   // 1. Configuração da Animação
@@ -560,7 +616,7 @@ function DayReportModal({ visible, date, tasks, onClose }) {
 
   // 2. Lógica para pegar o GIF do mês correto
   // Se 'date' for nulo, não quebra o app
-  const imageSource = date ? MONTH_IMAGES[date.getMonth() % MONTH_IMAGES.length] : null;
+  const imageSource = date ? getMonthImageSource(date.getMonth(), customImages) : null;
 
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter((t) => t.completed).length;
@@ -786,6 +842,7 @@ function ScheduleApp() {
     DEFAULT_USER_SETTINGS.selectedTagFilter
   );
   const [history, setHistory] = useState([]);
+  const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
   const [calendarMonths, setCalendarMonths] = useState(() => {
     const today = new Date();
@@ -815,7 +872,7 @@ function ScheduleApp() {
   const cardIconSize = Math.round(cardSize * 0.75);
   const cardSpacing = isCompact ? 16 : 24;
   const cardBorderRadius = isCompact ? 30 : 34;
-  const cardVerticalOffset = isCompact ? 124 : 140;
+  const cardVerticalOffset = isCompact ? 200 : 230;
   const fabHaloSize = fabSize + (isCompact ? 26 : 30);
   const fabBaseSize = fabSize + (isCompact ? 14 : 18);
   const fabIconSize = isCompact ? 28 : 30;
@@ -959,9 +1016,10 @@ function ScheduleApp() {
         item={item}
         getDayStatus={getDayStatusForCalendar}
         onDayPress={handleOpenReport}
+        customImages={customMonthImages}
       />
     ),
-    [getDayStatusForCalendar, handleOpenReport]
+    [customMonthImages, getDayStatusForCalendar, handleOpenReport]
   );
   const tasksForSelectedDate = useMemo(() => {
     const filtered = tasks.filter((task) => shouldTaskAppearOnDate(task, selectedDate));
@@ -1082,10 +1140,11 @@ function ScheduleApp() {
     let isMounted = true;
     const hydrateFromStorage = async () => {
       try {
-        const [storedTasks, storedSettings, storedHistory] = await Promise.all([
+        const [storedTasks, storedSettings, storedHistory, storedImages] = await Promise.all([
           loadTasks(),
           loadUserSettings(),
           loadHistory(),
+          loadMonthImages(),
         ]);
 
         if (!isMounted) {
@@ -1107,6 +1166,10 @@ function ScheduleApp() {
 
         if (Array.isArray(storedHistory)) {
           setHistory(storedHistory);
+        }
+
+        if (storedImages) {
+          setCustomMonthImages(storedImages);
         }
       } catch (error) {
         console.warn('Failed to load stored data', error);
@@ -1144,6 +1207,19 @@ function ScheduleApp() {
     }
     void saveHistory(history);
   }, [history, isHydrated]);
+
+  const handleUpdateMonthImage = useCallback(
+    async (monthIndex, uri) => {
+      const updatedImages = {
+        ...customMonthImages,
+        [monthIndex]: uri,
+      };
+
+      setCustomMonthImages(updatedImages);
+      await saveMonthImages(updatedImages);
+    },
+    [customMonthImages]
+  );
 
   const appendHistoryEntry = useCallback((type, details = {}) => {
     const entry = {
@@ -1860,7 +1936,7 @@ function ScheduleApp() {
             </ScrollView>
           ) : activeTab === 'calendar' ? (
             <View style={{ flex: 1 }}>
-              <StickyMonthHeader date={visibleCalendarDate} />
+              <StickyMonthHeader date={visibleCalendarDate} customImages={customMonthImages} />
 
               <FlatList
                 data={calendarMonths}
@@ -2205,6 +2281,7 @@ function ScheduleApp() {
         date={reportDate}
         tasks={reportTasks}
         onClose={() => setReportDate(null)}
+        customImages={customMonthImages}
       />
       <AddHabitSheet
         visible={isHabitSheetOpen}
@@ -2225,6 +2302,8 @@ function ScheduleApp() {
       <CustomizeCalendarModal
         visible={isCustomizeCalendarOpen}
         onClose={() => setCustomizeCalendarOpen(false)}
+        customImages={customMonthImages}
+        onUpdateImage={handleUpdateMonthImage}
       />
     </View>
   );
@@ -3149,11 +3228,17 @@ const styles = StyleSheet.create({
     color: '#fff',
     textAlign: 'center',
     letterSpacing: 0.1,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   fabCardSubtitle: {
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(255, 255, 255, 0.95)',
     textAlign: 'center',
     paddingHorizontal: 4,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   fabCardIcon: {
     alignSelf: 'center',
