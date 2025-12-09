@@ -456,6 +456,7 @@ export default function AddHabitSheet({
 
   const handleSelectEmoji = useCallback((emoji) => {
     setSelectedEmoji(emoji);
+    setCustomImage(null);
     setEmojiPickerVisible(false);
   }, []);
 
@@ -472,8 +473,7 @@ export default function AddHabitSheet({
       setIsLoadingImage(true);
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
+        allowsEditing: false,
         quality: 1,
       });
 
