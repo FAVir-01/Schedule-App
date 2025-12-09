@@ -2854,7 +2854,13 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
   taskEmoji: {
-    fontSize: 28,
+    fontSize: 34,
+  },
+  taskEmojiImage: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    resizeMode: 'cover',
   },
   taskEmojiImage: {
     width: 38,
