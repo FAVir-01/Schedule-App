@@ -3086,6 +3086,43 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 18,
   },
+  intervalSection: {
+    marginTop: 6,
+    gap: 12,
+  },
+  intervalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    paddingHorizontal: 2,
+  },
+  intervalLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2742',
+  },
+  intervalValueContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  intervalValue: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  intervalChevron: {
+    marginLeft: 4,
+  },
+  endDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  endDatePickerContainer: {
+    marginTop: 6,
+  },
   specifiedRow: {
     flexDirection: 'row',
     alignItems: 'center',
