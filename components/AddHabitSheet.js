@@ -13,7 +13,6 @@ import {
   Switch,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -128,6 +127,8 @@ const createTagKey = (label, existingKeys) => {
 const HOUR_VALUES = Array.from({ length: 12 }, (_, i) => i + 1);
 const MINUTE_VALUES = Array.from({ length: 60 }, (_, i) => i);
 const MERIDIEM_VALUES = ['AM', 'PM'];
+const INTERVAL_VALUES = Array.from({ length: 99 }, (_, i) => i + 1);
+
 const formatNumber = (value) => value.toString().padStart(2, '0');
 
 const hexToRgb = (hex) => {
@@ -1379,14 +1380,17 @@ export default function AddHabitSheet({
                 onApply={handleApplyRepeat}
               >
                 <RepeatPanel
-                  enabled={pendingIsRepeatEnabled}
-                  setEnabled={setPendingIsRepeatEnabled}
+                  isEnabled={pendingIsRepeatEnabled}
                   frequency={pendingRepeatFrequency}
-                  setFrequency={setPendingRepeatFrequency}
                   interval={pendingRepeatInterval}
-                  setInterval={setPendingRepeatInterval}
-                  selectedWeekdays={pendingWeekdays}
-                  toggleWeekday={(weekday) => {
+                  weekdays={pendingWeekdays}
+                  monthDays={pendingMonthDays}
+                  hasEndDate={pendingHasEndDate}
+                  endDate={pendingEndDate}
+                  onToggleEnabled={setPendingIsRepeatEnabled}
+                  onFrequencyChange={setPendingRepeatFrequency}
+                  onIntervalChange={setPendingRepeatInterval}
+                  onToggleWeekday={(weekday) => {
                     setPendingWeekdays((prev) => {
                       const next = new Set(prev);
                       if (next.has(weekday)) {
@@ -1397,8 +1401,7 @@ export default function AddHabitSheet({
                       return next;
                     });
                   }}
-                  selectedMonthDays={pendingMonthDays}
-                  toggleMonthDay={(day) => {
+                  onToggleMonthDay={(day) => {
                     setPendingMonthDays((prev) => {
                       const next = new Set(prev);
                       if (next.has(day)) {
@@ -1409,10 +1412,8 @@ export default function AddHabitSheet({
                       return next;
                     });
                   }}
-                  hasEndDate={pendingHasEndDate}
-                  setHasEndDate={setPendingHasEndDate}
-                  endDate={pendingEndDate}
-                  setEndDate={setPendingEndDate}
+                  onToggleHasEndDate={setPendingHasEndDate}
+                  onChangeEndDate={setPendingEndDate}
                   startDate={startDate}
                 />
               </OptionOverlay>
@@ -1911,37 +1912,27 @@ function QuickSelectButton({ label, active, onPress }) {
   );
 }
 
-
-// --- Componente RepeatPanel Otimizado e Redesenhado ---
 function RepeatPanel({
-  enabled,
-  setEnabled,
+  isEnabled,
   frequency,
-  setFrequency,
   interval,
-  setInterval,
-  selectedWeekdays,
-  toggleWeekday,
-  selectedMonthDays,
-  toggleMonthDay,
+  weekdays,
+  monthDays,
   hasEndDate,
-  setHasEndDate,
   endDate,
-  setEndDate,
+  onToggleEnabled,
+  onFrequencyChange,
+  onIntervalChange,
+  onToggleWeekday,
+  onToggleMonthDay,
+  onToggleHasEndDate,
+  onChangeEndDate,
   startDate,
 }) {
-  const intervalData = useMemo(() => Array.from({ length: 99 }, (_, i) => i + 1), []);
+  const [showIntervalPicker, setShowIntervalPicker] = useState(false);
   const [endDateMonth, setEndDateMonth] = useState(() => normalizeDate(endDate || startDate || new Date()));
-
-  const intervalLabel = useMemo(() => {
-    const labelMap = { daily: 'days', weekly: 'weeks', monthly: 'months' };
-    return labelMap[frequency] || 'days';
-  }, [frequency]);
-
-  const intervalIndex = useMemo(
-    () => Math.max(0, Math.min(intervalData.length - 1, intervalData.indexOf(interval))),
-    [interval, intervalData]
-  );
+  const weekdaySet = useMemo(() => weekdays ?? new Set(), [weekdays]);
+  const monthDaySet = useMemo(() => monthDays ?? new Set(), [monthDays]);
 
   useEffect(() => {
     if (endDate) {
@@ -1950,30 +1941,36 @@ function RepeatPanel({
     }
   }, [endDate]);
 
+  const intervalUnit = useMemo(() => FREQUENCY_LABELS[frequency] || FREQUENCY_LABELS.daily, [frequency]);
+  const intervalSummary = useMemo(
+    () => `Every ${interval} ${interval === 1 ? intervalUnit.singular : intervalUnit.plural}`,
+    [interval, intervalUnit]
+  );
+
   const handleSelectFrequency = useCallback(
-    (nextFrequency) => {
-      if (nextFrequency === 'weekly' && selectedWeekdays.size === 0) {
-        const fallbackDate = startDate || new Date();
-        toggleWeekday?.(getWeekdayKeyFromDate(fallbackDate));
+    (value) => {
+      const fallbackDate = startDate || new Date();
+      if (value === 'weekly' && weekdaySet.size === 0) {
+        onToggleWeekday?.(getWeekdayKeyFromDate(fallbackDate));
       }
-      if (nextFrequency === 'monthly' && selectedMonthDays.size === 0) {
-        const fallbackDate = startDate || new Date();
-        toggleMonthDay?.(fallbackDate.getDate());
+      if (value === 'monthly' && monthDaySet.size === 0) {
+        onToggleMonthDay?.(fallbackDate.getDate());
       }
-      setFrequency(nextFrequency);
+      onFrequencyChange?.(value);
     },
-    [selectedMonthDays.size, selectedWeekdays.size, setFrequency, startDate, toggleMonthDay, toggleWeekday]
+    [monthDaySet.size, onFrequencyChange, onToggleMonthDay, onToggleWeekday, startDate, weekdaySet.size]
   );
 
   const handleToggleEndDate = useCallback(
     (value) => {
-      setHasEndDate(value);
+      onToggleHasEndDate?.(value);
       if (value && !endDate) {
         const fallbackDate = normalizeDate(startDate || new Date());
-        setEndDate(fallbackDate);
+        onChangeEndDate?.(fallbackDate);
+        setEndDateMonth(new Date(fallbackDate.getFullYear(), fallbackDate.getMonth(), 1));
       }
     },
-    [endDate, setEndDate, setHasEndDate, startDate]
+    [endDate, onChangeEndDate, onToggleHasEndDate, startDate]
   );
 
   const selectedEndDate = useMemo(
@@ -1981,138 +1978,153 @@ function RepeatPanel({
     [endDate, startDate]
   );
 
-  const endDateLabel = hasEndDate && selectedEndDate ? selectedEndDate.toLocaleDateString() : null;
-
-  if (!enabled) {
-    return (
-      <View style={styles.repeatCardClosed}>
-        <View style={styles.row}>
-          <Text style={styles.sectionTitle}>Repeat</Text>
-          <Switch
-            value={enabled}
-            onValueChange={setEnabled}
-            trackColor={{ false: '#E0E0E0', true: '#4A90E2' }}
-            thumbColor="#FFFFFF"
-          />
-        </View>
-      </View>
-    );
-  }
-
   return (
-    <View style={styles.repeatCardOpen}>
-      <View style={[styles.row, { marginBottom: 16 }]}>
-        <Text style={styles.sectionTitle}>Repeat Task</Text>
+    <View style={styles.repeatPanel}>
+      <View style={styles.specifiedRow}>
+        <View style={styles.specifiedLabelGroup}>
+          <View style={styles.specifiedIconContainer}>
+            <Ionicons name="repeat-outline" size={22} color="#1F2742" />
+          </View>
+          <View>
+            <Text style={styles.specifiedTitle}>Repeat</Text>
+            <Text style={styles.specifiedSubtitle}>Customize recurrence</Text>
+          </View>
+        </View>
         <Switch
-          value={enabled}
-          onValueChange={setEnabled}
-          trackColor={{ false: '#E0E0E0', true: '#4A90E2' }}
-          thumbColor="#FFFFFF"
+          value={isEnabled}
+          onValueChange={onToggleEnabled}
+          trackColor={{ false: '#C8D4E6', true: '#A3B7D7' }}
+          thumbColor={isEnabled ? '#1F2742' : Platform.OS === 'android' ? '#f4f3f4' : undefined}
         />
       </View>
 
-      <View style={styles.segmentContainer}>
-        <View style={styles.segmentedControl}>
-          <SegmentedControlButton
-            label="Daily"
-            active={frequency === 'daily'}
-            onPress={() => handleSelectFrequency('daily')}
-          />
-          <SegmentedControlButton
-            label="Weekly"
-            active={frequency === 'weekly'}
-            onPress={() => handleSelectFrequency('weekly')}
-          />
-          <SegmentedControlButton
-            label="Monthly"
-            active={frequency === 'monthly'}
-            onPress={() => handleSelectFrequency('monthly')}
-          />
-        </View>
-      </View>
-
-      <View style={styles.frequencyContent}>
-        {frequency === 'weekly' && (
-          <View style={styles.weekdaysContainer}>
-            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => {
-              const dayKeys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-              const isSelected = selectedWeekdays.has(dayKeys[index]);
-              return (
-                <TouchableOpacity
-                  key={dayKeys[index]}
-                  style={[styles.weekdayButton, isSelected && styles.weekdayButtonSelected]}
-                  onPress={() => toggleWeekday(dayKeys[index])}
-                >
-                  <Text style={[styles.weekdayText, isSelected && styles.weekdayTextSelected]}>{day}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-
-        {frequency === 'monthly' && (
-          <View style={styles.monthGrid}>
-            {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => {
-              const isSelected = selectedMonthDays.has(day);
-              return (
-                <TouchableOpacity
-                  key={day}
-                  style={[styles.monthDayButton, isSelected && styles.monthDayButtonSelected]}
-                  onPress={() => toggleMonthDay(day)}
-                >
-                  <Text style={[styles.monthDayText, isSelected && styles.monthDayTextSelected]}>{day}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-      </View>
-
-      <View style={styles.divider} />
-
-      <View style={styles.settingRow}>
-        <View>
-          <Text style={styles.settingLabel}>Interval</Text>
-          <Text style={styles.settingSubLabel}>Every {interval} {intervalLabel}</Text>
-        </View>
-        <View style={{ height: 100, width: 60, overflow: 'hidden' }}>
-          <WheelColumn
-            values={intervalData}
-            selectedIndex={intervalIndex}
-            onSelect={(val) => setInterval(Number(val))}
-            itemHeight={35}
-          />
-        </View>
-      </View>
-
-      <View style={styles.divider} />
-
-      <View style={styles.settingRowNoAlign}>
-        <View style={styles.row}>
-          <View>
-            <Text style={styles.settingLabel}>End Date</Text>
-            {endDateLabel && <Text style={styles.settingSubLabel}>{endDateLabel}</Text>}
-          </View>
-          <Switch
-            value={hasEndDate}
-            onValueChange={handleToggleEndDate}
-            trackColor={{ false: '#E0E0E0', true: '#4A90E2' }}
-            thumbColor="#FFFFFF"
-          />
-        </View>
-
-        {hasEndDate && (
-          <View style={{ marginTop: 10 }}>
-            <DatePanel
-              month={endDateMonth}
-              selectedDate={selectedEndDate}
-              onSelectDate={setEndDate}
-              onChangeMonth={setEndDateMonth}
-              repeatConfig={{ enabled: false }}
+      {isEnabled && (
+        <View style={styles.repeatContent}>
+          <View style={styles.segmentedControl}>
+            <SegmentedControlButton
+              label="Daily"
+              active={frequency === 'daily'}
+              onPress={() => handleSelectFrequency('daily')}
+            />
+            <SegmentedControlButton
+              label="Weekly"
+              active={frequency === 'weekly'}
+              onPress={() => handleSelectFrequency('weekly')}
+            />
+            <SegmentedControlButton
+              label="Monthly"
+              active={frequency === 'monthly'}
+              onPress={() => handleSelectFrequency('monthly')}
             />
           </View>
-        )}
-      </View>
+
+          {frequency === 'weekly' && (
+            <View style={styles.weekdayGrid}>
+              {WEEKDAYS.map((weekday) => {
+                const active = weekdaySet.has(weekday.key);
+                return (
+                  <Pressable
+                    key={weekday.key}
+                    style={[styles.weekdayPill, active && styles.weekdayPillActive]}
+                    onPress={() => onToggleWeekday(weekday.key)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text style={[styles.weekdayPillLabel, active && styles.weekdayPillLabelActive]}>
+                      {weekday.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+
+          {frequency === 'monthly' && (
+            <View style={styles.monthDayGrid}>
+              {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => {
+                const active = monthDaySet.has(day);
+                return (
+                  <Pressable
+                    key={day}
+                    style={[styles.monthDayCell, active && styles.monthDayCellActive]}
+                    onPress={() => onToggleMonthDay(day)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text style={[styles.monthDayLabel, active && styles.monthDayLabelActive]}>{day}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+
+          <View style={styles.intervalSection}>
+            <Pressable
+              style={styles.intervalRow}
+              onPress={() => setShowIntervalPicker((prev) => !prev)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showIntervalPicker }}
+            >
+              <Text style={styles.intervalLabel}>Interval</Text>
+              <View style={styles.intervalValueContainer}>
+                <Text style={styles.intervalValue}>{intervalSummary}</Text>
+                <Ionicons
+                  name={showIntervalPicker ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color="#6B7288"
+                  style={styles.intervalChevron}
+                />
+              </View>
+            </Pressable>
+            {showIntervalPicker && (
+              <View style={styles.wheelGroup}>
+                <View style={styles.wheelLabelsRow}>
+                  <Text style={styles.wheelLabel}>Every</Text>
+                  <Text style={styles.wheelLabel}>Unit</Text>
+                </View>
+                <View style={styles.wheelArea}>
+                  <View pointerEvents="none" style={styles.wheelHighlight} />
+                  <View style={styles.wheelRow}>
+                    <WheelColumn
+                      values={INTERVAL_VALUES}
+                      selectedIndex={Math.max(0, Math.min(INTERVAL_VALUES.length - 1, interval - 1))}
+                      onSelect={(value) => onIntervalChange(value)}
+                    />
+                    <WheelColumn
+                      values={[intervalUnit.plural]}
+                      selectedIndex={0}
+                      onSelect={() => {}}
+                    />
+                  </View>
+                </View>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.intervalSection}>
+            <View style={styles.endDateRow}>
+              <Text style={styles.intervalLabel}>End date</Text>
+              <Switch
+                value={hasEndDate}
+                onValueChange={handleToggleEndDate}
+                trackColor={{ false: '#C8D4E6', true: '#A3B7D7' }}
+                thumbColor={hasEndDate ? '#1F2742' : Platform.OS === 'android' ? '#f4f3f4' : undefined}
+              />
+            </View>
+            {hasEndDate && (
+              <View style={styles.endDatePickerContainer}>
+                <DatePanel
+                  month={endDateMonth}
+                  selectedDate={selectedEndDate}
+                  onSelectDate={onChangeEndDate}
+                  onChangeMonth={setEndDateMonth}
+                  repeatConfig={{ enabled: false }}
+                />
+              </View>
+            )}
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -2963,122 +2975,95 @@ const styles = StyleSheet.create({
     color: '#1F2742',
     fontWeight: '600',
   },
-  repeatCardClosed: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
+  repeatPanel: {
+    backgroundColor: '#F5F7FF',
+    borderRadius: 20,
+    paddingVertical: 6,
   },
-  repeatCardOpen: {
-    backgroundColor: '#FAFAFA',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 30,
-    borderWidth: 1,
-    borderColor: '#EAEAEA',
+  repeatContent: {
+    gap: 18,
+    marginTop: 12,
   },
-  row: {
+  weekdayToggleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-  },
-  segmentContainer: {
-    marginBottom: 20,
-  },
-  frequencyContent: {
-    marginBottom: 20,
-    alignItems: 'center',
-  },
-  weekdaysContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    paddingHorizontal: 4,
-  },
-  weekdayButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F0F0F0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  weekdayButtonSelected: {
-    backgroundColor: '#4A90E2',
-    shadowColor: '#4A90E2',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-  },
-  weekdayText: {
-    fontSize: 12,
-    color: '#888',
-    fontWeight: '600',
-  },
-  weekdayTextSelected: {
-    color: '#FFF',
-    fontWeight: 'bold',
-  },
-  monthGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    paddingTop: 10,
     gap: 8,
   },
-  monthDayButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    margin: 2,
-  },
-  monthDayButtonSelected: {
-    backgroundColor: '#4A90E2',
-    borderColor: '#4A90E2',
-  },
-  monthDayText: {
-    fontSize: 12,
-    color: '#555',
-  },
-  monthDayTextSelected: {
-    color: '#FFF',
-    fontWeight: 'bold',
-  },
-  settingRow: {
+  weekdayGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    gap: 8,
+  },
+  weekdayPill: {
+    flex: 1,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F2F6FF',
     alignItems: 'center',
-    paddingVertical: 12,
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(109, 125, 150, 0.18)',
   },
-  settingRowNoAlign: {
-    flexDirection: 'column',
-    paddingVertical: 12,
+  weekdayPillActive: {
+    backgroundColor: '#E3EBFF',
+    borderColor: '#A3B7D7',
   },
-  settingLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#333',
+  weekdayPillLabel: {
+    color: '#556070',
+    fontWeight: '700',
+    fontSize: 15,
   },
-  settingSubLabel: {
-    fontSize: 13,
-    color: '#888',
-    marginTop: 2,
+  weekdayPillLabelActive: {
+    color: '#1F2742',
   },
-  divider: {
-    height: 1,
-    backgroundColor: '#E5E5E5',
-    marginVertical: 4,
+  monthDayGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 4,
+    gap: 8,
+  },
+  monthDayCell: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F2F6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(109, 125, 150, 0.18)',
+  },
+  monthDayCellActive: {
+    backgroundColor: '#E3EBFF',
+    borderColor: '#A3B7D7',
+  },
+  monthDayLabel: {
+    color: '#556070',
+    fontWeight: '700',
+  },
+  monthDayLabelActive: {
+    color: '#1F2742',
+  },
+  weekdayToggle: {
+    flex: 1,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: '#E8EEFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weekdayToggleActive: {
+    backgroundColor: '#1F2742',
+  },
+  weekdayToggleLabel: {
+    color: '#1F2742',
+    fontWeight: '600',
+  },
+  weekdayToggleLabelActive: {
+    color: '#FFFFFF',
   },
   timePanel: {
     backgroundColor: '#F5F7FF',
