@@ -2342,14 +2342,10 @@ function WheelColumn({
 }) {
   const scrollRef = useRef(null);
   const isMomentumScrolling = useRef(false);
-
-  const offsets = useMemo(
-    () => values.map((_, index) => index * itemHeight),
-    [values, itemHeight]
-  );
+  const isDragging = useRef(false);
 
   useEffect(() => {
-    if (!scrollRef.current || isMomentumScrolling.current) {
+    if (!scrollRef.current || isMomentumScrolling.current || isDragging.current) {
       return undefined;
     }
     const frame = requestAnimationFrame(() => {
@@ -2364,13 +2360,6 @@ function WheelColumn({
       const clampedOffset = Math.min(Math.max(offsetY, 0), maxOffset);
       const index = Math.round(clampedOffset / itemHeight);
       const clampedIndex = Math.min(Math.max(index, 0), values.length - 1);
-      const targetOffset = offsets[clampedIndex] ?? clampedIndex * itemHeight;
-
-      const distanceToTarget = Math.abs(targetOffset - clampedOffset);
-      const shouldAnimate = distanceToTarget > 0.5;
-      if (distanceToTarget > 0) {
-        scrollRef.current?.scrollTo({ y: targetOffset, animated: shouldAnimate });
-      }
 
       if (clampedIndex !== selectedIndex) {
         onSelect(values[clampedIndex]);
@@ -2383,7 +2372,7 @@ function WheelColumn({
         }
       }
     },
-    [itemHeight, offsets, onSelect, selectedIndex, values]
+    [itemHeight, values, onSelect, selectedIndex]
   );
 
   const handleMomentumBegin = useCallback(() => {
@@ -2394,6 +2383,20 @@ function WheelColumn({
     (event) => {
       isMomentumScrolling.current = false;
       finalizeSelection(event.nativeEvent.contentOffset.y ?? 0);
+    },
+    [finalizeSelection]
+  );
+
+  const handleScrollBeginDrag = useCallback(() => {
+    isDragging.current = true;
+  }, []);
+
+  const handleScrollEndDrag = useCallback(
+    (e) => {
+      isDragging.current = false;
+      if (!isMomentumScrolling.current) {
+        finalizeSelection(e.nativeEvent.contentOffset.y ?? 0);
+      }
     },
     [finalizeSelection]
   );
@@ -2419,12 +2422,8 @@ function WheelColumn({
       onMoveShouldSetResponderCapture={() => true}
       onMomentumScrollBegin={handleMomentumBegin}
       onMomentumScrollEnd={handleMomentumEnd}
-      // se o usuário soltar sem momentum, finalize aqui:
-      onScrollEndDrag={(e) => {
-        if (!isMomentumScrolling.current) {
-          finalizeSelection(e.nativeEvent.contentOffset.y ?? 0);
-        }
-      }}
+      onScrollBeginDrag={handleScrollBeginDrag}
+      onScrollEndDrag={handleScrollEndDrag}
     >
       {values.map((value, index) => {
         const isActive = index === selectedIndex;
