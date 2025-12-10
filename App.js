@@ -925,14 +925,10 @@ function ScheduleApp() {
   }, []);
   const todayKey = useMemo(() => getDateKey(today), [today]);
   const selectedDateKey = useMemo(() => getDateKey(selectedDate), [selectedDate]);
-  const isSelectedToday = selectedDateKey === todayKey;
-  const selectedDateLabel = useMemo(() => {
-    if (isSelectedToday) {
-      return 'Today';
-    }
-    const weekday = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
-    return `${weekday}, ${selectedDate.getDate()}`;
-  }, [isSelectedToday, selectedDate]);
+  const selectedMonthLabel = useMemo(() => {
+    const label = format(selectedDate, 'MMMM yyyy', { locale: ptBR });
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  }, [selectedDate]);
   useEffect(() => {
     const monthStart = getMonthStart(selectedDate);
     setCalendarMonths((previous) => {
@@ -945,12 +941,10 @@ function ScheduleApp() {
       return updated.sort((a, b) => a.date.getTime() - b.date.getTime());
     });
   }, [selectedDate]);
-  const weekDays = useMemo(() => {
-    const base = new Date(today);
-    return Array.from({ length: 7 }, (_, index) => {
-      const offset = index - 3;
-      const date = new Date(base);
-      date.setDate(base.getDate() + offset);
+  const monthDays = useMemo(() => {
+    const start = startOfMonth(selectedDate);
+    const end = endOfMonth(selectedDate);
+    return eachDayOfInterval({ start, end }).map((date) => {
       const key = getDateKey(date);
       const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, date));
       const allCompleted =
@@ -958,12 +952,12 @@ function ScheduleApp() {
       return {
         date,
         key,
-        label: date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase(),
+        label: format(date, 'EEE', { locale: ptBR }).toUpperCase(),
         dayNumber: date.getDate(),
         allCompleted,
       };
     });
-  }, [tasks, today]);
+  }, [selectedDate, tasks]);
   const getDayStatusForCalendar = useCallback(
     (day) => {
       const dateKey = getDateKey(day);
@@ -1746,11 +1740,7 @@ function ScheduleApp() {
         },
       ]}
     >
-      <StatusBar
-        barStyle="dark-content"
-        backgroundColor="#f6f6fb"
-        translucent={false}
-      />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
       <View style={styles.container}>
         <View
@@ -1768,60 +1758,45 @@ function ScheduleApp() {
               showsVerticalScrollIndicator={false}
             >
               <View style={styles.todayHeader}>
-                <Text style={styles.todayTitle}>{selectedDateLabel}</Text>
-                {tasksForSelectedDate.length > 0 && (
-                  <Text
-                    style={[
-                      styles.todaySubtitle,
-                      allTasksCompletedForSelectedDay
-                        ? styles.todaySubtitleSuccess
-                        : styles.todaySubtitleInProgress,
-                    ]}
-                  >
-                    {allTasksCompletedForSelectedDay
-                      ? 'All tasks completed'
-                      : `${completedTaskCount}/${tasksForSelectedDate.length} completed`}
-                  </Text>
-                )}
+                <Text style={styles.todayTitle}>{selectedMonthLabel}</Text>
               </View>
 
               <View style={styles.daySelector}>
-                {weekDays.map((day) => {
-                  const isSelected = day.key === selectedDateKey;
-                  const isToday = day.key === todayKey;
-                  const dayContainerStyles = [styles.dayNumber];
-                  const dayTextStyles = [styles.dayNumberText];
-                  if (isSelected) {
-                    dayContainerStyles.push(styles.dayNumberSelected);
-                    dayTextStyles.push(styles.dayNumberTextSelected);
-                  }
-                  if (day.allCompleted) {
-                    dayContainerStyles.push(styles.dayNumberCompleted);
-                    dayTextStyles.push(styles.dayNumberTextCompleted);
-                  }
-                  const indicatorStyles = [styles.todayIndicator];
-                  if (day.allCompleted) {
-                    indicatorStyles.push(styles.todayIndicatorOnCompleted);
-                  }
-                  return (
-                    <Pressable
-                      key={day.key}
-                      style={styles.dayItem}
-                      onPress={() => handleSelectDate(day.date)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${day.label} ${day.dayNumber}`}
-                      accessibilityState={{ selected: isSelected }}
-                    >
-                      <Text style={[styles.dayLabel, isSelected && styles.dayLabelSelected]}>
-                        {day.label}
-                      </Text>
-                      <View style={dayContainerStyles}>
-                        <Text style={dayTextStyles}>{day.dayNumber}</Text>
-                        {isToday && <View style={indicatorStyles} />}
-                      </View>
-                    </Pressable>
-                  );
-                })}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.daySelectorScroll}
+                >
+                  {monthDays.map((day) => {
+                    const isSelected = day.key === selectedDateKey;
+                    const isToday = day.key === todayKey;
+                    const dayContainerStyles = [styles.dayNumber];
+                    const dayTextStyles = [styles.dayNumberText];
+                    const labelStyles = [styles.dayLabel];
+                    if (isSelected) {
+                      dayContainerStyles.push(styles.dayNumberSelected);
+                      dayTextStyles.push(styles.dayNumberTextSelected);
+                      labelStyles.push(styles.dayLabelSelected);
+                    } else {
+                      dayTextStyles.push(styles.dayNumberTextDefault);
+                    }
+                    return (
+                      <Pressable
+                        key={day.key}
+                        style={styles.dayItem}
+                        onPress={() => handleSelectDate(day.date)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${day.label} ${day.dayNumber}`}
+                        accessibilityState={{ selected: isSelected }}
+                      >
+                        <Text style={labelStyles}>{day.label}</Text>
+                        <View style={[dayContainerStyles, isToday && styles.dayNumberToday]}>
+                          <Text style={dayTextStyles}>{day.dayNumber}</Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
               </View>
 
               {tagOptions.length > 0 && (
@@ -2446,33 +2421,29 @@ function SwipeableTaskCard({
         style={[
           styles.taskCard,
           {
-            backgroundColor,
             borderColor,
             transform: [{ translateX }],
           },
         ]}
       >
         <Pressable style={styles.taskCardContent} onPress={handlePress}>
-          <View style={styles.taskInfo}>
-            {task.customImage ? (
-              <Image source={{ uri: task.customImage }} style={styles.taskEmojiImage} />
-            ) : (
-              <Text style={styles.taskEmoji}>{task.emoji}</Text>
+          <View style={[styles.taskColorBar, { backgroundColor: borderColor || '#1A237E' }]} />
+          <View style={styles.taskDetails}>
+            <Text style={styles.taskTimeRange}>{formatTaskTime(task.time)}</Text>
+            <Text
+              style={[styles.taskTitle, task.completed && styles.taskTitleCompleted]}
+              numberOfLines={1}
+            >
+              {task.title}
+            </Text>
+            <Text style={styles.taskMeta} numberOfLines={1}>
+              {task.tagLabel && task.tagLabel !== 'No tag' ? task.tagLabel : 'Confirmado via WhatsApp'}
+            </Text>
+            {totalLabel && (
+              <View style={styles.taskSubtaskSummary}>
+                <Text style={styles.taskSubtaskSummaryText}>{totalLabel}</Text>
+              </View>
             )}
-            <View style={styles.taskDetails}>
-              <Text
-                style={[styles.taskTitle, task.completed && styles.taskTitleCompleted]}
-                numberOfLines={1}
-              >
-                {task.title}
-              </Text>
-              <Text style={styles.taskTime}>{formatTaskTime(task.time)}</Text>
-              {totalLabel && (
-                <View style={styles.taskSubtaskSummary}>
-                  <Text style={styles.taskSubtaskSummaryText}>{totalLabel}</Text>
-                </View>
-              )}
-            </View>
           </View>
         </Pressable>
         <Pressable
@@ -2632,21 +2603,21 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f6f6fb',
+    backgroundColor: '#ffffff',
     position: 'relative',
   },
   safeArea: {
     flex: 1,
-    backgroundColor: '#f6f6fb',
+    backgroundColor: '#ffffff',
   },
   appFrame: {
     flex: 1,
-    backgroundColor: '#f6f6fb',
+    backgroundColor: '#ffffff',
   },
   content: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 48,
+    paddingTop: 24,
     gap: 16,
   },
   heading: {
@@ -2667,26 +2638,18 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   todayTitle: {
-    fontSize: 28,
-    fontWeight: '700',
+    fontSize: 32,
+    fontWeight: '800',
     color: '#1a1a2e',
-  },
-  todaySubtitle: {
-    marginTop: 8,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  todaySubtitleSuccess: {
-    color: '#2f9e44',
-  },
-  todaySubtitleInProgress: {
-    color: '#6f7a86',
   },
   daySelector: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginBottom: 24,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  daySelectorScroll: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
   },
   tagFilterContainer: {
     marginBottom: 16,
@@ -2715,56 +2678,47 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   dayItem: {
-    flex: 1,
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    marginRight: 12,
   },
   dayLabel: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
     letterSpacing: 0.6,
-    color: '#9ba0b0',
-    marginBottom: 10,
+    color: '#6f7a86',
+    marginBottom: 6,
     textTransform: 'uppercase',
   },
   dayLabelSelected: {
-    color: '#3c2ba7',
+    color: '#1a1a2e',
   },
   dayNumber: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    minWidth: 56,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#e7f6e6',
-    position: 'relative',
+    backgroundColor: '#f3f4f6',
   },
   dayNumberSelected: {
-    backgroundColor: '#f0faee',
-  },
-  dayNumberCompleted: {
-    backgroundColor: '#3dd598',
+    backgroundColor: '#1A237E',
   },
   dayNumberText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  dayNumberTextDefault: {
     color: '#1a1a2e',
   },
   dayNumberTextSelected: {
-    color: '#2f2a6f',
-  },
-  dayNumberTextCompleted: {
     color: '#ffffff',
   },
-  todayIndicator: {
-    position: 'absolute',
-    bottom: 6,
-    width: '54%',
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: '#3c2ba7',
-  },
-  todayIndicatorOnCompleted: {
-    backgroundColor: '#ffffff',
+  dayNumberToday: {
+    borderWidth: 1,
+    borderColor: '#1A237E',
   },
   tasksSection: {
     marginTop: 8,
@@ -2796,10 +2750,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderRadius: 18,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    borderRadius: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
     borderWidth: 1,
+    borderColor: '#e6e8ed',
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
   },
   swipeableWrapper: {
     marginBottom: 14,
@@ -2844,47 +2805,40 @@ const styles = StyleSheet.create({
   swipeActionTextDelete: {
     color: '#ffffff',
   },
-  taskInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
   taskCardContent: {
     flex: 1,
     paddingRight: 12,
-  },
-  taskEmoji: {
-    fontSize: 34,
-  },
-  taskEmojiImage: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    resizeMode: 'cover',
-  },
-  taskEmojiImage: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    resizeMode: 'cover',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
   },
   taskDetails: {
-    marginLeft: 12,
     flex: 1,
   },
   taskTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '700',
     color: '#1a1a2e',
   },
   taskTitleCompleted: {
     color: '#6f7a86',
     textDecorationLine: 'line-through',
   },
-  taskTime: {
-    marginTop: 4,
+  taskTimeRange: {
     fontSize: 13,
     color: '#6f7a86',
+    marginBottom: 6,
+  },
+  taskMeta: {
+    fontSize: 14,
+    color: '#8a8f99',
+    marginTop: 6,
+  },
+  taskColorBar: {
+    width: 6,
+    alignSelf: 'stretch',
+    borderRadius: 6,
+    backgroundColor: '#1A237E',
   },
   taskSubtaskSummary: {
     marginTop: 6,
@@ -3167,7 +3121,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -32,
     alignSelf: 'center',
-    backgroundColor: '#3c2ba7',
+    backgroundColor: '#ff7043',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
