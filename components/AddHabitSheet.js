@@ -2977,11 +2977,12 @@ const styles = StyleSheet.create({
   repeatPanel: {
     backgroundColor: '#F5F7FF',
     borderRadius: 20,
-    paddingVertical: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
   },
   repeatContent: {
     gap: 18,
-    marginTop: 12,
   },
   weekdayToggleRow: {
     flexDirection: 'row',
@@ -3071,8 +3072,10 @@ const styles = StyleSheet.create({
     gap: 18,
   },
   intervalSection: {
-    marginTop: 6,
+    marginTop: 10,
     gap: 12,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
   intervalRow: {
     flexDirection: 'row',
