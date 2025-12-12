@@ -217,6 +217,14 @@ function getRepeatLabel(repeatConfig, startDate) {
   const everyText = `Every ${interval} ${interval === 1 ? unitLabels.singular : unitLabels.plural}`;
   const endText = endDate ? ` until ${formatDateLabel(endDate)}` : '';
 
+  const maybeTruncate = (label) => {
+    const words = label.split(' ');
+    if (words.length > 5) {
+      return `${words.slice(0, 4).join(' ')} ...`;
+    }
+    return label;
+  };
+
   if (frequency === 'weekly') {
     const selectedWeekdays = (weekdays && weekdays.size ? weekdays : null) ||
       new Set([startDate ? getWeekdayKeyFromDate(startDate) : 'mon']);
@@ -224,7 +232,7 @@ function getRepeatLabel(repeatConfig, startDate) {
       (weekday) => WEEKDAY_SHORT_NAMES[weekday.key] || weekday.label
     );
     const daysText = labels.length ? ` on ${labels.join(', ')}` : '';
-    return `${everyText}${daysText}${endText}`;
+    return maybeTruncate(`${everyText}${daysText}${endText}`);
   }
 
   if (frequency === 'monthly') {
@@ -234,10 +242,10 @@ function getRepeatLabel(repeatConfig, startDate) {
       .sort((a, b) => a - b)
       .map((day) => formatOrdinal(day))
       .join(', ');
-    return `${everyText}${dayText ? ` on ${dayText}` : ''}${endText}`;
+    return maybeTruncate(`${everyText}${dayText ? ` on ${dayText}` : ''}${endText}`);
   }
 
-  return `${everyText}${endText}`;
+  return maybeTruncate(`${everyText}${endText}`);
 }
 
 function doesDateRepeat(date, start, repeatConfig) {
@@ -2977,11 +2985,12 @@ const styles = StyleSheet.create({
   repeatPanel: {
     backgroundColor: '#F5F7FF',
     borderRadius: 20,
-    paddingVertical: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
   },
   repeatContent: {
     gap: 18,
-    marginTop: 12,
   },
   weekdayToggleRow: {
     flexDirection: 'row',
@@ -2995,21 +3004,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 8,
-    gap: 8,
+    gap: 10,
   },
   weekdayPill: {
     flex: 1,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 20,
     backgroundColor: '#F2F6FF',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(109, 125, 150, 0.18)',
+    borderWidth: 1,
+    borderColor: '#A3B7D7',
   },
   weekdayPillActive: {
     backgroundColor: '#E3EBFF',
-    borderColor: '#A3B7D7',
+    borderColor: '#1F2742',
   },
   weekdayPillLabel: {
     color: '#556070',
@@ -3022,8 +3031,10 @@ const styles = StyleSheet.create({
   monthDayGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: 4,
-    gap: 8,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    rowGap: 10,
+    columnGap: 10,
   },
   monthDayCell: {
     width: 40,
@@ -3032,12 +3043,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#F2F6FF',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(109, 125, 150, 0.18)',
+    borderWidth: 1,
+    borderColor: '#A3B7D7',
   },
   monthDayCellActive: {
     backgroundColor: '#E3EBFF',
-    borderColor: '#A3B7D7',
+    borderColor: '#1F2742',
   },
   monthDayLabel: {
     color: '#556070',
@@ -3071,8 +3082,10 @@ const styles = StyleSheet.create({
     gap: 18,
   },
   intervalSection: {
-    marginTop: 6,
+    marginTop: 10,
     gap: 12,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
   intervalRow: {
     flexDirection: 'row',

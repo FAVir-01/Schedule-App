@@ -1490,14 +1490,41 @@ function ScheduleApp() {
       });
   }, []);
 
+  const getUniqueTitle = useCallback(
+    (requestedTitle, excludeTaskId) => {
+      const baseTitle = (requestedTitle || 'Untitled task').trim() || 'Untitled task';
+      const normalizedBase = baseTitle.toLowerCase();
+
+      const existingTitles = new Set(
+        tasks
+          .filter((task) => task.id !== excludeTaskId)
+          .map((task) => (task.title || '').trim().toLowerCase())
+      );
+
+      if (!existingTitles.has(normalizedBase)) {
+        return baseTitle;
+      }
+
+      let suffix = 1;
+      let candidate = `${baseTitle} ${suffix}`;
+      while (existingTitles.has(candidate.toLowerCase())) {
+        suffix += 1;
+        candidate = `${baseTitle} ${suffix}`;
+      }
+      return candidate;
+    },
+    [tasks]
+  );
+
   const handleCreateHabit = useCallback((habit) => {
     const normalizedDate = new Date(habit?.startDate ?? new Date());
     normalizedDate.setHours(0, 0, 0, 0);
     const dateKey = getDateKey(normalizedDate);
     const color = habit?.color ?? '#d1d7ff';
+    const title = getUniqueTitle(habit?.title, null);
     const newTask = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      title: habit?.title ?? 'Untitled task',
+      title,
       color,
       emoji: habit?.emoji ?? '✅',
       customImage: habit?.customImage ?? null,
@@ -1517,10 +1544,10 @@ function ScheduleApp() {
     triggerImpact(Haptics.ImpactFeedbackStyle.Light);
     appendHistoryEntry('task_created', {
       taskId: newTask.id,
-      title: newTask.title,
+      title,
       dateKey: newTask.dateKey,
     });
-  }, [appendHistoryEntry, convertSubtasks]);
+  }, [appendHistoryEntry, convertSubtasks, getUniqueTitle]);
 
   const handleUpdateHabit = useCallback(
     (taskId, habit) => {
@@ -1528,6 +1555,10 @@ function ScheduleApp() {
       if (normalizedDate) {
         normalizedDate.setHours(0, 0, 0, 0);
       }
+      const existingTask = tasks.find((task) => task.id === taskId);
+      const nextTitle = habit?.title
+        ? getUniqueTitle(habit.title, taskId)
+        : existingTask?.title ?? 'Untitled task';
       setTasks((previous) =>
         previous.map((task) => {
           if (task.id !== taskId) {
@@ -1537,7 +1568,7 @@ function ScheduleApp() {
           nextDate.setHours(0, 0, 0, 0);
           return {
             ...task,
-            title: habit?.title ?? task.title,
+            title: nextTitle,
             color: habit?.color ?? task.color,
             emoji: habit?.emoji ?? task.emoji,
             customImage: habit?.customImage ?? task.customImage ?? null,
@@ -1558,11 +1589,11 @@ function ScheduleApp() {
       }
       appendHistoryEntry('task_updated', {
         taskId,
-        title: habit?.title,
+        title: nextTitle,
         dateKey: normalizedDate ? getDateKey(normalizedDate) : undefined,
       });
     },
-    [appendHistoryEntry, convertSubtasks]
+    [appendHistoryEntry, convertSubtasks, getUniqueTitle, tasks]
   );
 
   const handleToggleSubtask = useCallback(
