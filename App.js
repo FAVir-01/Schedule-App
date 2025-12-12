@@ -776,7 +776,14 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
                             { backgroundColor: '#fff' },
                           ]}
                         >
-                          <Text style={{ fontSize: 18 }}>{task.emoji || '📝'}</Text>
+                          {task.customImage ? (
+                            <Image
+                              source={{ uri: task.customImage }}
+                              style={styles.reportTaskIconImage}
+                            />
+                          ) : (
+                            <Text style={{ fontSize: 18 }}>{task.emoji || '📝'}</Text>
+                          )}
                         </View>
 
                         <View style={{ flex: 1 }}>
@@ -1483,16 +1490,44 @@ function ScheduleApp() {
       });
   }, []);
 
+  const getUniqueTitle = useCallback(
+    (requestedTitle, excludeTaskId) => {
+      const baseTitle = (requestedTitle || 'Untitled task').trim() || 'Untitled task';
+      const normalizedBase = baseTitle.toLowerCase();
+
+      const existingTitles = new Set(
+        tasks
+          .filter((task) => task.id !== excludeTaskId)
+          .map((task) => (task.title || '').trim().toLowerCase())
+      );
+
+      if (!existingTitles.has(normalizedBase)) {
+        return baseTitle;
+      }
+
+      let suffix = 1;
+      let candidate = `${baseTitle} ${suffix}`;
+      while (existingTitles.has(candidate.toLowerCase())) {
+        suffix += 1;
+        candidate = `${baseTitle} ${suffix}`;
+      }
+      return candidate;
+    },
+    [tasks]
+  );
+
   const handleCreateHabit = useCallback((habit) => {
     const normalizedDate = new Date(habit?.startDate ?? new Date());
     normalizedDate.setHours(0, 0, 0, 0);
     const dateKey = getDateKey(normalizedDate);
     const color = habit?.color ?? '#d1d7ff';
+    const title = getUniqueTitle(habit?.title, null);
     const newTask = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      title: habit?.title ?? 'Untitled task',
+      title,
       color,
       emoji: habit?.emoji ?? '✅',
+      customImage: habit?.customImage ?? null,
       time: habit?.time,
       date: normalizedDate,
       dateKey,
@@ -1509,10 +1544,10 @@ function ScheduleApp() {
     triggerImpact(Haptics.ImpactFeedbackStyle.Light);
     appendHistoryEntry('task_created', {
       taskId: newTask.id,
-      title: newTask.title,
+      title,
       dateKey: newTask.dateKey,
     });
-  }, [appendHistoryEntry, convertSubtasks]);
+  }, [appendHistoryEntry, convertSubtasks, getUniqueTitle]);
 
   const handleUpdateHabit = useCallback(
     (taskId, habit) => {
@@ -1520,6 +1555,10 @@ function ScheduleApp() {
       if (normalizedDate) {
         normalizedDate.setHours(0, 0, 0, 0);
       }
+      const existingTask = tasks.find((task) => task.id === taskId);
+      const nextTitle = habit?.title
+        ? getUniqueTitle(habit.title, taskId)
+        : existingTask?.title ?? 'Untitled task';
       setTasks((previous) =>
         previous.map((task) => {
           if (task.id !== taskId) {
@@ -1529,9 +1568,10 @@ function ScheduleApp() {
           nextDate.setHours(0, 0, 0, 0);
           return {
             ...task,
-            title: habit?.title ?? task.title,
+            title: nextTitle,
             color: habit?.color ?? task.color,
             emoji: habit?.emoji ?? task.emoji,
+            customImage: habit?.customImage ?? task.customImage ?? null,
             time: habit?.time,
             subtasks: convertSubtasks(habit?.subtasks ?? [], task.subtasks ?? []),
             repeat: habit?.repeat,
@@ -1549,11 +1589,11 @@ function ScheduleApp() {
       }
       appendHistoryEntry('task_updated', {
         taskId,
-        title: habit?.title,
+        title: nextTitle,
         dateKey: normalizedDate ? getDateKey(normalizedDate) : undefined,
       });
     },
-    [appendHistoryEntry, convertSubtasks]
+    [appendHistoryEntry, convertSubtasks, getUniqueTitle, tasks]
   );
 
   const handleToggleSubtask = useCallback(
@@ -2445,7 +2485,11 @@ function SwipeableTaskCard({
       >
         <Pressable style={styles.taskCardContent} onPress={handlePress}>
           <View style={styles.taskInfo}>
-            <Text style={styles.taskEmoji}>{task.emoji}</Text>
+            {task.customImage ? (
+              <Image source={{ uri: task.customImage }} style={styles.taskEmojiImage} />
+            ) : (
+              <Text style={styles.taskEmoji}>{task.emoji}</Text>
+            )}
             <View style={styles.taskDetails}>
               <Text
                 style={[styles.taskTitle, task.completed && styles.taskTitleCompleted]}
@@ -2508,7 +2552,11 @@ function TaskDetailModal({
           <View style={[styles.detailCard, { backgroundColor: cardBackground, borderColor: task.color }]}>
             <View style={styles.detailHeaderRow}>
               <View style={styles.detailHeaderInfo}>
+              {task.customImage ? (
+                <Image source={{ uri: task.customImage }} style={styles.detailEmojiImage} />
+              ) : (
                 <Text style={styles.detailEmoji}>{task.emoji}</Text>
+              )}
                 <View style={styles.detailTitleContainer}>
                   <Text style={styles.detailTitle}>{task.title}</Text>
                   <Text style={styles.detailTime}>{formatTaskTime(task.time)}</Text>
@@ -2837,7 +2885,19 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
   taskEmoji: {
-    fontSize: 28,
+    fontSize: 34,
+  },
+  taskEmojiImage: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    resizeMode: 'cover',
+  },
+  taskEmojiImage: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    resizeMode: 'cover',
   },
   taskDetails: {
     marginLeft: 12,
@@ -2920,6 +2980,12 @@ const styles = StyleSheet.create({
   },
   detailEmoji: {
     fontSize: 36,
+  },
+  detailEmojiImage: {
+    width: 53,
+    height: 53,
+    borderRadius: 26.5,
+    resizeMode: 'cover',
   },
   detailTitleContainer: {
     marginLeft: 12,
@@ -3401,6 +3467,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  reportTaskIconImage: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    resizeMode: 'cover',
   },
   reportTaskTitle: {
     flex: 1,

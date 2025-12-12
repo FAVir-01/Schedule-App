@@ -3,6 +3,7 @@ import {
   AccessibilityInfo,
   Animated,
   BackHandler,
+  Image,
   KeyboardAvoidingView,
   PanResponder,
   Platform,
@@ -18,6 +19,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 
 const SHEET_OPEN_DURATION = 300;
 const SHEET_CLOSE_DURATION = 220;
@@ -80,6 +82,11 @@ const WEEKDAY_SHORT_NAMES = {
   fri: 'Fri',
   sat: 'Sat',
 };
+const FREQUENCY_LABELS = {
+  daily: { singular: 'day', plural: 'days' },
+  weekly: { singular: 'week', plural: 'weeks' },
+  monthly: { singular: 'month', plural: 'months' },
+};
 
 const REMINDER_OPTIONS = [
   { key: 'none', label: 'No reminder' },
@@ -120,6 +127,7 @@ const createTagKey = (label, existingKeys) => {
 const HOUR_VALUES = Array.from({ length: 12 }, (_, i) => i + 1);
 const MINUTE_VALUES = Array.from({ length: 60 }, (_, i) => i);
 const MERIDIEM_VALUES = ['AM', 'PM'];
+const INTERVAL_VALUES = Array.from({ length: 99 }, (_, i) => i + 1);
 
 const formatNumber = (value) => value.toString().padStart(2, '0');
 
@@ -188,50 +196,91 @@ function formatDateLabel(date) {
   });
 }
 
-function getRepeatLabel(option, weekdays, startDate) {
-  switch (option) {
-    case 'daily':
-      return 'Every day';
-    case 'weekly':
-      return startDate
-        ? `Every week on ${startDate.toLocaleDateString(undefined, { weekday: 'long' })}`
-        : 'Weekly';
-    case 'monthly':
-      return startDate ? `Every month on ${formatOrdinal(startDate.getDate())}` : 'Monthly';
-    case 'weekend':
-      return 'Every weekend';
-    case 'custom': {
-      const selected = WEEKDAYS.filter(({ key }) => weekdays.has(key));
-      if (!selected.length) {
-        return 'Custom';
-      }
-      return selected.map((weekday) => WEEKDAY_SHORT_NAMES[weekday.key] || weekday.label).join(', ');
-    }
-    case 'off':
-    default:
-      return 'No repeat';
-  }
+function daysBetween(start, end) {
+  return Math.floor((normalizeDate(end) - normalizeDate(start)) / (24 * 60 * 60 * 1000));
 }
 
-function doesDateRepeat(date, start, repeatOption, weekdays) {
-  if (!start || isBeforeDay(date, start)) {
+function monthsBetween(start, end) {
+  return (
+    (end.getFullYear() - start.getFullYear()) * 12 +
+    (end.getMonth() - start.getMonth())
+  );
+}
+
+function getRepeatLabel(repeatConfig, startDate) {
+  if (!repeatConfig?.enabled) {
+    return 'No repeat';
+  }
+
+  const { frequency, interval, weekdays, monthDays, endDate } = repeatConfig;
+  const unitLabels = FREQUENCY_LABELS[frequency] || FREQUENCY_LABELS.daily;
+  const everyText = `Every ${interval} ${interval === 1 ? unitLabels.singular : unitLabels.plural}`;
+  const endText = endDate ? ` until ${formatDateLabel(endDate)}` : '';
+
+  const maybeTruncate = (label) => {
+    const words = label.split(' ');
+    if (words.length > 5) {
+      return `${words.slice(0, 4).join(' ')} ...`;
+    }
+    return label;
+  };
+
+  if (frequency === 'weekly') {
+    const selectedWeekdays = (weekdays && weekdays.size ? weekdays : null) ||
+      new Set([startDate ? getWeekdayKeyFromDate(startDate) : 'mon']);
+    const labels = WEEKDAYS.filter(({ key }) => selectedWeekdays.has(key)).map(
+      (weekday) => WEEKDAY_SHORT_NAMES[weekday.key] || weekday.label
+    );
+    const daysText = labels.length ? ` on ${labels.join(', ')}` : '';
+    return maybeTruncate(`${everyText}${daysText}${endText}`);
+  }
+
+  if (frequency === 'monthly') {
+    const selectedDays = (monthDays && monthDays.size ? monthDays : null) ||
+      new Set([startDate ? startDate.getDate() : 1]);
+    const dayText = Array.from(selectedDays)
+      .sort((a, b) => a - b)
+      .map((day) => formatOrdinal(day))
+      .join(', ');
+    return maybeTruncate(`${everyText}${dayText ? ` on ${dayText}` : ''}${endText}`);
+  }
+
+  return maybeTruncate(`${everyText}${endText}`);
+}
+
+function doesDateRepeat(date, start, repeatConfig) {
+  if (!repeatConfig?.enabled || !start || isBeforeDay(date, start)) {
     return false;
   }
 
-  switch (repeatOption) {
-    case 'daily':
-      return true;
-    case 'weekly':
-      return date.getDay() === start.getDay();
-    case 'monthly':
-      return date.getDate() === start.getDate();
-    case 'weekend':
-      return date.getDay() === 0 || date.getDay() === 6;
-    case 'custom':
-      return weekdays?.has(getWeekdayKeyFromDate(date));
-    default:
-      return false;
+  const { frequency, interval = 1, weekdays, monthDays, endDate } = repeatConfig;
+  const normalizedDate = normalizeDate(date);
+  const normalizedStart = normalizeDate(start);
+
+  if (endDate && isBeforeDay(endDate, normalizedDate)) {
+    return false;
   }
+
+  if (frequency === 'daily') {
+    const diffDays = daysBetween(normalizedStart, normalizedDate);
+    return diffDays % interval === 0;
+  }
+
+  if (frequency === 'weekly') {
+    const diffDays = daysBetween(normalizedStart, normalizedDate);
+    const diffWeeks = Math.floor(diffDays / 7);
+    const targetWeekday = getWeekdayKeyFromDate(normalizedDate);
+    const allowedWeekdays = weekdays && weekdays.size ? weekdays : new Set([getWeekdayKeyFromDate(start)]);
+    return diffWeeks % interval === 0 && allowedWeekdays.has(targetWeekday);
+  }
+
+  if (frequency === 'monthly') {
+    const diffMonths = monthsBetween(normalizedStart, normalizedDate);
+    const selectedDays = monthDays && monthDays.size ? monthDays : new Set([start.getDate()]);
+    return diffMonths % interval === 0 && selectedDays.has(normalizedDate.getDate());
+  }
+
+  return false;
 }
 
 function getMonthMetadata(date) {
@@ -368,8 +417,15 @@ export default function AddHabitSheet({
   const [isMounted, setIsMounted] = useState(visible);
   const [activePanel, setActivePanel] = useState(null);
   const [startDate, setStartDate] = useState(() => normalizeDate(new Date()));
-  const [repeatOption, setRepeatOption] = useState('off');
-  const [selectedWeekdays, setSelectedWeekdays] = useState(() => new Set(['mon', 'tue', 'wed', 'thu', 'fri']));
+  const [isRepeatEnabled, setIsRepeatEnabled] = useState(false);
+  const [repeatFrequency, setRepeatFrequency] = useState('daily');
+  const [repeatInterval, setRepeatInterval] = useState(1);
+  const [selectedWeekdays, setSelectedWeekdays] = useState(
+    () => new Set([getWeekdayKeyFromDate(normalizeDate(new Date()))])
+  );
+  const [selectedMonthDays, setSelectedMonthDays] = useState(() => new Set([startDate.getDate()]));
+  const [hasEndDate, setHasEndDate] = useState(false);
+  const [endDate, setEndDate] = useState(null);
   const [hasSpecifiedTime, setHasSpecifiedTime] = useState(false);
   const [timeMode, setTimeMode] = useState('point');
   const [pointTime, setPointTime] = useState({ hour: 9, minute: 0, meridiem: 'AM' });
@@ -386,8 +442,13 @@ export default function AddHabitSheet({
     () => new Date(startDate.getFullYear(), startDate.getMonth(), 1)
   );
   const [pendingDate, setPendingDate] = useState(startDate);
-  const [pendingRepeatOption, setPendingRepeatOption] = useState(repeatOption);
+  const [pendingIsRepeatEnabled, setPendingIsRepeatEnabled] = useState(isRepeatEnabled);
+  const [pendingRepeatFrequency, setPendingRepeatFrequency] = useState(repeatFrequency);
+  const [pendingRepeatInterval, setPendingRepeatInterval] = useState(repeatInterval);
   const [pendingWeekdays, setPendingWeekdays] = useState(() => new Set(selectedWeekdays));
+  const [pendingMonthDays, setPendingMonthDays] = useState(() => new Set(selectedMonthDays));
+  const [pendingHasEndDate, setPendingHasEndDate] = useState(hasEndDate);
+  const [pendingEndDate, setPendingEndDate] = useState(endDate ?? startDate);
   const [pendingHasSpecifiedTime, setPendingHasSpecifiedTime] = useState(hasSpecifiedTime);
   const [pendingTimeMode, setPendingTimeMode] = useState(timeMode);
   const [pendingPointTime, setPendingPointTime] = useState(pointTime);
@@ -395,6 +456,8 @@ export default function AddHabitSheet({
   const [pendingReminder, setPendingReminder] = useState(reminderOption);
   const [pendingTag, setPendingTag] = useState(selectedTag);
   const [pendingSubtasks, setPendingSubtasks] = useState([]);
+  const [customImage, setCustomImage] = useState(null);
+  const [isLoadingImage, setIsLoadingImage] = useState(false);
   const titleInputRef = useRef(null);
   const translateY = useRef(new Animated.Value(sheetHeight || height)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -403,6 +466,7 @@ export default function AddHabitSheet({
   const isEditMode = mode === 'edit';
   const isCopyMode = mode === 'copy';
   const submitLabel = isEditMode ? 'Save' : 'Create';
+  const isDragCloseEnabled = false;
   const accessibilityAnnouncement = isEditMode
     ? 'Edit habit'
     : isCopyMode
@@ -451,11 +515,40 @@ export default function AddHabitSheet({
 
   const handleSelectEmoji = useCallback((emoji) => {
     setSelectedEmoji(emoji);
+    setCustomImage(null);
     setEmojiPickerVisible(false);
   }, []);
 
   const handleToggleEmojiPicker = useCallback(() => {
     setEmojiPickerVisible((prev) => !prev);
+  }, []);
+
+  const handlePickImage = useCallback(async () => {
+    if (isLoadingImage) {
+      return;
+    }
+
+    try {
+      setIsLoadingImage(true);
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets?.length) {
+        setCustomImage(result.assets[0].uri);
+        setEmojiPickerVisible(false);
+      }
+    } catch (error) {
+      console.error('Error selecting custom image:', error);
+    } finally {
+      setIsLoadingImage(false);
+    }
+  }, [isLoadingImage]);
+
+  const handleRemoveCustomImage = useCallback(() => {
+    setCustomImage(null);
   }, []);
 
   const handleOpenPanel = useCallback(
@@ -465,8 +558,13 @@ export default function AddHabitSheet({
         setCalendarMonthState(new Date(startDate.getFullYear(), startDate.getMonth(), 1));
         setPendingDate(new Date(startDate));
       } else if (panel === 'repeat') {
-        setPendingRepeatOption(repeatOption);
+        setPendingIsRepeatEnabled(isRepeatEnabled);
+        setPendingRepeatFrequency(repeatFrequency);
+        setPendingRepeatInterval(repeatInterval);
         setPendingWeekdays(new Set(selectedWeekdays));
+        setPendingMonthDays(new Set(selectedMonthDays));
+        setPendingHasEndDate(hasEndDate);
+        setPendingEndDate(endDate ?? startDate);
       } else if (panel === 'time') {
         setPendingHasSpecifiedTime(hasSpecifiedTime);
         setPendingTimeMode(timeMode);
@@ -491,10 +589,15 @@ export default function AddHabitSheet({
       periodTime,
       pointTime,
       reminderOption,
-      repeatOption,
+      repeatFrequency,
       selectedTag,
       selectedWeekdays,
+      selectedMonthDays,
       startDate,
+      repeatInterval,
+      isRepeatEnabled,
+      hasEndDate,
+      endDate,
       timeMode,
     ]
   );
@@ -507,33 +610,54 @@ export default function AddHabitSheet({
     const normalizedDate = normalizeDate(pendingDate);
     setStartDate(normalizedDate);
     setCalendarMonthState(new Date(normalizedDate.getFullYear(), normalizedDate.getMonth(), 1));
-    if (repeatOption === 'weekly') {
+    if (repeatFrequency === 'weekly' && selectedWeekdays.size === 0) {
       setSelectedWeekdays(new Set([getWeekdayKeyFromDate(normalizedDate)]));
     }
+    if (repeatFrequency === 'monthly' && selectedMonthDays.size === 0) {
+      setSelectedMonthDays(new Set([normalizedDate.getDate()]));
+    }
     closePanel();
-  }, [closePanel, pendingDate, repeatOption]);
+  }, [
+    closePanel,
+    pendingDate,
+    repeatFrequency,
+    selectedMonthDays,
+    selectedWeekdays,
+  ]);
 
   const handleApplyRepeat = useCallback(() => {
-    setRepeatOption(pendingRepeatOption);
-    let resolvedWeekdays;
-    if (pendingRepeatOption === 'daily') {
-      resolvedWeekdays = new Set(WEEKDAYS.map((weekday) => weekday.key));
-    } else if (pendingRepeatOption === 'weekend') {
-      resolvedWeekdays = new Set(['sat', 'sun']);
-    } else if (pendingRepeatOption === 'weekly') {
-      resolvedWeekdays = new Set([getWeekdayKeyFromDate(startDate)]);
-    } else if (pendingRepeatOption === 'off' || pendingRepeatOption === 'monthly') {
-      resolvedWeekdays = new Set();
-    } else {
-      const next = new Set(pendingWeekdays);
-      if (next.size === 0) {
-        next.add(getWeekdayKeyFromDate(startDate));
-      }
-      resolvedWeekdays = next;
-    }
+    const normalizedInterval = Math.min(99, Math.max(1, pendingRepeatInterval || 1));
+    const resolvedWeekdays =
+      pendingRepeatFrequency === 'weekly'
+        ? (pendingWeekdays.size
+            ? new Set(pendingWeekdays)
+            : new Set([getWeekdayKeyFromDate(startDate)]))
+        : new Set(pendingWeekdays);
+
+    const resolvedMonthDays =
+      pendingRepeatFrequency === 'monthly'
+        ? (pendingMonthDays.size ? new Set(pendingMonthDays) : new Set([startDate.getDate()]))
+        : new Set(pendingMonthDays);
+
+    setIsRepeatEnabled(pendingIsRepeatEnabled);
+    setRepeatFrequency(pendingRepeatFrequency);
+    setRepeatInterval(normalizedInterval);
     setSelectedWeekdays(resolvedWeekdays);
+    setSelectedMonthDays(resolvedMonthDays);
+    setHasEndDate(pendingHasEndDate && !!pendingEndDate);
+    setEndDate(pendingHasEndDate && pendingEndDate ? normalizeDate(pendingEndDate) : null);
     closePanel();
-  }, [closePanel, pendingRepeatOption, pendingWeekdays, startDate]);
+  }, [
+    closePanel,
+    pendingEndDate,
+    pendingHasEndDate,
+    pendingIsRepeatEnabled,
+    pendingMonthDays,
+    pendingRepeatFrequency,
+    pendingRepeatInterval,
+    pendingWeekdays,
+    startDate,
+  ]);
 
   const handleApplyTime = useCallback(() => {
     setHasSpecifiedTime(pendingHasSpecifiedTime);
@@ -598,12 +722,51 @@ export default function AddHabitSheet({
     const resolvedStartDate = normalizeDate(
       initialHabit.startDate ? new Date(initialHabit.startDate) : new Date()
     );
-    const resolvedRepeatOption = initialHabit.repeat?.option ?? 'off';
-    const resolvedWeekdays = new Set(
-      initialHabit.repeat?.weekdays && initialHabit.repeat.weekdays.length > 0
-        ? initialHabit.repeat.weekdays
-        : ['mon', 'tue', 'wed', 'thu', 'fri']
-    );
+    const defaultWeekday = getWeekdayKeyFromDate(resolvedStartDate);
+    const defaultMonthDay = resolvedStartDate.getDate();
+    const repeatSettings = initialHabit.repeat ?? {};
+    let resolvedIsRepeatEnabled = false;
+    let resolvedRepeatFrequency = 'daily';
+    let resolvedRepeatInterval = 1;
+    let resolvedWeekdays = new Set([defaultWeekday]);
+    let resolvedMonthDays = new Set([defaultMonthDay]);
+    let resolvedHasEndDate = false;
+    let resolvedEndDate = null;
+
+    if ('enabled' in repeatSettings || 'frequency' in repeatSettings) {
+      resolvedIsRepeatEnabled = !!repeatSettings.enabled;
+      resolvedRepeatFrequency = repeatSettings.frequency || 'daily';
+      resolvedRepeatInterval = repeatSettings.interval ?? 1;
+      if (repeatSettings.weekdays?.length) {
+        resolvedWeekdays = new Set(repeatSettings.weekdays);
+      } else if (resolvedRepeatFrequency === 'weekly') {
+        resolvedWeekdays = new Set([defaultWeekday]);
+      }
+      if (repeatSettings.monthDays?.length) {
+        resolvedMonthDays = new Set(repeatSettings.monthDays);
+      } else if (resolvedRepeatFrequency === 'monthly') {
+        resolvedMonthDays = new Set([defaultMonthDay]);
+      }
+      if (repeatSettings.endDate) {
+        resolvedHasEndDate = true;
+        resolvedEndDate = normalizeDate(new Date(repeatSettings.endDate));
+      }
+    } else if (repeatSettings.option) {
+      const option = repeatSettings.option;
+      resolvedIsRepeatEnabled = option !== 'off';
+      if (option === 'daily') {
+        resolvedRepeatFrequency = 'daily';
+      } else if (option === 'weekly' || option === 'weekend' || option === 'custom') {
+        resolvedRepeatFrequency = 'weekly';
+        if (option === 'weekend') {
+          resolvedWeekdays = new Set(['sat', 'sun']);
+        } else if (repeatSettings.weekdays?.length) {
+          resolvedWeekdays = new Set(repeatSettings.weekdays);
+        }
+      } else if (option === 'monthly') {
+        resolvedRepeatFrequency = 'monthly';
+      }
+    }
     const resolvedHasSpecifiedTime = initialHabit.time?.specified ?? false;
     const resolvedTimeMode = initialHabit.time?.mode ?? 'point';
     const defaultPoint = { hour: 9, minute: 0, meridiem: 'AM' };
@@ -629,8 +792,13 @@ export default function AddHabitSheet({
     setSelectedColor(initialHabit.color ?? COLORS[0]);
     setSelectedEmoji(initialHabit.emoji ?? DEFAULT_EMOJI);
     setStartDate(resolvedStartDate);
-    setRepeatOption(resolvedRepeatOption);
+    setIsRepeatEnabled(resolvedIsRepeatEnabled);
+    setRepeatFrequency(resolvedRepeatFrequency);
+    setRepeatInterval(resolvedRepeatInterval);
     setSelectedWeekdays(new Set(resolvedWeekdays));
+    setSelectedMonthDays(new Set(resolvedMonthDays));
+    setHasEndDate(resolvedHasEndDate);
+    setEndDate(resolvedEndDate);
     setHasSpecifiedTime(resolvedHasSpecifiedTime);
     setTimeMode(resolvedTimeMode);
     setPointTime(resolvedPoint);
@@ -639,11 +807,17 @@ export default function AddHabitSheet({
     setSelectedTag(resolvedTagKey);
     setPendingTag(resolvedTagKey);
     setSubtasks(resolvedSubtasks);
+    setCustomImage(initialHabit.customImage ?? null);
 
     setCalendarMonthState(new Date(resolvedStartDate.getFullYear(), resolvedStartDate.getMonth(), 1));
     setPendingDate(resolvedStartDate);
-    setPendingRepeatOption(resolvedRepeatOption);
+    setPendingIsRepeatEnabled(resolvedIsRepeatEnabled);
+    setPendingRepeatFrequency(resolvedRepeatFrequency);
+    setPendingRepeatInterval(resolvedRepeatInterval);
     setPendingWeekdays(new Set(resolvedWeekdays));
+    setPendingMonthDays(new Set(resolvedMonthDays));
+    setPendingHasEndDate(resolvedHasEndDate);
+    setPendingEndDate(resolvedEndDate ?? resolvedStartDate);
     setPendingHasSpecifiedTime(resolvedHasSpecifiedTime);
     setPendingTimeMode(resolvedTimeMode);
     setPendingPointTime(resolvedPoint);
@@ -704,9 +878,15 @@ export default function AddHabitSheet({
           setSelectedEmoji(DEFAULT_EMOJI);
           setEmojiPickerVisible(false);
           setActivePanel(null);
-          setStartDate(normalizeDate(new Date()));
-          setRepeatOption('off');
-          setSelectedWeekdays(new Set(['mon', 'tue', 'wed', 'thu', 'fri']));
+          const defaultStartDate = normalizeDate(new Date());
+          setStartDate(defaultStartDate);
+          setIsRepeatEnabled(false);
+          setRepeatFrequency('daily');
+          setRepeatInterval(1);
+          setSelectedWeekdays(new Set([getWeekdayKeyFromDate(defaultStartDate)]));
+          setSelectedMonthDays(new Set([defaultStartDate.getDate()]));
+          setHasEndDate(false);
+          setEndDate(null);
           setHasSpecifiedTime(false);
           setTimeMode('point');
           setPointTime({ hour: 9, minute: 0, meridiem: 'AM' });
@@ -719,6 +899,8 @@ export default function AddHabitSheet({
           setTagOptions([...DEFAULT_TAG_OPTIONS]);
           setPendingTag('none');
           setSubtasks([]);
+          setCustomImage(null);
+          setIsLoadingImage(false);
         }
       });
     }
@@ -769,8 +951,16 @@ export default function AddHabitSheet({
       title: title.trim(),
       color: selectedColor,
       emoji: selectedEmoji,
+      customImage,
       startDate,
-      repeat: { option: repeatOption, weekdays: Array.from(selectedWeekdays) },
+      repeat: {
+        enabled: isRepeatEnabled,
+        frequency: repeatFrequency,
+        interval: repeatInterval,
+        weekdays: Array.from(selectedWeekdays),
+        monthDays: Array.from(selectedMonthDays),
+        endDate: hasEndDate && endDate ? endDate.toISOString() : null,
+      },
       time: {
         specified: hasSpecifiedTime,
         mode: timeMode,
@@ -796,7 +986,12 @@ export default function AddHabitSheet({
     onUpdate,
     periodTime,
     pointTime,
-    repeatOption,
+    repeatFrequency,
+    repeatInterval,
+    isRepeatEnabled,
+    hasEndDate,
+    endDate,
+    selectedMonthDays,
     selectedColor,
     selectedEmoji,
     selectedTag,
@@ -806,6 +1001,7 @@ export default function AddHabitSheet({
     title,
     reminderOption,
     subtasks,
+    customImage,
     tagOptions,
   ]);
 
@@ -813,19 +1009,20 @@ export default function AddHabitSheet({
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, gestureState) =>
+          isDragCloseEnabled &&
           visible &&
           !activePanel &&
           gestureState.dy > 14 &&
           Math.abs(gestureState.dx) < 8,
         onPanResponderMove: (_, gestureState) => {
-          if (!visible) {
+          if (!isDragCloseEnabled || !visible) {
             return;
           }
           const offset = Math.max(0, gestureState.dy);
           translateY.setValue(offset);
         },
         onPanResponderRelease: (_, gestureState) => {
-          if (!visible) {
+          if (!isDragCloseEnabled || !visible) {
             return;
           }
           const shouldClose = gestureState.vy > 1.2 || gestureState.dy > sheetHeight * 0.25;
@@ -842,7 +1039,7 @@ export default function AddHabitSheet({
           }
         },
         onPanResponderTerminate: (_, gestureState) => {
-          if (!visible) {
+          if (!isDragCloseEnabled || !visible) {
             return;
           }
           const shouldClose = gestureState.vy > 1.2 || gestureState.dy > sheetHeight * 0.25;
@@ -859,15 +1056,34 @@ export default function AddHabitSheet({
           }
         },
       }),
-    [activePanel, handleClose, sheetHeight, translateY, visible]
+    [activePanel, handleClose, isDragCloseEnabled, sheetHeight, translateY, visible]
   );
 
   const isSubmitDisabled = !title.trim();
 
   const dateLabel = useMemo(() => formatDateLabel(startDate), [startDate]);
+  const repeatConfig = useMemo(
+    () => ({
+      enabled: isRepeatEnabled,
+      frequency: repeatFrequency,
+      interval: repeatInterval,
+      weekdays: selectedWeekdays,
+      monthDays: selectedMonthDays,
+      endDate: hasEndDate && endDate ? endDate : null,
+    }),
+    [
+      endDate,
+      hasEndDate,
+      isRepeatEnabled,
+      repeatFrequency,
+      repeatInterval,
+      selectedMonthDays,
+      selectedWeekdays,
+    ]
+  );
   const repeatLabel = useMemo(
-    () => getRepeatLabel(repeatOption, selectedWeekdays, startDate),
-    [repeatOption, selectedWeekdays, startDate]
+    () => getRepeatLabel(repeatConfig, startDate),
+    [repeatConfig, startDate]
   );
   const normalizedPointTime = useMemo(() => normalizeTimeValue(pointTime), [pointTime]);
   const normalizedPeriodTime = useMemo(
@@ -954,7 +1170,7 @@ export default function AddHabitSheet({
         ]}
         accessibilityViewIsModal
         importantForAccessibility="yes"
-        {...(!activePanel ? panResponder.panHandlers : {})}
+        {...(!activePanel && isDragCloseEnabled ? panResponder.panHandlers : {})}
       >
         <KeyboardAvoidingView
           style={styles.keyboardAvoiding}
@@ -1008,12 +1224,16 @@ export default function AddHabitSheet({
               <Pressable
                 style={[styles.emojiButton, isEmojiPickerVisible && styles.emojiButtonActive]}
                 accessibilityRole="button"
-                accessibilityLabel={`Choose emoji, currently ${selectedEmoji}`}
+                accessibilityLabel={`Choose icon, currently ${customImage ? 'custom image' : selectedEmoji}`}
                 accessibilityHint="Opens a list of emoji options"
                 onPress={handleToggleEmojiPicker}
                 hitSlop={12}
               >
-                <Text style={styles.emoji}>{selectedEmoji}</Text>
+                {customImage ? (
+                  <Image source={{ uri: customImage }} style={styles.customIconImage} />
+                ) : (
+                  <Text style={styles.emoji}>{selectedEmoji}</Text>
+                )}
                 <Ionicons
                   name={isEmojiPickerVisible ? 'chevron-up' : 'chevron-down'}
                   size={18}
@@ -1023,6 +1243,27 @@ export default function AddHabitSheet({
               </Pressable>
               {isEmojiPickerVisible && (
                 <View style={styles.emojiPicker}>
+                  <Pressable
+                    style={[styles.emojiOption, styles.emojiUploadOption]}
+                    onPress={handlePickImage}
+                    accessibilityRole="button"
+                    accessibilityLabel="Upload custom image"
+                    accessibilityHint="Opens your gallery to choose an image"
+                    disabled={isLoadingImage}
+                  >
+                    <Ionicons name="image-outline" size={24} color="#1F2742" />
+                  </Pressable>
+                  {customImage && (
+                    <Pressable
+                      style={[styles.emojiOption, styles.emojiOptionSelected]}
+                      onPress={handleRemoveCustomImage}
+                      accessibilityRole="button"
+                      accessibilityLabel="Remove custom image"
+                      accessibilityHint="Revert to emoji icon"
+                    >
+                      <Ionicons name="close" size={20} color="#1F2742" />
+                    </Pressable>
+                  )}
                   {EMOJIS.map((emoji) => {
                     const isSelected = selectedEmoji === emoji;
                     return (
@@ -1136,8 +1377,7 @@ export default function AddHabitSheet({
                   selectedDate={pendingDate}
                   onSelectDate={setPendingDate}
                   onChangeMonth={setCalendarMonthState}
-                  repeatOption={repeatOption}
-                  repeatWeekdays={selectedWeekdays}
+                  repeatConfig={repeatConfig}
                 />
               </OptionOverlay>
             )}
@@ -1148,9 +1388,16 @@ export default function AddHabitSheet({
                 onApply={handleApplyRepeat}
               >
                 <RepeatPanel
-                  option={pendingRepeatOption}
+                  isEnabled={pendingIsRepeatEnabled}
+                  frequency={pendingRepeatFrequency}
+                  interval={pendingRepeatInterval}
                   weekdays={pendingWeekdays}
-                  onOptionChange={setPendingRepeatOption}
+                  monthDays={pendingMonthDays}
+                  hasEndDate={pendingHasEndDate}
+                  endDate={pendingEndDate}
+                  onToggleEnabled={setPendingIsRepeatEnabled}
+                  onFrequencyChange={setPendingRepeatFrequency}
+                  onIntervalChange={setPendingRepeatInterval}
                   onToggleWeekday={(weekday) => {
                     setPendingWeekdays((prev) => {
                       const next = new Set(prev);
@@ -1162,6 +1409,19 @@ export default function AddHabitSheet({
                       return next;
                     });
                   }}
+                  onToggleMonthDay={(day) => {
+                    setPendingMonthDays((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(day)) {
+                        next.delete(day);
+                      } else {
+                        next.add(day);
+                      }
+                      return next;
+                    });
+                  }}
+                  onToggleHasEndDate={setPendingHasEndDate}
+                  onChangeEndDate={setPendingEndDate}
                   startDate={startDate}
                 />
               </OptionOverlay>
@@ -1474,7 +1734,7 @@ function SubtasksPanel({ value, onChange }) {
   );
 }
 
-function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatOption, repeatWeekdays }) {
+function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatConfig }) {
   const today = useMemo(() => normalizeDate(new Date()), []);
   const [visibleMonth, setVisibleMonth] = useState(() => normalizeDate(month));
 
@@ -1511,14 +1771,9 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatOpt
     next.setDate(next.getDate() + offset);
     return normalizeDate(next);
   }, [today]);
-  const repeatingWeekdays = useMemo(
-    () => (repeatWeekdays ? new Set(repeatWeekdays) : new Set()),
-    [repeatWeekdays]
-  );
-
   const isRepeatingDay = useCallback(
     (targetDate) => {
-      if (!repeatOption || repeatOption === 'off') {
+      if (!repeatConfig?.enabled) {
         return false;
       }
       const normalizedStart = normalizeDate(selectedDate);
@@ -1526,9 +1781,9 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatOpt
       if (!normalizedStart || !normalizedTarget) {
         return false;
       }
-      return doesDateRepeat(normalizedTarget, normalizedStart, repeatOption, repeatingWeekdays);
+      return doesDateRepeat(normalizedTarget, normalizedStart, repeatConfig);
     },
-    [repeatOption, repeatingWeekdays, selectedDate]
+    [repeatConfig, selectedDate]
   );
 
   const daysMatrix = useMemo(() => {
@@ -1665,75 +1920,217 @@ function QuickSelectButton({ label, active, onPress }) {
   );
 }
 
-function RepeatPanel({ option, weekdays, onOptionChange, onToggleWeekday, startDate }) {
-  const weeklyHint = useMemo(() => {
-    if (!startDate) {
-      return null;
+function RepeatPanel({
+  isEnabled,
+  frequency,
+  interval,
+  weekdays,
+  monthDays,
+  hasEndDate,
+  endDate,
+  onToggleEnabled,
+  onFrequencyChange,
+  onIntervalChange,
+  onToggleWeekday,
+  onToggleMonthDay,
+  onToggleHasEndDate,
+  onChangeEndDate,
+  startDate,
+}) {
+  const [showIntervalPicker, setShowIntervalPicker] = useState(false);
+  const [endDateMonth, setEndDateMonth] = useState(() => normalizeDate(endDate || startDate || new Date()));
+  const weekdaySet = useMemo(() => weekdays ?? new Set(), [weekdays]);
+  const monthDaySet = useMemo(() => monthDays ?? new Set(), [monthDays]);
+
+  useEffect(() => {
+    if (endDate) {
+      const normalized = normalizeDate(endDate);
+      setEndDateMonth(new Date(normalized.getFullYear(), normalized.getMonth(), 1));
     }
-    return `(${startDate.toLocaleDateString(undefined, { weekday: 'long' })})`;
-  }, [startDate]);
-  const monthlyHint = useMemo(() => {
-    if (!startDate) {
-      return null;
-    }
-    return `(On ${formatOrdinal(startDate.getDate())})`;
-  }, [startDate]);
-  const repeatOptions = useMemo(
-    () => [
-      { key: 'off', label: 'No repeat' },
-      { key: 'daily', label: 'Daily' },
-      { key: 'weekly', label: 'Weekly', hint: weeklyHint },
-      { key: 'monthly', label: 'Monthly', hint: monthlyHint },
-      { key: 'weekend', label: 'Weekend (Sat, Sun)' },
-      { key: 'custom', label: 'Custom' },
-    ],
-    [monthlyHint, weeklyHint]
+  }, [endDate]);
+
+  const intervalUnit = useMemo(() => FREQUENCY_LABELS[frequency] || FREQUENCY_LABELS.daily, [frequency]);
+  const intervalSummary = useMemo(
+    () => `Every ${interval} ${interval === 1 ? intervalUnit.singular : intervalUnit.plural}`,
+    [interval, intervalUnit]
   );
+
+  const handleSelectFrequency = useCallback(
+    (value) => {
+      const fallbackDate = startDate || new Date();
+      if (value === 'weekly' && weekdaySet.size === 0) {
+        onToggleWeekday?.(getWeekdayKeyFromDate(fallbackDate));
+      }
+      if (value === 'monthly' && monthDaySet.size === 0) {
+        onToggleMonthDay?.(fallbackDate.getDate());
+      }
+      onFrequencyChange?.(value);
+    },
+    [monthDaySet.size, onFrequencyChange, onToggleMonthDay, onToggleWeekday, startDate, weekdaySet.size]
+  );
+
+  const handleToggleEndDate = useCallback(
+    (value) => {
+      onToggleHasEndDate?.(value);
+      if (value && !endDate) {
+        const fallbackDate = normalizeDate(startDate || new Date());
+        onChangeEndDate?.(fallbackDate);
+        setEndDateMonth(new Date(fallbackDate.getFullYear(), fallbackDate.getMonth(), 1));
+      }
+    },
+    [endDate, onChangeEndDate, onToggleHasEndDate, startDate]
+  );
+
+  const selectedEndDate = useMemo(
+    () => normalizeDate(endDate || startDate || new Date()),
+    [endDate, startDate]
+  );
+
   return (
     <View style={styles.repeatPanel}>
-      {repeatOptions.map((repeatOption, index, array) => {
-        const isSelected = repeatOption.key === option;
-        const isLast = index === array.length - 1;
-        return (
-          <Pressable
-            key={repeatOption.key}
-            style={[styles.optionItem, isLast && styles.optionItemLast, isSelected && styles.optionItemSelected]}
-            onPress={() => onOptionChange(repeatOption.key)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: isSelected }}
-          >
-            <View style={styles.optionLabelColumn}>
-              <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
-                {repeatOption.label}
-              </Text>
-              {repeatOption.hint ? <Text style={styles.optionHint}>{repeatOption.hint}</Text> : null}
+      <View style={styles.specifiedRow}>
+        <View style={styles.specifiedLabelGroup}>
+          <View style={styles.specifiedIconContainer}>
+            <Ionicons name="repeat-outline" size={22} color="#1F2742" />
+          </View>
+          <View>
+            <Text style={styles.specifiedTitle}>Repeat</Text>
+            <Text style={styles.specifiedSubtitle}>Customize recurrence</Text>
+          </View>
+        </View>
+        <Switch
+          value={isEnabled}
+          onValueChange={onToggleEnabled}
+          trackColor={{ false: '#C8D4E6', true: '#A3B7D7' }}
+          thumbColor={isEnabled ? '#1F2742' : Platform.OS === 'android' ? '#f4f3f4' : undefined}
+        />
+      </View>
+
+      {isEnabled && (
+        <View style={styles.repeatContent}>
+          <View style={styles.segmentedControl}>
+            <SegmentedControlButton
+              label="Daily"
+              active={frequency === 'daily'}
+              onPress={() => handleSelectFrequency('daily')}
+            />
+            <SegmentedControlButton
+              label="Weekly"
+              active={frequency === 'weekly'}
+              onPress={() => handleSelectFrequency('weekly')}
+            />
+            <SegmentedControlButton
+              label="Monthly"
+              active={frequency === 'monthly'}
+              onPress={() => handleSelectFrequency('monthly')}
+            />
+          </View>
+
+          {frequency === 'weekly' && (
+            <View style={styles.weekdayGrid}>
+              {WEEKDAYS.map((weekday) => {
+                const active = weekdaySet.has(weekday.key);
+                return (
+                  <Pressable
+                    key={weekday.key}
+                    style={[styles.weekdayPill, active && styles.weekdayPillActive]}
+                    onPress={() => onToggleWeekday(weekday.key)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text style={[styles.weekdayPillLabel, active && styles.weekdayPillLabelActive]}>
+                      {weekday.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
-            <View style={[styles.radioOuter, isSelected && styles.radioOuterActive]}>
-              {isSelected && <View style={styles.radioInner} />}
+          )}
+
+          {frequency === 'monthly' && (
+            <View style={styles.monthDayGrid}>
+              {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => {
+                const active = monthDaySet.has(day);
+                return (
+                  <Pressable
+                    key={day}
+                    style={[styles.monthDayCell, active && styles.monthDayCellActive]}
+                    onPress={() => onToggleMonthDay(day)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text style={[styles.monthDayLabel, active && styles.monthDayLabelActive]}>{day}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
-          </Pressable>
-        );
-      })}
-      {option === 'custom' && (
-        <View style={styles.weekdayToggleRow}>
-          {WEEKDAYS.map((weekday) => {
-            const isActive = weekdays.has(weekday.key);
-            return (
-              <Pressable
-                key={weekday.key}
-                style={[styles.weekdayToggle, isActive && styles.weekdayToggleActive]}
-                onPress={() => onToggleWeekday(weekday.key)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: isActive }}
-              >
-                <Text
-                  style={[styles.weekdayToggleLabel, isActive && styles.weekdayToggleLabelActive]}
-                >
-                  {weekday.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+          )}
+
+          <View style={styles.intervalSection}>
+            <Pressable
+              style={styles.intervalRow}
+              onPress={() => setShowIntervalPicker((prev) => !prev)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showIntervalPicker }}
+            >
+              <Text style={styles.intervalLabel}>Interval</Text>
+              <View style={styles.intervalValueContainer}>
+                <Text style={styles.intervalValue}>{intervalSummary}</Text>
+                <Ionicons
+                  name={showIntervalPicker ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color="#6B7288"
+                  style={styles.intervalChevron}
+                />
+              </View>
+            </Pressable>
+            {showIntervalPicker && (
+              <View style={styles.wheelGroup}>
+                <View style={styles.wheelLabelsRow}>
+                  <Text style={styles.wheelLabel}>Every</Text>
+                  <Text style={styles.wheelLabel}>Unit</Text>
+                </View>
+                <View style={styles.wheelArea}>
+                  <View pointerEvents="none" style={styles.wheelHighlight} />
+                  <View style={styles.wheelRow}>
+                    <WheelColumn
+                      values={INTERVAL_VALUES}
+                      selectedIndex={Math.max(0, Math.min(INTERVAL_VALUES.length - 1, interval - 1))}
+                      onSelect={(value) => onIntervalChange(value)}
+                    />
+                    <WheelColumn
+                      values={[intervalUnit.plural]}
+                      selectedIndex={0}
+                      onSelect={() => {}}
+                    />
+                  </View>
+                </View>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.intervalSection}>
+            <View style={styles.endDateRow}>
+              <Text style={styles.intervalLabel}>End date</Text>
+              <Switch
+                value={hasEndDate}
+                onValueChange={handleToggleEndDate}
+                trackColor={{ false: '#C8D4E6', true: '#A3B7D7' }}
+                thumbColor={hasEndDate ? '#1F2742' : Platform.OS === 'android' ? '#f4f3f4' : undefined}
+              />
+            </View>
+            {hasEndDate && (
+              <View style={styles.endDatePickerContainer}>
+                <DatePanel
+                  month={endDateMonth}
+                  selectedDate={selectedEndDate}
+                  onSelectDate={onChangeEndDate}
+                  onChangeMonth={setEndDateMonth}
+                  repeatConfig={{ enabled: false }}
+                />
+              </View>
+            )}
+          </View>
         </View>
       )}
     </View>
@@ -1953,14 +2350,10 @@ function WheelColumn({
 }) {
   const scrollRef = useRef(null);
   const isMomentumScrolling = useRef(false);
-
-  const offsets = useMemo(
-    () => values.map((_, index) => index * itemHeight),
-    [values, itemHeight]
-  );
+  const isDragging = useRef(false);
 
   useEffect(() => {
-    if (!scrollRef.current || isMomentumScrolling.current) {
+    if (!scrollRef.current || isMomentumScrolling.current || isDragging.current) {
       return undefined;
     }
     const frame = requestAnimationFrame(() => {
@@ -1975,13 +2368,6 @@ function WheelColumn({
       const clampedOffset = Math.min(Math.max(offsetY, 0), maxOffset);
       const index = Math.round(clampedOffset / itemHeight);
       const clampedIndex = Math.min(Math.max(index, 0), values.length - 1);
-      const targetOffset = offsets[clampedIndex] ?? clampedIndex * itemHeight;
-
-      const distanceToTarget = Math.abs(targetOffset - clampedOffset);
-      const shouldAnimate = distanceToTarget > 0.5;
-      if (distanceToTarget > 0) {
-        scrollRef.current?.scrollTo({ y: targetOffset, animated: shouldAnimate });
-      }
 
       if (clampedIndex !== selectedIndex) {
         onSelect(values[clampedIndex]);
@@ -1994,7 +2380,7 @@ function WheelColumn({
         }
       }
     },
-    [itemHeight, offsets, onSelect, selectedIndex, values]
+    [itemHeight, values, onSelect, selectedIndex]
   );
 
   const handleMomentumBegin = useCallback(() => {
@@ -2005,6 +2391,20 @@ function WheelColumn({
     (event) => {
       isMomentumScrolling.current = false;
       finalizeSelection(event.nativeEvent.contentOffset.y ?? 0);
+    },
+    [finalizeSelection]
+  );
+
+  const handleScrollBeginDrag = useCallback(() => {
+    isDragging.current = true;
+  }, []);
+
+  const handleScrollEndDrag = useCallback(
+    (e) => {
+      isDragging.current = false;
+      if (!isMomentumScrolling.current) {
+        finalizeSelection(e.nativeEvent.contentOffset.y ?? 0);
+      }
     },
     [finalizeSelection]
   );
@@ -2030,12 +2430,8 @@ function WheelColumn({
       onMoveShouldSetResponderCapture={() => true}
       onMomentumScrollBegin={handleMomentumBegin}
       onMomentumScrollEnd={handleMomentumEnd}
-      // se o usuário soltar sem momentum, finalize aqui:
-      onScrollEndDrag={(e) => {
-        if (!isMomentumScrolling.current) {
-          finalizeSelection(e.nativeEvent.contentOffset.y ?? 0);
-        }
-      }}
+      onScrollBeginDrag={handleScrollBeginDrag}
+      onScrollEndDrag={handleScrollEndDrag}
     >
       {values.map((value, index) => {
         const isActive = index === selectedIndex;
@@ -2130,6 +2526,12 @@ const styles = StyleSheet.create({
     // shadowRadius: 16,
     // elevation: 6,
   },
+  customIconImage: {
+    width: 67,
+    height: 67,
+    borderRadius: 33.5,
+    resizeMode: 'cover',
+  },
   emoji: {
     fontSize: 52,
     textAlign: 'center',
@@ -2151,6 +2553,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#F2F6FF',
+  },
+  emojiUploadOption: {
+    backgroundColor: '#E7F0FF',
   },
   emojiOptionSelected: {
     backgroundColor: '#DDE9FF',
@@ -2580,7 +2985,12 @@ const styles = StyleSheet.create({
   repeatPanel: {
     backgroundColor: '#F5F7FF',
     borderRadius: 20,
-    paddingVertical: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  repeatContent: {
+    gap: 18,
   },
   weekdayToggleRow: {
     flexDirection: 'row',
@@ -2589,6 +2999,63 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     paddingTop: 10,
     gap: 8,
+  },
+  weekdayGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    gap: 10,
+  },
+  weekdayPill: {
+    flex: 1,
+    height: 44,
+    borderRadius: 20,
+    backgroundColor: '#F2F6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#A3B7D7',
+  },
+  weekdayPillActive: {
+    backgroundColor: '#E3EBFF',
+    borderColor: '#1F2742',
+  },
+  weekdayPillLabel: {
+    color: '#556070',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  weekdayPillLabelActive: {
+    color: '#1F2742',
+  },
+  monthDayGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    rowGap: 10,
+    columnGap: 10,
+  },
+  monthDayCell: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F2F6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#A3B7D7',
+  },
+  monthDayCellActive: {
+    backgroundColor: '#E3EBFF',
+    borderColor: '#1F2742',
+  },
+  monthDayLabel: {
+    color: '#556070',
+    fontWeight: '700',
+  },
+  monthDayLabelActive: {
+    color: '#1F2742',
   },
   weekdayToggle: {
     flex: 1,
@@ -2613,6 +3080,45 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 16,
     gap: 18,
+  },
+  intervalSection: {
+    marginTop: 10,
+    gap: 12,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  intervalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    paddingHorizontal: 2,
+  },
+  intervalLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2742',
+  },
+  intervalValueContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  intervalValue: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  intervalChevron: {
+    marginLeft: 4,
+  },
+  endDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  endDatePickerContainer: {
+    marginTop: 6,
   },
   specifiedRow: {
     flexDirection: 'row',
