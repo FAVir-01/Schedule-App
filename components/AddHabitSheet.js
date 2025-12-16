@@ -437,6 +437,8 @@ export default function AddHabitSheet({
   const [tagOptions, setTagOptions] = useState(() => [...DEFAULT_TAG_OPTIONS]);
   const [selectedTag, setSelectedTag] = useState('none');
   const [subtasks, setSubtasks] = useState([]);
+  const [taskType, setTaskType] = useState('standard');
+  const [targetValue, setTargetValue] = useState('');
 
   const [calendarMonth, setCalendarMonthState] = useState(
     () => new Date(startDate.getFullYear(), startDate.getMonth(), 1)
@@ -787,6 +789,12 @@ export default function AddHabitSheet({
     const resolvedReminder = initialHabit.reminder ?? 'none';
     const resolvedTagKey = initialHabit.tag ?? 'none';
     const resolvedSubtasks = Array.isArray(initialHabit.subtasks) ? initialHabit.subtasks : [];
+    const resolvedType = initialHabit.type ?? 'standard';
+    const resolvedTarget =
+      resolvedType === 'quantity' && initialHabit.targetValue != null
+        ? String(initialHabit.targetValue)
+        : '';
+    const sanitizedSubtasks = resolvedType === 'quantity' ? [] : resolvedSubtasks;
 
     setTitle(initialHabit.title ?? '');
     setSelectedColor(initialHabit.color ?? COLORS[0]);
@@ -806,7 +814,9 @@ export default function AddHabitSheet({
     setReminderOption(resolvedReminder);
     setSelectedTag(resolvedTagKey);
     setPendingTag(resolvedTagKey);
-    setSubtasks(resolvedSubtasks);
+    setTaskType(resolvedType);
+    setTargetValue(resolvedTarget);
+    setSubtasks(sanitizedSubtasks);
     setCustomImage(initialHabit.customImage ?? null);
 
     setCalendarMonthState(new Date(resolvedStartDate.getFullYear(), resolvedStartDate.getMonth(), 1));
@@ -823,7 +833,7 @@ export default function AddHabitSheet({
     setPendingPointTime(resolvedPoint);
     setPendingPeriodTime(resolvedPeriod);
     setPendingReminder(resolvedReminder);
-    setPendingSubtasks(resolvedSubtasks);
+    setPendingSubtasks(sanitizedSubtasks);
 
     if (initialHabit.tag && initialHabit.tagLabel) {
       setTagOptions((prev) => {
@@ -936,6 +946,13 @@ export default function AddHabitSheet({
   }, [activePanel, closePanel, handleClose, visible]);
 
   useEffect(() => {
+    if (taskType === 'quantity') {
+      setSubtasks([]);
+      setPendingSubtasks([]);
+    }
+  }, [taskType]);
+
+  useEffect(() => {
     if (!isMounted) {
       translateY.setValue(sheetHeight || height);
     }
@@ -947,12 +964,22 @@ export default function AddHabitSheet({
     }
     const selectedTagOption =
       tagOptions.find((option) => option.key === selectedTag) ?? tagOptions[0];
+    const resolvedType = taskType === 'quantity' ? 'quantity' : 'standard';
+    const parsedTarget = parseFloat(targetValue);
+    const normalizedTarget = Number.isFinite(parsedTarget) ? parsedTarget : 0;
+
     const payload = {
       title: title.trim(),
       color: selectedColor,
       emoji: selectedEmoji,
       customImage,
       startDate,
+      type: resolvedType,
+      targetValue: resolvedType === 'quantity' ? normalizedTarget : undefined,
+      currentValue:
+        resolvedType === 'quantity'
+          ? initialHabit?.currentValue ?? 0
+          : undefined,
       repeat: {
         enabled: isRepeatEnabled,
         frequency: repeatFrequency,
@@ -970,7 +997,7 @@ export default function AddHabitSheet({
       reminder: reminderOption,
       tag: selectedTagOption.key,
       tagLabel: selectedTagOption.label,
-      subtasks,
+      subtasks: resolvedType === 'quantity' ? [] : subtasks,
     };
     if (isEditMode) {
       onUpdate?.(payload);
@@ -1003,6 +1030,9 @@ export default function AddHabitSheet({
     subtasks,
     customImage,
     tagOptions,
+    taskType,
+    targetValue,
+    initialHabit,
   ]);
 
   const panResponder = useMemo(
@@ -1314,6 +1344,20 @@ export default function AddHabitSheet({
                 <SheetRow
                   icon={(
                     <View style={styles.rowIconContainer}>
+                      <Ionicons
+                        name={taskType === 'quantity' ? 'water' : 'list-outline'}
+                        size={22}
+                        color="#61708A"
+                      />
+                    </View>
+                  )}
+                  label="Type"
+                  value={taskType === 'quantity' ? 'Quantity' : 'Standard'}
+                  onPress={() => setTaskType((prev) => (prev === 'quantity' ? 'standard' : 'quantity'))}
+                />
+                <SheetRow
+                  icon={(
+                    <View style={styles.rowIconContainer}>
                       <Ionicons name="calendar-clear-outline" size={22} color="#61708A" />
                     </View>
                   )}
@@ -1363,7 +1407,30 @@ export default function AddHabitSheet({
                   isLast
                 />
               </View>
-              <SubtasksPanel value={subtasks} onChange={setSubtasks} />
+              {taskType === 'quantity' ? (
+                <View style={styles.quantityPanel}>
+                  <Text style={styles.quantityLabel}>Daily target</Text>
+                  <View style={styles.quantityInputRow}>
+                    <TextInput
+                      value={targetValue}
+                      onChangeText={setTargetValue}
+                      placeholder="Enter target (e.g. 2000)"
+                      placeholderTextColor="#7f8a9a"
+                      style={styles.quantityInput}
+                      keyboardType="numeric"
+                    />
+                    <View style={styles.quantityBadge}>
+                      <Ionicons name="water" size={16} color="#1F2742" />
+                      <Text style={styles.quantityBadgeText}>Goal</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.quantityHint}>
+                    Set how much you want to achieve. Subtasks are hidden for quantity tasks.
+                  </Text>
+                </View>
+              ) : (
+                <SubtasksPanel value={subtasks} onChange={setSubtasks} />
+              )}
             </ScrollView>
             {activePanel === 'date' && (
               <OptionOverlay
@@ -2577,6 +2644,61 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 24,
     fontWeight: '500',
+  },
+  quantityLabel: {
+    fontSize: 13,
+    color: '#4B5563',
+    marginBottom: 6,
+    textAlign: 'left',
+  },
+  quantityPanel: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 16,
+    marginTop: 8,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+    gap: 12,
+  },
+  quantityInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  quantityInput: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontSize: 16,
+    color: '#1F2742',
+    textAlign: 'left',
+    backgroundColor: '#FFFFFF',
+    flex: 1,
+  },
+  quantityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E6F2FF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#cddff9',
+    gap: 6,
+  },
+  quantityBadgeText: {
+    color: '#1F2742',
+    fontWeight: '700',
+  },
+  quantityHint: {
+    fontSize: 12,
+    color: '#6b7280',
   },
   paletteContainer: {
     flexDirection: 'row',
