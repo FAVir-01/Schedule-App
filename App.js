@@ -4,6 +4,7 @@ import {
   AppState,
   BackHandler,
   Dimensions,
+  Easing,
   Platform,
   Image,
   Modal,
@@ -21,7 +22,7 @@ import {
   ImageBackground,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -2428,20 +2429,103 @@ function ScheduleApp() {
 function WaterTaskCard({ task, onPressCircle }) {
   const targetValue = Number(task?.targetValue) || 0;
   const currentValue = Number(task?.currentValue) || 0;
-  const percentage = targetValue > 0 ? Math.min(Math.max(currentValue / targetValue, 0), 1) : 0;
-  const percentageLabel = `${Math.round(percentage * 100)}%`;
+  const progress = targetValue > 0 ? Math.min(Math.max(currentValue / targetValue, 0), 1) : 0;
+  const percentageLabel = `${Math.round(progress * 100)}%`;
+  const displayTarget = targetValue > 0 ? targetValue : '-';
+
+  const primaryWave = useRef(new Animated.Value(0)).current;
+  const secondaryWave = useRef(new Animated.Value(0)).current;
+  const screenWidth = Dimensions.get('window').width;
+
+  useEffect(() => {
+    const primaryLoop = Animated.loop(
+      Animated.timing(primaryWave, {
+        toValue: 1,
+        duration: 4200,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+
+    const secondaryLoop = Animated.loop(
+      Animated.timing(secondaryWave, {
+        toValue: 1,
+        duration: 6200,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+
+    primaryLoop.start();
+    secondaryLoop.start();
+
+    return () => {
+      primaryLoop.stop();
+      secondaryLoop.stop();
+    };
+  }, [primaryWave, secondaryWave]);
+
+  const primaryTranslate = primaryWave.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -screenWidth],
+  });
+
+  const secondaryTranslate = secondaryWave.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -screenWidth * 0.8],
+  });
 
   return (
     <View style={styles.waterCardContainer}>
-      <View style={[StyleSheet.absoluteFill, styles.waterCardFillWrapper]}>
-        <View style={[styles.waterFill, { height: `${percentage * 100}%` }]} />
+      <LinearGradient
+        colors={["#f2ecff", "#e8f5ff"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[StyleSheet.absoluteFill, styles.waterCardGradient]}
+      />
+      <View style={[StyleSheet.absoluteFill, styles.waterCardFillWrapper]} pointerEvents="none">
+        <View style={[styles.waterLevel, { height: `${progress * 100}%` }]}>
+          <Animated.View
+            style={[
+              styles.wave,
+              {
+                transform: [{ translateX: primaryTranslate }],
+              },
+            ]}
+          >
+            <Svg width="200%" height="64" viewBox="0 0 1440 320" preserveAspectRatio="none">
+              <Path
+                fill="#7bc8ff"
+                d="M0,160L48,144C96,128,192,96,288,106.7C384,117,480,171,576,165.3C672,160,768,96,864,90.7C960,85,1056,139,1152,154.7C1248,171,1344,149,1392,138.7L1440,128L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
+              />
+            </Svg>
+          </Animated.View>
+          <Animated.View
+            style={[
+              styles.wave,
+              styles.waveSecondary,
+              {
+                transform: [{ translateX: secondaryTranslate }],
+              },
+            ]}
+          >
+            <Svg width="220%" height="72" viewBox="0 0 1440 320" preserveAspectRatio="none">
+              <Path
+                fill="#5eb5f6"
+                d="M0,224L48,202.7C96,181,192,139,288,133.3C384,128,480,160,576,149.3C672,139,768,85,864,74.7C960,64,1056,96,1152,122.7C1248,149,1344,171,1392,181.3L1440,192L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
+              />
+            </Svg>
+          </Animated.View>
+          <View style={styles.waterFlatFill} />
+        </View>
       </View>
       <View style={styles.waterCardContent}>
         <View style={{ flex: 1 }}>
           <Text style={styles.waterCardTitle}>{task.title}</Text>
-          <Text style={styles.waterCardSubtitle}>
-            {`${currentValue} / ${targetValue || '-'} • ${percentageLabel}`}
-          </Text>
+          <Text style={styles.waterCardSubtitle}>{`${currentValue} / ${displayTarget}`}</Text>
+        </View>
+        <View style={styles.waterProgressPill}>
+          <Text style={styles.waterProgressText}>{percentageLabel}</Text>
         </View>
         <TouchableOpacity
           onPress={() => onPressCircle?.(task)}
@@ -2988,7 +3072,7 @@ const styles = StyleSheet.create({
     borderColor: '#d7dbeb',
   },
   waterCardContainer: {
-    height: 110,
+    height: 120,
     borderRadius: 18,
     marginBottom: 14,
     backgroundColor: '#f5f7fb',
@@ -3001,24 +3085,43 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 5,
   },
+  waterCardGradient: {
+    opacity: 1,
+  },
   waterCardFillWrapper: {
     borderRadius: 18,
     overflow: 'hidden',
+    justifyContent: 'flex-end',
   },
-  waterFill: {
+  waterLevel: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#AEE2FF',
+    backgroundColor: '#bfe4ff',
+  },
+  wave: {
+    position: 'absolute',
+    top: -6,
+    left: 0,
+    width: '200%',
+    height: 70,
+  },
+  waveSecondary: {
+    opacity: 0.7,
+    top: -2,
+  },
+  waterFlatFill: {
+    flex: 1,
+    backgroundColor: '#b3dbff',
   },
   waterCardContent: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 18,
     backgroundColor: 'transparent',
+    gap: 12,
   },
   waterCardTitle: {
     fontSize: 18,
@@ -3027,8 +3130,25 @@ const styles = StyleSheet.create({
   },
   waterCardSubtitle: {
     fontSize: 14,
-    color: '#4b5563',
+    color: '#384152',
     marginTop: 4,
+  },
+  waterProgressPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(68, 109, 173, 0.12)',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  waterProgressText: {
+    fontWeight: '700',
+    color: '#1a1a2e',
   },
   waterCircleButton: {
     width: 44,

@@ -946,6 +946,13 @@ export default function AddHabitSheet({
   }, [activePanel, closePanel, handleClose, visible]);
 
   useEffect(() => {
+    if (taskType === 'quantity') {
+      setSubtasks([]);
+      setPendingSubtasks([]);
+    }
+  }, [taskType]);
+
+  useEffect(() => {
     if (!isMounted) {
       translateY.setValue(sheetHeight || height);
     }
@@ -1376,6 +1383,20 @@ export default function AddHabitSheet({
                 <SheetRow
                   icon={(
                     <View style={styles.rowIconContainer}>
+                      <Ionicons
+                        name={taskType === 'quantity' ? 'water' : 'list-outline'}
+                        size={22}
+                        color="#61708A"
+                      />
+                    </View>
+                  )}
+                  label="Type"
+                  value={taskType === 'quantity' ? 'Quantity' : 'Standard'}
+                  onPress={() => setTaskType((prev) => (prev === 'quantity' ? 'standard' : 'quantity'))}
+                />
+                <SheetRow
+                  icon={(
+                    <View style={styles.rowIconContainer}>
                       <Ionicons name="calendar-clear-outline" size={22} color="#61708A" />
                     </View>
                   )}
@@ -1425,7 +1446,30 @@ export default function AddHabitSheet({
                   isLast
                 />
               </View>
-              <SubtasksPanel value={subtasks} onChange={setSubtasks} />
+              {taskType === 'quantity' ? (
+                <View style={styles.quantityPanel}>
+                  <Text style={styles.quantityLabel}>Daily target</Text>
+                  <View style={styles.quantityInputRow}>
+                    <TextInput
+                      value={targetValue}
+                      onChangeText={setTargetValue}
+                      placeholder="Enter target (e.g. 2000)"
+                      placeholderTextColor="#7f8a9a"
+                      style={styles.quantityInput}
+                      keyboardType="numeric"
+                    />
+                    <View style={styles.quantityBadge}>
+                      <Ionicons name="water" size={16} color="#1F2742" />
+                      <Text style={styles.quantityBadgeText}>Goal</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.quantityHint}>
+                    Set how much you want to achieve. Subtasks are hidden for quantity tasks.
+                  </Text>
+                </View>
+              ) : (
+                <SubtasksPanel value={subtasks} onChange={setSubtasks} />
+              )}
             </ScrollView>
             {activePanel === 'date' && (
               <OptionOverlay
@@ -2640,50 +2684,29 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     fontWeight: '500',
   },
-  typeSelectorContainer: {
-    marginBottom: 16,
-  },
-  typeSelectorLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1F2742',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  typeSelector: {
-    flexDirection: 'row',
-    backgroundColor: '#EEF2FF',
-    borderRadius: 14,
-    padding: 4,
-  },
-  typeOption: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: 10,
-  },
-  typeOptionActive: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  typeOptionText: {
-    fontWeight: '600',
-    color: '#6b7280',
-  },
-  typeOptionTextActive: {
-    color: '#111827',
-  },
-  quantityInputContainer: {
-    marginBottom: 24,
-  },
   quantityLabel: {
     fontSize: 13,
     color: '#4B5563',
     marginBottom: 6,
-    textAlign: 'center',
+    textAlign: 'left',
+  },
+  quantityPanel: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 16,
+    marginTop: 8,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+    gap: 12,
+  },
+  quantityInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   quantityInput: {
     borderWidth: 1,
@@ -2693,8 +2716,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     fontSize: 16,
     color: '#1F2742',
-    textAlign: 'center',
+    textAlign: 'left',
     backgroundColor: '#FFFFFF',
+    flex: 1,
+  },
+  quantityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E6F2FF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#cddff9',
+    gap: 6,
+  },
+  quantityBadgeText: {
+    color: '#1F2742',
+    fontWeight: '700',
+  },
+  quantityHint: {
+    fontSize: 12,
+    color: '#6b7280',
   },
   paletteContainer: {
     flexDirection: 'row',
