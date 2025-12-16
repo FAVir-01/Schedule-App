@@ -98,3 +98,26 @@ export async function resetStorage() {
     console.warn('Failed to reset storage', error);
   }
 }
+
+export async function saveTask(text, category, type = 'standard', targetValue = 0) {
+  try {
+    const existingTasks = await loadTasks();
+    const newTask = {
+      id: Date.now().toString(),
+      text,
+      category,
+      type,
+      completed: false,
+      subtasks: type === 'standard' ? [] : undefined,
+      targetValue: type === 'quantity' ? parseFloat(targetValue) || 0 : undefined,
+      currentValue: type === 'quantity' ? 0 : undefined,
+    };
+
+    const updatedTasks = [...existingTasks, newTask];
+    await AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(updatedTasks));
+    return updatedTasks;
+  } catch (error) {
+    console.warn('Failed to save task', error);
+    return [];
+  }
+}
