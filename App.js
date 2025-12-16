@@ -2432,6 +2432,7 @@ function WaterTaskCard({ task, onPressCircle }) {
   const progress = targetValue > 0 ? Math.min(Math.max(currentValue / targetValue, 0), 1) : 0;
   const percentageLabel = `${Math.round(progress * 100)}%`;
   const displayTarget = targetValue > 0 ? targetValue : '-';
+  const subtitle = formatTaskTime(task.time) || 'Anytime';
 
   const primaryWave = useRef(new Animated.Value(0)).current;
   const secondaryWave = useRef(new Animated.Value(0)).current;
@@ -2478,7 +2479,7 @@ function WaterTaskCard({ task, onPressCircle }) {
   return (
     <View style={styles.waterCardContainer}>
       <LinearGradient
-        colors={["#f2ecff", "#e8f5ff"]}
+        colors={["#f6efff", "#eef5ff"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[StyleSheet.absoluteFill, styles.waterCardGradient]}
@@ -2495,7 +2496,7 @@ function WaterTaskCard({ task, onPressCircle }) {
           >
             <Svg width="200%" height="64" viewBox="0 0 1440 320" preserveAspectRatio="none">
               <Path
-                fill="#7bc8ff"
+                fill="#8dd0ff"
                 d="M0,160L48,144C96,128,192,96,288,106.7C384,117,480,171,576,165.3C672,160,768,96,864,90.7C960,85,1056,139,1152,154.7C1248,171,1344,149,1392,138.7L1440,128L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
               />
             </Svg>
@@ -2511,7 +2512,7 @@ function WaterTaskCard({ task, onPressCircle }) {
           >
             <Svg width="220%" height="72" viewBox="0 0 1440 320" preserveAspectRatio="none">
               <Path
-                fill="#5eb5f6"
+                fill="#6abdf6"
                 d="M0,224L48,202.7C96,181,192,139,288,133.3C384,128,480,160,576,149.3C672,139,768,85,864,74.7C960,64,1056,96,1152,122.7C1248,149,1344,171,1392,181.3L1440,192L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
               />
             </Svg>
@@ -2520,12 +2521,16 @@ function WaterTaskCard({ task, onPressCircle }) {
         </View>
       </View>
       <View style={styles.waterCardContent}>
-        <View style={{ flex: 1 }}>
+        {task.customImage ? (
+          <Image source={{ uri: task.customImage }} style={styles.waterEmojiImage} />
+        ) : (
+          <View style={styles.waterEmojiBubble}>
+            <Text style={styles.waterEmoji}>{task.emoji || '🙂'}</Text>
+          </View>
+        )}
+        <View style={styles.waterTextColumn}>
           <Text style={styles.waterCardTitle}>{task.title}</Text>
-          <Text style={styles.waterCardSubtitle}>{`${currentValue} / ${displayTarget}`}</Text>
-        </View>
-        <View style={styles.waterProgressPill}>
-          <Text style={styles.waterProgressText}>{percentageLabel}</Text>
+          <Text style={styles.waterCardSubtitle}>{subtitle}</Text>
         </View>
         <TouchableOpacity
           onPress={() => onPressCircle?.(task)}
@@ -2535,6 +2540,9 @@ function WaterTaskCard({ task, onPressCircle }) {
         >
           <View style={styles.waterInnerCircle} />
         </TouchableOpacity>
+      </View>
+      <View style={styles.waterProgressPill} accessibilityLabel={`Progress ${percentageLabel}`}>
+        <Text style={styles.waterProgressText}>{percentageLabel}</Text>
       </View>
     </View>
   );
@@ -3072,10 +3080,10 @@ const styles = StyleSheet.create({
     borderColor: '#d7dbeb',
   },
   waterCardContainer: {
-    height: 120,
+    height: 130,
     borderRadius: 18,
     marginBottom: 14,
-    backgroundColor: '#f5f7fb',
+    backgroundColor: '#f4f0ff',
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#d9e1f7',
@@ -3122,6 +3130,28 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     backgroundColor: 'transparent',
     gap: 12,
+    position: 'relative',
+  },
+  waterEmojiBubble: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#ffe8ad',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ffd480',
+  },
+  waterEmojiImage: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+  },
+  waterEmoji: {
+    fontSize: 26,
+  },
+  waterTextColumn: {
+    flex: 1,
   },
   waterCardTitle: {
     fontSize: 18,
@@ -3134,10 +3164,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   waterProgressPill: {
+    position: 'absolute',
+    left: 16,
+    bottom: 12,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: 'rgba(255,255,255,0.94)',
     borderWidth: 1,
     borderColor: 'rgba(68, 109, 173, 0.12)',
     shadowColor: '#000',

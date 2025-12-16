@@ -1447,25 +1447,27 @@ export default function AddHabitSheet({
                 />
               </View>
               {taskType === 'quantity' ? (
-                <View style={styles.quantityPanel}>
+                <View style={styles.quantityWrapper}>
                   <Text style={styles.quantityLabel}>Daily target</Text>
-                  <View style={styles.quantityInputRow}>
-                    <TextInput
-                      value={targetValue}
-                      onChangeText={setTargetValue}
-                      placeholder="Enter target (e.g. 2000)"
-                      placeholderTextColor="#7f8a9a"
-                      style={styles.quantityInput}
-                      keyboardType="numeric"
-                    />
-                    <View style={styles.quantityBadge}>
-                      <Ionicons name="water" size={16} color="#1F2742" />
-                      <Text style={styles.quantityBadgeText}>Goal</Text>
+                  <View style={styles.quantityPanel}>
+                    <View style={styles.quantityInputRow}>
+                      <TextInput
+                        value={targetValue}
+                        onChangeText={setTargetValue}
+                        placeholder="Enter target (e.g. 2000)"
+                        placeholderTextColor="#7f8a9a"
+                        style={styles.quantityInput}
+                        keyboardType="numeric"
+                      />
+                      <View style={styles.quantityBadge}>
+                        <Ionicons name="water" size={16} color="#1F2742" />
+                        <Text style={styles.quantityBadgeText}>Goal</Text>
+                      </View>
                     </View>
+                    <Text style={styles.quantityHint}>
+                      Set how much you want to achieve. Subtasks are hidden for quantity tasks.
+                    </Text>
                   </View>
-                  <Text style={styles.quantityHint}>
-                    Set how much you want to achieve. Subtasks are hidden for quantity tasks.
-                  </Text>
                 </View>
               ) : (
                 <SubtasksPanel value={subtasks} onChange={setSubtasks} />
@@ -2684,23 +2686,28 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     fontWeight: '500',
   },
-  quantityLabel: {
-    fontSize: 13,
-    color: '#4B5563',
-    marginBottom: 6,
-    textAlign: 'left',
-  },
-  quantityPanel: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 16,
+  quantityWrapper: {
     marginTop: 8,
     marginBottom: 24,
+    gap: 10,
+  },
+  quantityLabel: {
+    fontSize: 14,
+    color: '#1F2742',
+    fontWeight: '700',
+    marginLeft: 4,
+  },
+  quantityPanel: {
+    backgroundColor: '#f9fbff',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e5e9f5',
     shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
     gap: 12,
   },
   quantityInputRow: {
