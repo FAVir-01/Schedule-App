@@ -4,6 +4,7 @@ import {
   AppState,
   BackHandler,
   Dimensions,
+  Easing,
   Platform,
   Image,
   Modal,
@@ -13,6 +14,7 @@ import {
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   FlatList,
   TouchableOpacity,
   View,
@@ -20,7 +22,7 @@ import {
   ImageBackground,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -437,6 +439,17 @@ const getTaskCompletionStatus = (task, date) => {
     return false;
   }
 
+  if (task.type === 'quantity') {
+    const targetValue = Number(task.targetValue) || 0;
+    const currentValue = Number(task.currentValue) || 0;
+
+    if (targetValue <= 0) {
+      return false;
+    }
+
+    return currentValue >= targetValue;
+  }
+
   if (task.completedDates && typeof task.completedDates === 'object') {
     return Boolean(task.completedDates[dateKey]);
   }
@@ -845,6 +858,7 @@ function ScheduleApp() {
   const [tasks, setTasks] = useState([]);
   const [reportDate, setReportDate] = useState(null);
   const [activeTaskId, setActiveTaskId] = useState(null);
+  const [selectedQuantityTask, setSelectedQuantityTask] = useState(null);
   const [selectedTagFilter, setSelectedTagFilter] = useState(
     DEFAULT_USER_SETTINGS.selectedTagFilter
   );
@@ -1436,6 +1450,11 @@ function ScheduleApp() {
         ? getTaskCompletionStatus(targetTask, targetDateKey)
         : false;
 
+      if (targetTask?.type === 'quantity') {
+        setSelectedQuantityTask(targetTask);
+        return;
+      }
+
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
       setTasks((previous) =>
         previous.map((task) => {
@@ -1466,7 +1485,7 @@ function ScheduleApp() {
         completed: !wasCompleted,
       });
     },
-    [appendHistoryEntry, selectedDateKey, tasks]
+    [appendHistoryEntry, selectedDateKey, setSelectedQuantityTask, tasks]
   );
 
   const convertSubtasks = useCallback((subtasks, existing = []) => {
@@ -1488,6 +1507,25 @@ function ScheduleApp() {
           completedDates: {},
         };
       });
+  }, []);
+
+  const handleSelectQuantityTask = useCallback((task) => {
+    setSelectedQuantityTask(task);
+  }, []);
+
+  const updateTaskQuantity = useCallback((taskId, newValue) => {
+    const safeValue = Math.max(0, Number(newValue) || 0);
+    setTasks((previous) =>
+      previous.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              currentValue: safeValue,
+            }
+          : task
+      )
+    );
+    setSelectedQuantityTask(null);
   }, []);
 
   const getUniqueTitle = useCallback(
@@ -1522,6 +1560,10 @@ function ScheduleApp() {
     const dateKey = getDateKey(normalizedDate);
     const color = habit?.color ?? '#d1d7ff';
     const title = getUniqueTitle(habit?.title, null);
+    const taskType = habit?.type === 'quantity' ? 'quantity' : 'standard';
+    const targetValue = taskType === 'quantity' ? Number(habit?.targetValue) || 0 : undefined;
+    const currentValue = taskType === 'quantity' ? Number(habit?.currentValue) || 0 : undefined;
+
     const newTask = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       title,
@@ -1533,7 +1575,10 @@ function ScheduleApp() {
       dateKey,
       completed: false,
       completedDates: {},
-      subtasks: convertSubtasks(habit?.subtasks ?? []),
+      type: taskType,
+      targetValue,
+      currentValue,
+      subtasks: taskType === 'quantity' ? [] : convertSubtasks(habit?.subtasks ?? []),
       repeat: habit?.repeat,
       reminder: habit?.reminder,
       tag: habit?.tag,
@@ -1566,6 +1611,18 @@ function ScheduleApp() {
           }
           const nextDate = normalizedDate ? new Date(normalizedDate) : new Date(task.date);
           nextDate.setHours(0, 0, 0, 0);
+          const nextType = habit?.type === 'quantity'
+            ? 'quantity'
+            : habit?.type === 'standard'
+            ? 'standard'
+            : task.type ?? 'standard';
+          const nextTarget = nextType === 'quantity'
+            ? Number(habit?.targetValue ?? task.targetValue ?? 0) || 0
+            : undefined;
+          const nextCurrent = nextType === 'quantity'
+            ? Math.max(0, Number(habit?.currentValue ?? task.currentValue ?? 0) || 0)
+            : undefined;
+
           return {
             ...task,
             title: nextTitle,
@@ -1573,13 +1630,19 @@ function ScheduleApp() {
             emoji: habit?.emoji ?? task.emoji,
             customImage: habit?.customImage ?? task.customImage ?? null,
             time: habit?.time,
-            subtasks: convertSubtasks(habit?.subtasks ?? [], task.subtasks ?? []),
+            subtasks:
+              nextType === 'quantity'
+                ? []
+                : convertSubtasks(habit?.subtasks ?? [], task.subtasks ?? []),
             repeat: habit?.repeat,
             reminder: habit?.reminder,
             tag: habit?.tag,
             tagLabel: habit?.tagLabel,
             date: nextDate,
             dateKey: getDateKey(nextDate),
+            type: nextType,
+            targetValue: nextTarget,
+            currentValue: nextCurrent,
           };
         })
       );
@@ -1936,37 +1999,43 @@ function ScheduleApp() {
                 ) : (
                   <FlatList
                     data={visibleTasksWithStats}
-                    renderItem={({ item: task }) => (
-                      <SwipeableTaskCard
-                        task={task}
-                        backgroundColor={task.backgroundColor}
-                        borderColor={task.borderColor}
-                        totalSubtasks={task.totalSubtasks}
-                        completedSubtasks={task.completedSubtasks}
-                        onPress={() => setActiveTaskId(task.id)}
-                        onToggleCompletion={() => handleToggleTaskCompletion(task.id, selectedDateKey)}
-                        onCopy={() => {
-                          const duplicated = {
-                            ...task,
-                            title: `${task.title} 1`,
-                            subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
-                            startDate: task.date,
-                          };
-                          openHabitSheet('copy', duplicated);
-                        }}
-                        onDelete={() => {
-                          setTasks((previous) => previous.filter((current) => current.id !== task.id));
-                        }}
-                        onEdit={() => {
-                          const editable = {
-                            ...task,
-                            startDate: task.date,
-                            subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
-                          };
-                          openHabitSheet('edit', editable);
-                        }}
-                      />
-                    )}
+                    renderItem={({ item: task }) => {
+                      if (task.type === 'quantity') {
+                        return <WaterTaskCard task={task} onPressCircle={handleSelectQuantityTask} />;
+                      }
+
+                      return (
+                        <SwipeableTaskCard
+                          task={task}
+                          backgroundColor={task.backgroundColor}
+                          borderColor={task.borderColor}
+                          totalSubtasks={task.totalSubtasks}
+                          completedSubtasks={task.completedSubtasks}
+                          onPress={() => setActiveTaskId(task.id)}
+                          onToggleCompletion={() => handleToggleTaskCompletion(task.id, selectedDateKey)}
+                          onCopy={() => {
+                            const duplicated = {
+                              ...task,
+                              title: `${task.title} 1`,
+                              subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+                              startDate: task.date,
+                            };
+                            openHabitSheet('copy', duplicated);
+                          }}
+                          onDelete={() => {
+                            setTasks((previous) => previous.filter((current) => current.id !== task.id));
+                          }}
+                          onEdit={() => {
+                            const editable = {
+                              ...task,
+                              startDate: task.date,
+                              subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+                            };
+                            openHabitSheet('edit', editable);
+                          }}
+                        />
+                      );
+                    }}
                     keyExtractor={(task) => task.id}
                     scrollEnabled={false}
                     contentContainerStyle={styles.tasksList}
@@ -2323,6 +2392,14 @@ function ScheduleApp() {
         onClose={() => setReportDate(null)}
         customImages={customMonthImages}
       />
+      {selectedQuantityTask && (
+        <QuantityEditModal
+          visible={!!selectedQuantityTask}
+          task={selectedQuantityTask}
+          onClose={() => setSelectedQuantityTask(null)}
+          onUpdate={updateTaskQuantity}
+        />
+      )}
       <AddHabitSheet
         visible={isHabitSheetOpen}
         onClose={handleCloseCreateHabit}
@@ -2346,6 +2423,185 @@ function ScheduleApp() {
         onUpdateImage={handleUpdateMonthImage}
       />
     </View>
+  );
+}
+
+function WaterTaskCard({ task, onPressCircle }) {
+  const targetValue = Number(task?.targetValue) || 0;
+  const currentValue = Number(task?.currentValue) || 0;
+  const progress = targetValue > 0 ? Math.min(Math.max(currentValue / targetValue, 0), 1) : 0;
+  const percentageLabel = `${Math.round(progress * 100)}%`;
+  const displayTarget = targetValue > 0 ? targetValue : '-';
+  const subtitle = formatTaskTime(task.time) || 'Anytime';
+
+  const primaryWave = useRef(new Animated.Value(0)).current;
+  const secondaryWave = useRef(new Animated.Value(0)).current;
+  const screenWidth = Dimensions.get('window').width;
+
+  useEffect(() => {
+    const primaryLoop = Animated.loop(
+      Animated.timing(primaryWave, {
+        toValue: 1,
+        duration: 4200,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+
+    const secondaryLoop = Animated.loop(
+      Animated.timing(secondaryWave, {
+        toValue: 1,
+        duration: 6200,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+
+    primaryLoop.start();
+    secondaryLoop.start();
+
+    return () => {
+      primaryLoop.stop();
+      secondaryLoop.stop();
+    };
+  }, [primaryWave, secondaryWave]);
+
+  const primaryTranslate = primaryWave.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -screenWidth],
+  });
+
+  const secondaryTranslate = secondaryWave.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -screenWidth * 0.8],
+  });
+
+  return (
+    <View style={styles.waterCardContainer}>
+      <LinearGradient
+        colors={["#f6efff", "#eef5ff"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[StyleSheet.absoluteFill, styles.waterCardGradient]}
+      />
+      <View style={[StyleSheet.absoluteFill, styles.waterCardFillWrapper]} pointerEvents="none">
+        <View style={[styles.waterLevel, { height: `${progress * 100}%` }]}>
+          <Animated.View
+            style={[
+              styles.wave,
+              {
+                transform: [{ translateX: primaryTranslate }],
+              },
+            ]}
+          >
+            <Svg width="200%" height="64" viewBox="0 0 1440 320" preserveAspectRatio="none">
+              <Path
+                fill="#8dd0ff"
+                d="M0,160L48,144C96,128,192,96,288,106.7C384,117,480,171,576,165.3C672,160,768,96,864,90.7C960,85,1056,139,1152,154.7C1248,171,1344,149,1392,138.7L1440,128L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
+              />
+            </Svg>
+          </Animated.View>
+          <Animated.View
+            style={[
+              styles.wave,
+              styles.waveSecondary,
+              {
+                transform: [{ translateX: secondaryTranslate }],
+              },
+            ]}
+          >
+            <Svg width="220%" height="72" viewBox="0 0 1440 320" preserveAspectRatio="none">
+              <Path
+                fill="#6abdf6"
+                d="M0,224L48,202.7C96,181,192,139,288,133.3C384,128,480,160,576,149.3C672,139,768,85,864,74.7C960,64,1056,96,1152,122.7C1248,149,1344,171,1392,181.3L1440,192L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
+              />
+            </Svg>
+          </Animated.View>
+          <View style={styles.waterFlatFill} />
+        </View>
+      </View>
+      <View style={styles.waterCardContent}>
+        {task.customImage ? (
+          <Image source={{ uri: task.customImage }} style={styles.waterEmojiImage} />
+        ) : (
+          <View style={styles.waterEmojiBubble}>
+            <Text style={styles.waterEmoji}>{task.emoji || '🙂'}</Text>
+          </View>
+        )}
+        <View style={styles.waterTextColumn}>
+          <Text style={styles.waterCardTitle}>{task.title}</Text>
+          <Text style={styles.waterCardSubtitle}>{subtitle}</Text>
+        </View>
+        <TouchableOpacity
+          onPress={() => onPressCircle?.(task)}
+          style={styles.waterCircleButton}
+          accessibilityRole="button"
+          accessibilityLabel={`Update quantity for ${task.title}`}
+        >
+          <View style={styles.waterInnerCircle} />
+        </TouchableOpacity>
+      </View>
+      <View style={styles.waterProgressPill} accessibilityLabel={`Progress ${percentageLabel}`}>
+        <Text style={styles.waterProgressText}>{percentageLabel}</Text>
+      </View>
+    </View>
+  );
+}
+
+function QuantityEditModal({ visible, task, onClose, onUpdate }) {
+  const [amount, setAmount] = useState('');
+
+  useEffect(() => {
+    if (!visible) {
+      setAmount('');
+    }
+  }, [visible]);
+
+  const handleUpdate = (operation) => {
+    const value = parseFloat(amount);
+    if (Number.isNaN(value)) {
+      return;
+    }
+
+    const currentValue = Number(task?.currentValue) || 0;
+    const nextValue = operation === 'add' ? currentValue + value : currentValue - value;
+    onUpdate?.(task.id, Math.max(0, nextValue));
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.quantityModalOverlay}>
+        <View style={styles.quantityModal}>
+          <Text style={styles.quantityModalTitle}>{task?.title}</Text>
+          <Text style={styles.quantityModalSubtitle}>{`Current: ${task?.currentValue ?? 0}`}</Text>
+          <TextInput
+            style={styles.quantityModalInput}
+            placeholder="Amount"
+            placeholderTextColor="#9CA3AF"
+            keyboardType="numeric"
+            value={amount}
+            onChangeText={setAmount}
+          />
+          <View style={styles.quantityModalButtons}>
+            <TouchableOpacity
+              style={[styles.quantityModalButton, { backgroundColor: '#FF6B6B' }]}
+              onPress={() => handleUpdate('remove')}
+            >
+              <Text style={styles.quantityModalButtonText}>Remove</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.quantityModalButton, { backgroundColor: '#4ECDC4' }]}
+              onPress={() => handleUpdate('add')}
+            >
+              <Text style={styles.quantityModalButtonText}>Add</Text>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity onPress={onClose} style={styles.quantityModalClose}>
+            <Text style={{ color: '#4b5563', fontWeight: '600' }}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -2823,6 +3079,130 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#d7dbeb',
   },
+  waterCardContainer: {
+    height: 130,
+    borderRadius: 18,
+    marginBottom: 14,
+    backgroundColor: '#f4f0ff',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#d9e1f7',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 5,
+  },
+  waterCardGradient: {
+    opacity: 1,
+  },
+  waterCardFillWrapper: {
+    borderRadius: 18,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+  },
+  waterLevel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#bfe4ff',
+  },
+  wave: {
+    position: 'absolute',
+    top: -6,
+    left: 0,
+    width: '200%',
+    height: 70,
+  },
+  waveSecondary: {
+    opacity: 0.7,
+    top: -2,
+  },
+  waterFlatFill: {
+    flex: 1,
+    backgroundColor: '#b3dbff',
+  },
+  waterCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    backgroundColor: 'transparent',
+    gap: 12,
+    position: 'relative',
+  },
+  waterEmojiBubble: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#ffe8ad',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ffd480',
+  },
+  waterEmojiImage: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+  },
+  waterEmoji: {
+    fontSize: 26,
+  },
+  waterTextColumn: {
+    flex: 1,
+  },
+  waterCardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  waterCardSubtitle: {
+    fontSize: 14,
+    color: '#384152',
+    marginTop: 4,
+  },
+  waterProgressPill: {
+    position: 'absolute',
+    left: 16,
+    bottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(68, 109, 173, 0.12)',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  waterProgressText: {
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  waterCircleButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  waterInnerCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: '#d1d5db',
+  },
   taskCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2892,6 +3272,63 @@ const styles = StyleSheet.create({
     height: 46,
     borderRadius: 23,
     resizeMode: 'cover',
+  },
+  quantityModalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quantityModal: {
+    width: '86%',
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    alignItems: 'center',
+  },
+  quantityModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 6,
+  },
+  quantityModalSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 16,
+  },
+  quantityModalInput: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontSize: 16,
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  quantityModalButtons: {
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 12,
+  },
+  quantityModalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  quantityModalButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  quantityModalClose: {
+    paddingVertical: 8,
   },
   taskEmojiImage: {
     width: 38,
