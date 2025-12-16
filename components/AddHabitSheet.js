@@ -1323,6 +1323,45 @@ export default function AddHabitSheet({
                 returnKeyType="done"
               />
               <Text style={styles.counter}>{`${title.length}/50`}</Text>
+              <View style={styles.typeSelectorContainer}>
+                <Text style={styles.typeSelectorLabel}>Task type</Text>
+                <View style={styles.typeSelector}>
+                  <Pressable
+                    style={[styles.typeOption, taskType === 'standard' && styles.typeOptionActive]}
+                    onPress={() => setTaskType('standard')}
+                  >
+                    <Text
+                      style={[styles.typeOptionText, taskType === 'standard' && styles.typeOptionTextActive]}
+                    >
+                      Standard
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.typeOption, taskType === 'quantity' && styles.typeOptionActive]}
+                    onPress={() => setTaskType('quantity')}
+                  >
+                    <Text
+                      style={[styles.typeOptionText, taskType === 'quantity' && styles.typeOptionTextActive]}
+                    >
+                      Quantity
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              {taskType === 'quantity' && (
+                <View style={styles.quantityInputContainer}>
+                  <Text style={styles.quantityLabel}>Daily target</Text>
+                  <TextInput
+                    value={targetValue}
+                    onChangeText={setTargetValue}
+                    placeholder="Enter target (e.g. 2000)"
+                    placeholderTextColor="#7f8a9a"
+                    style={styles.quantityInput}
+                    keyboardType="numeric"
+                  />
+                </View>
+              )}
               <View style={styles.paletteContainer}>
                 {COLORS.map((color) => {
                   const isSelected = selectedColor === color;
