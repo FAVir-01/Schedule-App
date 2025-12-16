@@ -13,6 +13,7 @@ import {
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   FlatList,
   TouchableOpacity,
   View,
@@ -437,6 +438,17 @@ const getTaskCompletionStatus = (task, date) => {
     return false;
   }
 
+  if (task.type === 'quantity') {
+    const targetValue = Number(task.targetValue) || 0;
+    const currentValue = Number(task.currentValue) || 0;
+
+    if (targetValue <= 0) {
+      return false;
+    }
+
+    return currentValue >= targetValue;
+  }
+
   if (task.completedDates && typeof task.completedDates === 'object') {
     return Boolean(task.completedDates[dateKey]);
   }
@@ -845,6 +857,7 @@ function ScheduleApp() {
   const [tasks, setTasks] = useState([]);
   const [reportDate, setReportDate] = useState(null);
   const [activeTaskId, setActiveTaskId] = useState(null);
+  const [selectedQuantityTask, setSelectedQuantityTask] = useState(null);
   const [selectedTagFilter, setSelectedTagFilter] = useState(
     DEFAULT_USER_SETTINGS.selectedTagFilter
   );
@@ -1436,6 +1449,11 @@ function ScheduleApp() {
         ? getTaskCompletionStatus(targetTask, targetDateKey)
         : false;
 
+      if (targetTask?.type === 'quantity') {
+        setSelectedQuantityTask(targetTask);
+        return;
+      }
+
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
       setTasks((previous) =>
         previous.map((task) => {
@@ -1466,7 +1484,7 @@ function ScheduleApp() {
         completed: !wasCompleted,
       });
     },
-    [appendHistoryEntry, selectedDateKey, tasks]
+    [appendHistoryEntry, selectedDateKey, setSelectedQuantityTask, tasks]
   );
 
   const convertSubtasks = useCallback((subtasks, existing = []) => {
@@ -1488,6 +1506,25 @@ function ScheduleApp() {
           completedDates: {},
         };
       });
+  }, []);
+
+  const handleSelectQuantityTask = useCallback((task) => {
+    setSelectedQuantityTask(task);
+  }, []);
+
+  const updateTaskQuantity = useCallback((taskId, newValue) => {
+    const safeValue = Math.max(0, Number(newValue) || 0);
+    setTasks((previous) =>
+      previous.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              currentValue: safeValue,
+            }
+          : task
+      )
+    );
+    setSelectedQuantityTask(null);
   }, []);
 
   const getUniqueTitle = useCallback(
@@ -1522,6 +1559,10 @@ function ScheduleApp() {
     const dateKey = getDateKey(normalizedDate);
     const color = habit?.color ?? '#d1d7ff';
     const title = getUniqueTitle(habit?.title, null);
+    const taskType = habit?.type === 'quantity' ? 'quantity' : 'standard';
+    const targetValue = taskType === 'quantity' ? Number(habit?.targetValue) || 0 : undefined;
+    const currentValue = taskType === 'quantity' ? Number(habit?.currentValue) || 0 : undefined;
+
     const newTask = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       title,
@@ -1533,7 +1574,10 @@ function ScheduleApp() {
       dateKey,
       completed: false,
       completedDates: {},
-      subtasks: convertSubtasks(habit?.subtasks ?? []),
+      type: taskType,
+      targetValue,
+      currentValue,
+      subtasks: taskType === 'quantity' ? [] : convertSubtasks(habit?.subtasks ?? []),
       repeat: habit?.repeat,
       reminder: habit?.reminder,
       tag: habit?.tag,
@@ -1566,6 +1610,18 @@ function ScheduleApp() {
           }
           const nextDate = normalizedDate ? new Date(normalizedDate) : new Date(task.date);
           nextDate.setHours(0, 0, 0, 0);
+          const nextType = habit?.type === 'quantity'
+            ? 'quantity'
+            : habit?.type === 'standard'
+            ? 'standard'
+            : task.type ?? 'standard';
+          const nextTarget = nextType === 'quantity'
+            ? Number(habit?.targetValue ?? task.targetValue ?? 0) || 0
+            : undefined;
+          const nextCurrent = nextType === 'quantity'
+            ? Math.max(0, Number(habit?.currentValue ?? task.currentValue ?? 0) || 0)
+            : undefined;
+
           return {
             ...task,
             title: nextTitle,
@@ -1573,13 +1629,19 @@ function ScheduleApp() {
             emoji: habit?.emoji ?? task.emoji,
             customImage: habit?.customImage ?? task.customImage ?? null,
             time: habit?.time,
-            subtasks: convertSubtasks(habit?.subtasks ?? [], task.subtasks ?? []),
+            subtasks:
+              nextType === 'quantity'
+                ? []
+                : convertSubtasks(habit?.subtasks ?? [], task.subtasks ?? []),
             repeat: habit?.repeat,
             reminder: habit?.reminder,
             tag: habit?.tag,
             tagLabel: habit?.tagLabel,
             date: nextDate,
             dateKey: getDateKey(nextDate),
+            type: nextType,
+            targetValue: nextTarget,
+            currentValue: nextCurrent,
           };
         })
       );
@@ -1936,37 +1998,43 @@ function ScheduleApp() {
                 ) : (
                   <FlatList
                     data={visibleTasksWithStats}
-                    renderItem={({ item: task }) => (
-                      <SwipeableTaskCard
-                        task={task}
-                        backgroundColor={task.backgroundColor}
-                        borderColor={task.borderColor}
-                        totalSubtasks={task.totalSubtasks}
-                        completedSubtasks={task.completedSubtasks}
-                        onPress={() => setActiveTaskId(task.id)}
-                        onToggleCompletion={() => handleToggleTaskCompletion(task.id, selectedDateKey)}
-                        onCopy={() => {
-                          const duplicated = {
-                            ...task,
-                            title: `${task.title} 1`,
-                            subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
-                            startDate: task.date,
-                          };
-                          openHabitSheet('copy', duplicated);
-                        }}
-                        onDelete={() => {
-                          setTasks((previous) => previous.filter((current) => current.id !== task.id));
-                        }}
-                        onEdit={() => {
-                          const editable = {
-                            ...task,
-                            startDate: task.date,
-                            subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
-                          };
-                          openHabitSheet('edit', editable);
-                        }}
-                      />
-                    )}
+                    renderItem={({ item: task }) => {
+                      if (task.type === 'quantity') {
+                        return <WaterTaskCard task={task} onPressCircle={handleSelectQuantityTask} />;
+                      }
+
+                      return (
+                        <SwipeableTaskCard
+                          task={task}
+                          backgroundColor={task.backgroundColor}
+                          borderColor={task.borderColor}
+                          totalSubtasks={task.totalSubtasks}
+                          completedSubtasks={task.completedSubtasks}
+                          onPress={() => setActiveTaskId(task.id)}
+                          onToggleCompletion={() => handleToggleTaskCompletion(task.id, selectedDateKey)}
+                          onCopy={() => {
+                            const duplicated = {
+                              ...task,
+                              title: `${task.title} 1`,
+                              subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+                              startDate: task.date,
+                            };
+                            openHabitSheet('copy', duplicated);
+                          }}
+                          onDelete={() => {
+                            setTasks((previous) => previous.filter((current) => current.id !== task.id));
+                          }}
+                          onEdit={() => {
+                            const editable = {
+                              ...task,
+                              startDate: task.date,
+                              subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+                            };
+                            openHabitSheet('edit', editable);
+                          }}
+                        />
+                      );
+                    }}
                     keyExtractor={(task) => task.id}
                     scrollEnabled={false}
                     contentContainerStyle={styles.tasksList}
@@ -2323,6 +2391,14 @@ function ScheduleApp() {
         onClose={() => setReportDate(null)}
         customImages={customMonthImages}
       />
+      {selectedQuantityTask && (
+        <QuantityEditModal
+          visible={!!selectedQuantityTask}
+          task={selectedQuantityTask}
+          onClose={() => setSelectedQuantityTask(null)}
+          onUpdate={updateTaskQuantity}
+        />
+      )}
       <AddHabitSheet
         visible={isHabitSheetOpen}
         onClose={handleCloseCreateHabit}
@@ -2346,6 +2422,94 @@ function ScheduleApp() {
         onUpdateImage={handleUpdateMonthImage}
       />
     </View>
+  );
+}
+
+function WaterTaskCard({ task, onPressCircle }) {
+  const targetValue = Number(task?.targetValue) || 0;
+  const currentValue = Number(task?.currentValue) || 0;
+  const percentage = targetValue > 0 ? Math.min(Math.max(currentValue / targetValue, 0), 1) : 0;
+  const percentageLabel = `${Math.round(percentage * 100)}%`;
+
+  return (
+    <View style={styles.waterCardContainer}>
+      <View style={[StyleSheet.absoluteFill, styles.waterCardFillWrapper]}>
+        <View style={[styles.waterFill, { height: `${percentage * 100}%` }]} />
+      </View>
+      <View style={styles.waterCardContent}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.waterCardTitle}>{task.title}</Text>
+          <Text style={styles.waterCardSubtitle}>
+            {`${currentValue} / ${targetValue || '-'} • ${percentageLabel}`}
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={() => onPressCircle?.(task)}
+          style={styles.waterCircleButton}
+          accessibilityRole="button"
+          accessibilityLabel={`Update quantity for ${task.title}`}
+        >
+          <View style={styles.waterInnerCircle} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+function QuantityEditModal({ visible, task, onClose, onUpdate }) {
+  const [amount, setAmount] = useState('');
+
+  useEffect(() => {
+    if (!visible) {
+      setAmount('');
+    }
+  }, [visible]);
+
+  const handleUpdate = (operation) => {
+    const value = parseFloat(amount);
+    if (Number.isNaN(value)) {
+      return;
+    }
+
+    const currentValue = Number(task?.currentValue) || 0;
+    const nextValue = operation === 'add' ? currentValue + value : currentValue - value;
+    onUpdate?.(task.id, Math.max(0, nextValue));
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.quantityModalOverlay}>
+        <View style={styles.quantityModal}>
+          <Text style={styles.quantityModalTitle}>{task?.title}</Text>
+          <Text style={styles.quantityModalSubtitle}>{`Current: ${task?.currentValue ?? 0}`}</Text>
+          <TextInput
+            style={styles.quantityModalInput}
+            placeholder="Amount"
+            placeholderTextColor="#9CA3AF"
+            keyboardType="numeric"
+            value={amount}
+            onChangeText={setAmount}
+          />
+          <View style={styles.quantityModalButtons}>
+            <TouchableOpacity
+              style={[styles.quantityModalButton, { backgroundColor: '#FF6B6B' }]}
+              onPress={() => handleUpdate('remove')}
+            >
+              <Text style={styles.quantityModalButtonText}>Remove</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.quantityModalButton, { backgroundColor: '#4ECDC4' }]}
+              onPress={() => handleUpdate('add')}
+            >
+              <Text style={styles.quantityModalButtonText}>Add</Text>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity onPress={onClose} style={styles.quantityModalClose}>
+            <Text style={{ color: '#4b5563', fontWeight: '600' }}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -2823,6 +2987,69 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#d7dbeb',
   },
+  waterCardContainer: {
+    height: 110,
+    borderRadius: 18,
+    marginBottom: 14,
+    backgroundColor: '#f5f7fb',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#d9e1f7',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 5,
+  },
+  waterCardFillWrapper: {
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  waterFill: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#AEE2FF',
+  },
+  waterCardContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: 'transparent',
+  },
+  waterCardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  waterCardSubtitle: {
+    fontSize: 14,
+    color: '#4b5563',
+    marginTop: 4,
+  },
+  waterCircleButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  waterInnerCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: '#d1d5db',
+  },
   taskCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2892,6 +3119,63 @@ const styles = StyleSheet.create({
     height: 46,
     borderRadius: 23,
     resizeMode: 'cover',
+  },
+  quantityModalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quantityModal: {
+    width: '86%',
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    alignItems: 'center',
+  },
+  quantityModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 6,
+  },
+  quantityModalSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 16,
+  },
+  quantityModalInput: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontSize: 16,
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  quantityModalButtons: {
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 12,
+  },
+  quantityModalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  quantityModalButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  quantityModalClose: {
+    paddingVertical: 8,
   },
   taskEmojiImage: {
     width: 38,

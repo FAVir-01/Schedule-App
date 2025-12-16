@@ -437,6 +437,8 @@ export default function AddHabitSheet({
   const [tagOptions, setTagOptions] = useState(() => [...DEFAULT_TAG_OPTIONS]);
   const [selectedTag, setSelectedTag] = useState('none');
   const [subtasks, setSubtasks] = useState([]);
+  const [taskType, setTaskType] = useState('standard');
+  const [targetValue, setTargetValue] = useState('');
 
   const [calendarMonth, setCalendarMonthState] = useState(
     () => new Date(startDate.getFullYear(), startDate.getMonth(), 1)
@@ -787,6 +789,12 @@ export default function AddHabitSheet({
     const resolvedReminder = initialHabit.reminder ?? 'none';
     const resolvedTagKey = initialHabit.tag ?? 'none';
     const resolvedSubtasks = Array.isArray(initialHabit.subtasks) ? initialHabit.subtasks : [];
+    const resolvedType = initialHabit.type ?? 'standard';
+    const resolvedTarget =
+      resolvedType === 'quantity' && initialHabit.targetValue != null
+        ? String(initialHabit.targetValue)
+        : '';
+    const sanitizedSubtasks = resolvedType === 'quantity' ? [] : resolvedSubtasks;
 
     setTitle(initialHabit.title ?? '');
     setSelectedColor(initialHabit.color ?? COLORS[0]);
@@ -806,7 +814,9 @@ export default function AddHabitSheet({
     setReminderOption(resolvedReminder);
     setSelectedTag(resolvedTagKey);
     setPendingTag(resolvedTagKey);
-    setSubtasks(resolvedSubtasks);
+    setTaskType(resolvedType);
+    setTargetValue(resolvedTarget);
+    setSubtasks(sanitizedSubtasks);
     setCustomImage(initialHabit.customImage ?? null);
 
     setCalendarMonthState(new Date(resolvedStartDate.getFullYear(), resolvedStartDate.getMonth(), 1));
@@ -823,7 +833,7 @@ export default function AddHabitSheet({
     setPendingPointTime(resolvedPoint);
     setPendingPeriodTime(resolvedPeriod);
     setPendingReminder(resolvedReminder);
-    setPendingSubtasks(resolvedSubtasks);
+    setPendingSubtasks(sanitizedSubtasks);
 
     if (initialHabit.tag && initialHabit.tagLabel) {
       setTagOptions((prev) => {
@@ -947,12 +957,22 @@ export default function AddHabitSheet({
     }
     const selectedTagOption =
       tagOptions.find((option) => option.key === selectedTag) ?? tagOptions[0];
+    const resolvedType = taskType === 'quantity' ? 'quantity' : 'standard';
+    const parsedTarget = parseFloat(targetValue);
+    const normalizedTarget = Number.isFinite(parsedTarget) ? parsedTarget : 0;
+
     const payload = {
       title: title.trim(),
       color: selectedColor,
       emoji: selectedEmoji,
       customImage,
       startDate,
+      type: resolvedType,
+      targetValue: resolvedType === 'quantity' ? normalizedTarget : undefined,
+      currentValue:
+        resolvedType === 'quantity'
+          ? initialHabit?.currentValue ?? 0
+          : undefined,
       repeat: {
         enabled: isRepeatEnabled,
         frequency: repeatFrequency,
@@ -970,7 +990,7 @@ export default function AddHabitSheet({
       reminder: reminderOption,
       tag: selectedTagOption.key,
       tagLabel: selectedTagOption.label,
-      subtasks,
+      subtasks: resolvedType === 'quantity' ? [] : subtasks,
     };
     if (isEditMode) {
       onUpdate?.(payload);
@@ -1003,6 +1023,9 @@ export default function AddHabitSheet({
     subtasks,
     customImage,
     tagOptions,
+    taskType,
+    targetValue,
+    initialHabit,
   ]);
 
   const panResponder = useMemo(
@@ -1293,6 +1316,45 @@ export default function AddHabitSheet({
                 returnKeyType="done"
               />
               <Text style={styles.counter}>{`${title.length}/50`}</Text>
+              <View style={styles.typeSelectorContainer}>
+                <Text style={styles.typeSelectorLabel}>Task type</Text>
+                <View style={styles.typeSelector}>
+                  <Pressable
+                    style={[styles.typeOption, taskType === 'standard' && styles.typeOptionActive]}
+                    onPress={() => setTaskType('standard')}
+                  >
+                    <Text
+                      style={[styles.typeOptionText, taskType === 'standard' && styles.typeOptionTextActive]}
+                    >
+                      Standard
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.typeOption, taskType === 'quantity' && styles.typeOptionActive]}
+                    onPress={() => setTaskType('quantity')}
+                  >
+                    <Text
+                      style={[styles.typeOptionText, taskType === 'quantity' && styles.typeOptionTextActive]}
+                    >
+                      Quantity
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              {taskType === 'quantity' && (
+                <View style={styles.quantityInputContainer}>
+                  <Text style={styles.quantityLabel}>Daily target</Text>
+                  <TextInput
+                    value={targetValue}
+                    onChangeText={setTargetValue}
+                    placeholder="Enter target (e.g. 2000)"
+                    placeholderTextColor="#7f8a9a"
+                    style={styles.quantityInput}
+                    keyboardType="numeric"
+                  />
+                </View>
+              )}
               <View style={styles.paletteContainer}>
                 {COLORS.map((color) => {
                   const isSelected = selectedColor === color;
@@ -2577,6 +2639,62 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 24,
     fontWeight: '500',
+  },
+  typeSelectorContainer: {
+    marginBottom: 16,
+  },
+  typeSelectorLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2742',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  typeSelector: {
+    flexDirection: 'row',
+    backgroundColor: '#EEF2FF',
+    borderRadius: 14,
+    padding: 4,
+  },
+  typeOption: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 10,
+  },
+  typeOptionActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  typeOptionText: {
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  typeOptionTextActive: {
+    color: '#111827',
+  },
+  quantityInputContainer: {
+    marginBottom: 24,
+  },
+  quantityLabel: {
+    fontSize: 13,
+    color: '#4B5563',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  quantityInput: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontSize: 16,
+    color: '#1F2742',
+    textAlign: 'center',
+    backgroundColor: '#FFFFFF',
   },
   paletteContainer: {
     flexDirection: 'row',
