@@ -1005,8 +1005,7 @@ export default function AddHabitSheet({
     const selectedTagOption =
       tagOptions.find((option) => option.key === selectedTag) ?? tagOptions[0];
     const selectedTypeOption =
-      DEFAULT_TYPE_OPTIONS.find((option) => option.key === selectedType) ??
-      DEFAULT_TYPE_OPTIONS[0];
+      typeOptions.find((option) => option.key === selectedType) ?? typeOptions[0];
     const payload = {
       title: title.trim(),
       color: selectedColor,
@@ -1208,10 +1207,12 @@ export default function AddHabitSheet({
     return match?.label ?? 'No tag';
   }, [selectedTag, tagOptions]);
 
+  const typeOptions = DEFAULT_TYPE_OPTIONS;
+
   const typeLabel = useMemo(() => {
-    const match = DEFAULT_TYPE_OPTIONS.find((option) => option.key === selectedType);
-    return match?.label ?? DEFAULT_TYPE_OPTIONS[0].label;
-  }, [selectedType]);
+    const match = typeOptions.find((option) => option.key === selectedType);
+    return match?.label ?? typeOptions[0].label;
+  }, [selectedType, typeOptions]);
 
   const pendingTimeTitle = useMemo(() => {
     if (!pendingHasSpecifiedTime) {
@@ -1587,7 +1588,7 @@ export default function AddHabitSheet({
                 onApply={handleApplyType}
               >
                 <OptionList
-                  options={DEFAULT_TYPE_OPTIONS}
+                  options={typeOptions}
                   selectedKey={pendingType}
                   onSelect={setPendingType}
                 />
