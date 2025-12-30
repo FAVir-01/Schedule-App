@@ -1538,6 +1538,9 @@ function ScheduleApp() {
       reminder: habit?.reminder,
       tag: habit?.tag,
       tagLabel: habit?.tagLabel,
+      type: habit?.type,
+      typeLabel: habit?.typeLabel,
+      quantum: habit?.quantum,
     };
     setTasks((previous) => [...previous, newTask]);
     setSelectedDate(normalizedDate);
@@ -1578,6 +1581,9 @@ function ScheduleApp() {
             reminder: habit?.reminder,
             tag: habit?.tag,
             tagLabel: habit?.tagLabel,
+            type: habit?.type,
+            typeLabel: habit?.typeLabel,
+            quantum: habit?.quantum,
             date: nextDate,
             dateKey: getDateKey(nextDate),
           };
