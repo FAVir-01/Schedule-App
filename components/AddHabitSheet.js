@@ -1666,6 +1666,7 @@ export default function AddHabitSheet({
                       onChangeTimerSeconds={setPendingQuantumTimerSeconds}
                       onChangeCountValue={setPendingQuantumCountValue}
                       onChangeCountUnit={setPendingQuantumCountUnit}
+                      showTitle={false}
                     />
                   </>
                 )}
@@ -1873,12 +1874,15 @@ function QuantumPanel({
   onChangeTimerSeconds,
   onChangeCountValue,
   onChangeCountUnit,
+  showTitle = true,
 }) {
   const isTimer = mode === 'timer';
 
   return (
     <View style={styles.subtasksPanel}>
-      <Text style={styles.subtasksTitle}>{isTimer ? 'Timer' : 'Count'}</Text>
+      {showTitle ? (
+        <Text style={styles.subtasksTitle}>{isTimer ? 'Timer' : 'Count'}</Text>
+      ) : null}
       <View style={styles.subtasksCard}>
         {isTimer ? (
           <View style={styles.quantumTimerRow}>
