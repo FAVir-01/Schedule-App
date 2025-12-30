@@ -1082,6 +1082,7 @@ export default function AddHabitSheet({
     subtasks,
     customImage,
     tagOptions,
+    typeOptions,
   ]);
 
   const panResponder = useMemo(
