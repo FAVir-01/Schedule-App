@@ -107,6 +107,17 @@ const DEFAULT_TAG_OPTIONS = [
   { key: 'workout', label: 'Workout' },
 ];
 
+const DEFAULT_TYPE_OPTIONS = [
+  { key: 'default', label: 'Defaut' },
+  { key: 'quantum', label: 'Quantum' },
+  { key: 'list', label: 'List' },
+];
+
+const QUANTUM_MODES = [
+  { key: 'timer', label: 'Timer' },
+  { key: 'count', label: 'Count' },
+];
+
 const createTagKey = (label, existingKeys) => {
   const sanitized = label
     .toLowerCase()
@@ -436,6 +447,12 @@ export default function AddHabitSheet({
   const [reminderOption, setReminderOption] = useState('none');
   const [tagOptions, setTagOptions] = useState(() => [...DEFAULT_TAG_OPTIONS]);
   const [selectedTag, setSelectedTag] = useState('none');
+  const [selectedType, setSelectedType] = useState(DEFAULT_TYPE_OPTIONS[0].key);
+  const [quantumMode, setQuantumMode] = useState(QUANTUM_MODES[0].key);
+  const [quantumTimerMinutes, setQuantumTimerMinutes] = useState('0');
+  const [quantumTimerSeconds, setQuantumTimerSeconds] = useState('0');
+  const [quantumCountValue, setQuantumCountValue] = useState('1');
+  const [quantumCountUnit, setQuantumCountUnit] = useState('');
   const [subtasks, setSubtasks] = useState([]);
 
   const [calendarMonth, setCalendarMonthState] = useState(
@@ -455,6 +472,12 @@ export default function AddHabitSheet({
   const [pendingPeriodTime, setPendingPeriodTime] = useState(periodTime);
   const [pendingReminder, setPendingReminder] = useState(reminderOption);
   const [pendingTag, setPendingTag] = useState(selectedTag);
+  const [pendingType, setPendingType] = useState(selectedType);
+  const [pendingQuantumMode, setPendingQuantumMode] = useState(quantumMode);
+  const [pendingQuantumTimerMinutes, setPendingQuantumTimerMinutes] = useState(quantumTimerMinutes);
+  const [pendingQuantumTimerSeconds, setPendingQuantumTimerSeconds] = useState(quantumTimerSeconds);
+  const [pendingQuantumCountValue, setPendingQuantumCountValue] = useState(quantumCountValue);
+  const [pendingQuantumCountUnit, setPendingQuantumCountUnit] = useState(quantumCountUnit);
   const [pendingSubtasks, setPendingSubtasks] = useState([]);
   const [customImage, setCustomImage] = useState(null);
   const [isLoadingImage, setIsLoadingImage] = useState(false);
@@ -577,6 +600,13 @@ export default function AddHabitSheet({
         setPendingReminder(reminderOption);
       } else if (panel === 'tag') {
         setPendingTag(selectedTag);
+      } else if (panel === 'type') {
+        setPendingType(selectedType);
+        setPendingQuantumMode(quantumMode);
+        setPendingQuantumTimerMinutes(quantumTimerMinutes);
+        setPendingQuantumTimerSeconds(quantumTimerSeconds);
+        setPendingQuantumCountValue(quantumCountValue);
+        setPendingQuantumCountUnit(quantumCountUnit);
       } else if (panel === 'subtasks') {
         setPendingSubtasks(subtasks);
       }
@@ -586,11 +616,17 @@ export default function AddHabitSheet({
       handlePendingPointTimeChange,
       hasSpecifiedTime,
       subtasks,
+      quantumMode,
+      quantumTimerMinutes,
+      quantumTimerSeconds,
+      quantumCountValue,
+      quantumCountUnit,
       periodTime,
       pointTime,
       reminderOption,
       repeatFrequency,
       selectedTag,
+      selectedType,
       selectedWeekdays,
       selectedMonthDays,
       startDate,
@@ -686,6 +722,26 @@ export default function AddHabitSheet({
     setSelectedTag(pendingTag);
     closePanel();
   }, [closePanel, pendingTag]);
+
+  const handleApplyType = useCallback(() => {
+    setSelectedType(pendingType);
+    if (pendingType === 'quantum') {
+      setQuantumMode(pendingQuantumMode ?? QUANTUM_MODES[0].key);
+      setQuantumTimerMinutes(pendingQuantumTimerMinutes);
+      setQuantumTimerSeconds(pendingQuantumTimerSeconds);
+      setQuantumCountValue(pendingQuantumCountValue);
+      setQuantumCountUnit(pendingQuantumCountUnit);
+    }
+    closePanel();
+  }, [
+    closePanel,
+    pendingQuantumMode,
+    pendingQuantumTimerMinutes,
+    pendingQuantumTimerSeconds,
+    pendingQuantumCountUnit,
+    pendingQuantumCountValue,
+    pendingType,
+  ]);
 
   const handleCreateCustomTag = useCallback(
     (label) => {
@@ -786,6 +842,14 @@ export default function AddHabitSheet({
         };
     const resolvedReminder = initialHabit.reminder ?? 'none';
     const resolvedTagKey = initialHabit.tag ?? 'none';
+    const resolvedTypeKey = initialHabit.type ?? DEFAULT_TYPE_OPTIONS[0].key;
+    const resolvedQuantumMode = initialHabit.quantum?.mode ?? QUANTUM_MODES[0].key;
+    const resolvedQuantumTimer = initialHabit.quantum?.timer ?? {};
+    const resolvedQuantumCount = initialHabit.quantum?.count ?? {};
+    const resolvedQuantumTimerMinutes = `${resolvedQuantumTimer.minutes ?? '0'}`;
+    const resolvedQuantumTimerSeconds = `${resolvedQuantumTimer.seconds ?? '0'}`;
+    const resolvedQuantumCountValue = `${resolvedQuantumCount.value ?? '1'}`;
+    const resolvedQuantumCountUnit = resolvedQuantumCount.unit ?? '';
     const resolvedSubtasks = Array.isArray(initialHabit.subtasks) ? initialHabit.subtasks : [];
 
     setTitle(initialHabit.title ?? '');
@@ -806,6 +870,14 @@ export default function AddHabitSheet({
     setReminderOption(resolvedReminder);
     setSelectedTag(resolvedTagKey);
     setPendingTag(resolvedTagKey);
+    setSelectedType(resolvedTypeKey);
+    setPendingType(resolvedTypeKey);
+    setQuantumMode(resolvedQuantumMode);
+    setPendingQuantumMode(resolvedQuantumMode);
+    setQuantumTimerMinutes(resolvedQuantumTimerMinutes);
+    setQuantumTimerSeconds(resolvedQuantumTimerSeconds);
+    setQuantumCountValue(resolvedQuantumCountValue);
+    setQuantumCountUnit(resolvedQuantumCountUnit);
     setSubtasks(resolvedSubtasks);
     setCustomImage(initialHabit.customImage ?? null);
 
@@ -823,6 +895,10 @@ export default function AddHabitSheet({
     setPendingPointTime(resolvedPoint);
     setPendingPeriodTime(resolvedPeriod);
     setPendingReminder(resolvedReminder);
+    setPendingQuantumTimerMinutes(resolvedQuantumTimerMinutes);
+    setPendingQuantumTimerSeconds(resolvedQuantumTimerSeconds);
+    setPendingQuantumCountValue(resolvedQuantumCountValue);
+    setPendingQuantumCountUnit(resolvedQuantumCountUnit);
     setPendingSubtasks(resolvedSubtasks);
 
     if (initialHabit.tag && initialHabit.tagLabel) {
@@ -833,6 +909,7 @@ export default function AddHabitSheet({
         return [...prev, { key: initialHabit.tag, label: initialHabit.tagLabel }];
       });
     }
+
   }, [initialHabit, visible]);
 
   useEffect(() => {
@@ -898,6 +975,18 @@ export default function AddHabitSheet({
           setSelectedTag('none');
           setTagOptions([...DEFAULT_TAG_OPTIONS]);
           setPendingTag('none');
+          setSelectedType(DEFAULT_TYPE_OPTIONS[0].key);
+          setPendingType(DEFAULT_TYPE_OPTIONS[0].key);
+          setQuantumMode(QUANTUM_MODES[0].key);
+          setPendingQuantumMode(QUANTUM_MODES[0].key);
+          setQuantumTimerMinutes('0');
+          setQuantumTimerSeconds('0');
+          setQuantumCountValue('1');
+          setQuantumCountUnit('');
+          setPendingQuantumTimerMinutes('0');
+          setPendingQuantumTimerSeconds('0');
+          setPendingQuantumCountValue('1');
+          setPendingQuantumCountUnit('');
           setSubtasks([]);
           setCustomImage(null);
           setIsLoadingImage(false);
@@ -947,6 +1036,8 @@ export default function AddHabitSheet({
     }
     const selectedTagOption =
       tagOptions.find((option) => option.key === selectedTag) ?? tagOptions[0];
+    const selectedTypeOption =
+      typeOptions.find((option) => option.key === selectedType) ?? typeOptions[0];
     const payload = {
       title: title.trim(),
       color: selectedColor,
@@ -970,6 +1061,19 @@ export default function AddHabitSheet({
       reminder: reminderOption,
       tag: selectedTagOption.key,
       tagLabel: selectedTagOption.label,
+      type: selectedTypeOption.key,
+      typeLabel: selectedTypeOption.label,
+      quantum: {
+        mode: quantumMode,
+        timer: {
+          minutes: Number.parseInt(quantumTimerMinutes, 10) || 0,
+          seconds: Number.parseInt(quantumTimerSeconds, 10) || 0,
+        },
+        count: {
+          value: Number.parseInt(quantumCountValue, 10) || 0,
+          unit: quantumCountUnit.trim(),
+        },
+      },
       subtasks,
     };
     if (isEditMode) {
@@ -996,6 +1100,12 @@ export default function AddHabitSheet({
     selectedEmoji,
     selectedTag,
     selectedWeekdays,
+    selectedType,
+    quantumMode,
+    quantumTimerMinutes,
+    quantumTimerSeconds,
+    quantumCountValue,
+    quantumCountUnit,
     startDate,
     timeMode,
     title,
@@ -1003,6 +1113,11 @@ export default function AddHabitSheet({
     subtasks,
     customImage,
     tagOptions,
+    typeOptions,
+    pendingQuantumTimerMinutes,
+    pendingQuantumTimerSeconds,
+    pendingQuantumCountValue,
+    pendingQuantumCountUnit,
   ]);
 
   const panResponder = useMemo(
@@ -1127,6 +1242,13 @@ export default function AddHabitSheet({
     const match = tagOptions.find((option) => option.key === selectedTag);
     return match?.label ?? 'No tag';
   }, [selectedTag, tagOptions]);
+
+  const typeOptions = DEFAULT_TYPE_OPTIONS;
+
+  const typeLabel = useMemo(() => {
+    const match = typeOptions.find((option) => option.key === selectedType);
+    return match?.label ?? typeOptions[0].label;
+  }, [selectedType, typeOptions]);
 
   const pendingTimeTitle = useMemo(() => {
     if (!pendingHasSpecifiedTime) {
@@ -1360,10 +1482,34 @@ export default function AddHabitSheet({
                   label="Tag"
                   value={tagLabel}
                   onPress={() => handleOpenPanel('tag')}
+                />
+                <SheetRow
+                  icon={(
+                    <View style={styles.rowIconContainer}>
+                      <Ionicons name="layers-outline" size={22} color="#61708A" />
+                    </View>
+                  )}
+                  label="Type"
+                  value={typeLabel}
+                  onPress={() => handleOpenPanel('type')}
                   isLast
                 />
               </View>
-              <SubtasksPanel value={subtasks} onChange={setSubtasks} />
+              {selectedType === 'quantum' ? (
+                <QuantumPanel
+                  mode={quantumMode}
+                  timerMinutes={quantumTimerMinutes}
+                  timerSeconds={quantumTimerSeconds}
+                  countValue={quantumCountValue}
+                  countUnit={quantumCountUnit}
+                  onChangeTimerMinutes={setQuantumTimerMinutes}
+                  onChangeTimerSeconds={setQuantumTimerSeconds}
+                  onChangeCountValue={setQuantumCountValue}
+                  onChangeCountUnit={setQuantumCountUnit}
+                />
+              ) : (
+                <SubtasksPanel value={subtasks} onChange={setSubtasks} />
+              )}
             </ScrollView>
             {activePanel === 'date' && (
               <OptionOverlay
@@ -1457,7 +1603,7 @@ export default function AddHabitSheet({
                 />
               </OptionOverlay>
             )}
-              {activePanel === 'tag' && (
+            {activePanel === 'tag' && (
                 <OptionOverlay
                   title="Tag"
                 onClose={closePanel}
@@ -1469,6 +1615,60 @@ export default function AddHabitSheet({
                   onSelect={setPendingTag}
                   onCreateTag={handleCreateCustomTag}
                 />
+              </OptionOverlay>
+            )}
+            {activePanel === 'type' && (
+              <OptionOverlay
+                title="Type"
+                onClose={closePanel}
+                onApply={handleApplyType}
+              >
+                <OptionList
+                  options={typeOptions}
+                  selectedKey={pendingType}
+                  onSelect={setPendingType}
+                />
+                {pendingType === 'quantum' && (
+                  <>
+                    <View style={styles.quantumModeRow}>
+                      {QUANTUM_MODES.map((option) => {
+                        const isSelected = pendingQuantumMode === option.key;
+                        return (
+                          <Pressable
+                            key={option.key}
+                            style={[
+                              styles.quantumModeButton,
+                              isSelected && styles.quantumModeButtonSelected,
+                            ]}
+                            onPress={() => setPendingQuantumMode(option.key)}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: isSelected }}
+                          >
+                            <Text
+                              style={[
+                                styles.quantumModeButtonText,
+                                isSelected && styles.quantumModeButtonTextSelected,
+                              ]}
+                            >
+                              {option.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    <QuantumPanel
+                      mode={pendingQuantumMode}
+                      timerMinutes={pendingQuantumTimerMinutes}
+                      timerSeconds={pendingQuantumTimerSeconds}
+                      countValue={pendingQuantumCountValue}
+                      countUnit={pendingQuantumCountUnit}
+                      onChangeTimerMinutes={setPendingQuantumTimerMinutes}
+                      onChangeTimerSeconds={setPendingQuantumTimerSeconds}
+                      onChangeCountValue={setPendingQuantumCountValue}
+                      onChangeCountUnit={setPendingQuantumCountUnit}
+                    />
+                  </>
+                )}
               </OptionOverlay>
             )}
           </View>
@@ -1644,6 +1844,106 @@ function TagPanel({ options, selectedKey, onSelect, onCreateTag }) {
           </Text>
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+function normalizeNumericText(value, { max, fallback = '' } = {}) {
+  const sanitized = value.replace(/\D/g, '');
+  if (!sanitized) {
+    return fallback;
+  }
+  let numeric = Number.parseInt(sanitized, 10);
+  if (Number.isNaN(numeric)) {
+    return fallback;
+  }
+  if (typeof max === 'number') {
+    numeric = Math.min(max, numeric);
+  }
+  return `${numeric}`;
+}
+
+function QuantumPanel({
+  mode,
+  timerMinutes,
+  timerSeconds,
+  countValue,
+  countUnit,
+  onChangeTimerMinutes,
+  onChangeTimerSeconds,
+  onChangeCountValue,
+  onChangeCountUnit,
+}) {
+  const isTimer = mode === 'timer';
+
+  return (
+    <View style={styles.subtasksPanel}>
+      <Text style={styles.subtasksTitle}>{isTimer ? 'Timer' : 'Count'}</Text>
+      <View style={styles.subtasksCard}>
+        {isTimer ? (
+          <View style={styles.quantumTimerRow}>
+            <View style={styles.quantumField}>
+              <Text style={styles.quantumFieldLabel}>Min</Text>
+              <TextInput
+                style={styles.quantumFieldInput}
+                value={timerMinutes}
+                onChangeText={(value) => onChangeTimerMinutes(normalizeNumericText(value, { max: 99 }))}
+                keyboardType="number-pad"
+                maxLength={2}
+                placeholder="00"
+                placeholderTextColor="#9AA5B5"
+                accessibilityLabel="Timer minutes"
+              />
+            </View>
+            <View style={styles.quantumField}>
+              <Text style={styles.quantumFieldLabel}>Sec</Text>
+              <TextInput
+                style={styles.quantumFieldInput}
+                value={timerSeconds}
+                onChangeText={(value) => onChangeTimerSeconds(normalizeNumericText(value, { max: 59 }))}
+                keyboardType="number-pad"
+                maxLength={2}
+                placeholder="00"
+                placeholderTextColor="#9AA5B5"
+                accessibilityLabel="Timer seconds"
+              />
+            </View>
+          </View>
+        ) : (
+          <View style={styles.quantumCountRow}>
+            <View style={styles.quantumField}>
+              <Text style={styles.quantumFieldLabel}>Count</Text>
+              <TextInput
+                style={styles.quantumFieldInput}
+                value={countValue}
+                onChangeText={(value) => onChangeCountValue(normalizeNumericText(value, { max: 9999 }))}
+                keyboardType="number-pad"
+                maxLength={4}
+                placeholder="0"
+                placeholderTextColor="#9AA5B5"
+                accessibilityLabel="Count value"
+              />
+            </View>
+            <View style={styles.quantumField}>
+              <Text style={styles.quantumFieldLabel}>Unit</Text>
+              <TextInput
+                style={styles.quantumFieldInput}
+                value={countUnit}
+                onChangeText={onChangeCountUnit}
+                maxLength={12}
+                placeholder="Unit"
+                placeholderTextColor="#9AA5B5"
+                accessibilityLabel="Count unit"
+              />
+            </View>
+          </View>
+        )}
+      </View>
+      <Text style={styles.subtasksPanelHint}>
+        {isTimer
+          ? 'Set the timer duration in minutes and seconds.'
+          : 'Set the count and the unit for this habit.'}
+      </Text>
     </View>
   );
 }
@@ -2632,6 +2932,57 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
     overflow: 'hidden',
+  },
+  quantumModeRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  quantumModeButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: '#EEF3FF',
+    alignItems: 'center',
+  },
+  quantumModeButtonSelected: {
+    backgroundColor: '#1F2742',
+  },
+  quantumModeButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2742',
+  },
+  quantumModeButtonTextSelected: {
+    color: '#FFFFFF',
+  },
+  quantumTimerRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  quantumCountRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  quantumField: {
+    flex: 1,
+    gap: 8,
+  },
+  quantumFieldLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#7F8A9A',
+  },
+  quantumFieldInput: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: '#1F2742',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(109, 125, 150, 0.16)',
+    textAlign: 'center',
   },
   row: {
     flexDirection: 'row',
