@@ -107,6 +107,13 @@ const DEFAULT_TAG_OPTIONS = [
   { key: 'workout', label: 'Workout' },
 ];
 
+const DEFAULT_TYPE_OPTIONS = [
+  { key: 'none', label: 'No type' },
+  { key: 'personal', label: 'Personal' },
+  { key: 'work', label: 'Work' },
+  { key: 'health', label: 'Health' },
+];
+
 const createTagKey = (label, existingKeys) => {
   const sanitized = label
     .toLowerCase()
@@ -436,6 +443,8 @@ export default function AddHabitSheet({
   const [reminderOption, setReminderOption] = useState('none');
   const [tagOptions, setTagOptions] = useState(() => [...DEFAULT_TAG_OPTIONS]);
   const [selectedTag, setSelectedTag] = useState('none');
+  const [typeOptions, setTypeOptions] = useState(() => [...DEFAULT_TYPE_OPTIONS]);
+  const [selectedType, setSelectedType] = useState('none');
   const [subtasks, setSubtasks] = useState([]);
 
   const [calendarMonth, setCalendarMonthState] = useState(
@@ -455,6 +464,7 @@ export default function AddHabitSheet({
   const [pendingPeriodTime, setPendingPeriodTime] = useState(periodTime);
   const [pendingReminder, setPendingReminder] = useState(reminderOption);
   const [pendingTag, setPendingTag] = useState(selectedTag);
+  const [pendingType, setPendingType] = useState(selectedType);
   const [pendingSubtasks, setPendingSubtasks] = useState([]);
   const [customImage, setCustomImage] = useState(null);
   const [isLoadingImage, setIsLoadingImage] = useState(false);
@@ -577,6 +587,8 @@ export default function AddHabitSheet({
         setPendingReminder(reminderOption);
       } else if (panel === 'tag') {
         setPendingTag(selectedTag);
+      } else if (panel === 'type') {
+        setPendingType(selectedType);
       } else if (panel === 'subtasks') {
         setPendingSubtasks(subtasks);
       }
@@ -591,6 +603,7 @@ export default function AddHabitSheet({
       reminderOption,
       repeatFrequency,
       selectedTag,
+      selectedType,
       selectedWeekdays,
       selectedMonthDays,
       startDate,
@@ -686,6 +699,11 @@ export default function AddHabitSheet({
     setSelectedTag(pendingTag);
     closePanel();
   }, [closePanel, pendingTag]);
+
+  const handleApplyType = useCallback(() => {
+    setSelectedType(pendingType);
+    closePanel();
+  }, [closePanel, pendingType]);
 
   const handleCreateCustomTag = useCallback(
     (label) => {
@@ -786,6 +804,7 @@ export default function AddHabitSheet({
         };
     const resolvedReminder = initialHabit.reminder ?? 'none';
     const resolvedTagKey = initialHabit.tag ?? 'none';
+    const resolvedTypeKey = initialHabit.type ?? 'none';
     const resolvedSubtasks = Array.isArray(initialHabit.subtasks) ? initialHabit.subtasks : [];
 
     setTitle(initialHabit.title ?? '');
@@ -806,6 +825,8 @@ export default function AddHabitSheet({
     setReminderOption(resolvedReminder);
     setSelectedTag(resolvedTagKey);
     setPendingTag(resolvedTagKey);
+    setSelectedType(resolvedTypeKey);
+    setPendingType(resolvedTypeKey);
     setSubtasks(resolvedSubtasks);
     setCustomImage(initialHabit.customImage ?? null);
 
@@ -831,6 +852,15 @@ export default function AddHabitSheet({
           return prev;
         }
         return [...prev, { key: initialHabit.tag, label: initialHabit.tagLabel }];
+      });
+    }
+
+    if (initialHabit.type && initialHabit.typeLabel) {
+      setTypeOptions((prev) => {
+        if (prev.some((option) => option.key === initialHabit.type)) {
+          return prev;
+        }
+        return [...prev, { key: initialHabit.type, label: initialHabit.typeLabel }];
       });
     }
   }, [initialHabit, visible]);
@@ -898,6 +928,9 @@ export default function AddHabitSheet({
           setSelectedTag('none');
           setTagOptions([...DEFAULT_TAG_OPTIONS]);
           setPendingTag('none');
+          setSelectedType('none');
+          setTypeOptions([...DEFAULT_TYPE_OPTIONS]);
+          setPendingType('none');
           setSubtasks([]);
           setCustomImage(null);
           setIsLoadingImage(false);
@@ -947,6 +980,8 @@ export default function AddHabitSheet({
     }
     const selectedTagOption =
       tagOptions.find((option) => option.key === selectedTag) ?? tagOptions[0];
+    const selectedTypeOption =
+      typeOptions.find((option) => option.key === selectedType) ?? typeOptions[0];
     const payload = {
       title: title.trim(),
       color: selectedColor,
@@ -970,6 +1005,8 @@ export default function AddHabitSheet({
       reminder: reminderOption,
       tag: selectedTagOption.key,
       tagLabel: selectedTagOption.label,
+      type: selectedTypeOption.key,
+      typeLabel: selectedTypeOption.label,
       subtasks,
     };
     if (isEditMode) {
@@ -996,6 +1033,7 @@ export default function AddHabitSheet({
     selectedEmoji,
     selectedTag,
     selectedWeekdays,
+    selectedType,
     startDate,
     timeMode,
     title,
@@ -1003,6 +1041,7 @@ export default function AddHabitSheet({
     subtasks,
     customImage,
     tagOptions,
+    typeOptions,
   ]);
 
   const panResponder = useMemo(
@@ -1127,6 +1166,11 @@ export default function AddHabitSheet({
     const match = tagOptions.find((option) => option.key === selectedTag);
     return match?.label ?? 'No tag';
   }, [selectedTag, tagOptions]);
+
+  const typeLabel = useMemo(() => {
+    const match = typeOptions.find((option) => option.key === selectedType);
+    return match?.label ?? 'No type';
+  }, [selectedType, typeOptions]);
 
   const pendingTimeTitle = useMemo(() => {
     if (!pendingHasSpecifiedTime) {
@@ -1360,6 +1404,16 @@ export default function AddHabitSheet({
                   label="Tag"
                   value={tagLabel}
                   onPress={() => handleOpenPanel('tag')}
+                />
+                <SheetRow
+                  icon={(
+                    <View style={styles.rowIconContainer}>
+                      <Ionicons name="layers-outline" size={22} color="#61708A" />
+                    </View>
+                  )}
+                  label="Type"
+                  value={typeLabel}
+                  onPress={() => handleOpenPanel('type')}
                   isLast
                 />
               </View>
@@ -1457,7 +1511,7 @@ export default function AddHabitSheet({
                 />
               </OptionOverlay>
             )}
-              {activePanel === 'tag' && (
+            {activePanel === 'tag' && (
                 <OptionOverlay
                   title="Tag"
                 onClose={closePanel}
@@ -1468,6 +1522,19 @@ export default function AddHabitSheet({
                   selectedKey={pendingTag}
                   onSelect={setPendingTag}
                   onCreateTag={handleCreateCustomTag}
+                />
+              </OptionOverlay>
+            )}
+            {activePanel === 'type' && (
+              <OptionOverlay
+                title="Type"
+                onClose={closePanel}
+                onApply={handleApplyType}
+              >
+                <OptionList
+                  options={typeOptions}
+                  selectedKey={pendingType}
+                  onSelect={setPendingType}
                 />
               </OptionOverlay>
             )}
