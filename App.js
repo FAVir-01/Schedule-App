@@ -427,6 +427,50 @@ const formatTaskTime = (time) => {
   return 'Anytime';
 };
 
+const formatDuration = (totalSeconds) => {
+  const safeSeconds = Math.max(0, totalSeconds || 0);
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+};
+
+const getQuantumProgressLabel = (task) => {
+  if (!task || task.type !== 'quantum' || !task.quantum) {
+    return null;
+  }
+  const mode = task.quantum.mode;
+  if (mode === 'timer') {
+    const minutes = task.quantum.timer?.minutes ?? 0;
+    const seconds = task.quantum.timer?.seconds ?? 0;
+    const limitSeconds = minutes * 60 + seconds;
+    if (!limitSeconds) {
+      return null;
+    }
+    const doneSeconds =
+      typeof task.quantum.doneSeconds === 'number'
+        ? task.quantum.doneSeconds
+        : task.completed
+        ? limitSeconds
+        : 0;
+    return `${formatDuration(doneSeconds)}/${formatDuration(limitSeconds)}`;
+  }
+  if (mode === 'count') {
+    const limitValue = task.quantum.count?.value ?? 0;
+    if (!limitValue) {
+      return null;
+    }
+    const unit = task.quantum.count?.unit?.trim() ?? '';
+    const doneValue =
+      typeof task.quantum.doneCount === 'number'
+        ? task.quantum.doneCount
+        : task.completed
+        ? limitValue
+        : 0;
+    return `${doneValue}/${limitValue}${unit ? ` ${unit}` : ''}`;
+  }
+  return null;
+};
+
 const getTaskCompletionStatus = (task, date) => {
   if (!task || !date) {
     return false;
@@ -761,6 +805,7 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
                   {tasks.map((task, index) => {
                     const baseColor = task.color || '#3c2ba7';
                     const lightBg = lightenColor(baseColor, 0.85);
+                    const quantumLabel = getQuantumProgressLabel(task);
 
                     return (
                       <View
@@ -796,11 +841,15 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
                             {task.title}
                           </Text>
 
-                          {task.totalSubtasks > 0 && (
+                          {quantumLabel ? (
+                            <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
+                              {quantumLabel}
+                            </Text>
+                          ) : task.totalSubtasks > 0 ? (
                             <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
                               {task.completedSubtasks}/{task.totalSubtasks} subtasks
                             </Text>
-                          )}
+                          ) : null}
                         </View>
 
                         {task.completed ? (
@@ -2450,11 +2499,15 @@ function SwipeableTaskCard({
   );
 
   const totalLabel = useMemo(() => {
+    const quantumLabel = getQuantumProgressLabel(task);
+    if (quantumLabel) {
+      return quantumLabel;
+    }
     if (!totalSubtasks) {
       return null;
     }
     return `${completedSubtasks}/${totalSubtasks}`;
-  }, [completedSubtasks, totalSubtasks]);
+  }, [completedSubtasks, task, totalSubtasks]);
 
   return (
     <View style={styles.swipeableWrapper}>
@@ -2543,6 +2596,7 @@ function TaskDetailModal({
   const completedSubtasks = Array.isArray(task.subtasks)
     ? task.subtasks.filter((item) => getSubtaskCompletionStatus(item, dateKey)).length
     : 0;
+  const quantumLabel = getQuantumProgressLabel(task);
   const cardBackground = lightenColor(task.color, 0.85);
 
   return (
@@ -2566,11 +2620,13 @@ function TaskDetailModal({
                 <View style={styles.detailTitleContainer}>
                   <Text style={styles.detailTitle}>{task.title}</Text>
                   <Text style={styles.detailTime}>{formatTaskTime(task.time)}</Text>
-                  {totalSubtasks > 0 && (
+                  {quantumLabel ? (
+                    <Text style={styles.detailSubtaskSummaryLabel}>{quantumLabel}</Text>
+                  ) : totalSubtasks > 0 ? (
                     <Text style={styles.detailSubtaskSummaryLabel}>
                       {completedSubtasks}/{totalSubtasks} subtasks completed
                     </Text>
-                  )}
+                  ) : null}
                 </View>
               </View>
               <Pressable
