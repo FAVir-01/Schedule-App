@@ -474,6 +474,10 @@ export default function AddHabitSheet({
   const [pendingTag, setPendingTag] = useState(selectedTag);
   const [pendingType, setPendingType] = useState(selectedType);
   const [pendingQuantumMode, setPendingQuantumMode] = useState(quantumMode);
+  const [pendingQuantumTimerMinutes, setPendingQuantumTimerMinutes] = useState(quantumTimerMinutes);
+  const [pendingQuantumTimerSeconds, setPendingQuantumTimerSeconds] = useState(quantumTimerSeconds);
+  const [pendingQuantumCountValue, setPendingQuantumCountValue] = useState(quantumCountValue);
+  const [pendingQuantumCountUnit, setPendingQuantumCountUnit] = useState(quantumCountUnit);
   const [pendingSubtasks, setPendingSubtasks] = useState([]);
   const [customImage, setCustomImage] = useState(null);
   const [isLoadingImage, setIsLoadingImage] = useState(false);
@@ -599,6 +603,10 @@ export default function AddHabitSheet({
       } else if (panel === 'type') {
         setPendingType(selectedType);
         setPendingQuantumMode(quantumMode);
+        setPendingQuantumTimerMinutes(quantumTimerMinutes);
+        setPendingQuantumTimerSeconds(quantumTimerSeconds);
+        setPendingQuantumCountValue(quantumCountValue);
+        setPendingQuantumCountUnit(quantumCountUnit);
       } else if (panel === 'subtasks') {
         setPendingSubtasks(subtasks);
       }
@@ -609,6 +617,10 @@ export default function AddHabitSheet({
       hasSpecifiedTime,
       subtasks,
       quantumMode,
+      quantumTimerMinutes,
+      quantumTimerSeconds,
+      quantumCountValue,
+      quantumCountUnit,
       periodTime,
       pointTime,
       reminderOption,
@@ -715,9 +727,21 @@ export default function AddHabitSheet({
     setSelectedType(pendingType);
     if (pendingType === 'quantum') {
       setQuantumMode(pendingQuantumMode ?? QUANTUM_MODES[0].key);
+      setQuantumTimerMinutes(pendingQuantumTimerMinutes);
+      setQuantumTimerSeconds(pendingQuantumTimerSeconds);
+      setQuantumCountValue(pendingQuantumCountValue);
+      setQuantumCountUnit(pendingQuantumCountUnit);
     }
     closePanel();
-  }, [closePanel, pendingQuantumMode, pendingType]);
+  }, [
+    closePanel,
+    pendingQuantumMode,
+    pendingQuantumTimerMinutes,
+    pendingQuantumTimerSeconds,
+    pendingQuantumCountUnit,
+    pendingQuantumCountValue,
+    pendingType,
+  ]);
 
   const handleCreateCustomTag = useCallback(
     (label) => {
@@ -871,6 +895,10 @@ export default function AddHabitSheet({
     setPendingPointTime(resolvedPoint);
     setPendingPeriodTime(resolvedPeriod);
     setPendingReminder(resolvedReminder);
+    setPendingQuantumTimerMinutes(resolvedQuantumTimerMinutes);
+    setPendingQuantumTimerSeconds(resolvedQuantumTimerSeconds);
+    setPendingQuantumCountValue(resolvedQuantumCountValue);
+    setPendingQuantumCountUnit(resolvedQuantumCountUnit);
     setPendingSubtasks(resolvedSubtasks);
 
     if (initialHabit.tag && initialHabit.tagLabel) {
@@ -955,6 +983,10 @@ export default function AddHabitSheet({
           setQuantumTimerSeconds('0');
           setQuantumCountValue('1');
           setQuantumCountUnit('');
+          setPendingQuantumTimerMinutes('0');
+          setPendingQuantumTimerSeconds('0');
+          setPendingQuantumCountValue('1');
+          setPendingQuantumCountUnit('');
           setSubtasks([]);
           setCustomImage(null);
           setIsLoadingImage(false);
@@ -1082,6 +1114,10 @@ export default function AddHabitSheet({
     customImage,
     tagOptions,
     typeOptions,
+    pendingQuantumTimerMinutes,
+    pendingQuantumTimerSeconds,
+    pendingQuantumCountValue,
+    pendingQuantumCountUnit,
   ]);
 
   const panResponder = useMemo(
@@ -1593,32 +1629,45 @@ export default function AddHabitSheet({
                   onSelect={setPendingType}
                 />
                 {pendingType === 'quantum' && (
-                  <View style={styles.quantumModeRow}>
-                    {QUANTUM_MODES.map((option) => {
-                      const isSelected = pendingQuantumMode === option.key;
-                      return (
-                        <Pressable
-                          key={option.key}
-                          style={[
-                            styles.quantumModeButton,
-                            isSelected && styles.quantumModeButtonSelected,
-                          ]}
-                          onPress={() => setPendingQuantumMode(option.key)}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: isSelected }}
-                        >
-                          <Text
+                  <>
+                    <View style={styles.quantumModeRow}>
+                      {QUANTUM_MODES.map((option) => {
+                        const isSelected = pendingQuantumMode === option.key;
+                        return (
+                          <Pressable
+                            key={option.key}
                             style={[
-                              styles.quantumModeButtonText,
-                              isSelected && styles.quantumModeButtonTextSelected,
+                              styles.quantumModeButton,
+                              isSelected && styles.quantumModeButtonSelected,
                             ]}
+                            onPress={() => setPendingQuantumMode(option.key)}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: isSelected }}
                           >
-                            {option.label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
+                            <Text
+                              style={[
+                                styles.quantumModeButtonText,
+                                isSelected && styles.quantumModeButtonTextSelected,
+                              ]}
+                            >
+                              {option.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    <QuantumPanel
+                      mode={pendingQuantumMode}
+                      timerMinutes={pendingQuantumTimerMinutes}
+                      timerSeconds={pendingQuantumTimerSeconds}
+                      countValue={pendingQuantumCountValue}
+                      countUnit={pendingQuantumCountUnit}
+                      onChangeTimerMinutes={setPendingQuantumTimerMinutes}
+                      onChangeTimerSeconds={setPendingQuantumTimerSeconds}
+                      onChangeCountValue={setPendingQuantumCountValue}
+                      onChangeCountUnit={setPendingQuantumCountUnit}
+                    />
+                  </>
                 )}
               </OptionOverlay>
             )}
