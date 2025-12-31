@@ -1208,6 +1208,7 @@ function ScheduleApp() {
         return;
       }
       const mode = targetTask.quantum?.mode;
+      const dateKey = selectedDateKey;
       setTasks((previous) =>
         previous.map((task) => {
           if (task.id !== quantumAdjustTaskId) {
@@ -1231,9 +1232,20 @@ function ScheduleApp() {
               0,
               limitSeconds
             );
+            const completedDates = dateKey
+              ? { ...(task.completedDates ?? {}) }
+              : task.completedDates;
+            if (dateKey) {
+              if (nextSeconds === limitSeconds) {
+                completedDates[dateKey] = true;
+              } else {
+                delete completedDates[dateKey];
+              }
+            }
             return {
               ...task,
               completed: nextSeconds === limitSeconds,
+              completedDates,
               quantum: {
                 ...task.quantum,
                 doneSeconds: nextSeconds,
@@ -1254,9 +1266,20 @@ function ScheduleApp() {
             0,
             limitCount
           );
+          const completedDates = dateKey
+            ? { ...(task.completedDates ?? {}) }
+            : task.completedDates;
+          if (dateKey) {
+            if (nextCount === limitCount) {
+              completedDates[dateKey] = true;
+            } else {
+              delete completedDates[dateKey];
+            }
+          }
           return {
             ...task,
             completed: nextCount === limitCount,
+            completedDates,
             quantum: {
               ...task.quantum,
               doneCount: nextCount,
@@ -1265,7 +1288,14 @@ function ScheduleApp() {
         })
       );
     },
-    [quantumAdjustCount, quantumAdjustMinutes, quantumAdjustSeconds, quantumAdjustTaskId, tasks]
+    [
+      quantumAdjustCount,
+      quantumAdjustMinutes,
+      quantumAdjustSeconds,
+      quantumAdjustTaskId,
+      selectedDateKey,
+      tasks,
+    ]
   );
   const lastToggleRef = useRef(0);
   const overlayOpacity = useRef(new Animated.Value(0)).current;
