@@ -1677,6 +1677,32 @@ export default function AddHabitSheet({
                       })}
                     </View>
                     <View style={styles.quantumModeRow}>
+                      {QUANTUM_STYLE_OPTIONS.map((option) => {
+                        const isSelected = pendingQuantumStyle === option.key;
+                        return (
+                          <Pressable
+                            key={option.key}
+                            style={[
+                              styles.quantumModeButton,
+                              isSelected && styles.quantumModeButtonSelected,
+                            ]}
+                            onPress={() => setPendingQuantumStyle(option.key)}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: isSelected }}
+                          >
+                            <Text
+                              style={[
+                                styles.quantumModeButtonText,
+                                isSelected && styles.quantumModeButtonTextSelected,
+                              ]}
+                            >
+                              {option.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    <View style={styles.quantumModeRow}>
                       {QUANTUM_MODES.map((option) => {
                         const isSelected = pendingQuantumMode === option.key;
                         return (
