@@ -13,6 +13,7 @@ import {
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   FlatList,
   TouchableOpacity,
   View,
@@ -427,6 +428,52 @@ const formatTaskTime = (time) => {
   return 'Anytime';
 };
 
+const clampValue = (value, min, max) => Math.min(Math.max(value, min), max);
+
+const formatDuration = (totalSeconds) => {
+  const safeSeconds = Math.max(0, totalSeconds || 0);
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+};
+
+const getQuantumProgressLabel = (task) => {
+  if (!task || task.type !== 'quantum' || !task.quantum) {
+    return null;
+  }
+  const mode = task.quantum.mode;
+  if (mode === 'timer') {
+    const minutes = task.quantum.timer?.minutes ?? 0;
+    const seconds = task.quantum.timer?.seconds ?? 0;
+    const limitSeconds = minutes * 60 + seconds;
+    if (!limitSeconds) {
+      return null;
+    }
+    const doneSeconds =
+      typeof task.quantum.doneSeconds === 'number'
+        ? task.quantum.doneSeconds
+        : task.completed
+        ? limitSeconds
+        : 0;
+    return `${formatDuration(doneSeconds)}/${formatDuration(limitSeconds)}`;
+  }
+  if (mode === 'count') {
+    const limitValue = task.quantum.count?.value ?? 0;
+    if (!limitValue) {
+      return null;
+    }
+    const unit = task.quantum.count?.unit?.trim() ?? '';
+    const doneValue =
+      typeof task.quantum.doneCount === 'number'
+        ? task.quantum.doneCount
+        : task.completed
+        ? limitValue
+        : 0;
+    return `${doneValue}/${limitValue}${unit ? ` ${unit}` : ''}`;
+  }
+  return null;
+};
+
 const getTaskCompletionStatus = (task, date) => {
   if (!task || !date) {
     return false;
@@ -761,6 +808,7 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
                   {tasks.map((task, index) => {
                     const baseColor = task.color || '#3c2ba7';
                     const lightBg = lightenColor(baseColor, 0.85);
+                    const quantumLabel = getQuantumProgressLabel(task);
 
                     return (
                       <View
@@ -796,11 +844,15 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
                             {task.title}
                           </Text>
 
-                          {task.totalSubtasks > 0 && (
+                          {quantumLabel ? (
+                            <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
+                              {quantumLabel}
+                            </Text>
+                          ) : task.totalSubtasks > 0 ? (
                             <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
                               {task.completedSubtasks}/{task.totalSubtasks} subtasks
                             </Text>
-                          )}
+                          ) : null}
                         </View>
 
                         {task.completed ? (
@@ -845,6 +897,10 @@ function ScheduleApp() {
   const [tasks, setTasks] = useState([]);
   const [reportDate, setReportDate] = useState(null);
   const [activeTaskId, setActiveTaskId] = useState(null);
+  const [quantumAdjustTaskId, setQuantumAdjustTaskId] = useState(null);
+  const [quantumAdjustMinutes, setQuantumAdjustMinutes] = useState('0');
+  const [quantumAdjustSeconds, setQuantumAdjustSeconds] = useState('0');
+  const [quantumAdjustCount, setQuantumAdjustCount] = useState('1');
   const [selectedTagFilter, setSelectedTagFilter] = useState(
     DEFAULT_USER_SETTINGS.selectedTagFilter
   );
@@ -1123,6 +1179,93 @@ function ScheduleApp() {
           }
         : null,
     [activeTask, selectedDateKey]
+  );
+
+  const openQuantumAdjust = useCallback((task) => {
+    if (!task || task.type !== 'quantum') {
+      return;
+    }
+    setQuantumAdjustTaskId(task.id);
+    if (task.quantum?.mode === 'timer') {
+      setQuantumAdjustMinutes('0');
+      setQuantumAdjustSeconds('0');
+    } else {
+      setQuantumAdjustCount('1');
+    }
+  }, []);
+
+  const closeQuantumAdjust = useCallback(() => {
+    setQuantumAdjustTaskId(null);
+  }, []);
+
+  const handleQuantumAdjustment = useCallback(
+    (direction) => {
+      if (!quantumAdjustTaskId) {
+        return;
+      }
+      const targetTask = tasks.find((task) => task.id === quantumAdjustTaskId);
+      if (!targetTask) {
+        return;
+      }
+      const mode = targetTask.quantum?.mode;
+      setTasks((previous) =>
+        previous.map((task) => {
+          if (task.id !== quantumAdjustTaskId) {
+            return task;
+          }
+          if (mode === 'timer') {
+            const minutes = Number.parseInt(quantumAdjustMinutes, 10) || 0;
+            const seconds = Number.parseInt(quantumAdjustSeconds, 10) || 0;
+            const deltaSeconds = minutes * 60 + seconds;
+            if (!deltaSeconds) {
+              return task;
+            }
+            const limitSeconds =
+              (task.quantum?.timer?.minutes ?? 0) * 60 + (task.quantum?.timer?.seconds ?? 0);
+            if (!limitSeconds) {
+              return task;
+            }
+            const currentSeconds = task.quantum?.doneSeconds ?? 0;
+            const nextSeconds = clampValue(
+              currentSeconds + direction * deltaSeconds,
+              0,
+              limitSeconds
+            );
+            return {
+              ...task,
+              completed: nextSeconds === limitSeconds,
+              quantum: {
+                ...task.quantum,
+                doneSeconds: nextSeconds,
+              },
+            };
+          }
+          const deltaCount = Number.parseInt(quantumAdjustCount, 10) || 0;
+          if (!deltaCount) {
+            return task;
+          }
+          const limitCount = task.quantum?.count?.value ?? 0;
+          if (!limitCount) {
+            return task;
+          }
+          const currentCount = task.quantum?.doneCount ?? 0;
+          const nextCount = clampValue(
+            currentCount + direction * deltaCount,
+            0,
+            limitCount
+          );
+          return {
+            ...task,
+            completed: nextCount === limitCount,
+            quantum: {
+              ...task.quantum,
+              doneCount: nextCount,
+            },
+          };
+        })
+      );
+    },
+    [quantumAdjustCount, quantumAdjustMinutes, quantumAdjustSeconds, quantumAdjustTaskId, tasks]
   );
   const lastToggleRef = useRef(0);
   const overlayOpacity = useRef(new Animated.Value(0)).current;
@@ -1538,6 +1681,9 @@ function ScheduleApp() {
       reminder: habit?.reminder,
       tag: habit?.tag,
       tagLabel: habit?.tagLabel,
+      type: habit?.type,
+      typeLabel: habit?.typeLabel,
+      quantum: habit?.quantum,
     };
     setTasks((previous) => [...previous, newTask]);
     setSelectedDate(normalizedDate);
@@ -1578,6 +1724,9 @@ function ScheduleApp() {
             reminder: habit?.reminder,
             tag: habit?.tag,
             tagLabel: habit?.tagLabel,
+            type: habit?.type,
+            typeLabel: habit?.typeLabel,
+            quantum: habit?.quantum,
             date: nextDate,
             dateKey: getDateKey(nextDate),
           };
@@ -1945,6 +2094,7 @@ function ScheduleApp() {
                         completedSubtasks={task.completedSubtasks}
                         onPress={() => setActiveTaskId(task.id)}
                         onToggleCompletion={() => handleToggleTaskCompletion(task.id, selectedDateKey)}
+                        onAdjustQuantum={() => openQuantumAdjust(task)}
                         onCopy={() => {
                           const duplicated = {
                             ...task,
@@ -2339,6 +2489,19 @@ function ScheduleApp() {
         mode={habitSheetMode}
         initialHabit={habitSheetInitialTask}
       />
+      <QuantumAdjustModal
+        task={tasks.find((task) => task.id === quantumAdjustTaskId) ?? null}
+        visible={!!quantumAdjustTaskId}
+        minutesValue={quantumAdjustMinutes}
+        secondsValue={quantumAdjustSeconds}
+        countValue={quantumAdjustCount}
+        onChangeMinutes={setQuantumAdjustMinutes}
+        onChangeSeconds={setQuantumAdjustSeconds}
+        onChangeCount={setQuantumAdjustCount}
+        onAdd={() => handleQuantumAdjustment(1)}
+        onSubtract={() => handleQuantumAdjustment(-1)}
+        onClose={closeQuantumAdjust}
+      />
       <CustomizeCalendarModal
         visible={isCustomizeCalendarOpen}
         onClose={() => setCustomizeCalendarOpen(false)}
@@ -2357,6 +2520,7 @@ function SwipeableTaskCard({
   completedSubtasks,
   onPress,
   onToggleCompletion,
+  onAdjustQuantum,
   onCopy,
   onDelete,
   onEdit,
@@ -2444,11 +2608,18 @@ function SwipeableTaskCard({
   );
 
   const totalLabel = useMemo(() => {
+    const quantumLabel = getQuantumProgressLabel(task);
+    if (quantumLabel) {
+      return quantumLabel;
+    }
     if (!totalSubtasks) {
       return null;
     }
     return `${completedSubtasks}/${totalSubtasks}`;
-  }, [completedSubtasks, totalSubtasks]);
+  }, [completedSubtasks, task, totalSubtasks]);
+
+  const isQuantum = task.type === 'quantum';
+  const toggleAction = isQuantum ? onAdjustQuantum : onToggleCompletion;
 
   return (
     <View style={styles.swipeableWrapper}>
@@ -2507,13 +2678,23 @@ function SwipeableTaskCard({
           </View>
         </Pressable>
         <Pressable
-          onPress={() => handleAction(onToggleCompletion)}
-          style={[styles.taskToggle, task.completed && styles.taskToggleCompleted]}
-          accessibilityRole="checkbox"
-          accessibilityLabel={task.completed ? 'Mark task as incomplete' : 'Mark task as complete'}
-          accessibilityState={{ checked: task.completed }}
+          onPress={() => handleAction(toggleAction)}
+          style={[styles.taskToggle, !isQuantum && task.completed && styles.taskToggleCompleted]}
+          accessibilityRole={isQuantum ? 'button' : 'checkbox'}
+          accessibilityLabel={
+            isQuantum
+              ? 'Adjust quantum progress'
+              : task.completed
+              ? 'Mark task as incomplete'
+              : 'Mark task as complete'
+          }
+          accessibilityState={isQuantum ? undefined : { checked: task.completed }}
         >
-          {task.completed && <Ionicons name="checkmark" size={18} color="#ffffff" />}
+          {isQuantum ? (
+            <Ionicons name="add" size={18} color="#1F2742" />
+          ) : (
+            task.completed && <Ionicons name="checkmark" size={18} color="#ffffff" />
+          )}
         </Pressable>
       </Animated.View>
     </View>
@@ -2537,6 +2718,7 @@ function TaskDetailModal({
   const completedSubtasks = Array.isArray(task.subtasks)
     ? task.subtasks.filter((item) => getSubtaskCompletionStatus(item, dateKey)).length
     : 0;
+  const quantumLabel = getQuantumProgressLabel(task);
   const cardBackground = lightenColor(task.color, 0.85);
 
   return (
@@ -2560,11 +2742,13 @@ function TaskDetailModal({
                 <View style={styles.detailTitleContainer}>
                   <Text style={styles.detailTitle}>{task.title}</Text>
                   <Text style={styles.detailTime}>{formatTaskTime(task.time)}</Text>
-                  {totalSubtasks > 0 && (
+                  {quantumLabel ? (
+                    <Text style={styles.detailSubtaskSummaryLabel}>{quantumLabel}</Text>
+                  ) : totalSubtasks > 0 ? (
                     <Text style={styles.detailSubtaskSummaryLabel}>
                       {completedSubtasks}/{totalSubtasks} subtasks completed
                     </Text>
-                  )}
+                  ) : null}
                 </View>
               </View>
               <Pressable
@@ -2630,6 +2814,139 @@ function TaskDetailModal({
             >
               <Ionicons name="create-outline" size={18} color="#3c2ba7" />
               <Text style={styles.detailEditButtonText}>Edit Task</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function QuantumAdjustModal({
+  task,
+  visible,
+  minutesValue,
+  secondsValue,
+  countValue,
+  onChangeMinutes,
+  onChangeSeconds,
+  onChangeCount,
+  onAdd,
+  onSubtract,
+  onClose,
+}) {
+  if (!visible || !task) {
+    return null;
+  }
+
+  const isTimer = task.quantum?.mode === 'timer';
+  const limitLabel = getQuantumProgressLabel(task);
+  const handleMinutesChange = useCallback(
+    (value) => {
+      onChangeMinutes(value.replace(/\D/g, '').slice(0, 2));
+    },
+    [onChangeMinutes]
+  );
+  const handleSecondsChange = useCallback(
+    (value) => {
+      onChangeSeconds(value.replace(/\D/g, '').slice(0, 2));
+    },
+    [onChangeSeconds]
+  );
+  const handleCountChange = useCallback(
+    (value) => {
+      onChangeCount(value.replace(/\D/g, '').slice(0, 4));
+    },
+    [onChangeCount]
+  );
+  const disableActions = isTimer
+    ? (Number.parseInt(minutesValue, 10) || 0) * 60 + (Number.parseInt(secondsValue, 10) || 0) <= 0
+    : (Number.parseInt(countValue, 10) || 0) <= 0;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.quantumModalOverlay}>
+        <Pressable style={styles.quantumModalBackdrop} onPress={onClose} accessibilityRole="button" />
+        <View style={styles.quantumModalCard}>
+          <View style={styles.quantumModalHeader}>
+            <Text style={styles.quantumModalTitle}>
+              {isTimer ? 'Adjust timer' : 'Adjust count'}
+            </Text>
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close adjust dialog"
+              hitSlop={8}
+            >
+              <Ionicons name="close" size={20} color="#1F2742" />
+            </Pressable>
+          </View>
+          {limitLabel && (
+            <Text style={styles.quantumModalSubtitle}>Current: {limitLabel}</Text>
+          )}
+          {isTimer ? (
+            <View style={styles.quantumModalRow}>
+              <View style={styles.quantumModalField}>
+                <Text style={styles.quantumModalFieldLabel}>Min</Text>
+                <TextInput
+                  style={styles.quantumModalInput}
+                  value={minutesValue}
+                  onChangeText={handleMinutesChange}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  placeholder="0"
+                  placeholderTextColor="#9AA5B5"
+                />
+              </View>
+              <View style={styles.quantumModalField}>
+                <Text style={styles.quantumModalFieldLabel}>Sec</Text>
+                <TextInput
+                  style={styles.quantumModalInput}
+                  value={secondsValue}
+                  onChangeText={handleSecondsChange}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  placeholder="0"
+                  placeholderTextColor="#9AA5B5"
+                />
+              </View>
+            </View>
+          ) : (
+            <View style={styles.quantumModalRow}>
+              <View style={styles.quantumModalField}>
+                <Text style={styles.quantumModalFieldLabel}>Amount</Text>
+                <TextInput
+                  style={styles.quantumModalInput}
+                  value={countValue}
+                  onChangeText={handleCountChange}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  placeholder="0"
+                  placeholderTextColor="#9AA5B5"
+                />
+              </View>
+            </View>
+          )}
+          <View style={styles.quantumModalActions}>
+            <Pressable
+              style={[styles.quantumModalButton, styles.quantumModalButtonSubtract, disableActions && styles.quantumModalButtonDisabled]}
+              onPress={onSubtract}
+              disabled={disableActions}
+              accessibilityRole="button"
+              accessibilityLabel="Subtract from progress"
+            >
+              <Text style={styles.quantumModalButtonText}>-</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.quantumModalButton, styles.quantumModalButtonAdd, disableActions && styles.quantumModalButtonDisabled]}
+              onPress={onAdd}
+              disabled={disableActions}
+              accessibilityRole="button"
+              accessibilityLabel="Add to progress"
+            >
+              <Text style={[styles.quantumModalButtonText, styles.quantumModalButtonTextLight]}>
+                +
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -3031,6 +3348,96 @@ const styles = StyleSheet.create({
   detailEmptySubtasks: {
     fontSize: 14,
     color: '#6f7a86',
+  },
+  quantumModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  quantumModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  quantumModalCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  quantumModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  quantumModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2742',
+  },
+  quantumModalSubtitle: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#7F8A9A',
+  },
+  quantumModalRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  quantumModalField: {
+    flex: 1,
+    gap: 6,
+  },
+  quantumModalFieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#7F8A9A',
+  },
+  quantumModalInput: {
+    backgroundColor: '#F4F6FB',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2742',
+  },
+  quantumModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+  },
+  quantumModalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quantumModalButtonAdd: {
+    backgroundColor: '#1F2742',
+  },
+  quantumModalButtonSubtract: {
+    backgroundColor: '#EEF3FF',
+  },
+  quantumModalButtonText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2742',
+  },
+  quantumModalButtonTextLight: {
+    color: '#FFFFFF',
+  },
+  quantumModalButtonDisabled: {
+    opacity: 0.5,
   },
   detailSubtaskRow: {
     flexDirection: 'row',
