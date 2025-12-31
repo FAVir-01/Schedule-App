@@ -2650,6 +2650,7 @@ function SwipeableTaskCard({
 
   const isQuantum = task.type === 'quantum';
   const toggleAction = isQuantum ? onAdjustQuantum : onToggleCompletion;
+  const isQuantumComplete = isQuantum && getQuantumProgressLabel(task) && task.completed;
 
   return (
     <View style={styles.swipeableWrapper}>
@@ -2709,7 +2710,10 @@ function SwipeableTaskCard({
         </Pressable>
         <Pressable
           onPress={() => handleAction(toggleAction)}
-          style={[styles.taskToggle, !isQuantum && task.completed && styles.taskToggleCompleted]}
+          style={[
+            styles.taskToggle,
+            (isQuantumComplete || (!isQuantum && task.completed)) && styles.taskToggleCompleted,
+          ]}
           accessibilityRole={isQuantum ? 'button' : 'checkbox'}
           accessibilityLabel={
             isQuantum
@@ -2721,7 +2725,11 @@ function SwipeableTaskCard({
           accessibilityState={isQuantum ? undefined : { checked: task.completed }}
         >
           {isQuantum ? (
-            <Ionicons name="add" size={18} color="#1F2742" />
+            isQuantumComplete ? (
+              <Ionicons name="checkmark" size={18} color="#ffffff" />
+            ) : (
+              <Ionicons name="add" size={18} color="#1F2742" />
+            )
           ) : (
             task.completed && <Ionicons name="checkmark" size={18} color="#ffffff" />
           )}
