@@ -1233,6 +1233,7 @@ function ScheduleApp() {
             );
             return {
               ...task,
+              completed: nextSeconds === limitSeconds,
               quantum: {
                 ...task.quantum,
                 doneSeconds: nextSeconds,
@@ -1255,6 +1256,7 @@ function ScheduleApp() {
           );
           return {
             ...task,
+            completed: nextCount === limitCount,
             quantum: {
               ...task.quantum,
               doneCount: nextCount,
