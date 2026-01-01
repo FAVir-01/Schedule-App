@@ -83,6 +83,14 @@ const normalizeRepeatCollection = (value) => {
   return [];
 };
 
+const normalizeRepeatInterval = (value, fallback = 1) => {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed) || parsed < 1) {
+    return fallback;
+  }
+  return parsed;
+};
+
 const isSameDay = (dateA, dateB) => {
   if (!dateA || !dateB) {
     return false;
@@ -140,19 +148,9 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
     return false;
   }
 
-  const frequency = repeat.frequency || repeat.option;
-  const supportedFrequencies = new Set([
-    'daily',
-    'interval',
-    'weekly',
-    'monthly',
-    'weekend',
-    'weekdays',
-  ]);
-  if (!frequency || !supportedFrequencies.has(frequency)) {
-    return false;
-  }
-  const interval = Number.parseInt(repeat.interval, 10) || 1;
+  const rawFrequency = repeat.frequency || repeat.option || 'daily';
+  const frequency = rawFrequency === 'interval' ? 'daily' : rawFrequency;
+  const interval = normalizeRepeatInterval(repeat.interval);
 
   const endDate = normalizeDateValue(repeat.endDate);
   if (endDate && isBefore(endDate, targetDay)) {
