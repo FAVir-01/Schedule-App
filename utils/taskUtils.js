@@ -53,11 +53,7 @@ const getQuantumProgressLabel = (task) => {
       return null;
     }
     const doneSeconds =
-      typeof task.quantum.doneSeconds === 'number'
-        ? task.quantum.doneSeconds
-        : task.completed
-        ? limitSeconds
-        : 0;
+      typeof task.quantum.doneSeconds === 'number' ? task.quantum.doneSeconds : 0;
     return `${formatDuration(doneSeconds)}/${formatDuration(limitSeconds)}`;
   }
   if (mode === 'count') {
@@ -67,11 +63,7 @@ const getQuantumProgressLabel = (task) => {
     }
     const unit = task.quantum.count?.unit?.trim() ?? '';
     const doneValue =
-      typeof task.quantum.doneCount === 'number'
-        ? task.quantum.doneCount
-        : task.completed
-        ? limitValue
-        : 0;
+      typeof task.quantum.doneCount === 'number' ? task.quantum.doneCount : 0;
     return `${doneValue}/${limitValue}${unit ? ` ${unit}` : ''}`;
   }
   return null;
