@@ -648,7 +648,7 @@ function ScheduleApp() {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     return now;
-  }, [normalizeStoredTasks]);
+  }, []);
   const todayKey = useMemo(() => getDateKey(today), [today]);
   const selectedDateKey = useMemo(() => getDateKey(selectedDate), [selectedDate]);
   const isSelectedToday = selectedDateKey === todayKey;
@@ -725,7 +725,7 @@ function ScheduleApp() {
 
   const handleOpenReport = useCallback((date) => {
     setReportDate(date);
-  }, [normalizeStoredTasks]);
+  }, []);
 
   const loadMoreCalendarMonths = useCallback(() => {
     setCalendarMonths((previous) => {
@@ -741,7 +741,7 @@ function ScheduleApp() {
       }
       return [...previous, { id: nextId, date: nextMonthDate }];
     });
-  }, [normalizeStoredTasks]);
+  }, []);
 
   const renderCalendarMonth = useCallback(
     ({ item }) => (
@@ -1078,7 +1078,7 @@ function ScheduleApp() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [normalizeStoredTasks]);
 
   useEffect(() => {
     if (!isHydrated) {
