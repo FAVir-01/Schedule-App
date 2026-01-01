@@ -4,6 +4,7 @@ import {
   AppState,
   BackHandler,
   Dimensions,
+  Easing,
   Platform,
   Image,
   Modal,
@@ -21,7 +22,7 @@ import {
   ImageBackground,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -104,6 +105,7 @@ const StickyMonthHeader = ({ date, customImages }) => {
 };
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
 const habitImage = require('./assets/add-habit.png');
 const reflectionImage = require('./assets/add-reflection.png');
@@ -472,6 +474,80 @@ const getQuantumProgressLabel = (task) => {
     return `${doneValue}/${limitValue}${unit ? ` ${unit}` : ''}`;
   }
   return null;
+};
+
+const clamp01 = (value) => Math.min(1, Math.max(0, value));
+
+const getQuantumProgressPercent = (task) => {
+  if (!task || task.type !== 'quantum' || !task.quantum) {
+    return 0;
+  }
+  const mode = task.quantum.mode;
+  if (mode === 'timer') {
+    const minutes = task.quantum.timer?.minutes ?? 0;
+    const seconds = task.quantum.timer?.seconds ?? 0;
+    const totalSeconds = minutes * 60 + seconds;
+    if (!totalSeconds) {
+      return 0;
+    }
+    const doneSeconds =
+      typeof task.quantum.doneSeconds === 'number' ? task.quantum.doneSeconds : 0;
+    return clamp01(doneSeconds / totalSeconds);
+  }
+
+  if (mode === 'count') {
+    const limitValue = task.quantum.count?.value ?? 0;
+    if (!limitValue) {
+      return 0;
+    }
+    const doneCount = typeof task.quantum.doneCount === 'number' ? task.quantum.doneCount : 0;
+    return clamp01(doneCount / limitValue);
+  }
+
+  return 0;
+};
+
+const mixChannel = (from, to, ratio) => Math.round(from + (to - from) * ratio);
+
+const interpolateHexColor = (from, to, ratio) => {
+  const normalize = (hex) => hex.replace('#', '');
+  const fromValue = parseInt(normalize(from), 16);
+  const toValue = parseInt(normalize(to), 16);
+  const fromRgb = {
+    r: (fromValue >> 16) & 255,
+    g: (fromValue >> 8) & 255,
+    b: fromValue & 255,
+  };
+  const toRgb = {
+    r: (toValue >> 16) & 255,
+    g: (toValue >> 8) & 255,
+    b: toValue & 255,
+  };
+  const mixed = {
+    r: mixChannel(fromRgb.r, toRgb.r, ratio),
+    g: mixChannel(fromRgb.g, toRgb.g, ratio),
+    b: mixChannel(fromRgb.b, toRgb.b, ratio),
+  };
+  return `#${[mixed.r, mixed.g, mixed.b].map((value) => value.toString(16).padStart(2, '0')).join('')}`;
+};
+
+const buildWavePath = ({ width, height, amplitude, phase }) => {
+  if (!width || !height) {
+    return '';
+  }
+  const points = 24;
+  const step = width / points;
+  const center = height * 0.5;
+  let path = `M 0 ${center}`;
+  for (let i = 0; i <= points; i += 1) {
+    const x = step * i;
+    const theta = (i / points) * Math.PI * 2 + phase;
+    const y = center + Math.sin(theta) * amplitude;
+    path += ` L ${x.toFixed(2)} ${y.toFixed(2)}`;
+  }
+  path += ` L ${width} ${height}`;
+  path += ` L 0 ${height} Z`;
+  return path;
 };
 
 const getTaskCompletionStatus = (task, date) => {
@@ -1249,6 +1325,7 @@ function ScheduleApp() {
               quantum: {
                 ...task.quantum,
                 doneSeconds: nextSeconds,
+                wavePulse: Date.now(),
               },
             };
           }
@@ -1283,6 +1360,7 @@ function ScheduleApp() {
             quantum: {
               ...task.quantum,
               doneCount: nextCount,
+              wavePulse: Date.now(),
             },
           };
         })
@@ -1742,6 +1820,17 @@ function ScheduleApp() {
           }
           const nextDate = normalizedDate ? new Date(normalizedDate) : new Date(task.date);
           nextDate.setHours(0, 0, 0, 0);
+          const nextQuantum = habit?.quantum ?? task.quantum;
+          let mergedQuantum = nextQuantum;
+          if (nextQuantum && task.quantum) {
+            const sameMode = nextQuantum.mode === task.quantum.mode;
+            mergedQuantum = {
+              ...task.quantum,
+              ...nextQuantum,
+              doneSeconds: sameMode ? task.quantum.doneSeconds ?? 0 : 0,
+              doneCount: sameMode ? task.quantum.doneCount ?? 0 : 0,
+            };
+          }
           return {
             ...task,
             title: nextTitle,
@@ -1756,7 +1845,7 @@ function ScheduleApp() {
             tagLabel: habit?.tagLabel,
             type: habit?.type,
             typeLabel: habit?.typeLabel,
-            quantum: habit?.quantum,
+            quantum: mergedQuantum,
             date: nextDate,
             dateKey: getDateKey(nextDate),
           };
@@ -2556,8 +2645,17 @@ function SwipeableTaskCard({
   onEdit,
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
+  const wavePhaseAnim = useRef(new Animated.Value(0)).current;
+  const waveIntensityAnim = useRef(new Animated.Value(1)).current;
   const actionWidth = 168;
   const [isOpen, setIsOpen] = useState(false);
+  const [cardSize, setCardSize] = useState({ width: 0, height: 0 });
+  const [wavePathFront, setWavePathFront] = useState('');
+  const [wavePathBack, setWavePathBack] = useState('');
+  const [waveColor, setWaveColor] = useState('#e9f5ff');
+  const waterLevelAnim = useRef(new Animated.Value(0)).current;
+  const wavePhaseRef = useRef(0);
+  const waveIntensityRef = useRef(1);
   const currentOffsetRef = useRef(0);
 
   useEffect(() => {
@@ -2649,6 +2747,122 @@ function SwipeableTaskCard({
   }, [completedSubtasks, task, totalSubtasks]);
 
   const isQuantum = task.type === 'quantum';
+  const isWaterAnimation = task.quantum?.animation === 'water';
+  const waterPercent = useMemo(() => getQuantumProgressPercent(task), [task]);
+  const waveHeight = 34;
+  const updateWavePaths = useCallback(() => {
+    if (!cardSize.width) {
+      return;
+    }
+    const intensityValue = waveIntensityRef.current;
+    const phaseValue = wavePhaseRef.current;
+    const frontAmplitude = 6 + intensityValue * 2.5;
+    const backAmplitude = 4 + intensityValue * 1.6;
+    const frontPath = buildWavePath({
+      width: cardSize.width,
+      height: waveHeight,
+      amplitude: frontAmplitude,
+      phase: phaseValue,
+    });
+    const backPath = buildWavePath({
+      width: cardSize.width,
+      height: waveHeight,
+      amplitude: backAmplitude,
+      phase: phaseValue + Math.PI / 2,
+    });
+    setWavePathFront(frontPath);
+    setWavePathBack(backPath);
+  }, [cardSize.width, waveHeight, waveIntensityAnim, wavePhaseAnim]);
+  const waterFillHeight = useMemo(() => {
+    if (!cardSize.height) {
+      return 0;
+    }
+    return waterLevelAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, cardSize.height],
+    });
+  }, [cardSize.height, waterLevelAnim]);
+
+  useEffect(() => {
+    if (!isQuantum || !isWaterAnimation) {
+      wavePhaseAnim.stopAnimation();
+      wavePhaseAnim.setValue(0);
+      return undefined;
+    }
+
+    const animationLoop = Animated.loop(
+      Animated.timing(wavePhaseAnim, {
+        toValue: Math.PI * 2,
+        duration: 3600,
+        easing: Easing.inOut(Easing.sin),
+        useNativeDriver: false,
+      })
+    );
+
+    animationLoop.start();
+    return () => {
+      animationLoop.stop();
+      wavePhaseAnim.setValue(0);
+    };
+  }, [isQuantum, isWaterAnimation, wavePhaseAnim]);
+
+  useEffect(() => {
+    const id = wavePhaseAnim.addListener(({ value }) => {
+      wavePhaseRef.current = value;
+      updateWavePaths();
+    });
+    const intensityId = waveIntensityAnim.addListener(({ value }) => {
+      waveIntensityRef.current = value;
+      const normalized = clamp01((value - 1) / 4);
+      setWaveColor(interpolateHexColor('#e9f5ff', '#c3e6ff', normalized));
+      updateWavePaths();
+    });
+    return () => {
+      wavePhaseAnim.removeListener(id);
+      waveIntensityAnim.removeListener(intensityId);
+    };
+  }, [updateWavePaths, waveIntensityAnim, wavePhaseAnim]);
+
+  useEffect(() => {
+    updateWavePaths();
+  }, [cardSize.width, updateWavePaths]);
+
+  useEffect(() => {
+    if (!isQuantum || !isWaterAnimation || !cardSize.height) {
+      return;
+    }
+    Animated.spring(waterLevelAnim, {
+      toValue: waterPercent,
+      damping: 10,
+      stiffness: 140,
+      mass: 0.9,
+      useNativeDriver: false,
+    }).start();
+  }, [cardSize.height, isQuantum, isWaterAnimation, waterLevelAnim, waterPercent]);
+
+  useEffect(() => {
+    if (!isQuantum || !isWaterAnimation || !task.quantum?.wavePulse) {
+      return;
+    }
+    waveIntensityAnim.stopAnimation();
+    waveIntensityAnim.setValue(1);
+    Animated.sequence([
+      Animated.spring(waveIntensityAnim, {
+        toValue: 4.8,
+        damping: 6,
+        stiffness: 180,
+        mass: 0.6,
+        useNativeDriver: false,
+      }),
+      Animated.spring(waveIntensityAnim, {
+        toValue: 1,
+        damping: 8,
+        stiffness: 120,
+        mass: 0.8,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [isQuantum, isWaterAnimation, task.quantum?.wavePulse, waveIntensityAnim]);
   const toggleAction = isQuantum ? onAdjustQuantum : onToggleCompletion;
   const isQuantumComplete = isQuantum && getQuantumProgressLabel(task) && task.completed;
 
@@ -2684,7 +2898,30 @@ function SwipeableTaskCard({
             transform: [{ translateX }],
           },
         ]}
+        onLayout={(event) => {
+          const { width, height } = event.nativeEvent.layout;
+          setCardSize({ width, height });
+        }}
       >
+        {isQuantum && isWaterAnimation && (
+          <View pointerEvents="none" style={styles.waterFillContainer}>
+            <AnimatedLinearGradient
+              colors={['rgba(107, 190, 255, 0.6)', 'rgba(64, 148, 255, 0.9)']}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={[styles.waterFill, { height: waterFillHeight }]}
+            >
+              <Svg width={cardSize.width} height={waveHeight} style={styles.waterWaveSvg}>
+                {wavePathBack ? (
+                  <Path d={wavePathBack} fill={waveColor} opacity={0.55} />
+                ) : null}
+                {wavePathFront ? (
+                  <Path d={wavePathFront} fill="#f4fbff" opacity={0.8} />
+                ) : null}
+              </Svg>
+            </AnimatedLinearGradient>
+          </View>
+        )}
         <Pressable style={styles.taskCardContent} onPress={handlePress}>
           <View style={styles.taskInfo}>
             {task.customImage ? (
@@ -3186,6 +3423,24 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderWidth: 1,
+    overflow: 'hidden',
+  },
+  waterFillContainer: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 18,
+    overflow: 'hidden',
+    alignItems: 'stretch',
+    justifyContent: 'flex-end',
+  },
+  waterFill: {
+    width: '100%',
+    position: 'relative',
+  },
+  waterWaveSvg: {
+    position: 'absolute',
+    top: -18,
+    left: 0,
+    right: 0,
   },
   swipeableWrapper: {
     marginBottom: 14,
