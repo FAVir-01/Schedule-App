@@ -95,6 +95,7 @@ const habitImage = require('./assets/add-habit.png');
 const reflectionImage = require('./assets/add-reflection.png');
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
+const FALLBACK_EMOJI = '📝';
 
 const triggerImpact = (style) => {
   if (!HAPTICS_SUPPORTED) {
@@ -294,6 +295,11 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter((t) => t.completed).length;
   const targetSuccessRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const [imageErrors, setImageErrors] = useState({});
+
+  useEffect(() => {
+    setImageErrors({});
+  }, [date, tasks, visible]);
 
   useEffect(() => {
     if (visible) {
@@ -450,13 +456,16 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
                             { backgroundColor: '#fff' },
                           ]}
                         >
-                          {task.customImage ? (
+                          {task.customImage && !imageErrors[task.id] ? (
                             <Image
                               source={{ uri: task.customImage }}
                               style={styles.reportTaskIconImage}
+                              onError={() =>
+                                setImageErrors((prev) => ({ ...prev, [task.id]: true }))
+                              }
                             />
                           ) : (
-                            <Text style={{ fontSize: 18 }}>{task.emoji || '📝'}</Text>
+                            <Text style={{ fontSize: 18 }}>{task.emoji || FALLBACK_EMOJI}</Text>
                           )}
                         </View>
 
@@ -2203,6 +2212,7 @@ function SwipeableTaskCard({
   const [wavePathFront, setWavePathFront] = useState('');
   const [wavePathBack, setWavePathBack] = useState('');
   const [waveColor, setWaveColor] = useState('#e9f5ff');
+  const [hasImageError, setHasImageError] = useState(false);
   const waterLevelAnim = useRef(new Animated.Value(0)).current;
   const wavePhaseRef = useRef(0);
   const waveIntensityRef = useRef(1);
@@ -2216,6 +2226,10 @@ function SwipeableTaskCard({
       translateX.removeListener(id);
     };
   }, [translateX]);
+
+  useEffect(() => {
+    setHasImageError(false);
+  }, [task.customImage]);
 
   const closeActions = useCallback(() => {
     Animated.spring(translateX, {
@@ -2474,10 +2488,14 @@ function SwipeableTaskCard({
         )}
         <Pressable style={styles.taskCardContent} onPress={handlePress}>
           <View style={styles.taskInfo}>
-            {task.customImage ? (
-              <Image source={{ uri: task.customImage }} style={styles.taskEmojiImage} />
+            {task.customImage && !hasImageError ? (
+              <Image
+                source={{ uri: task.customImage }}
+                style={styles.taskEmojiImage}
+                onError={() => setHasImageError(true)}
+              />
             ) : (
-              <Text style={styles.taskEmoji}>{task.emoji}</Text>
+              <Text style={styles.taskEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
             )}
             <View style={styles.taskDetails}>
               <Text
@@ -2535,6 +2553,12 @@ function TaskDetailModal({
   onToggleCompletion,
   onEdit,
 }) {
+  const [hasImageError, setHasImageError] = useState(false);
+
+  useEffect(() => {
+    setHasImageError(false);
+  }, [task?.customImage, visible]);
+
   if (!visible || !task) {
     return null;
   }
@@ -2559,10 +2583,14 @@ function TaskDetailModal({
           <View style={[styles.detailCard, { backgroundColor: cardBackground, borderColor: task.color }]}>
             <View style={styles.detailHeaderRow}>
               <View style={styles.detailHeaderInfo}>
-              {task.customImage ? (
-                <Image source={{ uri: task.customImage }} style={styles.detailEmojiImage} />
+              {task.customImage && !hasImageError ? (
+                <Image
+                  source={{ uri: task.customImage }}
+                  style={styles.detailEmojiImage}
+                  onError={() => setHasImageError(true)}
+                />
               ) : (
-                <Text style={styles.detailEmoji}>{task.emoji}</Text>
+                <Text style={styles.detailEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
               )}
                 <View style={styles.detailTitleContainer}>
                   <Text style={styles.detailTitle}>{task.title}</Text>
