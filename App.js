@@ -1956,27 +1956,26 @@ function ScheduleApp() {
                   <Ionicons name="images-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
                   <Text style={styles.customizeButtonText}>Customize Calendar</Text>
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.customizeButton}
+                  onPress={() => setProfileTasksOpen((previous) => !previous)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name={isProfileTasksOpen ? 'chevron-up' : 'chevron-down'}
+                    size={20}
+                    color="#fff"
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={styles.customizeButtonText}>
+                    {isProfileTasksOpen ? 'Hide Tasks' : 'View Tasks'}
+                  </Text>
+                </TouchableOpacity>
               </View>
 
               <View style={styles.profileTasksSection}>
-                <View style={styles.profileTasksHeader}>
-                  <Text style={styles.profileTasksTitle}>All tasks</Text>
-                  <TouchableOpacity
-                    style={styles.profileTasksToggle}
-                    onPress={() => setProfileTasksOpen((previous) => !previous)}
-                    accessibilityRole="button"
-                    accessibilityLabel={isProfileTasksOpen ? 'Hide all tasks' : 'View all tasks'}
-                  >
-                    <Ionicons
-                      name={isProfileTasksOpen ? 'chevron-up' : 'chevron-down'}
-                      size={16}
-                      color="#3c2ba7"
-                    />
-                    <Text style={styles.profileTasksToggleText}>
-                      {isProfileTasksOpen ? 'Hide' : 'View'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+                <Text style={styles.profileTasksTitle}>All tasks</Text>
 
                 {isProfileTasksOpen && (
                   <>
@@ -3974,30 +3973,11 @@ const styles = StyleSheet.create({
   profileTasksSection: {
     width: '100%',
   },
-  profileTasksHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
   profileTasksTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#1a1a2e',
-  },
-  profileTasksToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f0efff',
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-  },
-  profileTasksToggleText: {
-    marginLeft: 6,
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#3c2ba7',
+    marginBottom: 12,
   },
   profileTasksList: {
     gap: 12,
