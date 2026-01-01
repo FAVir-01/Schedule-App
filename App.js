@@ -307,6 +307,72 @@ function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage 
   );
 }
 
+function ProfileTasksModal({ visible, onClose, tasks, imageErrors, onImageError }) {
+  if (!visible) return null;
+
+  return (
+    <Modal animationType="slide" transparent={false} visible={visible} onRequestClose={onClose}>
+      <SafeAreaView style={styles.profileTasksModalContainer}>
+        <View style={styles.profileTasksModalHeader}>
+          <Text style={styles.profileTasksModalTitle}>All tasks</Text>
+          <Pressable onPress={onClose} hitSlop={12}>
+            <Ionicons name="close" size={28} color="#1a1a2e" />
+          </Pressable>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={styles.profileTasksModalContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {tasks.length === 0 ? (
+            <Text style={styles.profileTasksEmpty}>No tasks created yet.</Text>
+          ) : (
+            tasks.map((task) => {
+              const baseColor = task.color || '#3c2ba7';
+              const lightBg = lightenColor(baseColor, 0.85);
+
+              return (
+                <View
+                  key={task.id}
+                  style={[
+                    styles.reportTaskRow,
+                    {
+                      backgroundColor: lightBg,
+                      borderColor: lightenColor(baseColor, 0.6),
+                      borderWidth: 1,
+                    },
+                  ]}
+                >
+                  <View style={[styles.reportTaskIcon, { backgroundColor: '#fff' }]}>
+                    {task.customImage && !imageErrors[task.id] ? (
+                      <Image
+                        source={{ uri: task.customImage }}
+                        style={styles.reportTaskIconImage}
+                        onError={() => onImageError(task.id)}
+                      />
+                    ) : (
+                      <Text style={{ fontSize: 18 }}>{task.emoji || FALLBACK_EMOJI}</Text>
+                    )}
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.reportTaskTitle}>{task.title}</Text>
+                    {task.totalSubtasks > 0 && (
+                      <Text style={styles.profileTaskMeta}>
+                        {task.totalSubtasks} subtasks
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 
 function DayReportModal({ visible, date, tasks, onClose, customImages }) {
   const { height } = useWindowDimensions();
@@ -737,6 +803,13 @@ function ScheduleApp() {
   useEffect(() => {
     setProfileTaskImageErrors({});
   }, [tasks]);
+
+  const handleProfileTaskImageError = useCallback((taskId) => {
+    setProfileTaskImageErrors((prev) => ({
+      ...prev,
+      [taskId]: true,
+    }));
+  }, []);
 
   const handleOpenReport = useCallback((date) => {
     setReportDate(date);
@@ -1958,79 +2031,18 @@ function ScheduleApp() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.customizeButton}
-                  onPress={() => setProfileTasksOpen((previous) => !previous)}
+                  style={[styles.customizeButton, styles.profileActionButton]}
+                  onPress={() => setProfileTasksOpen(true)}
                   activeOpacity={0.8}
                 >
                   <Ionicons
-                    name={isProfileTasksOpen ? 'chevron-up' : 'chevron-down'}
+                    name="list-outline"
                     size={20}
                     color="#fff"
                     style={{ marginRight: 8 }}
                   />
-                  <Text style={styles.customizeButtonText}>
-                    {isProfileTasksOpen ? 'Hide Tasks' : 'View Tasks'}
-                  </Text>
+                  <Text style={styles.customizeButtonText}>View Tasks</Text>
                 </TouchableOpacity>
-              </View>
-
-              <View style={styles.profileTasksSection}>
-                <Text style={styles.profileTasksTitle}>All tasks</Text>
-
-                {isProfileTasksOpen && (
-                  <>
-                    {profileTaskItems.length === 0 ? (
-                      <Text style={styles.profileTasksEmpty}>No tasks created yet.</Text>
-                    ) : (
-                      <View style={styles.profileTasksList}>
-                        {profileTaskItems.map((task) => {
-                          const baseColor = task.color || '#3c2ba7';
-                          const lightBg = lightenColor(baseColor, 0.85);
-
-                          return (
-                            <View
-                              key={task.id}
-                              style={[
-                                styles.reportTaskRow,
-                                {
-                                  backgroundColor: lightBg,
-                                  borderColor: lightenColor(baseColor, 0.6),
-                                  borderWidth: 1,
-                                },
-                              ]}
-                            >
-                              <View style={[styles.reportTaskIcon, { backgroundColor: '#fff' }]}>
-                                {task.customImage && !profileTaskImageErrors[task.id] ? (
-                                  <Image
-                                    source={{ uri: task.customImage }}
-                                    style={styles.reportTaskIconImage}
-                                    onError={() =>
-                                      setProfileTaskImageErrors((prev) => ({
-                                        ...prev,
-                                        [task.id]: true,
-                                      }))
-                                    }
-                                  />
-                                ) : (
-                                  <Text style={{ fontSize: 18 }}>{task.emoji || FALLBACK_EMOJI}</Text>
-                                )}
-                              </View>
-
-                              <View style={{ flex: 1 }}>
-                                <Text style={styles.reportTaskTitle}>{task.title}</Text>
-                                {task.totalSubtasks > 0 && (
-                                  <Text style={styles.profileTaskMeta}>
-                                    {task.totalSubtasks} subtasks
-                                  </Text>
-                                )}
-                              </View>
-                            </View>
-                          );
-                        })}
-                      </View>
-                    )}
-                  </>
-                )}
               </View>
             </ScrollView>
           ) : (
@@ -2365,6 +2377,13 @@ function ScheduleApp() {
         onClose={() => setCustomizeCalendarOpen(false)}
         customImages={customMonthImages}
         onUpdateImage={handleUpdateMonthImage}
+      />
+      <ProfileTasksModal
+        visible={isProfileTasksOpen}
+        onClose={() => setProfileTasksOpen(false)}
+        tasks={profileTaskItems}
+        imageErrors={profileTaskImageErrors}
+        onImageError={handleProfileTaskImageError}
       />
     </View>
   );
@@ -3970,17 +3989,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  profileTasksSection: {
-    width: '100%',
-  },
-  profileTasksTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1a1a2e',
-    marginBottom: 12,
-  },
-  profileTasksList: {
-    gap: 12,
+  profileActionButton: {
+    marginTop: 12,
   },
   profileTasksEmpty: {
     color: '#6f7a86',
@@ -3991,6 +4001,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6f7a86',
     marginTop: 4,
+  },
+
+  profileTasksModalContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  profileTasksModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  profileTasksModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  profileTasksModalContent: {
+    padding: 20,
+    gap: 12,
   },
   
   // Customize Modal Styles
