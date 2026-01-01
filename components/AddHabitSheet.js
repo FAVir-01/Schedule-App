@@ -1133,10 +1133,6 @@ export default function AddHabitSheet({
     customImage,
     tagOptions,
     typeOptions,
-    pendingQuantumTimerMinutes,
-    pendingQuantumTimerSeconds,
-    pendingQuantumCountValue,
-    pendingQuantumCountUnit,
   ]);
 
   const panResponder = useMemo(
@@ -3408,14 +3404,6 @@ const styles = StyleSheet.create({
   repeatContent: {
     gap: 18,
   },
-  weekdayToggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    paddingTop: 10,
-    gap: 8,
-  },
   weekdayGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -3472,24 +3460,6 @@ const styles = StyleSheet.create({
   },
   monthDayLabelActive: {
     color: '#1F2742',
-  },
-  weekdayToggle: {
-    flex: 1,
-    height: 44,
-    borderRadius: 16,
-    backgroundColor: '#E8EEFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  weekdayToggleActive: {
-    backgroundColor: '#1F2742',
-  },
-  weekdayToggleLabel: {
-    color: '#1F2742',
-    fontWeight: '600',
-  },
-  weekdayToggleLabelActive: {
-    color: '#FFFFFF',
   },
   timePanel: {
     backgroundColor: '#F5F7FF',
