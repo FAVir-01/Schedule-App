@@ -102,6 +102,27 @@ const reflectionImage = require('./assets/add-reflection.png');
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
 const FALLBACK_EMOJI = '📝';
+const DEFAULT_REPEAT_CONFIG = { enabled: true, frequency: 'daily', interval: 1 };
+
+const normalizeRepeatConfig = (repeatConfig) => {
+  if (!repeatConfig) {
+    return DEFAULT_REPEAT_CONFIG;
+  }
+  const { option, frequency, interval, enabled, ...rest } = repeatConfig;
+  const resolvedFrequency = frequency ?? option ?? DEFAULT_REPEAT_CONFIG.frequency;
+  const parsedInterval = Number.parseInt(interval, 10);
+  const resolvedInterval = Number.isFinite(parsedInterval) && parsedInterval > 0
+    ? parsedInterval
+    : DEFAULT_REPEAT_CONFIG.interval;
+  const resolvedEnabled = enabled === undefined ? true : Boolean(enabled);
+
+  return {
+    ...rest,
+    enabled: resolvedEnabled,
+    frequency: resolvedFrequency,
+    interval: resolvedInterval,
+  };
+};
 
 const triggerImpact = (style) => {
   if (!HAPTICS_SUPPORTED) {
@@ -979,6 +1000,7 @@ function ScheduleApp() {
         ...restTask,
         completedDates,
         subtasks: normalizedSubtasks,
+        repeat: normalizeRepeatConfig(task.repeat),
       };
     });
   }, []);
@@ -1044,7 +1066,11 @@ function ScheduleApp() {
     }
 
     const timeoutId = setTimeout(() => {
-      void saveTasks(tasks);
+      const normalizedTasks = tasks.map((task) => ({
+        ...task,
+        repeat: normalizeRepeatConfig(task.repeat),
+      }));
+      void saveTasks(normalizedTasks);
       void saveUserSettings(userSettings);
       void saveHistory(history);
     }, 500);
@@ -1361,10 +1387,7 @@ function ScheduleApp() {
     const dateKey = getDateKey(normalizedDate);
     const color = habit?.color ?? '#d1d7ff';
     const title = getUniqueTitle(habit?.title, null);
-    const repeat =
-      habit?.repeat?.enabled === false
-        ? habit.repeat
-        : habit?.repeat ?? { enabled: true, frequency: 'daily', interval: 1 };
+    const repeat = normalizeRepeatConfig(habit?.repeat);
     const newTask = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       title,
@@ -1430,7 +1453,7 @@ function ScheduleApp() {
             customImage: habit?.customImage ?? task.customImage ?? null,
             time: habit?.time,
             subtasks: convertSubtasks(habit?.subtasks ?? [], task.subtasks ?? []),
-            repeat: habit?.repeat,
+            repeat: normalizeRepeatConfig(habit?.repeat ?? task.repeat),
             reminder: habit?.reminder,
             tag: habit?.tag,
             tagLabel: habit?.tagLabel,
