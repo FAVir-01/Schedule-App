@@ -616,10 +616,10 @@ function ScheduleApp() {
     });
 
     return layouts;
-  }, []);
+  }, [BASE_HEIGHT]);
   const monthLayouts = useMemo(() => {
     return buildMonthLayouts(calendarMonths);
-  }, [buildMonthLayouts, calendarMonths, width]);
+  }, [buildMonthLayouts, calendarMonths]);
   const monthLayoutsRef = useRef(monthLayouts);
   useEffect(() => {
     monthLayoutsRef.current = monthLayouts;
@@ -741,7 +741,7 @@ function ScheduleApp() {
       }
       return [...previous, { id: nextId, date: nextMonthDate }];
     });
-  }, []);
+  }, [normalizeStoredTasks]);
 
   const renderCalendarMonth = useCallback(
     ({ item }) => (
@@ -2421,7 +2421,7 @@ function SwipeableTaskCard({
     });
     setWavePathFront(frontPath);
     setWavePathBack(backPath);
-  }, [cardSize.width, waveHeight, waveIntensityAnim, wavePhaseAnim]);
+  }, [cardSize.width, waveHeight]);
   const waterFillHeight = useMemo(() => {
     if (!cardSize.height) {
       return 0;
@@ -2773,12 +2773,8 @@ function QuantumAdjustModal({
   onSubtract,
   onClose,
 }) {
-  if (!visible || !task) {
-    return null;
-  }
-
-  const isTimer = task.quantum?.mode === 'timer';
-  const limitLabel = getQuantumProgressLabel(task);
+  const isTimer = task?.quantum?.mode === 'timer';
+  const limitLabel = task ? getQuantumProgressLabel(task) : null;
   const handleMinutesChange = useCallback(
     (value) => {
       onChangeMinutes(value.replace(/\D/g, '').slice(0, 2));
@@ -2800,6 +2796,10 @@ function QuantumAdjustModal({
   const disableActions = isTimer
     ? (Number.parseInt(minutesValue, 10) || 0) * 60 + (Number.parseInt(secondsValue, 10) || 0) <= 0
     : (Number.parseInt(countValue, 10) || 0) <= 0;
+
+  if (!visible || !task) {
+    return null;
+  }
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -3166,12 +3166,6 @@ const styles = StyleSheet.create({
     borderRadius: 23,
     resizeMode: 'cover',
   },
-  taskEmojiImage: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    resizeMode: 'cover',
-  },
   taskDetails: {
     marginLeft: 12,
     flex: 1,
@@ -3442,15 +3436,6 @@ const styles = StyleSheet.create({
     paddingBottom: 60,
     gap: 12,
   },
-  calendarMonthSection: {
-    marginBottom: 24,
-  },
-  calendarMonthSeparator: {
-    height: 12,
-    backgroundColor: '#000000',
-    borderRadius: 6,
-    marginBottom: 12,
-  },
   calendarMonthContainer: {
     marginBottom: 20,
     marginHorizontal: 0,
@@ -3695,11 +3680,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 4,
   },
-  headerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.15)',
-    borderRadius: 0,
-  },
   // --- ESTILOS DO RELATÓRIO ---
   reportOverlay: {
     flex: 1,
@@ -3927,10 +3907,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     justifyContent: 'center',
     paddingHorizontal: 16,
-  },
-  customizeCardOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.2)',
   },
   customizeCardText: {
     color: '#fff',
