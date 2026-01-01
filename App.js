@@ -4,6 +4,7 @@ import {
   AppState,
   BackHandler,
   Dimensions,
+  Easing,
   Platform,
   Image,
   Modal,
@@ -472,6 +473,37 @@ const getQuantumProgressLabel = (task) => {
     return `${doneValue}/${limitValue}${unit ? ` ${unit}` : ''}`;
   }
   return null;
+};
+
+const clamp01 = (value) => Math.min(1, Math.max(0, value));
+
+const getQuantumProgressPercent = (task) => {
+  if (!task || task.type !== 'quantum' || !task.quantum) {
+    return 0;
+  }
+  const mode = task.quantum.mode;
+  if (mode === 'timer') {
+    const minutes = task.quantum.timer?.minutes ?? 0;
+    const seconds = task.quantum.timer?.seconds ?? 0;
+    const totalSeconds = minutes * 60 + seconds;
+    if (!totalSeconds) {
+      return 0;
+    }
+    const doneSeconds =
+      typeof task.quantum.doneSeconds === 'number' ? task.quantum.doneSeconds : 0;
+    return clamp01(doneSeconds / totalSeconds);
+  }
+
+  if (mode === 'count') {
+    const limitValue = task.quantum.count?.value ?? 0;
+    if (!limitValue) {
+      return 0;
+    }
+    const doneCount = typeof task.quantum.doneCount === 'number' ? task.quantum.doneCount : 0;
+    return clamp01(doneCount / limitValue);
+  }
+
+  return 0;
 };
 
 const getTaskCompletionStatus = (task, date) => {
@@ -1742,6 +1774,17 @@ function ScheduleApp() {
           }
           const nextDate = normalizedDate ? new Date(normalizedDate) : new Date(task.date);
           nextDate.setHours(0, 0, 0, 0);
+          const nextQuantum = habit?.quantum ?? task.quantum;
+          let mergedQuantum = nextQuantum;
+          if (nextQuantum && task.quantum) {
+            const sameMode = nextQuantum.mode === task.quantum.mode;
+            mergedQuantum = {
+              ...task.quantum,
+              ...nextQuantum,
+              doneSeconds: sameMode ? task.quantum.doneSeconds ?? 0 : 0,
+              doneCount: sameMode ? task.quantum.doneCount ?? 0 : 0,
+            };
+          }
           return {
             ...task,
             title: nextTitle,
@@ -1756,7 +1799,7 @@ function ScheduleApp() {
             tagLabel: habit?.tagLabel,
             type: habit?.type,
             typeLabel: habit?.typeLabel,
-            quantum: habit?.quantum,
+            quantum: mergedQuantum,
             date: nextDate,
             dateKey: getDateKey(nextDate),
           };
@@ -2556,6 +2599,7 @@ function SwipeableTaskCard({
   onEdit,
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
+  const waterWaveAnim = useRef(new Animated.Value(0)).current;
   const actionWidth = 168;
   const [isOpen, setIsOpen] = useState(false);
   const currentOffsetRef = useRef(0);
@@ -2649,6 +2693,39 @@ function SwipeableTaskCard({
   }, [completedSubtasks, task, totalSubtasks]);
 
   const isQuantum = task.type === 'quantum';
+  const isWaterAnimation = task.quantum?.animation === 'water';
+  const waterPercent = useMemo(() => getQuantumProgressPercent(task), [task]);
+  const waveTranslateX = waterWaveAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-40, 40],
+  });
+  const waveTranslateY = waterWaveAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, -6, 0],
+  });
+
+  useEffect(() => {
+    if (!isQuantum || !isWaterAnimation) {
+      waterWaveAnim.stopAnimation();
+      waterWaveAnim.setValue(0);
+      return undefined;
+    }
+
+    const animationLoop = Animated.loop(
+      Animated.timing(waterWaveAnim, {
+        toValue: 1,
+        duration: 4000,
+        easing: Easing.inOut(Easing.sin),
+        useNativeDriver: true,
+      })
+    );
+
+    animationLoop.start();
+    return () => {
+      animationLoop.stop();
+      waterWaveAnim.setValue(0);
+    };
+  }, [isQuantum, isWaterAnimation, waterWaveAnim]);
   const toggleAction = isQuantum ? onAdjustQuantum : onToggleCompletion;
   const isQuantumComplete = isQuantum && getQuantumProgressLabel(task) && task.completed;
 
@@ -2685,6 +2762,25 @@ function SwipeableTaskCard({
           },
         ]}
       >
+        {isQuantum && isWaterAnimation && (
+          <View pointerEvents="none" style={styles.waterFillContainer}>
+            <LinearGradient
+              colors={['rgba(107, 190, 255, 0.65)', 'rgba(64, 148, 255, 0.85)']}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={[styles.waterFill, { height: `${Math.round(waterPercent * 100)}%` }]}
+            >
+              <Animated.View
+                style={[
+                  styles.waterWave,
+                  {
+                    transform: [{ translateX: waveTranslateX }, { translateY: waveTranslateY }],
+                  },
+                ]}
+              />
+            </LinearGradient>
+          </View>
+        )}
         <Pressable style={styles.taskCardContent} onPress={handlePress}>
           <View style={styles.taskInfo}>
             {task.customImage ? (
@@ -3186,6 +3282,27 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderWidth: 1,
+    overflow: 'hidden',
+  },
+  waterFillContainer: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 18,
+    overflow: 'hidden',
+    alignItems: 'stretch',
+    justifyContent: 'flex-end',
+  },
+  waterFill: {
+    width: '100%',
+    position: 'relative',
+  },
+  waterWave: {
+    position: 'absolute',
+    top: -12,
+    left: -40,
+    right: -40,
+    height: 24,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.35)',
   },
   swipeableWrapper: {
     marginBottom: 14,
