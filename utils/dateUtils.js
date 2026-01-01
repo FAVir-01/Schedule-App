@@ -83,6 +83,14 @@ const normalizeRepeatCollection = (value) => {
   return [];
 };
 
+const normalizeRepeatInterval = (value, fallback = 1) => {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed) || parsed < 1) {
+    return fallback;
+  }
+  return parsed;
+};
+
 const isSameDay = (dateA, dateB) => {
   if (!dateA || !dateB) {
     return false;
@@ -118,13 +126,31 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
     return false;
   }
 
-  const repeat = task.repeat;
-  if (!repeat || repeat.option === 'off' || repeat.enabled === false) {
+  const isQuantumTask = task.type === 'quantum';
+  let repeat = task.repeat;
+  if (!repeat) {
+    repeat = {
+      frequency: 'daily',
+      option: 'daily',
+      interval: 1,
+      enabled: true,
+    };
+  }
+  if (isQuantumTask && repeat.option === 'off') {
+    repeat = {
+      ...repeat,
+      option: 'daily',
+      frequency: repeat.frequency || 'daily',
+      enabled: true,
+    };
+  }
+  if (repeat.option === 'off' || repeat.enabled === false) {
     return false;
   }
 
-  const frequency = repeat.frequency || repeat.option || 'daily';
-  const interval = Number.parseInt(repeat.interval, 10) || 1;
+  const rawFrequency = repeat.frequency || repeat.option || 'daily';
+  const frequency = rawFrequency === 'interval' ? 'daily' : rawFrequency;
+  const interval = normalizeRepeatInterval(repeat.interval);
 
   const endDate = normalizeDateValue(repeat.endDate);
   if (endDate && isBefore(endDate, targetDay)) {
