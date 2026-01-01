@@ -118,8 +118,25 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
     return false;
   }
 
-  const repeat = task.repeat;
-  if (!repeat || repeat.option === 'off' || repeat.enabled === false) {
+  const isQuantumTask = task.type === 'quantum';
+  let repeat = task.repeat;
+  if (!repeat) {
+    repeat = {
+      frequency: 'daily',
+      option: 'daily',
+      interval: 1,
+      enabled: true,
+    };
+  }
+  if (isQuantumTask && repeat.option === 'off') {
+    repeat = {
+      ...repeat,
+      option: 'daily',
+      frequency: repeat.frequency || 'daily',
+      enabled: true,
+    };
+  }
+  if (repeat.option === 'off' || repeat.enabled === false) {
     return false;
   }
 
