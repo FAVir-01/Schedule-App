@@ -569,6 +569,8 @@ function ScheduleApp() {
   const [history, setHistory] = useState([]);
   const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
+  const [isProfileTasksOpen, setProfileTasksOpen] = useState(false);
+  const [profileTaskImageErrors, setProfileTaskImageErrors] = useState({});
   const saveTimeoutRef = useRef(null);
   const [calendarMonths, setCalendarMonths] = useState(() => {
     const today = new Date();
@@ -722,6 +724,19 @@ function ScheduleApp() {
         };
       });
   }, [reportDate, tasks]);
+
+  const profileTaskItems = useMemo(
+    () =>
+      tasks.map((task) => ({
+        ...task,
+        totalSubtasks: Array.isArray(task.subtasks) ? task.subtasks.length : 0,
+      })),
+    [tasks]
+  );
+
+  useEffect(() => {
+    setProfileTaskImageErrors({});
+  }, [tasks]);
 
   const handleOpenReport = useCallback((date) => {
     setReportDate(date);
@@ -1700,8 +1715,8 @@ function ScheduleApp() {
           style={[
             styles.content,
             dynamicStyles.content,
-            activeTab === 'calendar' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
-            activeTab === 'profile' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, alignItems: 'center', justifyContent: 'center' },
+          activeTab === 'calendar' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
+          activeTab === 'profile' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
           ]}
           importantForAccessibility={isFabOpen ? 'no-hide-descendants' : 'auto'}
         >
@@ -1919,7 +1934,11 @@ function ScheduleApp() {
               />
             </View>
           ) : activeTab === 'profile' ? (
-             <View style={styles.profileContainer}>
+            <ScrollView
+              contentContainerStyle={styles.profileScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.profileHeader}>
                 <View style={styles.avatarContainer}>
                   <Ionicons name="person" size={40} color="#3c2ba7" />
                 </View>
@@ -1934,10 +1953,86 @@ function ScheduleApp() {
                   onPress={() => setCustomizeCalendarOpen(true)}
                   activeOpacity={0.8}
                 >
-                   <Ionicons name="images-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
-                   <Text style={styles.customizeButtonText}>Customize Calendar</Text>
+                  <Ionicons name="images-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.customizeButtonText}>Customize Calendar</Text>
                 </TouchableOpacity>
-             </View>
+
+                <TouchableOpacity
+                  style={styles.customizeButton}
+                  onPress={() => setProfileTasksOpen((previous) => !previous)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name={isProfileTasksOpen ? 'chevron-up' : 'chevron-down'}
+                    size={20}
+                    color="#fff"
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={styles.customizeButtonText}>
+                    {isProfileTasksOpen ? 'Hide Tasks' : 'View Tasks'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.profileTasksSection}>
+                <Text style={styles.profileTasksTitle}>All tasks</Text>
+
+                {isProfileTasksOpen && (
+                  <>
+                    {profileTaskItems.length === 0 ? (
+                      <Text style={styles.profileTasksEmpty}>No tasks created yet.</Text>
+                    ) : (
+                      <View style={styles.profileTasksList}>
+                        {profileTaskItems.map((task) => {
+                          const baseColor = task.color || '#3c2ba7';
+                          const lightBg = lightenColor(baseColor, 0.85);
+
+                          return (
+                            <View
+                              key={task.id}
+                              style={[
+                                styles.reportTaskRow,
+                                {
+                                  backgroundColor: lightBg,
+                                  borderColor: lightenColor(baseColor, 0.6),
+                                  borderWidth: 1,
+                                },
+                              ]}
+                            >
+                              <View style={[styles.reportTaskIcon, { backgroundColor: '#fff' }]}>
+                                {task.customImage && !profileTaskImageErrors[task.id] ? (
+                                  <Image
+                                    source={{ uri: task.customImage }}
+                                    style={styles.reportTaskIconImage}
+                                    onError={() =>
+                                      setProfileTaskImageErrors((prev) => ({
+                                        ...prev,
+                                        [task.id]: true,
+                                      }))
+                                    }
+                                  />
+                                ) : (
+                                  <Text style={{ fontSize: 18 }}>{task.emoji || FALLBACK_EMOJI}</Text>
+                                )}
+                              </View>
+
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.reportTaskTitle}>{task.title}</Text>
+                                {task.totalSubtasks > 0 && (
+                                  <Text style={styles.profileTaskMeta}>
+                                    {task.totalSubtasks} subtasks
+                                  </Text>
+                                )}
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </>
+                )}
+              </View>
+            </ScrollView>
           ) : (
             <View style={styles.placeholderContainer}>
               <View style={styles.placeholderIconWrapper}>
@@ -3825,11 +3920,15 @@ const styles = StyleSheet.create({
   },
 
   // --- STYLES FOR PROFILE & CUSTOMIZE CALENDAR ---
-  profileContainer: {
-    flex: 1,
+  profileScrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    paddingBottom: 120,
+  },
+  profileHeader: {
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
+    marginBottom: 32,
   },
   avatarContainer: {
     width: 80,
@@ -3870,6 +3969,28 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  profileTasksSection: {
+    width: '100%',
+  },
+  profileTasksTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a2e',
+    marginBottom: 12,
+  },
+  profileTasksList: {
+    gap: 12,
+  },
+  profileTasksEmpty: {
+    color: '#6f7a86',
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+  profileTaskMeta: {
+    fontSize: 12,
+    color: '#6f7a86',
+    marginTop: 4,
   },
   
   // Customize Modal Styles
