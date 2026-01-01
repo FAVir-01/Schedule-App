@@ -114,72 +114,52 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
     return true;
   }
 
-  const repeat = task.repeat;
-  if (!repeat) {
-    return false;
-  }
-
   if (isBefore(targetDay, startDay)) {
     return false;
   }
 
-  const hasModernRepeat =
-    typeof repeat.enabled === 'boolean' ||
-    (typeof repeat.frequency === 'string' && repeat.frequency.trim() !== '');
+  const repeat = task.repeat;
+  if (!repeat || repeat.option === 'off' || repeat.enabled === false) {
+    return false;
+  }
 
-  if (hasModernRepeat) {
-    if (!repeat.enabled) {
-      return false;
-    }
+  const frequency = repeat.frequency || repeat.option || 'daily';
+  const interval = Number.parseInt(repeat.interval, 10) || 1;
 
-    const frequency = repeat.frequency ?? 'daily';
-    const interval = repeat.interval ?? 1;
-    if (!interval || interval <= 0) {
-      return false;
-    }
+  const endDate = normalizeDateValue(repeat.endDate);
+  if (endDate && isBefore(endDate, targetDay)) {
+    return false;
+  }
 
-    const endDate = normalizeDateValue(repeat.endDate);
-    if (endDate && isBefore(endDate, targetDay)) {
-      return false;
-    }
-
-    if (frequency === 'daily') {
+  switch (frequency) {
+    case 'daily':
+    case 'interval': {
       const diffDays = differenceInCalendarDays(targetDay, startDay);
       return diffDays % interval === 0;
     }
-
-    if (frequency === 'weekly') {
-      const diffDays = differenceInCalendarDays(targetDay, startDay);
-      const diffWeeks = Math.floor(diffDays / 7);
+    case 'weekly': {
+      const diffWeeks = Math.floor(differenceInCalendarDays(targetDay, startDay) / 7);
+      if (diffWeeks % interval !== 0) {
+        return false;
+      }
       const targetWeekday = getWeekdayKeyFromDate(targetDay);
       const allowedWeekdays = normalizeRepeatCollection(repeat.weekdays);
-      const resolvedWeekdays = allowedWeekdays.length
-        ? allowedWeekdays
-        : [getWeekdayKeyFromDate(startDay)];
-      return diffWeeks % interval === 0 && targetWeekday ? resolvedWeekdays.includes(targetWeekday) : false;
-    }
-
-    if (frequency === 'monthly') {
-      const diffMonths = differenceInCalendarMonths(targetDay, startDay);
-      const selectedDays = normalizeRepeatCollection(repeat.monthDays);
-      const resolvedDays = selectedDays.length ? selectedDays : [startDay.getDate()];
-      return diffMonths % interval === 0 && resolvedDays.includes(targetDay.getDate());
-    }
-
-    return false;
-  }
-
-  if (!repeat.option || repeat.option === 'off') {
-    return false;
-  }
-
-  switch (repeat.option) {
-    case 'daily':
-      return true;
-    case 'weekly':
+      if (allowedWeekdays.length > 0) {
+        return targetWeekday ? allowedWeekdays.includes(targetWeekday) : false;
+      }
       return targetDay.getDay() === startDay.getDay();
-    case 'monthly':
+    }
+    case 'monthly': {
+      const diffMonths = differenceInCalendarMonths(targetDay, startDay);
+      if (diffMonths % interval !== 0) {
+        return false;
+      }
+      const selectedDays = normalizeRepeatCollection(repeat.monthDays);
+      if (selectedDays.length > 0) {
+        return selectedDays.includes(targetDay.getDate());
+      }
       return targetDay.getDate() === startDay.getDate();
+    }
     case 'weekend': {
       const day = targetDay.getDay();
       return day === 0 || day === 6;
@@ -187,22 +167,6 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
     case 'weekdays': {
       const day = targetDay.getDay();
       return day >= 1 && day <= 5;
-    }
-    case 'custom': {
-      const weekdays = Array.isArray(repeat.weekdays) ? repeat.weekdays : [];
-      if (!weekdays.length) {
-        return false;
-      }
-      const weekdayKey = getWeekdayKeyFromDate(targetDay);
-      return weekdayKey ? weekdays.includes(weekdayKey) : false;
-    }
-    case 'interval': {
-      const interval = repeat.interval ?? 1;
-      if (!interval || interval <= 0) {
-        return false;
-      }
-      const diff = differenceInCalendarDays(targetDay, startDay);
-      return diff % interval === 0;
     }
     default:
       return false;

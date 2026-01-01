@@ -1361,6 +1361,10 @@ function ScheduleApp() {
     const dateKey = getDateKey(normalizedDate);
     const color = habit?.color ?? '#d1d7ff';
     const title = getUniqueTitle(habit?.title, null);
+    const repeat =
+      habit?.repeat?.enabled === false
+        ? habit.repeat
+        : habit?.repeat ?? { enabled: true, frequency: 'daily', interval: 1 };
     const newTask = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       title,
@@ -1372,11 +1376,11 @@ function ScheduleApp() {
       dateKey,
       completedDates: {},
       subtasks: convertSubtasks(habit?.subtasks ?? []),
-      repeat: habit?.repeat,
+      repeat,
       reminder: habit?.reminder,
       tag: habit?.tag,
       tagLabel: habit?.tagLabel,
-      type: habit?.type,
+      type: habit?.type ?? 'normal',
       typeLabel: habit?.typeLabel,
       quantum: habit?.quantum,
     };
