@@ -867,14 +867,14 @@ function ScheduleApp() {
               0,
               limitSeconds
             );
-            const completedDates = dateKey
-              ? { ...(task.completedDates ?? {}) }
-              : task.completedDates;
-            if (dateKey) {
+            const baseDateKey =
+              dateKey ?? task.dateKey ?? (task.date ? getDateKey(task.date) : null);
+            const completedDates = { ...(task.completedDates ?? {}) };
+            if (baseDateKey) {
               if (nextSeconds === limitSeconds) {
-                completedDates[dateKey] = true;
+                completedDates[baseDateKey] = true;
               } else {
-                delete completedDates[dateKey];
+                delete completedDates[baseDateKey];
               }
             }
             return {
@@ -901,14 +901,14 @@ function ScheduleApp() {
             0,
             limitCount
           );
-          const completedDates = dateKey
-            ? { ...(task.completedDates ?? {}) }
-            : task.completedDates;
-          if (dateKey) {
+          const baseDateKey =
+            dateKey ?? task.dateKey ?? (task.date ? getDateKey(task.date) : null);
+          const completedDates = { ...(task.completedDates ?? {}) };
+          if (baseDateKey) {
             if (nextCount === limitCount) {
-              completedDates[dateKey] = true;
+              completedDates[baseDateKey] = true;
             } else {
-              delete completedDates[dateKey];
+              delete completedDates[baseDateKey];
             }
           }
           return {
@@ -951,9 +951,16 @@ function ScheduleApp() {
   }).current;
   const emptyStateIconSize = isCompact ? 98 : 112;
   const normalizeStoredTasks = useCallback((storedTasks) => {
-    return storedTasks.map((task) => {
+    const normalizeCompletedDates = (value) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return {};
+      }
+      return value;
+    };
+
+    return storedTasks.filter(Boolean).map((task) => {
       const baseDateKey = task.dateKey ?? (task.date ? getDateKey(task.date) : null);
-      const completedDates = { ...(task.completedDates ?? {}) };
+      const completedDates = { ...normalizeCompletedDates(task.completedDates) };
 
       if (task.completed && baseDateKey && !completedDates[baseDateKey]) {
         completedDates[baseDateKey] = true;
@@ -961,7 +968,9 @@ function ScheduleApp() {
 
       const normalizedSubtasks = Array.isArray(task.subtasks)
         ? task.subtasks.map((subtask) => {
-            const subtaskCompletedDates = { ...(subtask.completedDates ?? {}) };
+            const subtaskCompletedDates = {
+              ...normalizeCompletedDates(subtask.completedDates),
+            };
             if (subtask.completed && baseDateKey && !subtaskCompletedDates[baseDateKey]) {
               subtaskCompletedDates[baseDateKey] = true;
             }
@@ -977,6 +986,7 @@ function ScheduleApp() {
 
       return {
         ...restTask,
+        dateKey: baseDateKey,
         completedDates,
         subtasks: normalizedSubtasks,
       };
@@ -1271,10 +1281,14 @@ function ScheduleApp() {
 
   const handleToggleTaskCompletion = useCallback(
     (taskId, dateKey = selectedDateKey) => {
-      const targetDateKey = dateKey ?? selectedDateKey;
+      const initialDateKey = dateKey ?? selectedDateKey;
       const targetTask = tasks.find((task) => task.id === taskId);
+      const resolvedDateKey =
+        initialDateKey ??
+        targetTask?.dateKey ??
+        (targetTask?.date ? getDateKey(targetTask.date) : null);
       const wasCompleted = targetTask
-        ? getTaskCompletionStatus(targetTask, targetDateKey)
+        ? getTaskCompletionStatus(targetTask, resolvedDateKey)
         : false;
 
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
@@ -1285,12 +1299,12 @@ function ScheduleApp() {
           }
 
           const completedDates = { ...(task.completedDates ?? {}) };
-          const isCompletedForDate = getTaskCompletionStatus(task, targetDateKey);
+          const isCompletedForDate = getTaskCompletionStatus(task, resolvedDateKey);
 
           if (isCompletedForDate) {
-            delete completedDates[targetDateKey];
-          } else if (targetDateKey) {
-            completedDates[targetDateKey] = true;
+            delete completedDates[resolvedDateKey];
+          } else if (resolvedDateKey) {
+            completedDates[resolvedDateKey] = true;
           }
 
           return {
@@ -1302,7 +1316,7 @@ function ScheduleApp() {
 
       appendHistoryEntry('task_completion_toggled', {
         taskId,
-        dateKey: targetDateKey,
+        dateKey: resolvedDateKey,
         completed: !wasCompleted,
       });
     },
@@ -1458,8 +1472,11 @@ function ScheduleApp() {
   const handleToggleSubtask = useCallback(
     (taskId, subtaskId) => {
       triggerSelection();
-      const targetDateKey = selectedDateKey;
       const targetTask = tasks.find((task) => task.id === taskId);
+      const targetDateKey =
+        selectedDateKey ??
+        targetTask?.dateKey ??
+        (targetTask?.date ? getDateKey(targetTask.date) : null);
       const targetSubtask = targetTask?.subtasks?.find((item) => item.id === subtaskId);
       const wasCompleted = targetSubtask
         ? getSubtaskCompletionStatus(targetSubtask, targetDateKey)
