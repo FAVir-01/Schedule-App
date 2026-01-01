@@ -16,10 +16,6 @@ const getTaskCompletionStatus = (task, date) => {
     return Boolean(task.completedDates[dateKey]);
   }
 
-  if (!task.repeat && task.dateKey) {
-    return task.dateKey === dateKey ? Boolean(task.completed) : false;
-  }
-
   return false;
 };
 
