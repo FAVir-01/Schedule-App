@@ -549,6 +549,7 @@ function ScheduleApp() {
   const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
   const saveTimeoutRef = useRef(null);
+  const isUnmountedRef = useRef(false);
   const [calendarMonths, setCalendarMonths] = useState(() => {
     const today = new Date();
     const months = [];
@@ -1035,6 +1036,24 @@ function ScheduleApp() {
   }, []);
 
   useEffect(() => {
+    return () => {
+      isUnmountedRef.current = true;
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  const persistAppState = useCallback(async (nextTasks, nextSettings, nextHistory) => {
+    await Promise.all([
+      saveTasks(nextTasks),
+      saveUserSettings(nextSettings),
+      saveHistory(nextHistory),
+    ]);
+  }, []);
+
+  useEffect(() => {
     if (!isHydrated) {
       return undefined;
     }
@@ -1044,9 +1063,10 @@ function ScheduleApp() {
     }
 
     const timeoutId = setTimeout(() => {
-      void saveTasks(tasks);
-      void saveUserSettings(userSettings);
-      void saveHistory(history);
+      if (isUnmountedRef.current) {
+        return;
+      }
+      void persistAppState(tasks, userSettings, history);
     }, 500);
 
     saveTimeoutRef.current = timeoutId;
@@ -1054,7 +1074,7 @@ function ScheduleApp() {
     return () => {
       clearTimeout(timeoutId);
     };
-  }, [history, isHydrated, tasks, userSettings]);
+  }, [history, isHydrated, persistAppState, tasks, userSettings]);
 
   const handleUpdateMonthImage = useCallback(
     async (monthIndex, uri) => {
