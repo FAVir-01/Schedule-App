@@ -123,7 +123,18 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
     return false;
   }
 
-  const frequency = repeat.frequency || repeat.option || 'daily';
+  const frequency = repeat.frequency || repeat.option;
+  const supportedFrequencies = new Set([
+    'daily',
+    'interval',
+    'weekly',
+    'monthly',
+    'weekend',
+    'weekdays',
+  ]);
+  if (!frequency || !supportedFrequencies.has(frequency)) {
+    return false;
+  }
   const interval = Number.parseInt(repeat.interval, 10) || 1;
 
   const endDate = normalizeDateValue(repeat.endDate);
