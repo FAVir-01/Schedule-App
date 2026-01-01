@@ -124,6 +124,30 @@ const normalizeRepeatConfig = (repeatConfig) => {
   };
 };
 
+const formatRepeatLabel = (repeat) => {
+  if (!repeat?.enabled) {
+    return 'Once';
+  }
+
+  const interval = repeat.interval ?? 1;
+  const frequency = repeat.frequency ?? 'daily';
+  const labels = {
+    daily: 'Daily',
+    weekly: 'Weekly',
+    monthly: 'Monthly',
+    yearly: 'Yearly',
+  };
+  const baseLabel = labels[frequency] ?? frequency;
+
+  if (interval === 1) {
+    return baseLabel;
+  }
+
+  const lower = baseLabel.toLowerCase();
+  const pluralSuffix = interval > 1 && !lower.endsWith('s') ? 's' : '';
+  return `Every ${interval} ${lower}${pluralSuffix}`;
+};
+
 const triggerImpact = (style) => {
   if (!HAPTICS_SUPPORTED) {
     return;
@@ -330,6 +354,19 @@ function ProfileTasksModal({ visible, onClose, tasks, imageErrors, onImageError 
             tasks.map((task) => {
               const baseColor = task.color || '#3c2ba7';
               const lightBg = lightenColor(baseColor, 0.85);
+              const primaryMeta = [
+                formatTaskTime(task.time),
+                formatRepeatLabel(task.repeat),
+              ]
+                .filter(Boolean)
+                .join(' • ');
+              const secondaryMeta = [
+                task.tagLabel ? `Tag: ${task.tagLabel}` : null,
+                task.typeLabel ? `Type: ${task.typeLabel}` : null,
+                task.date ? `Start ${format(task.date, 'd MMM')}` : null,
+              ]
+                .filter(Boolean)
+                .join(' • ');
 
               return (
                 <View
@@ -357,6 +394,10 @@ function ProfileTasksModal({ visible, onClose, tasks, imageErrors, onImageError 
 
                   <View style={{ flex: 1 }}>
                     <Text style={styles.reportTaskTitle}>{task.title}</Text>
+                    <Text style={styles.profileTaskMeta}>{primaryMeta}</Text>
+                    {secondaryMeta.length > 0 && (
+                      <Text style={styles.profileTaskMeta}>{secondaryMeta}</Text>
+                    )}
                     {task.totalSubtasks > 0 && (
                       <Text style={styles.profileTaskMeta}>
                         {task.totalSubtasks} subtasks
