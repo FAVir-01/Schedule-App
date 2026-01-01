@@ -725,7 +725,7 @@ function ScheduleApp() {
 
   const handleOpenReport = useCallback((date) => {
     setReportDate(date);
-  }, []);
+  }, [normalizeStoredTasks]);
 
   const loadMoreCalendarMonths = useCallback(() => {
     setCalendarMonths((previous) => {
