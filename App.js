@@ -2645,6 +2645,7 @@ function SwipeableTaskCard({
   onEdit,
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
+  const wavePhaseAnim = useRef(new Animated.Value(0)).current;
   const waveIntensityAnim = useRef(new Animated.Value(1)).current;
   const actionWidth = 168;
   const [isOpen, setIsOpen] = useState(false);
@@ -2771,7 +2772,7 @@ function SwipeableTaskCard({
     });
     setWavePathFront(frontPath);
     setWavePathBack(backPath);
-  }, [cardSize.width, waveHeight]);
+  }, [cardSize.width, waveHeight, waveIntensityAnim, wavePhaseAnim]);
   const waterFillHeight = useMemo(() => {
     if (!cardSize.height) {
       return 0;
@@ -2784,28 +2785,32 @@ function SwipeableTaskCard({
 
   useEffect(() => {
     if (!isQuantum || !isWaterAnimation) {
+      wavePhaseAnim.stopAnimation();
+      wavePhaseAnim.setValue(0);
       return undefined;
     }
-    let animationFrame = null;
-    let lastTime = Date.now();
-    const tick = () => {
-      const now = Date.now();
-      const delta = now - lastTime;
-      lastTime = now;
-      const nextPhase = wavePhaseRef.current + (delta / 1000) * Math.PI * 1.6;
-      wavePhaseRef.current = nextPhase % (Math.PI * 2);
-      updateWavePaths();
-      animationFrame = requestAnimationFrame(tick);
-    };
-    animationFrame = requestAnimationFrame(tick);
+
+    const animationLoop = Animated.loop(
+      Animated.timing(wavePhaseAnim, {
+        toValue: Math.PI * 2,
+        duration: 3600,
+        easing: Easing.inOut(Easing.sin),
+        useNativeDriver: false,
+      })
+    );
+
+    animationLoop.start();
     return () => {
-      if (animationFrame) {
-        cancelAnimationFrame(animationFrame);
-      }
+      animationLoop.stop();
+      wavePhaseAnim.setValue(0);
     };
-  }, [isQuantum, isWaterAnimation, updateWavePaths]);
+  }, [isQuantum, isWaterAnimation, wavePhaseAnim]);
 
   useEffect(() => {
+    const id = wavePhaseAnim.addListener(({ value }) => {
+      wavePhaseRef.current = value;
+      updateWavePaths();
+    });
     const intensityId = waveIntensityAnim.addListener(({ value }) => {
       waveIntensityRef.current = value;
       const normalized = clamp01((value - 1) / 4);
@@ -2813,9 +2818,10 @@ function SwipeableTaskCard({
       updateWavePaths();
     });
     return () => {
+      wavePhaseAnim.removeListener(id);
       waveIntensityAnim.removeListener(intensityId);
     };
-  }, [updateWavePaths, waveIntensityAnim]);
+  }, [updateWavePaths, waveIntensityAnim, wavePhaseAnim]);
 
   useEffect(() => {
     updateWavePaths();
