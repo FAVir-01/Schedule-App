@@ -474,6 +474,37 @@ const getQuantumProgressLabel = (task) => {
   return null;
 };
 
+const clamp01 = (value) => Math.min(1, Math.max(0, value));
+
+const getQuantumProgressPercent = (task) => {
+  if (!task || task.type !== 'quantum' || !task.quantum) {
+    return 0;
+  }
+  const mode = task.quantum.mode;
+  if (mode === 'timer') {
+    const minutes = task.quantum.timer?.minutes ?? 0;
+    const seconds = task.quantum.timer?.seconds ?? 0;
+    const totalSeconds = minutes * 60 + seconds;
+    if (!totalSeconds) {
+      return 0;
+    }
+    const doneSeconds =
+      typeof task.quantum.doneSeconds === 'number' ? task.quantum.doneSeconds : 0;
+    return clamp01(doneSeconds / totalSeconds);
+  }
+
+  if (mode === 'count') {
+    const limitValue = task.quantum.count?.value ?? 0;
+    if (!limitValue) {
+      return 0;
+    }
+    const doneCount = typeof task.quantum.doneCount === 'number' ? task.quantum.doneCount : 0;
+    return clamp01(doneCount / limitValue);
+  }
+
+  return 0;
+};
+
 const getTaskCompletionStatus = (task, date) => {
   if (!task || !date) {
     return false;
@@ -2649,6 +2680,8 @@ function SwipeableTaskCard({
   }, [completedSubtasks, task, totalSubtasks]);
 
   const isQuantum = task.type === 'quantum';
+  const isWaterAnimation = task.quantum?.animation === 'water';
+  const waterPercent = useMemo(() => getQuantumProgressPercent(task), [task]);
   const toggleAction = isQuantum ? onAdjustQuantum : onToggleCompletion;
   const isQuantumComplete = isQuantum && getQuantumProgressLabel(task) && task.completed;
 
@@ -2685,6 +2718,18 @@ function SwipeableTaskCard({
           },
         ]}
       >
+        {isQuantum && isWaterAnimation && (
+          <View pointerEvents="none" style={styles.waterFillContainer}>
+            <LinearGradient
+              colors={['rgba(107, 190, 255, 0.65)', 'rgba(64, 148, 255, 0.85)']}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={[styles.waterFill, { height: `${Math.round(waterPercent * 100)}%` }]}
+            >
+              <View style={styles.waterWave} />
+            </LinearGradient>
+          </View>
+        )}
         <Pressable style={styles.taskCardContent} onPress={handlePress}>
           <View style={styles.taskInfo}>
             {task.customImage ? (
@@ -3186,6 +3231,27 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderWidth: 1,
+    overflow: 'hidden',
+  },
+  waterFillContainer: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 18,
+    overflow: 'hidden',
+    alignItems: 'stretch',
+    justifyContent: 'flex-end',
+  },
+  waterFill: {
+    width: '100%',
+    position: 'relative',
+  },
+  waterWave: {
+    position: 'absolute',
+    top: -12,
+    left: -40,
+    right: -40,
+    height: 24,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.35)',
   },
   swipeableWrapper: {
     marginBottom: 14,
