@@ -1,4 +1,15 @@
-import { endOfMonth, endOfWeek, getWeeksInMonth, startOfMonth, startOfWeek } from 'date-fns';
+import {
+  differenceInCalendarDays,
+  differenceInCalendarMonths,
+  endOfMonth,
+  endOfWeek,
+  getWeeksInMonth,
+  isBefore,
+  isSameDay as isSameDayDateFns,
+  startOfDay,
+  startOfMonth,
+  startOfWeek,
+} from 'date-fns';
 
 const getDateKey = (date) => {
   const normalized = new Date(date);
@@ -72,22 +83,11 @@ const normalizeRepeatCollection = (value) => {
   return [];
 };
 
-const daysBetween = (start, end) => {
-  return Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-};
-
-const monthsBetween = (start, end) => {
-  return (
-    (end.getFullYear() - start.getFullYear()) * 12 +
-    (end.getMonth() - start.getMonth())
-  );
-};
-
 const isSameDay = (dateA, dateB) => {
   if (!dateA || !dateB) {
     return false;
   }
-  return dateA.getTime() === dateB.getTime();
+  return isSameDayDateFns(dateA, dateB);
 };
 
 const getWeekdayKeyFromDate = (date) => {
@@ -107,7 +107,10 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
     return false;
   }
 
-  if (isSameDay(normalizedStartDate, normalizedTargetDate)) {
+  const targetDay = startOfDay(normalizedTargetDate);
+  const startDay = startOfDay(normalizedStartDate);
+
+  if (isSameDay(startDay, targetDay)) {
     return true;
   }
 
@@ -116,7 +119,7 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
     return false;
   }
 
-  if (normalizedTargetDate.getTime() < normalizedStartDate.getTime()) {
+  if (isBefore(targetDay, startDay)) {
     return false;
   }
 
@@ -136,31 +139,31 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
     }
 
     const endDate = normalizeDateValue(repeat.endDate);
-    if (endDate && normalizedTargetDate.getTime() > endDate.getTime()) {
+    if (endDate && isBefore(endDate, targetDay)) {
       return false;
     }
 
     if (frequency === 'daily') {
-      const diffDays = daysBetween(normalizedStartDate, normalizedTargetDate);
+      const diffDays = differenceInCalendarDays(targetDay, startDay);
       return diffDays % interval === 0;
     }
 
     if (frequency === 'weekly') {
-      const diffDays = daysBetween(normalizedStartDate, normalizedTargetDate);
+      const diffDays = differenceInCalendarDays(targetDay, startDay);
       const diffWeeks = Math.floor(diffDays / 7);
-      const targetWeekday = getWeekdayKeyFromDate(normalizedTargetDate);
+      const targetWeekday = getWeekdayKeyFromDate(targetDay);
       const allowedWeekdays = normalizeRepeatCollection(repeat.weekdays);
       const resolvedWeekdays = allowedWeekdays.length
         ? allowedWeekdays
-        : [getWeekdayKeyFromDate(normalizedStartDate)];
+        : [getWeekdayKeyFromDate(startDay)];
       return diffWeeks % interval === 0 && targetWeekday ? resolvedWeekdays.includes(targetWeekday) : false;
     }
 
     if (frequency === 'monthly') {
-      const diffMonths = monthsBetween(normalizedStartDate, normalizedTargetDate);
+      const diffMonths = differenceInCalendarMonths(targetDay, startDay);
       const selectedDays = normalizeRepeatCollection(repeat.monthDays);
-      const resolvedDays = selectedDays.length ? selectedDays : [normalizedStartDate.getDate()];
-      return diffMonths % interval === 0 && resolvedDays.includes(normalizedTargetDate.getDate());
+      const resolvedDays = selectedDays.length ? selectedDays : [startDay.getDate()];
+      return diffMonths % interval === 0 && resolvedDays.includes(targetDay.getDate());
     }
 
     return false;
@@ -174,15 +177,15 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
     case 'daily':
       return true;
     case 'weekly':
-      return normalizedTargetDate.getDay() === normalizedStartDate.getDay();
+      return targetDay.getDay() === startDay.getDay();
     case 'monthly':
-      return normalizedTargetDate.getDate() === normalizedStartDate.getDate();
+      return targetDay.getDate() === startDay.getDate();
     case 'weekend': {
-      const day = normalizedTargetDate.getDay();
+      const day = targetDay.getDay();
       return day === 0 || day === 6;
     }
     case 'weekdays': {
-      const day = normalizedTargetDate.getDay();
+      const day = targetDay.getDay();
       return day >= 1 && day <= 5;
     }
     case 'custom': {
@@ -190,7 +193,7 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
       if (!weekdays.length) {
         return false;
       }
-      const weekdayKey = getWeekdayKeyFromDate(normalizedTargetDate);
+      const weekdayKey = getWeekdayKeyFromDate(targetDay);
       return weekdayKey ? weekdays.includes(weekdayKey) : false;
     }
     case 'interval': {
@@ -198,7 +201,7 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
       if (!interval || interval <= 0) {
         return false;
       }
-      const diff = Math.floor((normalizedTargetDate - normalizedStartDate) / (1000 * 60 * 60 * 24));
+      const diff = differenceInCalendarDays(targetDay, startDay);
       return diff % interval === 0;
     }
     default:
