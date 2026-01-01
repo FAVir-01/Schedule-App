@@ -35,6 +35,7 @@ import {
   endOfMonth,
   endOfWeek,
   format,
+  getWeeksInMonth,
   startOfMonth,
   startOfWeek,
 } from 'date-fns';
@@ -55,7 +56,6 @@ import { DEFAULT_USER_SETTINGS } from './constants/userSettings';
 import { LEFT_TABS, RIGHT_TABS, getNavigationBarThemeForTab } from './constants/navigation';
 import { interpolateHexColor, lightenColor } from './utils/colorUtils';
 import {
-  calculateWeeksInMonth,
   getDateKey,
   getMonthId,
   getMonthStart,
@@ -581,33 +581,47 @@ function ScheduleApp() {
   const fabHaloSize = fabSize + (isCompact ? 26 : 30);
   const fabBaseSize = fabSize + (isCompact ? 14 : 18);
   const fabIconSize = isCompact ? 28 : 30;
-  const monthLayouts = useMemo(() => {
+  const HEADER_HEIGHT = 100;
+  const MARGINS = 30;
+  const BASE_HEIGHT = HEADER_HEIGHT + MARGINS;
+  const buildMonthLayouts = useCallback((months) => {
     let currentOffset = 0;
-    const layouts = [];
-
-    const HEADER_HEIGHT = 100;
-    const MARGINS = 30;
-    const BASE_HEIGHT = HEADER_HEIGHT + MARGINS;
-
-    calendarMonths.forEach((month, index) => {
-      const weeks = calculateWeeksInMonth(month.date);
-      const height = BASE_HEIGHT + weeks * CALENDAR_DAY_SIZE;
-
-      layouts.push({ length: height, offset: currentOffset, index });
-      currentOffset += height;
+    const layouts = months.map((month, index) => {
+      const weeks = getWeeksInMonth(month.date);
+      const length = BASE_HEIGHT + weeks * CALENDAR_DAY_SIZE;
+      const layout = { length, offset: currentOffset, index };
+      currentOffset += length;
+      return layout;
     });
 
     return layouts;
-  }, [calendarMonths, width]);
+  }, []);
+  const monthLayouts = useMemo(() => {
+    return buildMonthLayouts(calendarMonths);
+  }, [buildMonthLayouts, calendarMonths, width]);
+  const monthLayoutsRef = useRef(monthLayouts);
+  useEffect(() => {
+    monthLayoutsRef.current = monthLayouts;
+  }, [monthLayouts]);
 
   const getItemLayout = useCallback(
     (data, index) => {
-      if (!monthLayouts[index]) {
-        return { length: 380, offset: 380 * index, index };
+      const cachedLayout = monthLayoutsRef.current[index];
+      if (cachedLayout) {
+        return cachedLayout;
       }
-      return monthLayouts[index];
+      if (!data?.[index]) {
+        return { length: 0, offset: 0, index };
+      }
+      const previousLayout = monthLayoutsRef.current[index - 1];
+      const offset = previousLayout ? previousLayout.offset + previousLayout.length : 0;
+      const weeks = getWeeksInMonth(data[index].date);
+      const length = BASE_HEIGHT + weeks * CALENDAR_DAY_SIZE;
+      const layout = { length, offset, index };
+      monthLayoutsRef.current[index] = layout;
+      return layout;
     },
-    [monthLayouts]
+    [BASE_HEIGHT]
   );
   const today = useMemo(() => {
     const now = new Date();
