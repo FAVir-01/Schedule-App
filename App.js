@@ -2697,11 +2697,19 @@ function SwipeableTaskCard({
   const waterPercent = useMemo(() => getQuantumProgressPercent(task), [task]);
   const waveTranslateX = waterWaveAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [-40, 40],
+    outputRange: [-80, 80],
   });
   const waveTranslateY = waterWaveAnim.interpolate({
     inputRange: [0, 0.5, 1],
-    outputRange: [0, -6, 0],
+    outputRange: [2, -10, 2],
+  });
+  const waveTranslateXAlt = waterWaveAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [60, -60],
+  });
+  const waveTranslateYAlt = waterWaveAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [-2, 8, -2],
   });
 
   useEffect(() => {
@@ -2714,8 +2722,8 @@ function SwipeableTaskCard({
     const animationLoop = Animated.loop(
       Animated.timing(waterWaveAnim, {
         toValue: 1,
-        duration: 4000,
-        easing: Easing.inOut(Easing.sin),
+        duration: 2800,
+        easing: Easing.linear,
         useNativeDriver: true,
       })
     );
@@ -2775,6 +2783,17 @@ function SwipeableTaskCard({
                   styles.waterWave,
                   {
                     transform: [{ translateX: waveTranslateX }, { translateY: waveTranslateY }],
+                  },
+                ]}
+              />
+              <Animated.View
+                style={[
+                  styles.waterWaveSecondary,
+                  {
+                    transform: [
+                      { translateX: waveTranslateXAlt },
+                      { translateY: waveTranslateYAlt },
+                    ],
                   },
                 ]}
               />
@@ -3297,12 +3316,21 @@ const styles = StyleSheet.create({
   },
   waterWave: {
     position: 'absolute',
-    top: -12,
-    left: -40,
-    right: -40,
+    top: -16,
+    left: -80,
+    right: -80,
+    height: 32,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+  },
+  waterWaveSecondary: {
+    position: 'absolute',
+    top: -10,
+    left: -70,
+    right: -70,
     height: 24,
     borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.35)',
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
   },
   swipeableWrapper: {
     marginBottom: 14,
