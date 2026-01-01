@@ -4,6 +4,7 @@ import {
   AppState,
   BackHandler,
   Dimensions,
+  Easing,
   Platform,
   Image,
   Modal,
