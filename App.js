@@ -54,7 +54,13 @@ import { MONTH_NAMES, getMonthImageSource } from './constants/months';
 import { DEFAULT_USER_SETTINGS } from './constants/userSettings';
 import { LEFT_TABS, RIGHT_TABS, getNavigationBarThemeForTab } from './constants/navigation';
 import { interpolateHexColor, lightenColor } from './utils/colorUtils';
-import { getDateKey, getMonthId, getMonthStart, shouldTaskAppearOnDate } from './utils/dateUtils';
+import {
+  calculateWeeksInMonth,
+  getDateKey,
+  getMonthId,
+  getMonthStart,
+  shouldTaskAppearOnDate,
+} from './utils/dateUtils';
 import { clamp01, clampValue } from './utils/mathUtils';
 import {
   getQuantumProgressLabel,
@@ -542,6 +548,7 @@ function ScheduleApp() {
   const [history, setHistory] = useState([]);
   const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
+  const saveTimeoutRef = useRef(null);
   const [calendarMonths, setCalendarMonths] = useState(() => {
     const today = new Date();
     const months = [];
@@ -583,14 +590,7 @@ function ScheduleApp() {
     const BASE_HEIGHT = HEADER_HEIGHT + MARGINS;
 
     calendarMonths.forEach((month, index) => {
-      const start = startOfMonth(month.date);
-      const end = endOfMonth(month.date);
-      const startWeek = startOfWeek(start);
-      const endWeek = endOfWeek(end);
-
-      const days = (endWeek.getTime() - startWeek.getTime()) / (1000 * 60 * 60 * 24) + 1;
-      const weeks = Math.round(days / 7);
-
+      const weeks = calculateWeeksInMonth(month.date);
       const height = BASE_HEIGHT + weeks * CALENDAR_DAY_SIZE;
 
       layouts.push({ length: height, offset: currentOffset, index });
@@ -879,7 +879,6 @@ function ScheduleApp() {
             }
             return {
               ...task,
-              completed: nextSeconds === limitSeconds,
               completedDates,
               quantum: {
                 ...task.quantum,
@@ -914,7 +913,6 @@ function ScheduleApp() {
           }
           return {
             ...task,
-            completed: nextCount === limitCount,
             completedDates,
             quantum: {
               ...task.quantum,
@@ -952,6 +950,38 @@ function ScheduleApp() {
     }
   }).current;
   const emptyStateIconSize = isCompact ? 98 : 112;
+  const normalizeStoredTasks = useCallback((storedTasks) => {
+    return storedTasks.map((task) => {
+      const baseDateKey = task.dateKey ?? (task.date ? getDateKey(task.date) : null);
+      const completedDates = { ...(task.completedDates ?? {}) };
+
+      if (task.completed && baseDateKey && !completedDates[baseDateKey]) {
+        completedDates[baseDateKey] = true;
+      }
+
+      const normalizedSubtasks = Array.isArray(task.subtasks)
+        ? task.subtasks.map((subtask) => {
+            const subtaskCompletedDates = { ...(subtask.completedDates ?? {}) };
+            if (subtask.completed && baseDateKey && !subtaskCompletedDates[baseDateKey]) {
+              subtaskCompletedDates[baseDateKey] = true;
+            }
+            const { completed, ...restSubtask } = subtask;
+            return {
+              ...restSubtask,
+              completedDates: subtaskCompletedDates,
+            };
+          })
+        : task.subtasks;
+
+      const { completed, ...restTask } = task;
+
+      return {
+        ...restTask,
+        completedDates,
+        subtasks: normalizedSubtasks,
+      };
+    });
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -969,7 +999,7 @@ function ScheduleApp() {
         }
 
         if (Array.isArray(storedTasks)) {
-          setTasks(storedTasks);
+          setTasks(normalizeStoredTasks(storedTasks));
         }
 
         if (storedSettings) {
@@ -1006,24 +1036,25 @@ function ScheduleApp() {
 
   useEffect(() => {
     if (!isHydrated) {
-      return;
+      return undefined;
     }
-    void saveTasks(tasks);
-  }, [isHydrated, tasks]);
 
-  useEffect(() => {
-    if (!isHydrated) {
-      return;
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
     }
-    void saveUserSettings(userSettings);
-  }, [isHydrated, userSettings]);
 
-  useEffect(() => {
-    if (!isHydrated) {
-      return;
-    }
-    void saveHistory(history);
-  }, [history, isHydrated]);
+    const timeoutId = setTimeout(() => {
+      void saveTasks(tasks);
+      void saveUserSettings(userSettings);
+      void saveHistory(history);
+    }, 500);
+
+    saveTimeoutRef.current = timeoutId;
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [history, isHydrated, tasks, userSettings]);
 
   const handleUpdateMonthImage = useCallback(
     async (monthIndex, uri) => {
@@ -1265,7 +1296,6 @@ function ScheduleApp() {
           return {
             ...task,
             completedDates,
-            completed: Boolean(completedDates[targetDateKey]),
           };
         })
       );
@@ -1294,7 +1324,6 @@ function ScheduleApp() {
         return {
           id: `${now}-${index}-${Math.random().toString(36).slice(2, 8)}`,
           title,
-          completed: false,
           completedDates: {},
         };
       });
@@ -1332,6 +1361,10 @@ function ScheduleApp() {
     const dateKey = getDateKey(normalizedDate);
     const color = habit?.color ?? '#d1d7ff';
     const title = getUniqueTitle(habit?.title, null);
+    const repeat =
+      habit?.repeat?.enabled === false
+        ? habit.repeat
+        : habit?.repeat ?? { enabled: true, frequency: 'daily', interval: 1 };
     const newTask = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       title,
@@ -1341,14 +1374,13 @@ function ScheduleApp() {
       time: habit?.time,
       date: normalizedDate,
       dateKey,
-      completed: false,
       completedDates: {},
       subtasks: convertSubtasks(habit?.subtasks ?? []),
-      repeat: habit?.repeat,
+      repeat,
       reminder: habit?.reminder,
       tag: habit?.tag,
       tagLabel: habit?.tagLabel,
-      type: habit?.type,
+      type: habit?.type ?? 'normal',
       typeLabel: habit?.typeLabel,
       quantum: habit?.quantum,
     };
@@ -1453,7 +1485,6 @@ function ScheduleApp() {
               return {
                 ...subtask,
                 completedDates,
-                completed: Boolean(targetDateKey && completedDates[targetDateKey]),
               };
             }),
           };
