@@ -59,6 +59,30 @@ const normalizeDateValue = (value) => {
   return date;
 };
 
+const normalizeRepeatCollection = (value) => {
+  if (!value) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (value instanceof Set) {
+    return Array.from(value);
+  }
+  return [];
+};
+
+const daysBetween = (start, end) => {
+  return Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+};
+
+const monthsBetween = (start, end) => {
+  return (
+    (end.getFullYear() - start.getFullYear()) * 12 +
+    (end.getMonth() - start.getMonth())
+  );
+};
+
 const isSameDay = (dateA, dateB) => {
   if (!dateA || !dateB) {
     return false;
@@ -88,11 +112,61 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
   }
 
   const repeat = task.repeat;
-  if (!repeat || !repeat.option || repeat.option === 'off') {
+  if (!repeat) {
     return false;
   }
 
   if (normalizedTargetDate.getTime() < normalizedStartDate.getTime()) {
+    return false;
+  }
+
+  const hasModernRepeat =
+    typeof repeat.enabled === 'boolean' ||
+    (typeof repeat.frequency === 'string' && repeat.frequency.trim() !== '');
+
+  if (hasModernRepeat) {
+    if (!repeat.enabled) {
+      return false;
+    }
+
+    const frequency = repeat.frequency ?? 'daily';
+    const interval = repeat.interval ?? 1;
+    if (!interval || interval <= 0) {
+      return false;
+    }
+
+    const endDate = normalizeDateValue(repeat.endDate);
+    if (endDate && normalizedTargetDate.getTime() > endDate.getTime()) {
+      return false;
+    }
+
+    if (frequency === 'daily') {
+      const diffDays = daysBetween(normalizedStartDate, normalizedTargetDate);
+      return diffDays % interval === 0;
+    }
+
+    if (frequency === 'weekly') {
+      const diffDays = daysBetween(normalizedStartDate, normalizedTargetDate);
+      const diffWeeks = Math.floor(diffDays / 7);
+      const targetWeekday = getWeekdayKeyFromDate(normalizedTargetDate);
+      const allowedWeekdays = normalizeRepeatCollection(repeat.weekdays);
+      const resolvedWeekdays = allowedWeekdays.length
+        ? allowedWeekdays
+        : [getWeekdayKeyFromDate(normalizedStartDate)];
+      return diffWeeks % interval === 0 && targetWeekday ? resolvedWeekdays.includes(targetWeekday) : false;
+    }
+
+    if (frequency === 'monthly') {
+      const diffMonths = monthsBetween(normalizedStartDate, normalizedTargetDate);
+      const selectedDays = normalizeRepeatCollection(repeat.monthDays);
+      const resolvedDays = selectedDays.length ? selectedDays : [normalizedStartDate.getDate()];
+      return diffMonths % interval === 0 && resolvedDays.includes(normalizedTargetDate.getDate());
+    }
+
+    return false;
+  }
+
+  if (!repeat.option || repeat.option === 'off') {
     return false;
   }
 
