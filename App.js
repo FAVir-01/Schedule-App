@@ -4,6 +4,7 @@ import {
   AppState,
   BackHandler,
   Dimensions,
+  Easing,
   Platform,
   Image,
   Modal,
@@ -1773,6 +1774,17 @@ function ScheduleApp() {
           }
           const nextDate = normalizedDate ? new Date(normalizedDate) : new Date(task.date);
           nextDate.setHours(0, 0, 0, 0);
+          const nextQuantum = habit?.quantum ?? task.quantum;
+          let mergedQuantum = nextQuantum;
+          if (nextQuantum && task.quantum) {
+            const sameMode = nextQuantum.mode === task.quantum.mode;
+            mergedQuantum = {
+              ...task.quantum,
+              ...nextQuantum,
+              doneSeconds: sameMode ? task.quantum.doneSeconds ?? 0 : 0,
+              doneCount: sameMode ? task.quantum.doneCount ?? 0 : 0,
+            };
+          }
           return {
             ...task,
             title: nextTitle,
@@ -1787,7 +1799,7 @@ function ScheduleApp() {
             tagLabel: habit?.tagLabel,
             type: habit?.type,
             typeLabel: habit?.typeLabel,
-            quantum: habit?.quantum,
+            quantum: mergedQuantum,
             date: nextDate,
             dateKey: getDateKey(nextDate),
           };
@@ -2587,6 +2599,7 @@ function SwipeableTaskCard({
   onEdit,
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
+  const waterWaveAnim = useRef(new Animated.Value(0)).current;
   const actionWidth = 168;
   const [isOpen, setIsOpen] = useState(false);
   const currentOffsetRef = useRef(0);
@@ -2682,6 +2695,37 @@ function SwipeableTaskCard({
   const isQuantum = task.type === 'quantum';
   const isWaterAnimation = task.quantum?.animation === 'water';
   const waterPercent = useMemo(() => getQuantumProgressPercent(task), [task]);
+  const waveTranslateX = waterWaveAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-40, 40],
+  });
+  const waveTranslateY = waterWaveAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, -6, 0],
+  });
+
+  useEffect(() => {
+    if (!isQuantum || !isWaterAnimation) {
+      waterWaveAnim.stopAnimation();
+      waterWaveAnim.setValue(0);
+      return undefined;
+    }
+
+    const animationLoop = Animated.loop(
+      Animated.timing(waterWaveAnim, {
+        toValue: 1,
+        duration: 4000,
+        easing: Easing.inOut(Easing.sin),
+        useNativeDriver: true,
+      })
+    );
+
+    animationLoop.start();
+    return () => {
+      animationLoop.stop();
+      waterWaveAnim.setValue(0);
+    };
+  }, [isQuantum, isWaterAnimation, waterWaveAnim]);
   const toggleAction = isQuantum ? onAdjustQuantum : onToggleCompletion;
   const isQuantumComplete = isQuantum && getQuantumProgressLabel(task) && task.completed;
 
@@ -2726,7 +2770,14 @@ function SwipeableTaskCard({
               end={{ x: 0.5, y: 1 }}
               style={[styles.waterFill, { height: `${Math.round(waterPercent * 100)}%` }]}
             >
-              <View style={styles.waterWave} />
+              <Animated.View
+                style={[
+                  styles.waterWave,
+                  {
+                    transform: [{ translateX: waveTranslateX }, { translateY: waveTranslateY }],
+                  },
+                ]}
+              />
             </LinearGradient>
           </View>
         )}
