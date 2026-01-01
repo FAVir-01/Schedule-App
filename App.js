@@ -741,7 +741,7 @@ function ScheduleApp() {
       }
       return [...previous, { id: nextId, date: nextMonthDate }];
     });
-  }, []);
+  }, [normalizeStoredTasks]);
 
   const renderCalendarMonth = useCallback(
     ({ item }) => (
