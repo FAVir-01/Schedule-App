@@ -124,6 +124,30 @@ const normalizeRepeatConfig = (repeatConfig) => {
   };
 };
 
+const formatRepeatLabel = (repeat) => {
+  if (!repeat?.enabled) {
+    return 'Once';
+  }
+
+  const interval = repeat.interval ?? 1;
+  const frequency = repeat.frequency ?? 'daily';
+  const labels = {
+    daily: 'Daily',
+    weekly: 'Weekly',
+    monthly: 'Monthly',
+    yearly: 'Yearly',
+  };
+  const baseLabel = labels[frequency] ?? frequency;
+
+  if (interval === 1) {
+    return baseLabel;
+  }
+
+  const lower = baseLabel.toLowerCase();
+  const pluralSuffix = interval > 1 && !lower.endsWith('s') ? 's' : '';
+  return `Every ${interval} ${lower}${pluralSuffix}`;
+};
+
 const triggerImpact = (style) => {
   if (!HAPTICS_SUPPORTED) {
     return;
@@ -302,6 +326,58 @@ function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage 
             );
           })}
         </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+function ProfileTasksModal({
+  visible,
+  onClose,
+  tasks,
+  onTaskPress,
+  onToggleCompletion,
+  onAdjustQuantum,
+  onCopyTask,
+  onEditTask,
+  onDeleteTask,
+}) {
+  if (!visible) return null;
+
+  return (
+    <Modal animationType="slide" transparent={false} visible={visible} onRequestClose={onClose}>
+      <SafeAreaView style={styles.profileTasksModalContainer}>
+        <View style={styles.profileTasksModalHeader}>
+          <Text style={styles.profileTasksModalTitle}>All tasks</Text>
+          <Pressable onPress={onClose} hitSlop={12}>
+            <Ionicons name="close" size={28} color="#1a1a2e" />
+          </Pressable>
+        </View>
+
+        <FlatList
+          data={tasks}
+          keyExtractor={(task) => task.id}
+          contentContainerStyle={styles.profileTasksModalContent}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item: task }) => (
+            <SwipeableTaskCard
+              task={task}
+              backgroundColor={task.backgroundColor}
+              borderColor={task.borderColor}
+              totalSubtasks={task.totalSubtasks}
+              completedSubtasks={task.completedSubtasks}
+              onPress={() => onTaskPress(task.id)}
+              onToggleCompletion={() => onToggleCompletion(task)}
+              onAdjustQuantum={() => onAdjustQuantum(task)}
+              onCopy={() => onCopyTask(task)}
+              onEdit={() => onEditTask(task)}
+              onDelete={() => onDeleteTask(task)}
+            />
+          )}
+          ListEmptyComponent={
+            <Text style={styles.profileTasksEmpty}>No tasks created yet.</Text>
+          }
+        />
       </SafeAreaView>
     </Modal>
   );
@@ -569,6 +645,7 @@ function ScheduleApp() {
   const [history, setHistory] = useState([]);
   const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
+  const [isProfileTasksOpen, setProfileTasksOpen] = useState(false);
   const saveTimeoutRef = useRef(null);
   const [calendarMonths, setCalendarMonths] = useState(() => {
     const today = new Date();
@@ -722,6 +799,63 @@ function ScheduleApp() {
         };
       });
   }, [reportDate, tasks]);
+
+  const profileTaskItems = useMemo(
+    () =>
+      tasks.map((task) => {
+        const dateKey = task.dateKey ?? (task.date ? getDateKey(task.date) : todayKey);
+        const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
+        const completedSubtasks = Array.isArray(task.subtasks)
+          ? task.subtasks.filter((item) => getSubtaskCompletionStatus(item, dateKey)).length
+          : 0;
+        return {
+          ...task,
+          dateKeyForStatus: dateKey,
+          totalSubtasks,
+          completedSubtasks,
+          completed: getTaskCompletionStatus(task, dateKey),
+          backgroundColor: lightenColor(task.color, 0.75),
+          borderColor: task.color,
+        };
+      }),
+    [tasks, todayKey]
+  );
+
+  const handleToggleProfileTaskLock = useCallback((taskId) => {
+    setTasks((previous) =>
+      previous.map((task) =>
+        task.id === taskId
+          ? { ...task, locked: !task.locked }
+          : task
+      )
+    );
+  }, []);
+
+  const handleDeleteProfileTask = useCallback((task) => {
+    if (task.locked) {
+      return;
+    }
+    setTasks((previous) => previous.filter((current) => current.id !== task.id));
+  }, []);
+
+  const handleCopyProfileTask = useCallback((task) => {
+    const duplicated = {
+      ...task,
+      title: `${task.title} 1`,
+      subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+      startDate: task.date,
+    };
+    openHabitSheet('copy', duplicated);
+  }, [openHabitSheet]);
+
+  const handleEditProfileTask = useCallback((task) => {
+    const editable = {
+      ...task,
+      startDate: task.date,
+      subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+    };
+    openHabitSheet('edit', editable);
+  }, [openHabitSheet]);
 
   const handleOpenReport = useCallback((date) => {
     setReportDate(date);
@@ -1434,6 +1568,7 @@ function ScheduleApp() {
       type: habit?.type ?? 'normal',
       typeLabel: habit?.typeLabel,
       quantum: habit?.quantum,
+      locked: false,
     };
     setTasks((previous) => [...previous, newTask]);
     setSelectedDate(normalizedDate);
@@ -1488,6 +1623,7 @@ function ScheduleApp() {
             type: habit?.type,
             typeLabel: habit?.typeLabel,
             quantum: mergedQuantum,
+            locked: task.locked ?? false,
             date: nextDate,
             dateKey: getDateKey(nextDate),
           };
@@ -1700,8 +1836,8 @@ function ScheduleApp() {
           style={[
             styles.content,
             dynamicStyles.content,
-            activeTab === 'calendar' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
-            activeTab === 'profile' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, alignItems: 'center', justifyContent: 'center' },
+          activeTab === 'calendar' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
+          activeTab === 'profile' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
           ]}
           importantForAccessibility={isFabOpen ? 'no-hide-descendants' : 'auto'}
         >
@@ -1868,6 +2004,9 @@ function ScheduleApp() {
                           openHabitSheet('copy', duplicated);
                         }}
                         onDelete={() => {
+                          if (task.locked) {
+                            return;
+                          }
                           setTasks((previous) => previous.filter((current) => current.id !== task.id));
                         }}
                         onEdit={() => {
@@ -1919,7 +2058,11 @@ function ScheduleApp() {
               />
             </View>
           ) : activeTab === 'profile' ? (
-             <View style={styles.profileContainer}>
+            <ScrollView
+              contentContainerStyle={styles.profileScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.profileHeader}>
                 <View style={styles.avatarContainer}>
                   <Ionicons name="person" size={40} color="#3c2ba7" />
                 </View>
@@ -1934,10 +2077,25 @@ function ScheduleApp() {
                   onPress={() => setCustomizeCalendarOpen(true)}
                   activeOpacity={0.8}
                 >
-                   <Ionicons name="images-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
-                   <Text style={styles.customizeButtonText}>Customize Calendar</Text>
+                  <Ionicons name="images-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.customizeButtonText}>Customize Calendar</Text>
                 </TouchableOpacity>
-             </View>
+
+                <TouchableOpacity
+                  style={[styles.customizeButton, styles.profileActionButton]}
+                  onPress={() => setProfileTasksOpen(true)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name="list-outline"
+                    size={20}
+                    color="#fff"
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={styles.customizeButtonText}>View Tasks</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           ) : (
             <View style={styles.placeholderContainer}>
               <View style={styles.placeholderIconWrapper}>
@@ -2215,6 +2373,7 @@ function ScheduleApp() {
         onClose={closeTaskDetail}
         onToggleSubtask={handleToggleSubtask}
         onToggleCompletion={(taskId) => handleToggleTaskCompletion(taskId, selectedDateKey)}
+        onToggleLock={handleToggleProfileTaskLock}
         onEdit={(taskId) => {
           const taskToEdit = tasks.find((task) => task.id === taskId);
           if (!taskToEdit) {
@@ -2270,6 +2429,17 @@ function ScheduleApp() {
         onClose={() => setCustomizeCalendarOpen(false)}
         customImages={customMonthImages}
         onUpdateImage={handleUpdateMonthImage}
+      />
+      <ProfileTasksModal
+        visible={isProfileTasksOpen}
+        onClose={() => setProfileTasksOpen(false)}
+        tasks={profileTaskItems}
+        onTaskPress={(taskId) => setActiveTaskId(taskId)}
+        onToggleCompletion={(task) => handleToggleTaskCompletion(task.id, task.dateKeyForStatus)}
+        onAdjustQuantum={openQuantumAdjust}
+        onCopyTask={handleCopyProfileTask}
+        onEditTask={handleEditProfileTask}
+        onDeleteTask={handleDeleteProfileTask}
       />
     </View>
   );
@@ -2636,6 +2806,7 @@ function TaskDetailModal({
   onClose,
   onToggleSubtask,
   onToggleCompletion,
+  onToggleLock,
   onEdit,
 }) {
   const [hasImageError, setHasImageError] = useState(false);
@@ -2654,6 +2825,14 @@ function TaskDetailModal({
     : 0;
   const quantumLabel = getQuantumProgressLabel(task);
   const cardBackground = lightenColor(task.color, 0.85);
+  const repeatLabel = formatRepeatLabel(task.repeat);
+  const secondaryMeta = [
+    task.tagLabel ? `Tag: ${task.tagLabel}` : null,
+    task.typeLabel ? `Type: ${task.typeLabel}` : null,
+    task.date ? `Start: ${format(task.date, 'd MMM')}` : null,
+  ]
+    .filter(Boolean)
+    .join(' • ');
 
   return (
     <Modal
@@ -2687,6 +2866,10 @@ function TaskDetailModal({
                       {completedSubtasks}/{totalSubtasks} subtasks completed
                     </Text>
                   ) : null}
+                  <Text style={styles.detailMetaText}>{repeatLabel}</Text>
+                  {secondaryMeta.length > 0 && (
+                    <Text style={styles.detailMetaText}>{secondaryMeta}</Text>
+                  )}
                 </View>
               </View>
               <Pressable
@@ -2744,15 +2927,32 @@ function TaskDetailModal({
                 ))
               )}
             </ScrollView>
-            <Pressable
-              style={styles.detailEditLink}
-              onPress={() => onEdit?.(task.id)}
-              accessibilityRole="button"
-              accessibilityLabel="Edit task"
-            >
-              <Ionicons name="create-outline" size={18} color="#3c2ba7" />
-              <Text style={styles.detailEditButtonText}>Edit Task</Text>
-            </Pressable>
+            <View style={styles.detailActionRow}>
+              <Pressable
+                style={styles.detailLockButton}
+                onPress={() => onToggleLock?.(task.id)}
+                accessibilityRole="button"
+                accessibilityLabel={task.locked ? 'Unlock task' : 'Lock task'}
+              >
+                <Ionicons
+                  name={task.locked ? 'lock-open-outline' : 'lock-closed-outline'}
+                  size={16}
+                  color="#3c2ba7"
+                />
+                <Text style={styles.detailLockText}>
+                  {task.locked ? 'Unlock' : 'Lock'}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={styles.detailEditLink}
+                onPress={() => onEdit?.(task.id)}
+                accessibilityRole="button"
+                accessibilityLabel="Edit task"
+              >
+                <Ionicons name="create-outline" size={18} color="#3c2ba7" />
+                <Text style={styles.detailEditButtonText}>Edit Task</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </View>
@@ -3275,6 +3475,11 @@ const styles = StyleSheet.create({
     color: '#3c2ba7',
     fontWeight: '600',
   },
+  detailMetaText: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#6f7a86',
+  },
   detailToggle: {
     width: 36,
     height: 36,
@@ -3426,6 +3631,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 12,
+  },
+  detailActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 16,
+  },
+  detailLockButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: '#f0efff',
+  },
+  detailLockText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#3c2ba7',
   },
   detailEditButtonText: {
     fontSize: 15,
@@ -3825,11 +4050,15 @@ const styles = StyleSheet.create({
   },
 
   // --- STYLES FOR PROFILE & CUSTOMIZE CALENDAR ---
-  profileContainer: {
-    flex: 1,
+  profileScrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    paddingBottom: 120,
+  },
+  profileHeader: {
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
+    marginBottom: 32,
   },
   avatarContainer: {
     width: 80,
@@ -3870,6 +4099,37 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  profileActionButton: {
+    marginTop: 12,
+  },
+  profileTasksEmpty: {
+    color: '#6f7a86',
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+
+  profileTasksModalContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  profileTasksModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  profileTasksModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  profileTasksModalContent: {
+    padding: 20,
+    gap: 12,
   },
   
   // Customize Modal Styles
