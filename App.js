@@ -2236,6 +2236,9 @@ function ScheduleApp() {
                           openHabitSheet('copy', duplicated);
                         }}
                         onDelete={() => {
+                          if (task.locked) {
+                            return;
+                          }
                           setTasks((previous) => previous.filter((current) => current.id !== task.id));
                         }}
                         onEdit={() => {
@@ -2602,6 +2605,7 @@ function ScheduleApp() {
         onClose={closeTaskDetail}
         onToggleSubtask={handleToggleSubtask}
         onToggleCompletion={(taskId) => handleToggleTaskCompletion(taskId, selectedDateKey)}
+        onToggleLock={handleToggleProfileTaskLock}
         onEdit={(taskId) => {
           const taskToEdit = tasks.find((task) => task.id === taskId);
           if (!taskToEdit) {
@@ -3039,6 +3043,7 @@ function TaskDetailModal({
   onClose,
   onToggleSubtask,
   onToggleCompletion,
+  onToggleLock,
   onEdit,
 }) {
   const [hasImageError, setHasImageError] = useState(false);
@@ -3057,6 +3062,14 @@ function TaskDetailModal({
     : 0;
   const quantumLabel = getQuantumProgressLabel(task);
   const cardBackground = lightenColor(task.color, 0.85);
+  const repeatLabel = formatRepeatLabel(task.repeat);
+  const secondaryMeta = [
+    task.tagLabel ? `Tag: ${task.tagLabel}` : null,
+    task.typeLabel ? `Type: ${task.typeLabel}` : null,
+    task.date ? `Start: ${format(task.date, 'd MMM')}` : null,
+  ]
+    .filter(Boolean)
+    .join(' • ');
 
   return (
     <Modal
@@ -3090,6 +3103,10 @@ function TaskDetailModal({
                       {completedSubtasks}/{totalSubtasks} subtasks completed
                     </Text>
                   ) : null}
+                  <Text style={styles.detailMetaText}>{repeatLabel}</Text>
+                  {secondaryMeta.length > 0 && (
+                    <Text style={styles.detailMetaText}>{secondaryMeta}</Text>
+                  )}
                 </View>
               </View>
               <Pressable
@@ -3147,15 +3164,32 @@ function TaskDetailModal({
                 ))
               )}
             </ScrollView>
-            <Pressable
-              style={styles.detailEditLink}
-              onPress={() => onEdit?.(task.id)}
-              accessibilityRole="button"
-              accessibilityLabel="Edit task"
-            >
-              <Ionicons name="create-outline" size={18} color="#3c2ba7" />
-              <Text style={styles.detailEditButtonText}>Edit Task</Text>
-            </Pressable>
+            <View style={styles.detailActionRow}>
+              <Pressable
+                style={styles.detailLockButton}
+                onPress={() => onToggleLock?.(task.id)}
+                accessibilityRole="button"
+                accessibilityLabel={task.locked ? 'Unlock task' : 'Lock task'}
+              >
+                <Ionicons
+                  name={task.locked ? 'lock-open-outline' : 'lock-closed-outline'}
+                  size={16}
+                  color="#3c2ba7"
+                />
+                <Text style={styles.detailLockText}>
+                  {task.locked ? 'Unlock' : 'Lock'}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={styles.detailEditLink}
+                onPress={() => onEdit?.(task.id)}
+                accessibilityRole="button"
+                accessibilityLabel="Edit task"
+              >
+                <Ionicons name="create-outline" size={18} color="#3c2ba7" />
+                <Text style={styles.detailEditButtonText}>Edit Task</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </View>
