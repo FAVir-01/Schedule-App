@@ -124,6 +124,30 @@ const normalizeRepeatConfig = (repeatConfig) => {
   };
 };
 
+const formatRepeatLabel = (repeat) => {
+  if (!repeat?.enabled) {
+    return 'Once';
+  }
+
+  const interval = repeat.interval ?? 1;
+  const frequency = repeat.frequency ?? 'daily';
+  const labels = {
+    daily: 'Daily',
+    weekly: 'Weekly',
+    monthly: 'Monthly',
+    yearly: 'Yearly',
+  };
+  const baseLabel = labels[frequency] ?? frequency;
+
+  if (interval === 1) {
+    return baseLabel;
+  }
+
+  const lower = baseLabel.toLowerCase();
+  const pluralSuffix = interval > 1 && !lower.endsWith('s') ? 's' : '';
+  return `Every ${interval} ${lower}${pluralSuffix}`;
+};
+
 const triggerImpact = (style) => {
   if (!HAPTICS_SUPPORTED) {
     return;
@@ -303,6 +327,304 @@ function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage 
           })}
         </ScrollView>
       </SafeAreaView>
+    </Modal>
+  );
+}
+
+function ProfileTasksModal({
+  visible,
+  onClose,
+  tasks,
+  onTaskPress,
+  onDeleteTask,
+}) {
+  if (!visible) return null;
+
+  return (
+    <Modal animationType="slide" transparent={false} visible={visible} onRequestClose={onClose}>
+      <SafeAreaView style={styles.profileTasksModalContainer}>
+        <View style={styles.profileTasksModalHeader}>
+          <Text style={styles.profileTasksModalTitle}>All tasks</Text>
+          <Pressable onPress={onClose} hitSlop={12}>
+            <Ionicons name="close" size={28} color="#1a1a2e" />
+          </Pressable>
+        </View>
+
+        <FlatList
+          data={tasks}
+          keyExtractor={(task) => task.id}
+          contentContainerStyle={styles.profileTasksModalContent}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item: task }) => (
+            <ProfileSwipeTaskCard
+              task={task}
+              onPress={() => onTaskPress(task.id)}
+              onDelete={() => onDeleteTask(task)}
+            />
+          )}
+          ListEmptyComponent={
+            <Text style={styles.profileTasksEmpty}>No tasks created yet.</Text>
+          }
+        />
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+function ProfileSwipeTaskCard({ task, onPress, onDelete }) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const [isOpen, setIsOpen] = useState(false);
+  const [hasImageError, setHasImageError] = useState(false);
+  const actionWidth = 76;
+  const baseColor = task.color || '#3c2ba7';
+  const cardBackground = lightenColor(baseColor, 0.85);
+  const primaryMeta = [
+    formatTaskTime(task.time),
+    formatRepeatLabel(task.repeat),
+  ]
+    .filter(Boolean)
+    .join(' • ');
+  const tagLabel = task.tagLabel ? `Tag: ${task.tagLabel}` : 'Tag: No tag';
+
+  const clampTranslate = useCallback(
+    (value) => Math.max(-actionWidth, Math.min(0, value)),
+    [actionWidth]
+  );
+
+  const closeCard = useCallback(() => {
+    setIsOpen(false);
+    Animated.spring(translateX, {
+      toValue: 0,
+      useNativeDriver: true,
+    }).start();
+  }, [translateX]);
+
+  const openCard = useCallback(() => {
+    setIsOpen(true);
+    Animated.spring(translateX, {
+      toValue: -actionWidth,
+      useNativeDriver: true,
+    }).start();
+  }, [actionWidth, translateX]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) =>
+        Math.abs(gesture.dx) > 6 && Math.abs(gesture.dy) < 10,
+      onPanResponderMove: (_, gesture) => {
+        translateX.setValue(clampTranslate(gesture.dx));
+      },
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dx < -actionWidth / 2) {
+          openCard();
+        } else {
+          closeCard();
+        }
+      },
+      onPanResponderTerminate: closeCard,
+    })
+  ).current;
+
+  useEffect(() => {
+    if (!isOpen) {
+      translateX.setValue(0);
+    }
+  }, [isOpen, translateX]);
+
+  return (
+    <View style={styles.profileSwipeContainer}>
+      <View style={styles.profileSwipeActions}>
+        <TouchableOpacity
+          style={[
+            styles.profileSwipeDelete,
+            task.locked && styles.profileSwipeDeleteDisabled,
+          ]}
+          onPress={() => {
+            if (task.locked) {
+              return;
+            }
+            onDelete();
+            closeCard();
+          }}
+          disabled={task.locked}
+          accessibilityRole="button"
+          accessibilityLabel="Delete task"
+        >
+          <Ionicons name="trash-outline" size={18} color="#fff" />
+        </TouchableOpacity>
+      </View>
+      <Animated.View
+        style={[
+          styles.profileSwipeCard,
+          {
+            backgroundColor: cardBackground,
+            borderColor: lightenColor(baseColor, 0.6),
+            transform: [{ translateX }],
+          },
+        ]}
+        {...panResponder.panHandlers}
+      >
+        <Pressable
+          style={styles.profileCardContent}
+          onPress={() => {
+            if (isOpen) {
+              closeCard();
+              return;
+            }
+            onPress();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`Open details for ${task.title}`}
+        >
+          <View style={styles.profileCardIconWrapper}>
+            {task.customImage && !hasImageError ? (
+              <Image
+                source={{ uri: task.customImage }}
+                style={styles.profileCardIconImage}
+                onError={() => setHasImageError(true)}
+              />
+            ) : (
+              <Text style={styles.profileCardEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
+            )}
+          </View>
+          <View style={styles.profileCardText}>
+            <View style={styles.profileCardTitleRow}>
+              <Text style={styles.profileCardTitle} numberOfLines={1}>
+                {task.title}
+              </Text>
+              {task.locked && <Ionicons name="lock-closed" size={14} color="#3c2ba7" />}
+            </View>
+            <Text style={styles.profileCardMeta} numberOfLines={1}>
+              {primaryMeta}
+            </Text>
+          </View>
+          <View style={styles.profileCardRight}>
+            <Text style={styles.profileCardTag} numberOfLines={1}>
+              {tagLabel}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color="#3c2ba7" />
+          </View>
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
+}
+
+function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock }) {
+  const [hasImageError, setHasImageError] = useState(false);
+
+  useEffect(() => {
+    setHasImageError(false);
+  }, [task?.customImage, visible]);
+
+  if (!visible || !task) {
+    return null;
+  }
+
+  const dateKey = task.dateKeyForStatus ?? task.dateKey ?? (task.date ? getDateKey(task.date) : null);
+  const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
+  const completedSubtasks = Array.isArray(task.subtasks)
+    ? task.subtasks.filter((item) => getSubtaskCompletionStatus(item, dateKey)).length
+    : 0;
+  const repeatLabel = formatRepeatLabel(task.repeat);
+  const secondaryMeta = [
+    task.tagLabel ? `Tag: ${task.tagLabel}` : null,
+    task.typeLabel ? `Type: ${task.typeLabel}` : null,
+    task.date ? `Start: ${format(task.date, 'd MMM')}` : null,
+  ]
+    .filter(Boolean)
+    .join(' • ');
+  const cardBackground = lightenColor(task.color, 0.85);
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View style={styles.detailOverlay}>
+        <Pressable style={styles.detailBackdrop} onPress={onClose} accessibilityRole="button" />
+        <View style={styles.detailCardContainer}>
+          <View style={[styles.detailCard, { backgroundColor: cardBackground, borderColor: task.color }]}>
+            <View style={styles.detailHeaderRow}>
+              <View style={styles.detailHeaderInfo}>
+                {task.customImage && !hasImageError ? (
+                  <Image
+                    source={{ uri: task.customImage }}
+                    style={styles.detailEmojiImage}
+                    onError={() => setHasImageError(true)}
+                  />
+                ) : (
+                  <Text style={styles.detailEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
+                )}
+                <View style={styles.detailTitleContainer}>
+                  <Text style={styles.detailTitle}>{task.title}</Text>
+                  <Text style={styles.detailTime}>{formatTaskTime(task.time)}</Text>
+                  <Text style={styles.detailMetaText}>{repeatLabel}</Text>
+                  {secondaryMeta.length > 0 && (
+                    <Text style={styles.detailMetaText}>{secondaryMeta}</Text>
+                  )}
+                  {totalSubtasks > 0 && (
+                    <Text style={styles.detailSubtaskSummaryLabel}>
+                      {completedSubtasks}/{totalSubtasks} subtasks completed
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </View>
+
+            <ScrollView style={styles.detailSubtasksContainer}>
+              {totalSubtasks === 0 ? (
+                <Text style={styles.detailEmptySubtasks}>No subtasks added yet.</Text>
+              ) : (
+                task.subtasks.map((subtask) => (
+                  <View key={subtask.id} style={styles.detailSubtaskRow}>
+                    <View
+                      style={[
+                        styles.detailSubtaskIndicator,
+                        getSubtaskCompletionStatus(subtask, dateKey) &&
+                          styles.detailSubtaskIndicatorCompleted,
+                      ]}
+                    >
+                      {getSubtaskCompletionStatus(subtask, dateKey) && (
+                        <Ionicons name="checkmark" size={16} color="#ffffff" />
+                      )}
+                    </View>
+                    <Text
+                      style={[
+                        styles.detailSubtaskText,
+                        getSubtaskCompletionStatus(subtask, dateKey) &&
+                          styles.detailSubtaskTextCompleted,
+                      ]}
+                    >
+                      {subtask.title}
+                    </Text>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+
+            <View style={styles.detailActionRow}>
+              <Pressable
+                style={styles.detailLockButton}
+                onPress={() => onToggleLock(task.id)}
+                accessibilityRole="button"
+                accessibilityLabel={task.locked ? 'Unlock task' : 'Lock task'}
+              >
+                <Ionicons
+                  name={task.locked ? 'lock-open-outline' : 'lock-closed-outline'}
+                  size={16}
+                  color="#3c2ba7"
+                />
+                <Text style={styles.detailLockText}>
+                  {task.locked ? 'Unlock' : 'Lock'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -569,6 +891,8 @@ function ScheduleApp() {
   const [history, setHistory] = useState([]);
   const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
+  const [isProfileTasksOpen, setProfileTasksOpen] = useState(false);
+  const [activeProfileTaskId, setActiveProfileTaskId] = useState(null);
   const saveTimeoutRef = useRef(null);
   const [calendarMonths, setCalendarMonths] = useState(() => {
     const today = new Date();
@@ -723,6 +1047,44 @@ function ScheduleApp() {
       });
   }, [reportDate, tasks]);
 
+  const profileTaskItems = useMemo(
+    () =>
+      tasks.map((task) => {
+        const dateKey = task.dateKey ?? (task.date ? getDateKey(task.date) : todayKey);
+        const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
+        const completedSubtasks = Array.isArray(task.subtasks)
+          ? task.subtasks.filter((item) => getSubtaskCompletionStatus(item, dateKey)).length
+          : 0;
+        return {
+          ...task,
+          dateKeyForStatus: dateKey,
+          totalSubtasks,
+          completedSubtasks,
+          completed: getTaskCompletionStatus(task, dateKey),
+          backgroundColor: lightenColor(task.color, 0.75),
+          borderColor: task.color,
+        };
+      }),
+    [tasks, todayKey]
+  );
+
+  const handleToggleProfileTaskLock = useCallback((taskId) => {
+    setTasks((previous) =>
+      previous.map((task) =>
+        task.id === taskId
+          ? { ...task, locked: !task.locked }
+          : task
+      )
+    );
+  }, []);
+
+  const handleDeleteProfileTask = useCallback((task) => {
+    if (task.locked) {
+      return;
+    }
+    setTasks((previous) => previous.filter((current) => current.id !== task.id));
+  }, []);
+
   const handleOpenReport = useCallback((date) => {
     setReportDate(date);
   }, []);
@@ -849,6 +1211,10 @@ function ScheduleApp() {
           }
         : null,
     [activeTask, selectedDateKey]
+  );
+  const activeProfileTask = useMemo(
+    () => profileTaskItems.find((task) => task.id === activeProfileTaskId) ?? null,
+    [activeProfileTaskId, profileTaskItems]
   );
 
   const openQuantumAdjust = useCallback((task) => {
@@ -1700,8 +2066,8 @@ function ScheduleApp() {
           style={[
             styles.content,
             dynamicStyles.content,
-            activeTab === 'calendar' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
-            activeTab === 'profile' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, alignItems: 'center', justifyContent: 'center' },
+          activeTab === 'calendar' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
+          activeTab === 'profile' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
           ]}
           importantForAccessibility={isFabOpen ? 'no-hide-descendants' : 'auto'}
         >
@@ -1919,7 +2285,11 @@ function ScheduleApp() {
               />
             </View>
           ) : activeTab === 'profile' ? (
-             <View style={styles.profileContainer}>
+            <ScrollView
+              contentContainerStyle={styles.profileScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.profileHeader}>
                 <View style={styles.avatarContainer}>
                   <Ionicons name="person" size={40} color="#3c2ba7" />
                 </View>
@@ -1934,10 +2304,25 @@ function ScheduleApp() {
                   onPress={() => setCustomizeCalendarOpen(true)}
                   activeOpacity={0.8}
                 >
-                   <Ionicons name="images-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
-                   <Text style={styles.customizeButtonText}>Customize Calendar</Text>
+                  <Ionicons name="images-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.customizeButtonText}>Customize Calendar</Text>
                 </TouchableOpacity>
-             </View>
+
+                <TouchableOpacity
+                  style={[styles.customizeButton, styles.profileActionButton]}
+                  onPress={() => setProfileTasksOpen(true)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name="list-outline"
+                    size={20}
+                    color="#fff"
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={styles.customizeButtonText}>View Tasks</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           ) : (
             <View style={styles.placeholderContainer}>
               <View style={styles.placeholderIconWrapper}>
@@ -2270,6 +2655,22 @@ function ScheduleApp() {
         onClose={() => setCustomizeCalendarOpen(false)}
         customImages={customMonthImages}
         onUpdateImage={handleUpdateMonthImage}
+      />
+      <ProfileTasksModal
+        visible={isProfileTasksOpen}
+        onClose={() => {
+          setProfileTasksOpen(false);
+          setActiveProfileTaskId(null);
+        }}
+        tasks={profileTaskItems}
+        onTaskPress={(taskId) => setActiveProfileTaskId(taskId)}
+        onDeleteTask={handleDeleteProfileTask}
+      />
+      <ProfileTaskDetailModal
+        visible={Boolean(activeProfileTask)}
+        task={activeProfileTask}
+        onClose={() => setActiveProfileTaskId(null)}
+        onToggleLock={handleToggleProfileTaskLock}
       />
     </View>
   );
@@ -3275,6 +3676,11 @@ const styles = StyleSheet.create({
     color: '#3c2ba7',
     fontWeight: '600',
   },
+  detailMetaText: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#6f7a86',
+  },
   detailToggle: {
     width: 36,
     height: 36,
@@ -3426,6 +3832,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 12,
+  },
+  detailActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 16,
+  },
+  detailLockButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: '#f0efff',
+  },
+  detailLockText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#3c2ba7',
   },
   detailEditButtonText: {
     fontSize: 15,
@@ -3825,11 +4251,15 @@ const styles = StyleSheet.create({
   },
 
   // --- STYLES FOR PROFILE & CUSTOMIZE CALENDAR ---
-  profileContainer: {
-    flex: 1,
+  profileScrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    paddingBottom: 120,
+  },
+  profileHeader: {
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
+    marginBottom: 32,
   },
   avatarContainer: {
     width: 80,
@@ -3870,6 +4300,114 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  profileActionButton: {
+    marginTop: 12,
+  },
+  profileTasksEmpty: {
+    color: '#6f7a86',
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+
+  profileTasksModalContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  profileTasksModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  profileTasksModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  profileTasksModalContent: {
+    padding: 20,
+    gap: 12,
+  },
+  profileSwipeContainer: {
+    position: 'relative',
+  },
+  profileSwipeActions: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 76,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileSwipeDelete: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: '#ff6b6b',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileSwipeDeleteDisabled: {
+    backgroundColor: '#f3b0b0',
+  },
+  profileSwipeCard: {
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+  },
+  profileCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  profileCardIconWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+  },
+  profileCardIconImage: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    resizeMode: 'cover',
+  },
+  profileCardEmoji: {
+    fontSize: 18,
+  },
+  profileCardText: {
+    flex: 1,
+  },
+  profileCardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  profileCardTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a2e',
+  },
+  profileCardMeta: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#6f7a86',
+  },
+  profileCardRight: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  profileCardTag: {
+    fontSize: 12,
+    color: '#6f7a86',
   },
   
   // Customize Modal Styles
