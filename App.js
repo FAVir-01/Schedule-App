@@ -737,7 +737,13 @@ function ScheduleApp() {
     setActiveProfileTaskId(null);
   }, []);
   const handleDeleteProfileTask = useCallback((taskId) => {
-    setTasks((previous) => previous.filter((task) => task.id !== taskId));
+    setTasks((previous) => {
+      const target = previous.find((task) => task.id === taskId);
+      if (target?.profileLocked) {
+        return previous;
+      }
+      return previous.filter((task) => task.id !== taskId);
+    });
     setActiveProfileTaskId((current) => (current === taskId ? null : current));
   }, []);
   const handleToggleProfileTaskLock = useCallback((taskId) => {
@@ -1918,6 +1924,9 @@ function ScheduleApp() {
                           openHabitSheet('copy', duplicated);
                         }}
                         onDelete={() => {
+                          if (task.profileLocked) {
+                            return;
+                          }
                           setTasks((previous) => previous.filter((current) => current.id !== task.id));
                         }}
                         onEdit={() => {
@@ -1992,7 +2001,7 @@ function ScheduleApp() {
                   onPress={handleOpenProfileTasks}
                   activeOpacity={0.85}
                 >
-                  <Ionicons name="list-outline" size={20} color="#3c2ba7" style={{ marginRight: 8 }} />
+                  <Ionicons name="list-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
                   <Text style={styles.profileTasksButtonText}>Open tasks</Text>
                 </TouchableOpacity>
              </View>
@@ -2589,6 +2598,12 @@ function SwipeableTaskCard({
   return (
     <View style={styles.swipeableWrapper}>
       <View style={styles.swipeableActions}>
+        {task.profileLocked ? (
+          <View style={styles.swipeLockBadge}>
+            <Ionicons name="lock-closed" size={14} color="#3c2ba7" />
+            <Text style={styles.swipeLockText}>Locked</Text>
+          </View>
+        ) : null}
         <TouchableOpacity
           style={[styles.swipeActionButton, styles.swipeActionCopy]}
           onPress={() => handleAction(onCopy)}
@@ -2599,13 +2614,26 @@ function SwipeableTaskCard({
           <Text style={styles.swipeActionText}>Copy</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.swipeActionButton, styles.swipeActionDelete]}
+          style={[
+            styles.swipeActionButton,
+            styles.swipeActionDelete,
+            task.profileLocked && styles.swipeActionButtonDisabled,
+          ]}
           onPress={() => handleAction(onDelete)}
           accessibilityRole="button"
           accessibilityLabel="Delete task"
+          disabled={task.profileLocked}
         >
           <Ionicons name="trash-outline" size={18} color="#fff" />
-          <Text style={[styles.swipeActionText, styles.swipeActionTextDelete]}>Delete</Text>
+          <Text
+            style={[
+              styles.swipeActionText,
+              styles.swipeActionTextDelete,
+              task.profileLocked && styles.swipeActionTextDisabled,
+            ]}
+          >
+            Delete
+          </Text>
         </TouchableOpacity>
       </View>
       <Animated.View
@@ -2790,10 +2818,14 @@ function ProfileSwipeTaskCard({ task, onPress, onDelete }) {
     <View style={styles.profileSwipeWrapper}>
       <View style={styles.profileSwipeActions}>
         <TouchableOpacity
-          style={styles.profileSwipeDelete}
+          style={[
+            styles.profileSwipeDelete,
+            task.profileLocked && styles.profileSwipeDeleteDisabled,
+          ]}
           onPress={handleDelete}
           accessibilityRole="button"
           accessibilityLabel="Delete task"
+          disabled={task.profileLocked}
         >
           <Ionicons name="trash-outline" size={18} color="#fff" />
           <Text style={styles.profileSwipeDeleteText}>Delete</Text>
@@ -2855,46 +2887,43 @@ function ProfileTasksModal({ visible, tasks, onClose, onSelectTask, onDeleteTask
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.profileTasksOverlay}>
-        <Pressable style={styles.profileTasksBackdrop} onPress={onClose} accessibilityRole="button" />
-        <View style={styles.profileTasksCard}>
-          <View style={styles.profileTasksHeader}>
-            <View>
-              <Text style={styles.profileTasksTitle}>Your tasks</Text>
-              <Text style={styles.profileTasksSubtitle}>
-                Minimal view to keep your profile organized.
-              </Text>
-            </View>
-            <Pressable
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel="Close profile tasks"
-              hitSlop={8}
-            >
-              <Ionicons name="close" size={20} color="#1F2742" />
-            </Pressable>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={styles.profileTasksContainer}>
+        <View style={styles.profileTasksHeader}>
+          <View>
+            <Text style={styles.profileTasksTitle}>Your tasks</Text>
+            <Text style={styles.profileTasksSubtitle}>
+              Minimal view to keep your profile organized.
+            </Text>
           </View>
-          {tasks.length === 0 ? (
-            <View style={styles.profileTasksEmpty}>
-              <Text style={styles.profileTasksEmptyText}>No tasks yet. Add one to get started.</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={tasks}
-              keyExtractor={(task) => task.id}
-              renderItem={({ item }) => (
-                <ProfileSwipeTaskCard
-                  task={item}
-                  onPress={() => onSelectTask?.(item.id)}
-                  onDelete={onDeleteTask}
-                />
-              )}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.profileTasksList}
-            />
-          )}
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close profile tasks"
+            hitSlop={8}
+          >
+            <Ionicons name="close" size={20} color="#1F2742" />
+          </Pressable>
         </View>
+        {tasks.length === 0 ? (
+          <View style={styles.profileTasksEmpty}>
+            <Text style={styles.profileTasksEmptyText}>No tasks yet. Add one to get started.</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={tasks}
+            keyExtractor={(task) => task.id}
+            renderItem={({ item }) => (
+              <ProfileSwipeTaskCard
+                task={item}
+                onPress={() => onSelectTask?.(item.id)}
+                onDelete={onDeleteTask}
+              />
+            )}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.profileTasksList}
+          />
+        )}
       </View>
     </Modal>
   );
@@ -2915,6 +2944,7 @@ function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock }) {
   const dateLabel = normalizedDate ? format(normalizedDate, 'PPP', { locale: ptBR }) : 'Not set';
   const tagLabel = getTaskTagDisplayLabel(task) ?? 'No tag';
   const typeLabel = task.typeLabel ?? task.type ?? 'Standard';
+  const isQuantum = task.type === 'quantum';
   const repeatConfig = normalizeRepeatConfig(task.repeat);
   const repeatLabel = repeatConfig.enabled
     ? repeatConfig.frequency === 'daily'
@@ -2984,10 +3014,12 @@ function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock }) {
               <Text style={styles.profileDetailLabel}>Tag</Text>
               <Text style={styles.profileDetailValue}>{tagLabel}</Text>
             </View>
-            <View style={styles.profileDetailRow}>
-              <Text style={styles.profileDetailLabel}>Subtasks</Text>
-              <Text style={styles.profileDetailValue}>{totalSubtasks}</Text>
-            </View>
+            {!isQuantum ? (
+              <View style={styles.profileDetailRow}>
+                <Text style={styles.profileDetailLabel}>Subtasks</Text>
+                <Text style={styles.profileDetailValue}>{totalSubtasks}</Text>
+              </View>
+            ) : null}
           </View>
           <Pressable
             style={[
@@ -3511,6 +3543,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     backgroundColor: '#f3f4fb',
   },
+  swipeLockBadge: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#d7dbeb',
+  },
+  swipeLockText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#3c2ba7',
+  },
   swipeActionButton: {
     flex: 1,
     marginHorizontal: 4,
@@ -3535,6 +3586,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   swipeActionTextDelete: {
+    color: '#ffffff',
+  },
+  swipeActionButtonDisabled: {
+    opacity: 0.55,
+  },
+  swipeActionTextDisabled: {
     color: '#ffffff',
   },
   taskInfo: {
@@ -4264,39 +4321,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 14,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#3c2ba7',
     paddingVertical: 12,
     paddingHorizontal: 22,
     borderRadius: 26,
-    borderWidth: 1,
-    borderColor: '#d7dbeb',
-    shadowColor: '#2c2c4b',
+    shadowColor: '#3c2ba7',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
     shadowRadius: 10,
     elevation: 4,
   },
   profileTasksButtonText: {
-    color: '#3c2ba7',
+    color: '#ffffff',
     fontSize: 15,
     fontWeight: '600',
   },
-  profileTasksOverlay: {
+  profileTasksContainer: {
     flex: 1,
-    backgroundColor: 'rgba(12, 14, 32, 0.4)',
-    justifyContent: 'flex-end',
-  },
-  profileTasksBackdrop: {
-    flex: 1,
-  },
-  profileTasksCard: {
     backgroundColor: '#ffffff',
     paddingTop: 20,
     paddingHorizontal: 20,
     paddingBottom: 28,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    maxHeight: '80%',
   },
   profileTasksHeader: {
     flexDirection: 'row',
@@ -4348,6 +4393,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 14,
     gap: 4,
+  },
+  profileSwipeDeleteDisabled: {
+    opacity: 0.55,
   },
   profileSwipeDeleteText: {
     fontSize: 11,
