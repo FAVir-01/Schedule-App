@@ -2947,6 +2947,8 @@ function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock }) {
   const isQuantum = task.type === 'quantum';
   const repeatConfig = normalizeRepeatConfig(task.repeat);
   const quantumLabel = isQuantum ? getQuantumProgressLabel(task) : null;
+  const quantumModeLabel =
+    task.quantum?.mode === 'timer' ? 'Timer' : task.quantum?.mode ? 'Cont' : 'Quantum';
   const repeatLabel = repeatConfig.enabled
     ? repeatConfig.frequency === 'daily'
       ? repeatConfig.interval === 1
@@ -3017,7 +3019,7 @@ function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock }) {
             </View>
             {isQuantum ? (
               <View style={styles.profileDetailRow}>
-                <Text style={styles.profileDetailLabel}>Quantum</Text>
+                <Text style={styles.profileDetailLabel}>{quantumModeLabel}</Text>
                 <Text style={styles.profileDetailValue}>{quantumLabel ?? 'Not set'}</Text>
               </View>
             ) : (
@@ -3180,13 +3182,13 @@ function TaskDetailModal({
               <View style={styles.detailEditContent}>
                 <Ionicons name="create-outline" size={18} color="#3c2ba7" />
                 <Text style={styles.detailEditButtonText}>Edit Task</Text>
+                <Ionicons
+                  name={task.profileLocked ? 'lock-closed' : 'lock-open-outline'}
+                  size={14}
+                  color="#9aa5b5"
+                  style={styles.detailEditLock}
+                />
               </View>
-              <Ionicons
-                name={task.profileLocked ? 'lock-closed' : 'lock-open-outline'}
-                size={14}
-                color="#9aa5b5"
-                style={styles.detailEditLock}
-              />
             </Pressable>
           </View>
         </View>
@@ -3887,6 +3889,14 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 12,
     paddingHorizontal: 4,
+  },
+  detailEditContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  detailEditLock: {
+    opacity: 0.7,
   },
   detailEditContent: {
     flexDirection: 'row',
