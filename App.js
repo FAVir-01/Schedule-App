@@ -335,22 +335,14 @@ function ProfileTasksModal({
   visible,
   onClose,
   tasks,
-  imageErrors,
-  onImageError,
-  onToggleLock,
+  onTaskPress,
+  onToggleCompletion,
+  onAdjustQuantum,
+  onCopyTask,
+  onEditTask,
   onDeleteTask,
 }) {
   if (!visible) return null;
-
-  const [expandedTaskIds, setExpandedTaskIds] = useState([]);
-
-  const toggleExpanded = useCallback((taskId) => {
-    setExpandedTaskIds((previous) =>
-      previous.includes(taskId)
-        ? previous.filter((id) => id !== taskId)
-        : [...previous, taskId]
-    );
-  }, []);
 
   return (
     <Modal animationType="slide" transparent={false} visible={visible} onRequestClose={onClose}>
@@ -362,126 +354,30 @@ function ProfileTasksModal({
           </Pressable>
         </View>
 
-        <ScrollView
+        <FlatList
+          data={tasks}
+          keyExtractor={(task) => task.id}
           contentContainerStyle={styles.profileTasksModalContent}
           showsVerticalScrollIndicator={false}
-        >
-          {tasks.length === 0 ? (
-            <Text style={styles.profileTasksEmpty}>No tasks created yet.</Text>
-          ) : (
-            tasks.map((task) => {
-              const baseColor = task.color || '#3c2ba7';
-              const lightBg = lightenColor(baseColor, 0.85);
-              const primaryMeta = [
-                formatTaskTime(task.time),
-                formatRepeatLabel(task.repeat),
-              ]
-                .filter(Boolean)
-                .join(' • ');
-              const secondaryMeta = [
-                task.tagLabel ? `Tag: ${task.tagLabel}` : null,
-                task.typeLabel ? `Type: ${task.typeLabel}` : null,
-                task.date ? `Start ${format(task.date, 'd MMM')}` : null,
-              ]
-                .filter(Boolean)
-                .join(' • ');
-              const isExpanded = expandedTaskIds.includes(task.id);
-
-              return (
-                <View
-                  key={task.id}
-                  style={[
-                    styles.reportTaskRow,
-                    {
-                      backgroundColor: lightBg,
-                      borderColor: lightenColor(baseColor, 0.6),
-                      borderWidth: 1,
-                    },
-                  ]}
-                >
-                  <Pressable
-                    style={styles.profileTaskSummary}
-                    onPress={() => toggleExpanded(task.id)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Toggle details for ${task.title}`}
-                  >
-                    <View style={[styles.reportTaskIcon, { backgroundColor: '#fff' }]}>
-                      {task.customImage && !imageErrors[task.id] ? (
-                        <Image
-                          source={{ uri: task.customImage }}
-                          style={styles.reportTaskIconImage}
-                          onError={() => onImageError(task.id)}
-                        />
-                      ) : (
-                        <Text style={{ fontSize: 18 }}>{task.emoji || FALLBACK_EMOJI}</Text>
-                      )}
-                    </View>
-
-                    <View style={{ flex: 1 }}>
-                      <View style={styles.profileTaskTitleRow}>
-                        <Text style={styles.reportTaskTitle}>{task.title}</Text>
-                        {task.locked && (
-                          <Ionicons name="lock-closed" size={14} color="#3c2ba7" />
-                        )}
-                      </View>
-                      <Text style={styles.profileTaskMeta}>{primaryMeta}</Text>
-                    </View>
-
-                    <Ionicons
-                      name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                      size={18}
-                      color="#3c2ba7"
-                    />
-                  </Pressable>
-
-                  {isExpanded && (
-                    <View style={styles.profileTaskDetails}>
-                      {secondaryMeta.length > 0 && (
-                        <Text style={styles.profileTaskMeta}>{secondaryMeta}</Text>
-                      )}
-                      {task.totalSubtasks > 0 && (
-                        <Text style={styles.profileTaskMeta}>
-                          {task.totalSubtasks} subtasks
-                        </Text>
-                      )}
-                      <View style={styles.profileTaskActions}>
-                        <TouchableOpacity
-                          style={styles.profileTaskActionButton}
-                          onPress={() => onToggleLock(task.id)}
-                          accessibilityRole="button"
-                          accessibilityLabel={task.locked ? 'Unlock task' : 'Lock task'}
-                        >
-                          <Ionicons
-                            name={task.locked ? 'lock-open-outline' : 'lock-closed-outline'}
-                            size={16}
-                            color="#3c2ba7"
-                          />
-                          <Text style={styles.profileTaskActionText}>
-                            {task.locked ? 'Unlock' : 'Lock'}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[
-                            styles.profileTaskActionButton,
-                            styles.profileTaskDeleteButton,
-                            task.locked && styles.profileTaskDeleteButtonDisabled,
-                          ]}
-                          onPress={() => onDeleteTask(task.id)}
-                          disabled={task.locked}
-                          accessibilityRole="button"
-                          accessibilityLabel="Delete task"
-                        >
-                          <Ionicons name="trash-outline" size={16} color="#fff" />
-                          <Text style={styles.profileTaskDeleteText}>Delete</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
-                </View>
-              );
-            })
+          renderItem={({ item: task }) => (
+            <SwipeableTaskCard
+              task={task}
+              backgroundColor={task.backgroundColor}
+              borderColor={task.borderColor}
+              totalSubtasks={task.totalSubtasks}
+              completedSubtasks={task.completedSubtasks}
+              onPress={() => onTaskPress(task.id)}
+              onToggleCompletion={() => onToggleCompletion(task)}
+              onAdjustQuantum={() => onAdjustQuantum(task)}
+              onCopy={() => onCopyTask(task)}
+              onEdit={() => onEditTask(task)}
+              onDelete={() => onDeleteTask(task)}
+            />
           )}
-        </ScrollView>
+          ListEmptyComponent={
+            <Text style={styles.profileTasksEmpty}>No tasks created yet.</Text>
+          }
+        />
       </SafeAreaView>
     </Modal>
   );
@@ -750,7 +646,6 @@ function ScheduleApp() {
   const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
   const [isProfileTasksOpen, setProfileTasksOpen] = useState(false);
-  const [profileTaskImageErrors, setProfileTaskImageErrors] = useState({});
   const saveTimeoutRef = useRef(null);
   const [calendarMonths, setCalendarMonths] = useState(() => {
     const today = new Date();
@@ -907,23 +802,24 @@ function ScheduleApp() {
 
   const profileTaskItems = useMemo(
     () =>
-      tasks.map((task) => ({
-        ...task,
-        totalSubtasks: Array.isArray(task.subtasks) ? task.subtasks.length : 0,
-      })),
-    [tasks]
+      tasks.map((task) => {
+        const dateKey = task.dateKey ?? (task.date ? getDateKey(task.date) : todayKey);
+        const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
+        const completedSubtasks = Array.isArray(task.subtasks)
+          ? task.subtasks.filter((item) => getSubtaskCompletionStatus(item, dateKey)).length
+          : 0;
+        return {
+          ...task,
+          dateKeyForStatus: dateKey,
+          totalSubtasks,
+          completedSubtasks,
+          completed: getTaskCompletionStatus(task, dateKey),
+          backgroundColor: lightenColor(task.color, 0.75),
+          borderColor: task.color,
+        };
+      }),
+    [tasks, todayKey]
   );
-
-  useEffect(() => {
-    setProfileTaskImageErrors({});
-  }, [tasks]);
-
-  const handleProfileTaskImageError = useCallback((taskId) => {
-    setProfileTaskImageErrors((prev) => ({
-      ...prev,
-      [taskId]: true,
-    }));
-  }, []);
 
   const handleToggleProfileTaskLock = useCallback((taskId) => {
     setTasks((previous) =>
@@ -935,9 +831,31 @@ function ScheduleApp() {
     );
   }, []);
 
-  const handleDeleteProfileTask = useCallback((taskId) => {
-    setTasks((previous) => previous.filter((task) => task.id !== taskId));
+  const handleDeleteProfileTask = useCallback((task) => {
+    if (task.locked) {
+      return;
+    }
+    setTasks((previous) => previous.filter((current) => current.id !== task.id));
   }, []);
+
+  const handleCopyProfileTask = useCallback((task) => {
+    const duplicated = {
+      ...task,
+      title: `${task.title} 1`,
+      subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+      startDate: task.date,
+    };
+    openHabitSheet('copy', duplicated);
+  }, [openHabitSheet]);
+
+  const handleEditProfileTask = useCallback((task) => {
+    const editable = {
+      ...task,
+      startDate: task.date,
+      subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+    };
+    openHabitSheet('edit', editable);
+  }, [openHabitSheet]);
 
   const handleOpenReport = useCallback((date) => {
     setReportDate(date);
@@ -2086,6 +2004,9 @@ function ScheduleApp() {
                           openHabitSheet('copy', duplicated);
                         }}
                         onDelete={() => {
+                          if (task.locked) {
+                            return;
+                          }
                           setTasks((previous) => previous.filter((current) => current.id !== task.id));
                         }}
                         onEdit={() => {
@@ -2452,6 +2373,7 @@ function ScheduleApp() {
         onClose={closeTaskDetail}
         onToggleSubtask={handleToggleSubtask}
         onToggleCompletion={(taskId) => handleToggleTaskCompletion(taskId, selectedDateKey)}
+        onToggleLock={handleToggleProfileTaskLock}
         onEdit={(taskId) => {
           const taskToEdit = tasks.find((task) => task.id === taskId);
           if (!taskToEdit) {
@@ -2512,9 +2434,11 @@ function ScheduleApp() {
         visible={isProfileTasksOpen}
         onClose={() => setProfileTasksOpen(false)}
         tasks={profileTaskItems}
-        imageErrors={profileTaskImageErrors}
-        onImageError={handleProfileTaskImageError}
-        onToggleLock={handleToggleProfileTaskLock}
+        onTaskPress={(taskId) => setActiveTaskId(taskId)}
+        onToggleCompletion={(task) => handleToggleTaskCompletion(task.id, task.dateKeyForStatus)}
+        onAdjustQuantum={openQuantumAdjust}
+        onCopyTask={handleCopyProfileTask}
+        onEditTask={handleEditProfileTask}
         onDeleteTask={handleDeleteProfileTask}
       />
     </View>
@@ -2882,6 +2806,7 @@ function TaskDetailModal({
   onClose,
   onToggleSubtask,
   onToggleCompletion,
+  onToggleLock,
   onEdit,
 }) {
   const [hasImageError, setHasImageError] = useState(false);
@@ -2900,6 +2825,14 @@ function TaskDetailModal({
     : 0;
   const quantumLabel = getQuantumProgressLabel(task);
   const cardBackground = lightenColor(task.color, 0.85);
+  const repeatLabel = formatRepeatLabel(task.repeat);
+  const secondaryMeta = [
+    task.tagLabel ? `Tag: ${task.tagLabel}` : null,
+    task.typeLabel ? `Type: ${task.typeLabel}` : null,
+    task.date ? `Start: ${format(task.date, 'd MMM')}` : null,
+  ]
+    .filter(Boolean)
+    .join(' • ');
 
   return (
     <Modal
@@ -2933,6 +2866,10 @@ function TaskDetailModal({
                       {completedSubtasks}/{totalSubtasks} subtasks completed
                     </Text>
                   ) : null}
+                  <Text style={styles.detailMetaText}>{repeatLabel}</Text>
+                  {secondaryMeta.length > 0 && (
+                    <Text style={styles.detailMetaText}>{secondaryMeta}</Text>
+                  )}
                 </View>
               </View>
               <Pressable
@@ -2990,15 +2927,32 @@ function TaskDetailModal({
                 ))
               )}
             </ScrollView>
-            <Pressable
-              style={styles.detailEditLink}
-              onPress={() => onEdit?.(task.id)}
-              accessibilityRole="button"
-              accessibilityLabel="Edit task"
-            >
-              <Ionicons name="create-outline" size={18} color="#3c2ba7" />
-              <Text style={styles.detailEditButtonText}>Edit Task</Text>
-            </Pressable>
+            <View style={styles.detailActionRow}>
+              <Pressable
+                style={styles.detailLockButton}
+                onPress={() => onToggleLock?.(task.id)}
+                accessibilityRole="button"
+                accessibilityLabel={task.locked ? 'Unlock task' : 'Lock task'}
+              >
+                <Ionicons
+                  name={task.locked ? 'lock-open-outline' : 'lock-closed-outline'}
+                  size={16}
+                  color="#3c2ba7"
+                />
+                <Text style={styles.detailLockText}>
+                  {task.locked ? 'Unlock' : 'Lock'}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={styles.detailEditLink}
+                onPress={() => onEdit?.(task.id)}
+                accessibilityRole="button"
+                accessibilityLabel="Edit task"
+              >
+                <Ionicons name="create-outline" size={18} color="#3c2ba7" />
+                <Text style={styles.detailEditButtonText}>Edit Task</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </View>
@@ -3521,6 +3475,11 @@ const styles = StyleSheet.create({
     color: '#3c2ba7',
     fontWeight: '600',
   },
+  detailMetaText: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#6f7a86',
+  },
   detailToggle: {
     width: 36,
     height: 36,
@@ -3672,6 +3631,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 12,
+  },
+  detailActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 16,
+  },
+  detailLockButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: '#f0efff',
+  },
+  detailLockText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#3c2ba7',
   },
   detailEditButtonText: {
     fontSize: 15,
@@ -4128,55 +4107,6 @@ const styles = StyleSheet.create({
     color: '#6f7a86',
     textAlign: 'center',
     paddingVertical: 12,
-  },
-  profileTaskMeta: {
-    fontSize: 12,
-    color: '#6f7a86',
-    marginTop: 4,
-  },
-  profileTaskSummary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  profileTaskTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  profileTaskDetails: {
-    paddingLeft: 52,
-    paddingTop: 8,
-  },
-  profileTaskActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 10,
-  },
-  profileTaskActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    backgroundColor: '#f0efff',
-  },
-  profileTaskActionText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#3c2ba7',
-  },
-  profileTaskDeleteButton: {
-    backgroundColor: '#ff6b6b',
-  },
-  profileTaskDeleteButtonDisabled: {
-    backgroundColor: '#f3b0b0',
-  },
-  profileTaskDeleteText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#fff',
   },
 
   profileTasksModalContainer: {
