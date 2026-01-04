@@ -3885,9 +3885,18 @@ const styles = StyleSheet.create({
   detailEditLink: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     gap: 8,
     paddingVertical: 12,
+    paddingHorizontal: 4,
+  },
+  detailEditContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  detailEditLock: {
+    opacity: 0.7,
   },
   detailEditContent: {
     flexDirection: 'row',
