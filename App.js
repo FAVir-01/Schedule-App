@@ -2946,6 +2946,7 @@ function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock }) {
   const typeLabel = task.typeLabel ?? task.type ?? 'Standard';
   const isQuantum = task.type === 'quantum';
   const repeatConfig = normalizeRepeatConfig(task.repeat);
+  const quantumLabel = isQuantum ? getQuantumProgressLabel(task) : null;
   const repeatLabel = repeatConfig.enabled
     ? repeatConfig.frequency === 'daily'
       ? repeatConfig.interval === 1
@@ -3014,12 +3015,17 @@ function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock }) {
               <Text style={styles.profileDetailLabel}>Tag</Text>
               <Text style={styles.profileDetailValue}>{tagLabel}</Text>
             </View>
-            {!isQuantum ? (
+            {isQuantum ? (
+              <View style={styles.profileDetailRow}>
+                <Text style={styles.profileDetailLabel}>Quantum</Text>
+                <Text style={styles.profileDetailValue}>{quantumLabel ?? 'Not set'}</Text>
+              </View>
+            ) : (
               <View style={styles.profileDetailRow}>
                 <Text style={styles.profileDetailLabel}>Subtasks</Text>
                 <Text style={styles.profileDetailValue}>{totalSubtasks}</Text>
               </View>
-            ) : null}
+            )}
           </View>
           <Pressable
             style={[
@@ -3171,8 +3177,16 @@ function TaskDetailModal({
               accessibilityRole="button"
               accessibilityLabel="Edit task"
             >
-              <Ionicons name="create-outline" size={18} color="#3c2ba7" />
-              <Text style={styles.detailEditButtonText}>Edit Task</Text>
+              <View style={styles.detailEditContent}>
+                <Ionicons name="create-outline" size={18} color="#3c2ba7" />
+                <Text style={styles.detailEditButtonText}>Edit Task</Text>
+              </View>
+              <Ionicons
+                name={task.profileLocked ? 'lock-closed' : 'lock-open-outline'}
+                size={14}
+                color="#9aa5b5"
+                style={styles.detailEditLock}
+              />
             </Pressable>
           </View>
         </View>
@@ -3869,9 +3883,18 @@ const styles = StyleSheet.create({
   detailEditLink: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     gap: 8,
     paddingVertical: 12,
+    paddingHorizontal: 4,
+  },
+  detailEditContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  detailEditLock: {
+    opacity: 0.7,
   },
   detailEditButtonText: {
     fontSize: 15,
