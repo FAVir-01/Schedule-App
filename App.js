@@ -3898,23 +3898,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
     paddingVertical: 12,
-    paddingHorizontal: 4,
-  },
-  detailEditContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  detailEditLock: {
-    opacity: 0.7,
-  },
-  detailEditContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  detailEditLock: {
-    opacity: 0.7,
+    alignSelf: 'center',
   },
   detailEditContent: {
     flexDirection: 'row',
