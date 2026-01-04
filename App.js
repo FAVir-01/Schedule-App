@@ -736,16 +736,18 @@ function ScheduleApp() {
     setProfileTasksOpen(false);
     setActiveProfileTaskId(null);
   }, []);
-  const handleDeleteProfileTask = useCallback((taskId) => {
-    setTasks((previous) => {
-      const target = previous.find((task) => task.id === taskId);
-      if (target?.profileLocked) {
-        return previous;
-      }
-      return previous.filter((task) => task.id !== taskId);
-    });
-    setActiveProfileTaskId((current) => (current === taskId ? null : current));
+  const handleDeleteProfileTasks = useCallback((taskIds) => {
+    setTasks((previous) =>
+      previous.filter((task) => task.profileLocked || !taskIds.includes(task.id))
+    );
+    setActiveProfileTaskId((current) => (taskIds.includes(current) ? null : current));
   }, []);
+  const handleDeleteProfileTask = useCallback(
+    (taskId) => {
+      handleDeleteProfileTasks([taskId]);
+    },
+    [handleDeleteProfileTasks]
+  );
   const handleToggleProfileTaskLock = useCallback((taskId) => {
     setTasks((previous) =>
       previous.map((task) =>
@@ -2344,6 +2346,7 @@ function ScheduleApp() {
         onClose={handleCloseProfileTasks}
         onSelectTask={(taskId) => setActiveProfileTaskId(taskId)}
         onDeleteTask={handleDeleteProfileTask}
+        onDeleteSelected={handleDeleteProfileTasks}
       />
       <ProfileTaskDetailModal
         visible={isProfileTasksOpen && !!activeProfileTaskId}
@@ -2728,7 +2731,14 @@ function SwipeableTaskCard({
   );
 }
 
-function ProfileSwipeTaskCard({ task, onPress, onDelete }) {
+function ProfileSwipeTaskCard({
+  task,
+  onPress,
+  onDelete,
+  onToggleSelect,
+  isSelected,
+  selectionMode,
+}) {
   const translateX = useRef(new Animated.Value(0)).current;
   const actionWidth = 92;
   const [isOpen, setIsOpen] = useState(false);
@@ -2802,8 +2812,16 @@ function ProfileSwipeTaskCard({ task, onPress, onDelete }) {
       closeActions();
       return;
     }
+    if (selectionMode) {
+      onToggleSelect?.(task.id);
+      return;
+    }
     onPress?.();
-  }, [closeActions, isOpen, onPress]);
+  }, [closeActions, isOpen, onPress, onToggleSelect, selectionMode, task.id]);
+
+  const handleLongPress = useCallback(() => {
+    onToggleSelect?.(task.id);
+  }, [onToggleSelect, task.id]);
 
   const handleDelete = useCallback(() => {
     closeActions();
@@ -2835,6 +2853,7 @@ function ProfileSwipeTaskCard({ task, onPress, onDelete }) {
         {...panResponder.panHandlers}
         style={[
           styles.profileTaskCard,
+          isSelected && styles.profileTaskCardSelected,
           {
             borderColor: task.color,
             backgroundColor,
@@ -2842,7 +2861,11 @@ function ProfileSwipeTaskCard({ task, onPress, onDelete }) {
           },
         ]}
       >
-        <Pressable style={styles.profileTaskCardContent} onPress={handlePress}>
+        <Pressable
+          style={styles.profileTaskCardContent}
+          onPress={handlePress}
+          onLongPress={handleLongPress}
+        >
           <View style={styles.profileTaskIcon}>
             {task.customImage && !hasImageError ? (
               <Image
@@ -2881,7 +2904,109 @@ function ProfileSwipeTaskCard({ task, onPress, onDelete }) {
   );
 }
 
-function ProfileTasksModal({ visible, tasks, onClose, onSelectTask, onDeleteTask }) {
+function ProfileTasksModal({
+  visible,
+  tasks,
+  onClose,
+  onSelectTask,
+  onDeleteTask,
+  onDeleteSelected,
+}) {
+  const [searchValue, setSearchValue] = useState('');
+  const [selectedTag, setSelectedTag] = useState('all');
+  const [selectedRepeat, setSelectedRepeat] = useState('all');
+  const [selectedTaskIds, setSelectedTaskIds] = useState([]);
+
+  useEffect(() => {
+    if (!visible) {
+      setSearchValue('');
+      setSelectedTag('all');
+      setSelectedRepeat('all');
+      setSelectedTaskIds([]);
+    }
+  }, [visible]);
+
+  const tagOptions = useMemo(() => {
+    const seen = new Map();
+    tasks.forEach((task) => {
+      const key = normalizeTaskTagKey(task);
+      if (!key || seen.has(key)) {
+        return;
+      }
+      seen.set(key, getTaskTagDisplayLabel(task) ?? 'Tag');
+    });
+    return Array.from(seen.entries()).map(([key, label]) => ({ key, label }));
+  }, [tasks]);
+
+  const repeatOptions = useMemo(() => {
+    const seen = new Set();
+    tasks.forEach((task) => {
+      const repeatConfig = normalizeRepeatConfig(task.repeat);
+      if (!repeatConfig.enabled) {
+        seen.add('one-time');
+        return;
+      }
+      const frequency = repeatConfig.frequency ?? repeatConfig.option ?? 'daily';
+      seen.add(frequency);
+    });
+    return Array.from(seen);
+  }, [tasks]);
+
+  const repeatLabels = useMemo(
+    () => ({
+      daily: 'Daily',
+      weekly: 'Weekly',
+      monthly: 'Monthly',
+      weekend: 'Weekend',
+      weekdays: 'Weekdays',
+      'one-time': 'One-time',
+    }),
+    []
+  );
+
+  const filteredTasks = useMemo(() => {
+    const normalizedSearch = searchValue.trim().toLowerCase();
+    return tasks.filter((task) => {
+      if (
+        normalizedSearch &&
+        !(task.title || '').toLowerCase().includes(normalizedSearch)
+      ) {
+        return false;
+      }
+      if (selectedTag !== 'all' && normalizeTaskTagKey(task) !== selectedTag) {
+        return false;
+      }
+      if (selectedRepeat !== 'all') {
+        const repeatConfig = normalizeRepeatConfig(task.repeat);
+        if (!repeatConfig.enabled) {
+          return selectedRepeat === 'one-time';
+        }
+        const frequency = repeatConfig.frequency ?? repeatConfig.option ?? 'daily';
+        if (frequency !== selectedRepeat) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [searchValue, selectedTag, selectedRepeat, tasks]);
+
+  const toggleSelectedTask = useCallback((taskId) => {
+    setSelectedTaskIds((previous) =>
+      previous.includes(taskId)
+        ? previous.filter((id) => id !== taskId)
+        : [...previous, taskId]
+    );
+  }, []);
+
+  const selectionMode = selectedTaskIds.length > 0;
+  const handleBulkDelete = useCallback(() => {
+    if (selectedTaskIds.length === 0) {
+      return;
+    }
+    onDeleteSelected?.(selectedTaskIds);
+    setSelectedTaskIds([]);
+  }, [onDeleteSelected, selectedTaskIds]);
+
   if (!visible) {
     return null;
   }
@@ -2905,25 +3030,140 @@ function ProfileTasksModal({ visible, tasks, onClose, onSelectTask, onDeleteTask
             <Ionicons name="close" size={20} color="#1F2742" />
           </Pressable>
         </View>
-        {tasks.length === 0 ? (
+        <View style={styles.profileTasksFilters}>
+          <View style={styles.profileTasksSearchRow}>
+            <Ionicons name="search-outline" size={18} color="#9aa5b5" />
+            <TextInput
+              style={styles.profileTasksSearchInput}
+              value={searchValue}
+              onChangeText={setSearchValue}
+              placeholder="Search by name"
+              placeholderTextColor="#9aa5b5"
+            />
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.profileTasksFilterRow}
+          >
+            <Pressable
+              style={[
+                styles.profileTasksFilterPill,
+                selectedTag === 'all' && styles.profileTasksFilterPillActive,
+              ]}
+              onPress={() => setSelectedTag('all')}
+            >
+              <Text
+                style={[
+                  styles.profileTasksFilterText,
+                  selectedTag === 'all' && styles.profileTasksFilterTextActive,
+                ]}
+              >
+                All tags
+              </Text>
+            </Pressable>
+            {tagOptions.map((option) => (
+              <Pressable
+                key={option.key}
+                style={[
+                  styles.profileTasksFilterPill,
+                  selectedTag === option.key && styles.profileTasksFilterPillActive,
+                ]}
+                onPress={() => setSelectedTag(option.key)}
+              >
+                <Text
+                  style={[
+                    styles.profileTasksFilterText,
+                    selectedTag === option.key && styles.profileTasksFilterTextActive,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.profileTasksFilterRow}
+          >
+            <Pressable
+              style={[
+                styles.profileTasksFilterPill,
+                selectedRepeat === 'all' && styles.profileTasksFilterPillActive,
+              ]}
+              onPress={() => setSelectedRepeat('all')}
+            >
+              <Text
+                style={[
+                  styles.profileTasksFilterText,
+                  selectedRepeat === 'all' && styles.profileTasksFilterTextActive,
+                ]}
+              >
+                All repeats
+              </Text>
+            </Pressable>
+            {repeatOptions.map((option) => (
+              <Pressable
+                key={option}
+                style={[
+                  styles.profileTasksFilterPill,
+                  selectedRepeat === option && styles.profileTasksFilterPillActive,
+                ]}
+                onPress={() => setSelectedRepeat(option)}
+              >
+                <Text
+                  style={[
+                    styles.profileTasksFilterText,
+                    selectedRepeat === option && styles.profileTasksFilterTextActive,
+                  ]}
+                >
+                  {repeatLabels[option] ?? option}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+        {filteredTasks.length === 0 ? (
           <View style={styles.profileTasksEmpty}>
-            <Text style={styles.profileTasksEmptyText}>No tasks yet. Add one to get started.</Text>
+            <Text style={styles.profileTasksEmptyText}>
+              No tasks match the current filters.
+            </Text>
           </View>
         ) : (
           <FlatList
-            data={tasks}
+            data={filteredTasks}
             keyExtractor={(task) => task.id}
             renderItem={({ item }) => (
               <ProfileSwipeTaskCard
                 task={item}
                 onPress={() => onSelectTask?.(item.id)}
                 onDelete={onDeleteTask}
+                onToggleSelect={toggleSelectedTask}
+                isSelected={selectedTaskIds.includes(item.id)}
+                selectionMode={selectionMode}
               />
             )}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.profileTasksList}
           />
         )}
+        {selectionMode ? (
+          <View style={styles.profileTasksBulkBar}>
+            <Text style={styles.profileTasksBulkText}>
+              {selectedTaskIds.length} selected
+            </Text>
+            <Pressable
+              style={styles.profileTasksBulkDelete}
+              onPress={handleBulkDelete}
+              accessibilityRole="button"
+              accessibilityLabel="Delete selected tasks"
+            >
+              <Ionicons name="trash-outline" size={18} color="#fff" />
+              <Text style={styles.profileTasksBulkDeleteText}>Delete selected</Text>
+            </Pressable>
+          </View>
+        ) : null}
       </View>
     </Modal>
   );
@@ -4392,7 +4632,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   profileTasksList: {
-    paddingBottom: 16,
+    paddingBottom: 96,
   },
   profileTasksEmpty: {
     paddingVertical: 40,
@@ -4402,6 +4642,82 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6f7a86',
     textAlign: 'center',
+  },
+  profileTasksFilters: {
+    gap: 12,
+    marginBottom: 16,
+  },
+  profileTasksSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#f4f6fb',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  profileTasksSearchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1a1a2e',
+  },
+  profileTasksFilterRow: {
+    gap: 8,
+  },
+  profileTasksFilterPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#edefff',
+  },
+  profileTasksFilterPillActive: {
+    backgroundColor: '#3c2ba7',
+  },
+  profileTasksFilterText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#3c2ba7',
+  },
+  profileTasksFilterTextActive: {
+    color: '#ffffff',
+  },
+  profileTasksBulkBar: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 24,
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000000',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  profileTasksBulkText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1a1a2e',
+  },
+  profileTasksBulkDelete: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: '#ff6b6b',
+  },
+  profileTasksBulkDeleteText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
+    textTransform: 'uppercase',
   },
   profileSwipeWrapper: {
     marginBottom: 12,
@@ -4438,6 +4754,14 @@ const styles = StyleSheet.create({
   profileTaskCard: {
     borderWidth: 1,
     borderRadius: 18,
+  },
+  profileTaskCardSelected: {
+    borderColor: '#3c2ba7',
+    shadowColor: '#3c2ba7',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 4,
   },
   profileTaskCardContent: {
     flexDirection: 'row',
