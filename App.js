@@ -3106,12 +3106,20 @@ function TaskDetailModal({
               ) : (
                 <Text style={styles.detailEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
               )}
-                <View style={styles.detailTitleContainer}>
+              <View style={styles.detailTitleContainer}>
+                <View style={styles.detailTitleRow}>
                   <Text style={styles.detailTitle}>{task.title}</Text>
-                  <Text style={styles.detailTime}>{formatTaskTime(task.time)}</Text>
-                  {quantumLabel ? (
-                    <Text style={styles.detailSubtaskSummaryLabel}>{quantumLabel}</Text>
-                  ) : totalSubtasks > 0 ? (
+                  <Ionicons
+                    name={task.profileLocked ? 'lock-closed' : 'lock-open-outline'}
+                    size={14}
+                    color="#9aa5b5"
+                    style={styles.detailTitleLock}
+                  />
+                </View>
+                <Text style={styles.detailTime}>{formatTaskTime(task.time)}</Text>
+                {quantumLabel ? (
+                  <Text style={styles.detailSubtaskSummaryLabel}>{quantumLabel}</Text>
+                ) : totalSubtasks > 0 ? (
                     <Text style={styles.detailSubtaskSummaryLabel}>
                       {completedSubtasks}/{totalSubtasks} subtasks completed
                     </Text>
@@ -3182,12 +3190,6 @@ function TaskDetailModal({
               <View style={styles.detailEditContent}>
                 <Ionicons name="create-outline" size={18} color="#3c2ba7" />
                 <Text style={styles.detailEditButtonText}>Edit Task</Text>
-                <Ionicons
-                  name={task.profileLocked ? 'lock-closed' : 'lock-open-outline'}
-                  size={14}
-                  color="#9aa5b5"
-                  style={styles.detailEditLock}
-                />
               </View>
             </Pressable>
           </View>
@@ -3720,10 +3722,18 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     flex: 1,
   },
+  detailTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   detailTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: '#1a1a2e',
+  },
+  detailTitleLock: {
+    opacity: 0.7,
   },
   detailTime: {
     marginTop: 4,
@@ -3905,6 +3915,11 @@ const styles = StyleSheet.create({
   },
   detailEditLock: {
     opacity: 0.7,
+  },
+  detailEditContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   detailEditButtonText: {
     fontSize: 15,
