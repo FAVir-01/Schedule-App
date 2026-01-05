@@ -59,6 +59,7 @@ import {
   getDateKey,
   getMonthId,
   getMonthStart,
+  normalizeDateValue,
   shouldTaskAppearOnDate,
 } from './utils/dateUtils';
 import { clamp01, clampValue } from './utils/mathUtils';
@@ -551,6 +552,7 @@ function ScheduleApp() {
   const [habitSheetMode, setHabitSheetMode] = useState('create');
   const [habitSheetInitialTask, setHabitSheetInitialTask] = useState(null);
   const [isCustomizeCalendarOpen, setCustomizeCalendarOpen] = useState(false);
+  const [isProfileTasksOpen, setProfileTasksOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -559,6 +561,7 @@ function ScheduleApp() {
   const [tasks, setTasks] = useState([]);
   const [reportDate, setReportDate] = useState(null);
   const [activeTaskId, setActiveTaskId] = useState(null);
+  const [activeProfileTaskId, setActiveProfileTaskId] = useState(null);
   const [quantumAdjustTaskId, setQuantumAdjustTaskId] = useState(null);
   const [quantumAdjustMinutes, setQuantumAdjustMinutes] = useState('0');
   const [quantumAdjustSeconds, setQuantumAdjustSeconds] = useState('0');
@@ -726,6 +729,34 @@ function ScheduleApp() {
   const handleOpenReport = useCallback((date) => {
     setReportDate(date);
   }, []);
+  const handleOpenProfileTasks = useCallback(() => {
+    setProfileTasksOpen(true);
+  }, []);
+  const handleCloseProfileTasks = useCallback(() => {
+    setProfileTasksOpen(false);
+    setActiveProfileTaskId(null);
+  }, []);
+  const handleDeleteProfileTasks = useCallback((taskIds) => {
+    setTasks((previous) =>
+      previous.filter((task) => task.profileLocked || !taskIds.includes(task.id))
+    );
+    setActiveProfileTaskId((current) => (taskIds.includes(current) ? null : current));
+  }, []);
+  const handleDeleteProfileTask = useCallback(
+    (taskId) => {
+      handleDeleteProfileTasks([taskId]);
+    },
+    [handleDeleteProfileTasks]
+  );
+  const handleToggleProfileTaskLock = useCallback((taskId) => {
+    setTasks((previous) =>
+      previous.map((task) =>
+        task.id === taskId
+          ? { ...task, profileLocked: !task.profileLocked }
+          : task
+      )
+    );
+  }, []);
 
   const loadMoreCalendarMonths = useCallback(() => {
     setCalendarMonths((previous) => {
@@ -823,6 +854,27 @@ function ScheduleApp() {
       }),
     [selectedDateKey, visibleTasksForSelectedDay]
   );
+  const profileTasks = useMemo(() => {
+    const getSortDate = (task) => {
+      const normalized = normalizeDateValue(task.date ?? task.dateKey);
+      return normalized ? normalized.getTime() : Number.MAX_SAFE_INTEGER;
+    };
+    const getSortTime = (task) => {
+      if (!task.time || !task.time.specified) {
+        return Number.MAX_SAFE_INTEGER;
+      }
+      if (task.time.mode === 'period' && task.time.period) {
+        return toMinutes(task.time.period.start);
+      }
+      if (task.time.point) {
+        return toMinutes(task.time.point);
+      }
+      return Number.MAX_SAFE_INTEGER;
+    };
+    return tasks
+      .slice()
+      .sort((a, b) => getSortDate(a) - getSortDate(b) || getSortTime(a) - getSortTime(b));
+  }, [tasks]);
   const allTasksCompletedForSelectedDay =
     tasksForSelectedDate.length > 0 &&
     tasksForSelectedDate.every((task) => getTaskCompletionStatus(task, selectedDateKey));
@@ -833,6 +885,10 @@ function ScheduleApp() {
   const activeTask = useMemo(
     () => tasks.find((task) => task.id === activeTaskId) ?? null,
     [activeTaskId, tasks]
+  );
+  const activeProfileTask = useMemo(
+    () => tasks.find((task) => task.id === activeProfileTaskId) ?? null,
+    [activeProfileTaskId, tasks]
   );
   const activeTaskForSelectedDate = useMemo(
     () =>
@@ -1434,6 +1490,7 @@ function ScheduleApp() {
       type: habit?.type ?? 'normal',
       typeLabel: habit?.typeLabel,
       quantum: habit?.quantum,
+      profileLocked: false,
     };
     setTasks((previous) => [...previous, newTask]);
     setSelectedDate(normalizedDate);
@@ -1490,6 +1547,7 @@ function ScheduleApp() {
             quantum: mergedQuantum,
             date: nextDate,
             dateKey: getDateKey(nextDate),
+            profileLocked: task.profileLocked ?? false,
           };
         })
       );
@@ -1868,6 +1926,9 @@ function ScheduleApp() {
                           openHabitSheet('copy', duplicated);
                         }}
                         onDelete={() => {
+                          if (task.profileLocked) {
+                            return;
+                          }
                           setTasks((previous) => previous.filter((current) => current.id !== task.id));
                         }}
                         onEdit={() => {
@@ -1936,6 +1997,14 @@ function ScheduleApp() {
                 >
                    <Ionicons name="images-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
                    <Text style={styles.customizeButtonText}>Customize Calendar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.profileTasksButton}
+                  onPress={handleOpenProfileTasks}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="list-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.profileTasksButtonText}>Open tasks</Text>
                 </TouchableOpacity>
              </View>
           ) : (
@@ -2271,6 +2340,20 @@ function ScheduleApp() {
         customImages={customMonthImages}
         onUpdateImage={handleUpdateMonthImage}
       />
+      <ProfileTasksModal
+        visible={isProfileTasksOpen}
+        tasks={profileTasks}
+        onClose={handleCloseProfileTasks}
+        onSelectTask={(taskId) => setActiveProfileTaskId(taskId)}
+        onDeleteTask={handleDeleteProfileTask}
+        onDeleteSelected={handleDeleteProfileTasks}
+      />
+      <ProfileTaskDetailModal
+        visible={isProfileTasksOpen && !!activeProfileTaskId}
+        task={activeProfileTask}
+        onClose={() => setActiveProfileTaskId(null)}
+        onToggleLock={handleToggleProfileTaskLock}
+      />
     </View>
   );
 }
@@ -2518,6 +2601,12 @@ function SwipeableTaskCard({
   return (
     <View style={styles.swipeableWrapper}>
       <View style={styles.swipeableActions}>
+        {task.profileLocked ? (
+          <View style={styles.swipeLockBadge}>
+            <Ionicons name="lock-closed" size={14} color="#3c2ba7" />
+            <Text style={styles.swipeLockText}>Locked</Text>
+          </View>
+        ) : null}
         <TouchableOpacity
           style={[styles.swipeActionButton, styles.swipeActionCopy]}
           onPress={() => handleAction(onCopy)}
@@ -2528,13 +2617,26 @@ function SwipeableTaskCard({
           <Text style={styles.swipeActionText}>Copy</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.swipeActionButton, styles.swipeActionDelete]}
+          style={[
+            styles.swipeActionButton,
+            styles.swipeActionDelete,
+            task.profileLocked && styles.swipeActionButtonDisabled,
+          ]}
           onPress={() => handleAction(onDelete)}
           accessibilityRole="button"
           accessibilityLabel="Delete task"
+          disabled={task.profileLocked}
         >
           <Ionicons name="trash-outline" size={18} color="#fff" />
-          <Text style={[styles.swipeActionText, styles.swipeActionTextDelete]}>Delete</Text>
+          <Text
+            style={[
+              styles.swipeActionText,
+              styles.swipeActionTextDelete,
+              task.profileLocked && styles.swipeActionTextDisabled,
+            ]}
+          >
+            Delete
+          </Text>
         </TouchableOpacity>
       </View>
       <Animated.View
@@ -2629,6 +2731,573 @@ function SwipeableTaskCard({
   );
 }
 
+function ProfileSwipeTaskCard({
+  task,
+  onPress,
+  onDelete,
+  onToggleSelect,
+  isSelected,
+  selectionMode,
+}) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const actionWidth = 92;
+  const [isOpen, setIsOpen] = useState(false);
+  const [hasImageError, setHasImageError] = useState(false);
+  const currentOffsetRef = useRef(0);
+
+  useEffect(() => {
+    setHasImageError(false);
+  }, [task.customImage]);
+
+  useEffect(() => {
+    const id = translateX.addListener(({ value }) => {
+      currentOffsetRef.current = value;
+    });
+    return () => {
+      translateX.removeListener(id);
+    };
+  }, [translateX]);
+
+  const closeActions = useCallback(() => {
+    Animated.spring(translateX, {
+      toValue: 0,
+      damping: 20,
+      stiffness: 220,
+      mass: 0.9,
+      useNativeDriver: USE_NATIVE_DRIVER,
+    }).start(() => setIsOpen(false));
+  }, [translateX]);
+
+  const handlePanRelease = useCallback(() => {
+    const clampedValue = Math.min(0, Math.max(-actionWidth, currentOffsetRef.current));
+    const shouldOpen = clampedValue <= -actionWidth * 0.5;
+    const targetValue = shouldOpen ? -actionWidth : 0;
+
+    setIsOpen(shouldOpen);
+    currentOffsetRef.current = targetValue;
+
+    Animated.spring(translateX, {
+      toValue: targetValue,
+      damping: 20,
+      stiffness: 220,
+      mass: 0.9,
+      useNativeDriver: USE_NATIVE_DRIVER,
+    }).start();
+  }, [actionWidth, translateX]);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          Math.abs(gesture.dx) > 6 && Math.abs(gesture.dy) < 10,
+        onPanResponderMove: (_, gesture) => {
+          if (gesture.dx < 0) {
+            translateX.setValue(Math.max(-actionWidth, gesture.dx));
+          } else if (isOpen) {
+            translateX.setValue(Math.min(0, -actionWidth + gesture.dx));
+          }
+        },
+        onPanResponderRelease: () => {
+          handlePanRelease();
+        },
+        onPanResponderTerminate: () => {
+          handlePanRelease();
+        },
+      }),
+    [actionWidth, handlePanRelease, isOpen, translateX]
+  );
+
+  const handlePress = useCallback(() => {
+    if (isOpen) {
+      closeActions();
+      return;
+    }
+    if (selectionMode) {
+      onToggleSelect?.(task.id);
+      return;
+    }
+    onPress?.();
+  }, [closeActions, isOpen, onPress, onToggleSelect, selectionMode, task.id]);
+
+  const handleLongPress = useCallback(() => {
+    onToggleSelect?.(task.id);
+  }, [onToggleSelect, task.id]);
+
+  const handleDelete = useCallback(() => {
+    closeActions();
+    triggerSelection();
+    onDelete?.(task.id);
+  }, [closeActions, onDelete, task.id]);
+
+  const tagLabel = getTaskTagDisplayLabel(task);
+  const backgroundColor = lightenColor(task.color, 0.92);
+
+  return (
+    <View style={styles.profileSwipeWrapper}>
+      <View style={styles.profileSwipeActions}>
+        <TouchableOpacity
+          style={[
+            styles.profileSwipeDelete,
+            task.profileLocked && styles.profileSwipeDeleteDisabled,
+          ]}
+          onPress={handleDelete}
+          accessibilityRole="button"
+          accessibilityLabel="Delete task"
+          disabled={task.profileLocked}
+        >
+          <Ionicons name="trash-outline" size={18} color="#fff" />
+          <Text style={styles.profileSwipeDeleteText}>Delete</Text>
+        </TouchableOpacity>
+      </View>
+      <Animated.View
+        {...panResponder.panHandlers}
+        style={[
+          styles.profileTaskCard,
+          isSelected && styles.profileTaskCardSelected,
+          {
+            borderColor: task.color,
+            backgroundColor,
+            transform: [{ translateX }],
+          },
+        ]}
+      >
+        <Pressable
+          style={styles.profileTaskCardContent}
+          onPress={handlePress}
+          onLongPress={handleLongPress}
+        >
+          <View style={styles.profileTaskIcon}>
+            {task.customImage && !hasImageError ? (
+              <Image
+                source={{ uri: task.customImage }}
+                style={styles.profileTaskEmojiImage}
+                onError={() => setHasImageError(true)}
+              />
+            ) : (
+              <Text style={styles.profileTaskEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
+            )}
+          </View>
+          <View style={styles.profileTaskDetails}>
+            <Text style={styles.profileTaskTitle} numberOfLines={1}>
+              {task.title}
+            </Text>
+            <View style={styles.profileTaskMetaRow}>
+              <Text style={styles.profileTaskTime}>{formatTaskTime(task.time)}</Text>
+              {tagLabel ? (
+                <View style={styles.profileTaskTag}>
+                  <Text style={styles.profileTaskTagText}>{tagLabel}</Text>
+                </View>
+              ) : null}
+              {task.profileLocked ? (
+                <Ionicons
+                  name="lock-closed"
+                  size={14}
+                  color="#3c2ba7"
+                  style={styles.profileTaskLock}
+                />
+              ) : null}
+            </View>
+          </View>
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
+}
+
+function ProfileTasksModal({
+  visible,
+  tasks,
+  onClose,
+  onSelectTask,
+  onDeleteTask,
+  onDeleteSelected,
+}) {
+  const [searchValue, setSearchValue] = useState('');
+  const [selectedTag, setSelectedTag] = useState('all');
+  const [selectedRepeat, setSelectedRepeat] = useState('all');
+  const [selectedTaskIds, setSelectedTaskIds] = useState([]);
+
+  useEffect(() => {
+    if (!visible) {
+      setSearchValue('');
+      setSelectedTag('all');
+      setSelectedRepeat('all');
+      setSelectedTaskIds([]);
+    }
+  }, [visible]);
+
+  const tagOptions = useMemo(() => {
+    const seen = new Map();
+    tasks.forEach((task) => {
+      const key = normalizeTaskTagKey(task);
+      if (!key || seen.has(key)) {
+        return;
+      }
+      seen.set(key, getTaskTagDisplayLabel(task) ?? 'Tag');
+    });
+    return Array.from(seen.entries()).map(([key, label]) => ({ key, label }));
+  }, [tasks]);
+
+  const repeatOptions = useMemo(() => {
+    const seen = new Set();
+    tasks.forEach((task) => {
+      const repeatConfig = normalizeRepeatConfig(task.repeat);
+      if (!repeatConfig.enabled) {
+        seen.add('one-time');
+        return;
+      }
+      const frequency = repeatConfig.frequency ?? repeatConfig.option ?? 'daily';
+      seen.add(frequency);
+    });
+    return Array.from(seen);
+  }, [tasks]);
+
+  const repeatLabels = useMemo(
+    () => ({
+      daily: 'Daily',
+      weekly: 'Weekly',
+      monthly: 'Monthly',
+      weekend: 'Weekend',
+      weekdays: 'Weekdays',
+      'one-time': 'One-time',
+    }),
+    []
+  );
+
+  const filteredTasks = useMemo(() => {
+    const normalizedSearch = searchValue.trim().toLowerCase();
+    return tasks.filter((task) => {
+      if (
+        normalizedSearch &&
+        !(task.title || '').toLowerCase().includes(normalizedSearch)
+      ) {
+        return false;
+      }
+      if (selectedTag !== 'all' && normalizeTaskTagKey(task) !== selectedTag) {
+        return false;
+      }
+      if (selectedRepeat !== 'all') {
+        const repeatConfig = normalizeRepeatConfig(task.repeat);
+        if (!repeatConfig.enabled) {
+          return selectedRepeat === 'one-time';
+        }
+        const frequency = repeatConfig.frequency ?? repeatConfig.option ?? 'daily';
+        if (frequency !== selectedRepeat) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [searchValue, selectedTag, selectedRepeat, tasks]);
+
+  const toggleSelectedTask = useCallback((taskId) => {
+    setSelectedTaskIds((previous) =>
+      previous.includes(taskId)
+        ? previous.filter((id) => id !== taskId)
+        : [...previous, taskId]
+    );
+  }, []);
+
+  const selectionMode = selectedTaskIds.length > 0;
+  const handleBulkDelete = useCallback(() => {
+    if (selectedTaskIds.length === 0) {
+      return;
+    }
+    onDeleteSelected?.(selectedTaskIds);
+    setSelectedTaskIds([]);
+  }, [onDeleteSelected, selectedTaskIds]);
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={styles.profileTasksContainer}>
+        <View style={styles.profileTasksHeader}>
+          <View>
+            <Text style={styles.profileTasksTitle}>Your tasks</Text>
+            <Text style={styles.profileTasksSubtitle}>
+              Minimal view to keep your profile organized.
+            </Text>
+          </View>
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close profile tasks"
+            hitSlop={8}
+          >
+            <Ionicons name="close" size={20} color="#1F2742" />
+          </Pressable>
+        </View>
+        <View style={styles.profileTasksFilters}>
+          <View style={styles.profileTasksSearchRow}>
+            <Ionicons name="search-outline" size={18} color="#9aa5b5" />
+            <TextInput
+              style={styles.profileTasksSearchInput}
+              value={searchValue}
+              onChangeText={setSearchValue}
+              placeholder="Search by name"
+              placeholderTextColor="#9aa5b5"
+            />
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.profileTasksFilterRow}
+          >
+            <Pressable
+              style={[
+                styles.profileTasksFilterPill,
+                selectedTag === 'all' && styles.profileTasksFilterPillActive,
+              ]}
+              onPress={() => setSelectedTag('all')}
+            >
+              <Text
+                style={[
+                  styles.profileTasksFilterText,
+                  selectedTag === 'all' && styles.profileTasksFilterTextActive,
+                ]}
+              >
+                All tags
+              </Text>
+            </Pressable>
+            {tagOptions.map((option) => (
+              <Pressable
+                key={option.key}
+                style={[
+                  styles.profileTasksFilterPill,
+                  selectedTag === option.key && styles.profileTasksFilterPillActive,
+                ]}
+                onPress={() => setSelectedTag(option.key)}
+              >
+                <Text
+                  style={[
+                    styles.profileTasksFilterText,
+                    selectedTag === option.key && styles.profileTasksFilterTextActive,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.profileTasksFilterRow}
+          >
+            <Pressable
+              style={[
+                styles.profileTasksFilterPill,
+                selectedRepeat === 'all' && styles.profileTasksFilterPillActive,
+              ]}
+              onPress={() => setSelectedRepeat('all')}
+            >
+              <Text
+                style={[
+                  styles.profileTasksFilterText,
+                  selectedRepeat === 'all' && styles.profileTasksFilterTextActive,
+                ]}
+              >
+                All repeats
+              </Text>
+            </Pressable>
+            {repeatOptions.map((option) => (
+              <Pressable
+                key={option}
+                style={[
+                  styles.profileTasksFilterPill,
+                  selectedRepeat === option && styles.profileTasksFilterPillActive,
+                ]}
+                onPress={() => setSelectedRepeat(option)}
+              >
+                <Text
+                  style={[
+                    styles.profileTasksFilterText,
+                    selectedRepeat === option && styles.profileTasksFilterTextActive,
+                  ]}
+                >
+                  {repeatLabels[option] ?? option}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+        {filteredTasks.length === 0 ? (
+          <View style={styles.profileTasksEmpty}>
+            <Text style={styles.profileTasksEmptyText}>
+              No tasks match the current filters.
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredTasks}
+            keyExtractor={(task) => task.id}
+            renderItem={({ item }) => (
+              <ProfileSwipeTaskCard
+                task={item}
+                onPress={() => onSelectTask?.(item.id)}
+                onDelete={onDeleteTask}
+                onToggleSelect={toggleSelectedTask}
+                isSelected={selectedTaskIds.includes(item.id)}
+                selectionMode={selectionMode}
+              />
+            )}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.profileTasksList}
+          />
+        )}
+        {selectionMode ? (
+          <View style={styles.profileTasksBulkBar}>
+            <Text style={styles.profileTasksBulkText}>
+              {selectedTaskIds.length} selected
+            </Text>
+            <Pressable
+              style={styles.profileTasksBulkDelete}
+              onPress={handleBulkDelete}
+              accessibilityRole="button"
+              accessibilityLabel="Delete selected tasks"
+            >
+              <Ionicons name="trash-outline" size={18} color="#fff" />
+              <Text style={styles.profileTasksBulkDeleteText}>Delete selected</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+    </Modal>
+  );
+}
+
+function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock }) {
+  const [hasImageError, setHasImageError] = useState(false);
+
+  useEffect(() => {
+    setHasImageError(false);
+  }, [task?.customImage, visible]);
+
+  if (!visible || !task) {
+    return null;
+  }
+
+  const normalizedDate = normalizeDateValue(task.date ?? task.dateKey);
+  const dateLabel = normalizedDate ? format(normalizedDate, 'PPP', { locale: ptBR }) : 'Not set';
+  const tagLabel = getTaskTagDisplayLabel(task) ?? 'No tag';
+  const typeLabel = task.typeLabel ?? task.type ?? 'Standard';
+  const isQuantum = task.type === 'quantum';
+  const repeatConfig = normalizeRepeatConfig(task.repeat);
+  const quantumLabel = isQuantum ? getQuantumProgressLabel(task) : null;
+  const quantumModeLabel =
+    task.quantum?.mode === 'timer' ? 'Timer' : task.quantum?.mode ? 'Cont' : 'Quantum';
+  const repeatLabel = repeatConfig.enabled
+    ? repeatConfig.frequency === 'daily'
+      ? repeatConfig.interval === 1
+        ? 'Daily'
+        : `Every ${repeatConfig.interval} days`
+      : repeatConfig.frequency === 'weekly'
+      ? repeatConfig.interval === 1
+        ? 'Weekly'
+        : `Every ${repeatConfig.interval} weeks`
+      : repeatConfig.frequency === 'monthly'
+      ? repeatConfig.interval === 1
+        ? 'Monthly'
+        : `Every ${repeatConfig.interval} months`
+      : repeatConfig.frequency === 'weekend'
+      ? 'Weekends'
+      : repeatConfig.frequency === 'weekdays'
+      ? 'Weekdays'
+      : repeatConfig.frequency
+    : 'One-time';
+  const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.profileDetailOverlay}>
+        <Pressable style={styles.profileDetailBackdrop} onPress={onClose} accessibilityRole="button" />
+        <View style={styles.profileDetailCard}>
+          <View style={styles.profileDetailHeader}>
+            <View style={styles.profileDetailHeaderInfo}>
+              {task.customImage && !hasImageError ? (
+                <Image
+                  source={{ uri: task.customImage }}
+                  style={styles.profileDetailEmojiImage}
+                  onError={() => setHasImageError(true)}
+                />
+              ) : (
+                <Text style={styles.profileDetailEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
+              )}
+              <View style={styles.profileDetailTitleBlock}>
+                <Text style={styles.profileDetailTitle}>{task.title}</Text>
+                <Text style={styles.profileDetailTime}>{formatTaskTime(task.time)}</Text>
+              </View>
+            </View>
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close task details"
+              hitSlop={8}
+            >
+              <Ionicons name="close" size={20} color="#1F2742" />
+            </Pressable>
+          </View>
+          <View style={styles.profileDetailBody}>
+            <View style={styles.profileDetailRow}>
+              <Text style={styles.profileDetailLabel}>Start date</Text>
+              <Text style={styles.profileDetailValue}>{dateLabel}</Text>
+            </View>
+            <View style={styles.profileDetailRow}>
+              <Text style={styles.profileDetailLabel}>Repeat</Text>
+              <Text style={styles.profileDetailValue}>{repeatLabel}</Text>
+            </View>
+            <View style={styles.profileDetailRow}>
+              <Text style={styles.profileDetailLabel}>Type</Text>
+              <Text style={styles.profileDetailValue}>{typeLabel}</Text>
+            </View>
+            <View style={styles.profileDetailRow}>
+              <Text style={styles.profileDetailLabel}>Tag</Text>
+              <Text style={styles.profileDetailValue}>{tagLabel}</Text>
+            </View>
+            {isQuantum ? (
+              <View style={styles.profileDetailRow}>
+                <Text style={styles.profileDetailLabel}>{quantumModeLabel}</Text>
+                <Text style={styles.profileDetailValue}>{quantumLabel ?? 'Not set'}</Text>
+              </View>
+            ) : (
+              <View style={styles.profileDetailRow}>
+                <Text style={styles.profileDetailLabel}>Subtasks</Text>
+                <Text style={styles.profileDetailValue}>{totalSubtasks}</Text>
+              </View>
+            )}
+          </View>
+          <Pressable
+            style={[
+              styles.profileDetailLockButton,
+              task.profileLocked && styles.profileDetailLockButtonActive,
+            ]}
+            onPress={() => onToggleLock?.(task.id)}
+            accessibilityRole="button"
+            accessibilityLabel={task.profileLocked ? 'Unlock task' : 'Lock task'}
+          >
+            <Ionicons
+              name={task.profileLocked ? 'lock-closed' : 'lock-open'}
+              size={18}
+              color={task.profileLocked ? '#fff' : '#3c2ba7'}
+            />
+            <Text
+              style={[
+                styles.profileDetailLockButtonText,
+                task.profileLocked && styles.profileDetailLockButtonTextActive,
+              ]}
+            >
+              {task.profileLocked ? 'Unlock task' : 'Lock task'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function TaskDetailModal({
   visible,
   task,
@@ -2677,12 +3346,20 @@ function TaskDetailModal({
               ) : (
                 <Text style={styles.detailEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
               )}
-                <View style={styles.detailTitleContainer}>
+              <View style={styles.detailTitleContainer}>
+                <View style={styles.detailTitleRow}>
                   <Text style={styles.detailTitle}>{task.title}</Text>
-                  <Text style={styles.detailTime}>{formatTaskTime(task.time)}</Text>
-                  {quantumLabel ? (
-                    <Text style={styles.detailSubtaskSummaryLabel}>{quantumLabel}</Text>
-                  ) : totalSubtasks > 0 ? (
+                  <Ionicons
+                    name={task.profileLocked ? 'lock-closed' : 'lock-open-outline'}
+                    size={14}
+                    color="#9aa5b5"
+                    style={styles.detailTitleLock}
+                  />
+                </View>
+                <Text style={styles.detailTime}>{formatTaskTime(task.time)}</Text>
+                {quantumLabel ? (
+                  <Text style={styles.detailSubtaskSummaryLabel}>{quantumLabel}</Text>
+                ) : totalSubtasks > 0 ? (
                     <Text style={styles.detailSubtaskSummaryLabel}>
                       {completedSubtasks}/{totalSubtasks} subtasks completed
                     </Text>
@@ -2750,8 +3427,10 @@ function TaskDetailModal({
               accessibilityRole="button"
               accessibilityLabel="Edit task"
             >
-              <Ionicons name="create-outline" size={18} color="#3c2ba7" />
-              <Text style={styles.detailEditButtonText}>Edit Task</Text>
+              <View style={styles.detailEditContent}>
+                <Ionicons name="create-outline" size={18} color="#3c2ba7" />
+                <Text style={styles.detailEditButtonText}>Edit Task</Text>
+              </View>
             </Pressable>
           </View>
         </View>
@@ -3108,6 +3787,8 @@ const styles = StyleSheet.create({
   swipeableWrapper: {
     marginBottom: 14,
     position: 'relative',
+    borderRadius: 18,
+    overflow: 'hidden',
   },
   swipeableActions: {
     position: 'absolute',
@@ -3120,7 +3801,27 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     paddingVertical: 8,
     paddingHorizontal: 12,
-    backgroundColor: '#f3f4fb',
+    backgroundColor: '#f6f6fb',
+    borderRadius: 18,
+  },
+  swipeLockBadge: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#d7dbeb',
+  },
+  swipeLockText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#3c2ba7',
   },
   swipeActionButton: {
     flex: 1,
@@ -3146,6 +3847,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   swipeActionTextDelete: {
+    color: '#ffffff',
+  },
+  swipeActionButtonDisabled: {
+    opacity: 0.55,
+  },
+  swipeActionTextDisabled: {
     color: '#ffffff',
   },
   taskInfo: {
@@ -3258,10 +3965,18 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     flex: 1,
   },
+  detailTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   detailTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: '#1a1a2e',
+  },
+  detailTitleLock: {
+    opacity: 0.7,
   },
   detailTime: {
     marginTop: 4,
@@ -3426,6 +4141,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 12,
+    alignSelf: 'center',
+  },
+  detailEditContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   detailEditButtonText: {
     fontSize: 15,
@@ -3870,6 +4591,336 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  profileTasksButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+    backgroundColor: '#3c2ba7',
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderRadius: 26,
+    shadowColor: '#3c2ba7',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  profileTasksButtonText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  profileTasksContainer: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 28,
+  },
+  profileTasksHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  profileTasksTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  profileTasksSubtitle: {
+    fontSize: 13,
+    color: '#6f7a86',
+    marginTop: 4,
+  },
+  profileTasksList: {
+    paddingBottom: 96,
+  },
+  profileTasksEmpty: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  profileTasksEmptyText: {
+    fontSize: 14,
+    color: '#6f7a86',
+    textAlign: 'center',
+  },
+  profileTasksFilters: {
+    gap: 12,
+    marginBottom: 16,
+  },
+  profileTasksSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#f4f6fb',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  profileTasksSearchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1a1a2e',
+  },
+  profileTasksFilterRow: {
+    gap: 8,
+  },
+  profileTasksFilterPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#edefff',
+  },
+  profileTasksFilterPillActive: {
+    backgroundColor: '#3c2ba7',
+  },
+  profileTasksFilterText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#3c2ba7',
+  },
+  profileTasksFilterTextActive: {
+    color: '#ffffff',
+  },
+  profileTasksBulkBar: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 24,
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000000',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  profileTasksBulkText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1a1a2e',
+  },
+  profileTasksBulkDelete: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: '#ff6b6b',
+  },
+  profileTasksBulkDeleteText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
+    textTransform: 'uppercase',
+  },
+  profileSwipeWrapper: {
+    marginBottom: 12,
+  },
+  profileSwipeActions: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 92,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
+    backgroundColor: '#f5f5fb',
+  },
+  profileSwipeDelete: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ff6b6b',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    gap: 4,
+  },
+  profileSwipeDeleteDisabled: {
+    opacity: 0.55,
+  },
+  profileSwipeDeleteText: {
+    fontSize: 11,
+    color: '#ffffff',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  profileTaskCard: {
+    borderWidth: 1,
+    borderRadius: 18,
+  },
+  profileTaskCardSelected: {
+    borderColor: '#3c2ba7',
+    shadowColor: '#3c2ba7',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  profileTaskCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  profileTaskIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+  },
+  profileTaskEmoji: {
+    fontSize: 26,
+  },
+  profileTaskEmojiImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    resizeMode: 'cover',
+  },
+  profileTaskDetails: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  profileTaskTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1a1a2e',
+  },
+  profileTaskMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 6,
+  },
+  profileTaskTime: {
+    fontSize: 12,
+    color: '#6f7a86',
+    fontWeight: '500',
+  },
+  profileTaskTag: {
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#d7dbeb',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  profileTaskTagText: {
+    fontSize: 11,
+    color: '#3c2ba7',
+    fontWeight: '600',
+  },
+  profileTaskLock: {
+    marginLeft: 4,
+  },
+  profileDetailOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(10, 12, 30, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  profileDetailBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  profileDetailCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  profileDetailHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  profileDetailHeaderInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  profileDetailEmoji: {
+    fontSize: 34,
+  },
+  profileDetailEmojiImage: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    resizeMode: 'cover',
+  },
+  profileDetailTitleBlock: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  profileDetailTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  profileDetailTime: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#6f7a86',
+  },
+  profileDetailBody: {
+    gap: 12,
+  },
+  profileDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  profileDetailLabel: {
+    fontSize: 13,
+    color: '#6f7a86',
+    fontWeight: '600',
+  },
+  profileDetailValue: {
+    fontSize: 13,
+    color: '#1a1a2e',
+    fontWeight: '600',
+  },
+  profileDetailLockButton: {
+    marginTop: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#3c2ba7',
+    gap: 8,
+  },
+  profileDetailLockButtonActive: {
+    backgroundColor: '#3c2ba7',
+  },
+  profileDetailLockButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#3c2ba7',
+  },
+  profileDetailLockButtonTextActive: {
+    color: '#ffffff',
   },
   
   // Customize Modal Styles
