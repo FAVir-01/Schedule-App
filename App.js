@@ -3787,6 +3787,8 @@ const styles = StyleSheet.create({
   swipeableWrapper: {
     marginBottom: 14,
     position: 'relative',
+    borderRadius: 18,
+    overflow: 'hidden',
   },
   swipeableActions: {
     position: 'absolute',
@@ -3799,7 +3801,27 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     paddingVertical: 8,
     paddingHorizontal: 12,
-    backgroundColor: '#f3f4fb',
+    backgroundColor: '#f6f6fb',
+    borderRadius: 18,
+  },
+  swipeLockBadge: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#d7dbeb',
+  },
+  swipeLockText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#3c2ba7',
   },
   swipeLockBadge: {
     position: 'absolute',
