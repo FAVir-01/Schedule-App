@@ -2599,7 +2599,7 @@ function SwipeableTaskCard({
   const isQuantumComplete = isQuantum && getQuantumProgressLabel(task) && task.completed;
 
   return (
-    <View style={styles.swipeableWrapper}>
+    <View style={[styles.swipeableWrapper, { zIndex: isOpen ? 10 : 1 }]}>
       <View style={styles.swipeableActions}>
         {task.profileLocked ? (
           <View style={styles.swipeLockBadge}>
@@ -3766,6 +3766,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderWidth: 1,
     overflow: 'hidden',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: -2, height: 0 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   waterFillContainer: {
     ...StyleSheet.absoluteFillObject,
@@ -3805,6 +3810,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f6f6fb',
     borderRadius: 18,
     overflow: 'hidden',
+    zIndex: -1,
   },
   swipeLockBadge: {
     position: 'absolute',
