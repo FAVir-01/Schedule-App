@@ -2620,7 +2620,6 @@ function SwipeableTaskCard({
           style={[
             styles.swipeActionButton,
             styles.swipeActionDelete,
-            task.profileLocked && styles.swipeActionButtonDisabled,
           ]}
           onPress={() => handleAction(onDelete)}
           accessibilityRole="button"
@@ -2632,7 +2631,6 @@ function SwipeableTaskCard({
             style={[
               styles.swipeActionText,
               styles.swipeActionTextDelete,
-              task.profileLocked && styles.swipeActionTextDisabled,
             ]}
           >
             Delete
