@@ -2644,7 +2644,7 @@ function SwipeableTaskCard({
         style={[
           styles.taskCard,
           {
-            backgroundColor,
+            backgroundColor: backgroundColor || '#fff',
             borderColor,
             transform: [{ translateX }],
           },
@@ -3766,9 +3766,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderWidth: 1,
     overflow: 'hidden',
-    elevation: 3,
+    backgroundColor: '#ffffff',
+    elevation: 4,
     shadowColor: '#000',
-    shadowOffset: { width: -2, height: 0 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
@@ -3793,8 +3794,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     position: 'relative',
     borderRadius: 18,
-    overflow: 'hidden',
-    backgroundColor: '#f6f6fb',
+    backgroundColor: 'transparent',
   },
   swipeableActions: {
     position: 'absolute',
@@ -3809,7 +3809,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     backgroundColor: '#f6f6fb',
     borderRadius: 18,
-    overflow: 'hidden',
     zIndex: -1,
   },
   swipeLockBadge: {
