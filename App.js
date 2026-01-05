@@ -2621,7 +2621,7 @@ function SwipeableTaskCard({
             styles.swipeActionButton,
             styles.swipeActionDelete,
           ]}
-          onPress={() => handleAction(onDelete)}
+          onPress={() => handleAction(task.profileLocked ? null : onDelete)}
           accessibilityRole="button"
           accessibilityLabel="Delete task"
           disabled={task.profileLocked}
