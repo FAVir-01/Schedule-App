@@ -2886,14 +2886,6 @@ function ProfileSwipeTaskCard({
                   <Text style={styles.profileTaskTagText}>{tagLabel}</Text>
                 </View>
               ) : null}
-              {task.profileLocked ? (
-                <Ionicons
-                  name="lock-closed"
-                  size={14}
-                  color="#3c2ba7"
-                  style={styles.profileTaskLock}
-                />
-              ) : null}
             </View>
           </View>
         </Pressable>
@@ -4808,9 +4800,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#3c2ba7',
     fontWeight: '600',
-  },
-  profileTaskLock: {
-    marginLeft: 4,
   },
   profileDetailOverlay: {
     flex: 1,
