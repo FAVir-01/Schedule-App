@@ -4140,7 +4140,7 @@ const styles = StyleSheet.create({
   detailEditLink: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     gap: 8,
     paddingVertical: 12,
     alignSelf: 'center',
