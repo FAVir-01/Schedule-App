@@ -2601,6 +2601,12 @@ function SwipeableTaskCard({
   return (
     <View style={[styles.swipeableWrapper, { zIndex: isOpen ? 10 : 1 }]}>
       <View style={styles.swipeableActions}>
+        {task.profileLocked ? (
+          <View style={styles.swipeLockBadge}>
+            <Ionicons name="lock-closed" size={14} color="#3c2ba7" />
+            <Text style={styles.swipeLockText}>Locked</Text>
+          </View>
+        ) : null}
         <TouchableOpacity
           style={[styles.swipeActionButton, styles.swipeActionCopy]}
           onPress={() => handleAction(onCopy)}
@@ -4120,7 +4126,7 @@ const styles = StyleSheet.create({
   detailEditLink: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     gap: 8,
     paddingVertical: 12,
     alignSelf: 'center',
