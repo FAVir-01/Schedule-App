@@ -118,6 +118,11 @@ const QUANTUM_MODES = [
   { key: 'count', label: 'Count' },
 ];
 
+const QUANTUM_ANIMATIONS = [
+  { key: 'defaut', label: 'defaut' },
+  { key: 'water', label: 'water' },
+];
+
 const createTagKey = (label, existingKeys) => {
   const sanitized = label
     .toLowerCase()
@@ -449,6 +454,7 @@ export default function AddHabitSheet({
   const [selectedTag, setSelectedTag] = useState('none');
   const [selectedType, setSelectedType] = useState(DEFAULT_TYPE_OPTIONS[0].key);
   const [quantumMode, setQuantumMode] = useState(QUANTUM_MODES[0].key);
+  const [quantumAnimation, setQuantumAnimation] = useState(QUANTUM_ANIMATIONS[0].key);
   const [quantumTimerMinutes, setQuantumTimerMinutes] = useState('0');
   const [quantumTimerSeconds, setQuantumTimerSeconds] = useState('0');
   const [quantumCountValue, setQuantumCountValue] = useState('1');
@@ -474,6 +480,7 @@ export default function AddHabitSheet({
   const [pendingTag, setPendingTag] = useState(selectedTag);
   const [pendingType, setPendingType] = useState(selectedType);
   const [pendingQuantumMode, setPendingQuantumMode] = useState(quantumMode);
+  const [pendingQuantumAnimation, setPendingQuantumAnimation] = useState(quantumAnimation);
   const [pendingQuantumTimerMinutes, setPendingQuantumTimerMinutes] = useState(quantumTimerMinutes);
   const [pendingQuantumTimerSeconds, setPendingQuantumTimerSeconds] = useState(quantumTimerSeconds);
   const [pendingQuantumCountValue, setPendingQuantumCountValue] = useState(quantumCountValue);
@@ -603,6 +610,7 @@ export default function AddHabitSheet({
       } else if (panel === 'type') {
         setPendingType(selectedType);
         setPendingQuantumMode(quantumMode);
+        setPendingQuantumAnimation(quantumAnimation);
         setPendingQuantumTimerMinutes(quantumTimerMinutes);
         setPendingQuantumTimerSeconds(quantumTimerSeconds);
         setPendingQuantumCountValue(quantumCountValue);
@@ -617,6 +625,7 @@ export default function AddHabitSheet({
       hasSpecifiedTime,
       subtasks,
       quantumMode,
+      quantumAnimation,
       quantumTimerMinutes,
       quantumTimerSeconds,
       quantumCountValue,
@@ -727,6 +736,7 @@ export default function AddHabitSheet({
     setSelectedType(pendingType);
     if (pendingType === 'quantum') {
       setQuantumMode(pendingQuantumMode ?? QUANTUM_MODES[0].key);
+      setQuantumAnimation(pendingQuantumAnimation ?? QUANTUM_ANIMATIONS[0].key);
       setQuantumTimerMinutes(pendingQuantumTimerMinutes);
       setQuantumTimerSeconds(pendingQuantumTimerSeconds);
       setQuantumCountValue(pendingQuantumCountValue);
@@ -736,6 +746,7 @@ export default function AddHabitSheet({
   }, [
     closePanel,
     pendingQuantumMode,
+    pendingQuantumAnimation,
     pendingQuantumTimerMinutes,
     pendingQuantumTimerSeconds,
     pendingQuantumCountUnit,
@@ -844,6 +855,8 @@ export default function AddHabitSheet({
     const resolvedTagKey = initialHabit.tag ?? 'none';
     const resolvedTypeKey = initialHabit.type ?? DEFAULT_TYPE_OPTIONS[0].key;
     const resolvedQuantumMode = initialHabit.quantum?.mode ?? QUANTUM_MODES[0].key;
+    const resolvedQuantumAnimation =
+      initialHabit.quantum?.animation ?? QUANTUM_ANIMATIONS[0].key;
     const resolvedQuantumTimer = initialHabit.quantum?.timer ?? {};
     const resolvedQuantumCount = initialHabit.quantum?.count ?? {};
     const resolvedQuantumTimerMinutes = `${resolvedQuantumTimer.minutes ?? '0'}`;
@@ -874,6 +887,8 @@ export default function AddHabitSheet({
     setPendingType(resolvedTypeKey);
     setQuantumMode(resolvedQuantumMode);
     setPendingQuantumMode(resolvedQuantumMode);
+    setQuantumAnimation(resolvedQuantumAnimation);
+    setPendingQuantumAnimation(resolvedQuantumAnimation);
     setQuantumTimerMinutes(resolvedQuantumTimerMinutes);
     setQuantumTimerSeconds(resolvedQuantumTimerSeconds);
     setQuantumCountValue(resolvedQuantumCountValue);
@@ -979,6 +994,8 @@ export default function AddHabitSheet({
           setPendingType(DEFAULT_TYPE_OPTIONS[0].key);
           setQuantumMode(QUANTUM_MODES[0].key);
           setPendingQuantumMode(QUANTUM_MODES[0].key);
+          setQuantumAnimation(QUANTUM_ANIMATIONS[0].key);
+          setPendingQuantumAnimation(QUANTUM_ANIMATIONS[0].key);
           setQuantumTimerMinutes('0');
           setQuantumTimerSeconds('0');
           setQuantumCountValue('1');
@@ -1065,6 +1082,7 @@ export default function AddHabitSheet({
       typeLabel: selectedTypeOption.label,
       quantum: {
         mode: quantumMode,
+        animation: quantumAnimation,
         timer: {
           minutes: Number.parseInt(quantumTimerMinutes, 10) || 0,
           seconds: Number.parseInt(quantumTimerSeconds, 10) || 0,
@@ -1102,6 +1120,7 @@ export default function AddHabitSheet({
     selectedWeekdays,
     selectedType,
     quantumMode,
+    quantumAnimation,
     quantumTimerMinutes,
     quantumTimerSeconds,
     quantumCountValue,
@@ -1114,10 +1133,6 @@ export default function AddHabitSheet({
     customImage,
     tagOptions,
     typeOptions,
-    pendingQuantumTimerMinutes,
-    pendingQuantumTimerSeconds,
-    pendingQuantumCountValue,
-    pendingQuantumCountUnit,
   ]);
 
   const panResponder = useMemo(
@@ -1498,10 +1513,12 @@ export default function AddHabitSheet({
               {selectedType === 'quantum' ? (
                 <QuantumPanel
                   mode={quantumMode}
+                  animation={quantumAnimation}
                   timerMinutes={quantumTimerMinutes}
                   timerSeconds={quantumTimerSeconds}
                   countValue={quantumCountValue}
                   countUnit={quantumCountUnit}
+                  onChangeAnimation={setQuantumAnimation}
                   onChangeTimerMinutes={setQuantumTimerMinutes}
                   onChangeTimerSeconds={setQuantumTimerSeconds}
                   onChangeCountValue={setQuantumCountValue}
@@ -1658,10 +1675,12 @@ export default function AddHabitSheet({
                     </View>
                     <QuantumPanel
                       mode={pendingQuantumMode}
+                      animation={pendingQuantumAnimation}
                       timerMinutes={pendingQuantumTimerMinutes}
                       timerSeconds={pendingQuantumTimerSeconds}
                       countValue={pendingQuantumCountValue}
                       countUnit={pendingQuantumCountUnit}
+                      onChangeAnimation={setPendingQuantumAnimation}
                       onChangeTimerMinutes={setPendingQuantumTimerMinutes}
                       onChangeTimerSeconds={setPendingQuantumTimerSeconds}
                       onChangeCountValue={setPendingQuantumCountValue}
@@ -1866,10 +1885,12 @@ function normalizeNumericText(value, { max, fallback = '' } = {}) {
 
 function QuantumPanel({
   mode,
+  animation,
   timerMinutes,
   timerSeconds,
   countValue,
   countUnit,
+  onChangeAnimation,
   onChangeTimerMinutes,
   onChangeTimerSeconds,
   onChangeCountValue,
@@ -1942,6 +1963,35 @@ function QuantumPanel({
             </View>
           </View>
         )}
+        <View style={styles.quantumAnimationSection}>
+          <Text style={styles.quantumFieldLabel}>Animation</Text>
+          <View style={styles.quantumAnimationRow}>
+            {QUANTUM_ANIMATIONS.map((option) => {
+              const isSelected = animation === option.key;
+              return (
+                <Pressable
+                  key={option.key}
+                  style={[
+                    styles.quantumModeButton,
+                    isSelected && styles.quantumModeButtonSelected,
+                  ]}
+                  onPress={() => onChangeAnimation(option.key)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
+                >
+                  <Text
+                    style={[
+                      styles.quantumModeButtonText,
+                      isSelected && styles.quantumModeButtonTextSelected,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
       </View>
       <Text style={styles.subtasksPanelHint}>
         {isTimer
@@ -2968,6 +3018,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
   },
+  quantumAnimationSection: {
+    gap: 8,
+  },
+  quantumAnimationRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
   quantumField: {
     flex: 1,
     gap: 8,
@@ -3347,14 +3404,6 @@ const styles = StyleSheet.create({
   repeatContent: {
     gap: 18,
   },
-  weekdayToggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    paddingTop: 10,
-    gap: 8,
-  },
   weekdayGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -3411,24 +3460,6 @@ const styles = StyleSheet.create({
   },
   monthDayLabelActive: {
     color: '#1F2742',
-  },
-  weekdayToggle: {
-    flex: 1,
-    height: 44,
-    borderRadius: 16,
-    backgroundColor: '#E8EEFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  weekdayToggleActive: {
-    backgroundColor: '#1F2742',
-  },
-  weekdayToggleLabel: {
-    color: '#1F2742',
-    fontWeight: '600',
-  },
-  weekdayToggleLabelActive: {
-    color: '#FFFFFF',
   },
   timePanel: {
     backgroundColor: '#F5F7FF',

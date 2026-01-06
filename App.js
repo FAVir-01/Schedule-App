@@ -4,6 +4,7 @@ import {
   AppState,
   BackHandler,
   Dimensions,
+  Easing,
   Platform,
   Image,
   Modal,
@@ -21,7 +22,7 @@ import {
   ImageBackground,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -50,37 +51,28 @@ import {
   saveUserSettings,
 } from './storage';
 import AddHabitSheet from './components/AddHabitSheet';
-
-// --- IMAGENS ANIMADAS PARA OS MESES ---
-const MONTH_IMAGES = [
-  require('./assets/months/jan.gif'),
-  require('./assets/months/feb.gif'),
-  require('./assets/months/mar.gif'),
-  require('./assets/months/apr.gif'),
-  require('./assets/months/may.gif'),
-  require('./assets/months/jun.gif'),
-  require('./assets/months/jul.gif'),
-  require('./assets/months/aug.gif'),
-  require('./assets/months/sep.gif'),
-  require('./assets/months/oct.gif'),
-  require('./assets/months/nov.gif'),
-  require('./assets/months/dec.gif'),
-];
-
-const MONTH_NAMES = [
-  'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO',
-  'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'
-];
-
-const getMonthImageSource = (monthIndex, customImages) => {
-  const index = monthIndex % 12;
-
-  if (customImages && customImages[index]) {
-    return { uri: customImages[index] };
-  }
-
-  return MONTH_IMAGES[index];
-};
+import { MONTH_NAMES, getMonthImageSource } from './constants/months';
+import { DEFAULT_USER_SETTINGS } from './constants/userSettings';
+import { LEFT_TABS, RIGHT_TABS, getNavigationBarThemeForTab } from './constants/navigation';
+import { interpolateHexColor, lightenColor } from './utils/colorUtils';
+import {
+  getDateKey,
+  getMonthId,
+  getMonthStart,
+  normalizeDateValue,
+  shouldTaskAppearOnDate,
+} from './utils/dateUtils';
+import { clamp01, clampValue } from './utils/mathUtils';
+import {
+  getQuantumProgressLabel,
+  getQuantumProgressPercent,
+  getSubtaskCompletionStatus,
+  getTaskCompletionStatus,
+  getTaskTagDisplayLabel,
+  normalizeTaskTagKey,
+} from './utils/taskUtils';
+import { formatTaskTime, toMinutes } from './utils/timeUtils';
+import { buildWavePath } from './utils/waveUtils';
 
 // --- COMPONENTE DA FAIXA DO TOPO ---
 const StickyMonthHeader = ({ date, customImages }) => {
@@ -104,11 +96,34 @@ const StickyMonthHeader = ({ date, customImages }) => {
 };
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
 const habitImage = require('./assets/add-habit.png');
 const reflectionImage = require('./assets/add-reflection.png');
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
+const FALLBACK_EMOJI = '📝';
+const DEFAULT_REPEAT_CONFIG = { enabled: true, frequency: 'daily', interval: 1 };
+
+const normalizeRepeatConfig = (repeatConfig) => {
+  if (!repeatConfig) {
+    return DEFAULT_REPEAT_CONFIG;
+  }
+  const { option, frequency, interval, enabled, ...rest } = repeatConfig;
+  const resolvedFrequency = frequency ?? option ?? DEFAULT_REPEAT_CONFIG.frequency;
+  const parsedInterval = Number.parseInt(interval, 10);
+  const resolvedInterval = Number.isFinite(parsedInterval) && parsedInterval > 0
+    ? parsedInterval
+    : DEFAULT_REPEAT_CONFIG.interval;
+  const resolvedEnabled = enabled === undefined ? true : Boolean(enabled);
+
+  return {
+    ...rest,
+    enabled: resolvedEnabled,
+    frequency: resolvedFrequency,
+    interval: resolvedInterval,
+  };
+};
 
 const triggerImpact = (style) => {
   if (!HAPTICS_SUPPORTED) {
@@ -294,366 +309,6 @@ function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage 
 }
 
 
-const LEFT_TABS = [
-  {
-    key: 'today',
-    label: 'Today',
-    icon: 'time-outline',
-  },
-  {
-    key: 'calendar',
-    label: 'Calendar',
-    icon: 'calendar-clear-outline',
-  },
-];
-
-const RIGHT_TABS = [
-  {
-    key: 'discover',
-    label: 'Discover',
-    icon: 'compass-outline',
-  },
-  {
-    key: 'profile',
-    label: 'Profile',
-    icon: 'person-outline',
-  },
-];
-
-const NAV_BAR_THEMES = {
-  today: {
-    buttonStyle: 'dark',
-  },
-  calendar: {
-    buttonStyle: 'dark',
-  },
-  discover: {
-    buttonStyle: 'dark',
-  },
-  profile: {
-    buttonStyle: 'dark',
-  },
-};
-
-const DEFAULT_NAV_BAR_THEME = NAV_BAR_THEMES.calendar;
-
-const getNavigationBarThemeForTab = (tabKey) => NAV_BAR_THEMES[tabKey] ?? DEFAULT_NAV_BAR_THEME;
-
-const DEFAULT_USER_SETTINGS = {
-  activeTab: 'today',
-  selectedTagFilter: 'all',
-};
-
-const getDateKey = (date) => {
-  const normalized = new Date(date);
-  normalized.setHours(0, 0, 0, 0);
-  const year = normalized.getFullYear();
-  const month = String(normalized.getMonth() + 1).padStart(2, '0');
-  const day = String(normalized.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const getMonthStart = (date) => {
-  const normalized = new Date(date);
-  normalized.setHours(0, 0, 0, 0);
-  normalized.setDate(1);
-  return normalized;
-};
-
-const getMonthId = (date) => {
-  const normalized = getMonthStart(date);
-  return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}`;
-};
-
-const calculateWeeksInMonth = (date) => {
-  try {
-    if (typeof getWeeksInMonth === 'function') {
-      return getWeeksInMonth(date, { weekStartsOn: 0 });
-    }
-  } catch (error) {
-    // Fallback to manual calculation below
-  }
-
-  const start = startOfWeek(startOfMonth(date));
-  const end = endOfWeek(endOfMonth(date));
-  const days = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24) + 1;
-  return Math.round(days / 7);
-};
-
-const hexToRgb = (hex) => {
-  const sanitized = hex.replace('#', '');
-  const bigint = parseInt(sanitized, 16);
-  return {
-    r: (bigint >> 16) & 255,
-    g: (bigint >> 8) & 255,
-    b: bigint & 255,
-  };
-};
-
-const lightenColor = (hex, amount = 0.7) => {
-  try {
-    const { r, g, b } = hexToRgb(hex);
-    const mixChannel = (channel) => Math.round(channel + (255 - channel) * amount);
-    const mixed = [mixChannel(r), mixChannel(g), mixChannel(b)];
-    return `#${mixed.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
-  } catch (error) {
-    return '#f2f3f8';
-  }
-};
-
-const formatNumber = (value) => value.toString().padStart(2, '0');
-
-const formatTimeValue = ({ hour, minute, meridiem }) =>
-  `${formatNumber(hour)}:${formatNumber(minute)} ${meridiem}`;
-
-const toMinutes = ({ hour, minute, meridiem }) => {
-  const normalizedHour = meridiem === 'PM' ? (hour % 12) + 12 : hour % 12;
-  return normalizedHour * 60 + minute;
-};
-
-const formatTaskTime = (time) => {
-  if (!time || !time.specified) {
-    return 'Anytime';
-  }
-
-  if (time.mode === 'period' && time.period) {
-    const { start, end } = time.period;
-    return `${formatTimeValue(start)} - ${formatTimeValue(end)}`;
-  }
-
-  if (time.point) {
-    return formatTimeValue(time.point);
-  }
-
-  return 'Anytime';
-};
-
-const clampValue = (value, min, max) => Math.min(Math.max(value, min), max);
-
-const formatDuration = (totalSeconds) => {
-  const safeSeconds = Math.max(0, totalSeconds || 0);
-  const minutes = Math.floor(safeSeconds / 60);
-  const seconds = safeSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, '0')}`;
-};
-
-const getQuantumProgressLabel = (task) => {
-  if (!task || task.type !== 'quantum' || !task.quantum) {
-    return null;
-  }
-  const mode = task.quantum.mode;
-  if (mode === 'timer') {
-    const minutes = task.quantum.timer?.minutes ?? 0;
-    const seconds = task.quantum.timer?.seconds ?? 0;
-    const limitSeconds = minutes * 60 + seconds;
-    if (!limitSeconds) {
-      return null;
-    }
-    const doneSeconds =
-      typeof task.quantum.doneSeconds === 'number'
-        ? task.quantum.doneSeconds
-        : task.completed
-        ? limitSeconds
-        : 0;
-    return `${formatDuration(doneSeconds)}/${formatDuration(limitSeconds)}`;
-  }
-  if (mode === 'count') {
-    const limitValue = task.quantum.count?.value ?? 0;
-    if (!limitValue) {
-      return null;
-    }
-    const unit = task.quantum.count?.unit?.trim() ?? '';
-    const doneValue =
-      typeof task.quantum.doneCount === 'number'
-        ? task.quantum.doneCount
-        : task.completed
-        ? limitValue
-        : 0;
-    return `${doneValue}/${limitValue}${unit ? ` ${unit}` : ''}`;
-  }
-  return null;
-};
-
-const getTaskCompletionStatus = (task, date) => {
-  if (!task || !date) {
-    return false;
-  }
-
-  const dateKey = typeof date === 'string' ? date : getDateKey(date);
-  if (!dateKey) {
-    return false;
-  }
-
-  if (task.completedDates && typeof task.completedDates === 'object') {
-    return Boolean(task.completedDates[dateKey]);
-  }
-
-  if (!task.repeat && task.dateKey) {
-    return task.dateKey === dateKey ? Boolean(task.completed) : false;
-  }
-
-  return false;
-};
-
-const getSubtaskCompletionStatus = (subtask, dateKey) => {
-  if (!subtask) {
-    return false;
-  }
-
-  if (dateKey && subtask.completedDates && typeof subtask.completedDates === 'object') {
-    if (subtask.completedDates[dateKey] === true) {
-      return true;
-    }
-    if (subtask.completedDates[dateKey] === false) {
-      return false;
-    }
-  }
-
-  if (dateKey) {
-    return false;
-  }
-
-  return Boolean(subtask.completed);
-};
-
-const normalizeTaskTagKey = (task) => {
-  if (!task) {
-    return null;
-  }
-  if (task.tag && typeof task.tag === 'string') {
-    const normalized = task.tag.trim();
-    if (!normalized || normalized.toLowerCase() === 'none' || normalized.toLowerCase() === 'no_tag') {
-      return null;
-    }
-    return normalized;
-  }
-  if (task.tagLabel && typeof task.tagLabel === 'string') {
-    const label = task.tagLabel.trim();
-    if (!label || label.toLowerCase() === 'no tag') {
-      return null;
-    }
-    return label
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_|_$/g, '');
-  }
-  return null;
-};
-
-const getTaskTagDisplayLabel = (task) => {
-  if (!task) {
-    return null;
-  }
-  if (task.tagLabel && typeof task.tagLabel === 'string') {
-    const label = task.tagLabel.trim();
-    if (!label || label.toLowerCase() === 'no tag') {
-      return null;
-    }
-    return label;
-  }
-  if (task.tag && typeof task.tag === 'string') {
-    const normalized = task.tag.trim();
-    if (!normalized || normalized.toLowerCase() === 'none' || normalized.toLowerCase() === 'no_tag') {
-      return null;
-    }
-    return normalized
-      .split('_')
-      .filter(Boolean)
-      .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
-      .join(' ');
-  }
-  return null;
-};
-
-const normalizeDateValue = (value) => {
-  if (!value) {
-    return null;
-  }
-  if (value instanceof Date) {
-    const date = new Date(value);
-    date.setHours(0, 0, 0, 0);
-    return date;
-  }
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const [year, month, day] = value.split('-').map((part) => Number.parseInt(part, 10));
-    const date = new Date(year, month - 1, day);
-    date.setHours(0, 0, 0, 0);
-    return date;
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-  date.setHours(0, 0, 0, 0);
-  return date;
-};
-
-const isSameDay = (dateA, dateB) => {
-  if (!dateA || !dateB) {
-    return false;
-  }
-  return dateA.getTime() === dateB.getTime();
-};
-
-const getWeekdayKeyFromDate = (date) => {
-  const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-  return WEEKDAY_KEYS[date.getDay()] ?? null;
-};
-
-const shouldTaskAppearOnDate = (task, targetDate) => {
-  if (!task || !targetDate) {
-    return false;
-  }
-
-  const normalizedTargetDate = normalizeDateValue(targetDate);
-  const normalizedStartDate = normalizeDateValue(task.date ?? task.dateKey);
-
-  if (!normalizedTargetDate || !normalizedStartDate) {
-    return false;
-  }
-
-  if (isSameDay(normalizedStartDate, normalizedTargetDate)) {
-    return true;
-  }
-
-  const repeat = task.repeat;
-  if (!repeat || !repeat.option || repeat.option === 'off') {
-    return false;
-  }
-
-  if (normalizedTargetDate.getTime() < normalizedStartDate.getTime()) {
-    return false;
-  }
-
-  switch (repeat.option) {
-    case 'daily':
-      return true;
-    case 'weekly':
-      return normalizedTargetDate.getDay() === normalizedStartDate.getDay();
-    case 'monthly':
-      return normalizedTargetDate.getDate() === normalizedStartDate.getDate();
-    case 'weekend': {
-      const day = normalizedTargetDate.getDay();
-      return day === 0 || day === 6;
-    }
-    case 'weekdays': {
-      const day = normalizedTargetDate.getDay();
-      return day >= 1 && day <= 5;
-    }
-    case 'custom': {
-      const weekdays = Array.isArray(repeat.weekdays) ? repeat.weekdays : [];
-      if (!weekdays.length) {
-        return false;
-      }
-      const weekdayKey = getWeekdayKeyFromDate(normalizedTargetDate);
-      return weekdayKey ? weekdays.includes(weekdayKey) : false;
-    }
-    default:
-      return false;
-  }
-};
-
-// --- COMPONENTE ATUALIZADO: RELATÓRIO DO DIA COM GIF ---
 function DayReportModal({ visible, date, tasks, onClose, customImages }) {
   const { height } = useWindowDimensions();
 
@@ -668,6 +323,11 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter((t) => t.completed).length;
   const targetSuccessRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const [imageErrors, setImageErrors] = useState({});
+
+  useEffect(() => {
+    setImageErrors({});
+  }, [date, tasks, visible]);
 
   useEffect(() => {
     if (visible) {
@@ -824,13 +484,16 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
                             { backgroundColor: '#fff' },
                           ]}
                         >
-                          {task.customImage ? (
+                          {task.customImage && !imageErrors[task.id] ? (
                             <Image
                               source={{ uri: task.customImage }}
                               style={styles.reportTaskIconImage}
+                              onError={() =>
+                                setImageErrors((prev) => ({ ...prev, [task.id]: true }))
+                              }
                             />
                           ) : (
-                            <Text style={{ fontSize: 18 }}>{task.emoji || '📝'}</Text>
+                            <Text style={{ fontSize: 18 }}>{task.emoji || FALLBACK_EMOJI}</Text>
                           )}
                         </View>
 
@@ -889,6 +552,7 @@ function ScheduleApp() {
   const [habitSheetMode, setHabitSheetMode] = useState('create');
   const [habitSheetInitialTask, setHabitSheetInitialTask] = useState(null);
   const [isCustomizeCalendarOpen, setCustomizeCalendarOpen] = useState(false);
+  const [isProfileTasksOpen, setProfileTasksOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -897,6 +561,7 @@ function ScheduleApp() {
   const [tasks, setTasks] = useState([]);
   const [reportDate, setReportDate] = useState(null);
   const [activeTaskId, setActiveTaskId] = useState(null);
+  const [activeProfileTaskId, setActiveProfileTaskId] = useState(null);
   const [quantumAdjustTaskId, setQuantumAdjustTaskId] = useState(null);
   const [quantumAdjustMinutes, setQuantumAdjustMinutes] = useState('0');
   const [quantumAdjustSeconds, setQuantumAdjustSeconds] = useState('0');
@@ -907,6 +572,7 @@ function ScheduleApp() {
   const [history, setHistory] = useState([]);
   const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
+  const saveTimeoutRef = useRef(null);
   const [calendarMonths, setCalendarMonths] = useState(() => {
     const today = new Date();
     const months = [];
@@ -939,40 +605,47 @@ function ScheduleApp() {
   const fabHaloSize = fabSize + (isCompact ? 26 : 30);
   const fabBaseSize = fabSize + (isCompact ? 14 : 18);
   const fabIconSize = isCompact ? 28 : 30;
-  const monthLayouts = useMemo(() => {
+  const HEADER_HEIGHT = 100;
+  const MARGINS = 30;
+  const BASE_HEIGHT = HEADER_HEIGHT + MARGINS;
+  const buildMonthLayouts = useCallback((months) => {
     let currentOffset = 0;
-    const layouts = [];
-
-    const HEADER_HEIGHT = 100;
-    const MARGINS = 30;
-    const BASE_HEIGHT = HEADER_HEIGHT + MARGINS;
-
-    calendarMonths.forEach((month, index) => {
-      const start = startOfMonth(month.date);
-      const end = endOfMonth(month.date);
-      const startWeek = startOfWeek(start);
-      const endWeek = endOfWeek(end);
-
-      const days = (endWeek.getTime() - startWeek.getTime()) / (1000 * 60 * 60 * 24) + 1;
-      const weeks = Math.round(days / 7);
-
-      const height = BASE_HEIGHT + weeks * CALENDAR_DAY_SIZE;
-
-      layouts.push({ length: height, offset: currentOffset, index });
-      currentOffset += height;
+    const layouts = months.map((month, index) => {
+      const weeks = getWeeksInMonth(month.date);
+      const length = BASE_HEIGHT + weeks * CALENDAR_DAY_SIZE;
+      const layout = { length, offset: currentOffset, index };
+      currentOffset += length;
+      return layout;
     });
 
     return layouts;
-  }, [calendarMonths, width]);
+  }, [BASE_HEIGHT]);
+  const monthLayouts = useMemo(() => {
+    return buildMonthLayouts(calendarMonths);
+  }, [buildMonthLayouts, calendarMonths]);
+  const monthLayoutsRef = useRef(monthLayouts);
+  useEffect(() => {
+    monthLayoutsRef.current = monthLayouts;
+  }, [monthLayouts]);
 
   const getItemLayout = useCallback(
     (data, index) => {
-      if (!monthLayouts[index]) {
-        return { length: 380, offset: 380 * index, index };
+      const cachedLayout = monthLayoutsRef.current[index];
+      if (cachedLayout) {
+        return cachedLayout;
       }
-      return monthLayouts[index];
+      if (!data?.[index]) {
+        return { length: 0, offset: 0, index };
+      }
+      const previousLayout = monthLayoutsRef.current[index - 1];
+      const offset = previousLayout ? previousLayout.offset + previousLayout.length : 0;
+      const weeks = getWeeksInMonth(data[index].date);
+      const length = BASE_HEIGHT + weeks * CALENDAR_DAY_SIZE;
+      const layout = { length, offset, index };
+      monthLayoutsRef.current[index] = layout;
+      return layout;
     },
-    [monthLayouts]
+    [BASE_HEIGHT]
   );
   const today = useMemo(() => {
     const now = new Date();
@@ -1055,6 +728,34 @@ function ScheduleApp() {
 
   const handleOpenReport = useCallback((date) => {
     setReportDate(date);
+  }, []);
+  const handleOpenProfileTasks = useCallback(() => {
+    setProfileTasksOpen(true);
+  }, []);
+  const handleCloseProfileTasks = useCallback(() => {
+    setProfileTasksOpen(false);
+    setActiveProfileTaskId(null);
+  }, []);
+  const handleDeleteProfileTasks = useCallback((taskIds) => {
+    setTasks((previous) =>
+      previous.filter((task) => task.profileLocked || !taskIds.includes(task.id))
+    );
+    setActiveProfileTaskId((current) => (taskIds.includes(current) ? null : current));
+  }, []);
+  const handleDeleteProfileTask = useCallback(
+    (taskId) => {
+      handleDeleteProfileTasks([taskId]);
+    },
+    [handleDeleteProfileTasks]
+  );
+  const handleToggleProfileTaskLock = useCallback((taskId) => {
+    setTasks((previous) =>
+      previous.map((task) =>
+        task.id === taskId
+          ? { ...task, profileLocked: !task.profileLocked }
+          : task
+      )
+    );
   }, []);
 
   const loadMoreCalendarMonths = useCallback(() => {
@@ -1153,6 +854,27 @@ function ScheduleApp() {
       }),
     [selectedDateKey, visibleTasksForSelectedDay]
   );
+  const profileTasks = useMemo(() => {
+    const getSortDate = (task) => {
+      const normalized = normalizeDateValue(task.date ?? task.dateKey);
+      return normalized ? normalized.getTime() : Number.MAX_SAFE_INTEGER;
+    };
+    const getSortTime = (task) => {
+      if (!task.time || !task.time.specified) {
+        return Number.MAX_SAFE_INTEGER;
+      }
+      if (task.time.mode === 'period' && task.time.period) {
+        return toMinutes(task.time.period.start);
+      }
+      if (task.time.point) {
+        return toMinutes(task.time.point);
+      }
+      return Number.MAX_SAFE_INTEGER;
+    };
+    return tasks
+      .slice()
+      .sort((a, b) => getSortDate(a) - getSortDate(b) || getSortTime(a) - getSortTime(b));
+  }, [tasks]);
   const allTasksCompletedForSelectedDay =
     tasksForSelectedDate.length > 0 &&
     tasksForSelectedDate.every((task) => getTaskCompletionStatus(task, selectedDateKey));
@@ -1163,6 +885,10 @@ function ScheduleApp() {
   const activeTask = useMemo(
     () => tasks.find((task) => task.id === activeTaskId) ?? null,
     [activeTaskId, tasks]
+  );
+  const activeProfileTask = useMemo(
+    () => tasks.find((task) => task.id === activeProfileTaskId) ?? null,
+    [activeProfileTaskId, tasks]
   );
   const activeTaskForSelectedDate = useMemo(
     () =>
@@ -1232,23 +958,23 @@ function ScheduleApp() {
               0,
               limitSeconds
             );
-            const completedDates = dateKey
-              ? { ...(task.completedDates ?? {}) }
-              : task.completedDates;
-            if (dateKey) {
+            const baseDateKey =
+              dateKey ?? task.dateKey ?? (task.date ? getDateKey(task.date) : null);
+            const completedDates = { ...(task.completedDates ?? {}) };
+            if (baseDateKey) {
               if (nextSeconds === limitSeconds) {
-                completedDates[dateKey] = true;
+                completedDates[baseDateKey] = true;
               } else {
-                delete completedDates[dateKey];
+                delete completedDates[baseDateKey];
               }
             }
             return {
               ...task,
-              completed: nextSeconds === limitSeconds,
               completedDates,
               quantum: {
                 ...task.quantum,
                 doneSeconds: nextSeconds,
+                wavePulse: Date.now(),
               },
             };
           }
@@ -1266,23 +992,23 @@ function ScheduleApp() {
             0,
             limitCount
           );
-          const completedDates = dateKey
-            ? { ...(task.completedDates ?? {}) }
-            : task.completedDates;
-          if (dateKey) {
+          const baseDateKey =
+            dateKey ?? task.dateKey ?? (task.date ? getDateKey(task.date) : null);
+          const completedDates = { ...(task.completedDates ?? {}) };
+          if (baseDateKey) {
             if (nextCount === limitCount) {
-              completedDates[dateKey] = true;
+              completedDates[baseDateKey] = true;
             } else {
-              delete completedDates[dateKey];
+              delete completedDates[baseDateKey];
             }
           }
           return {
             ...task,
-            completed: nextCount === limitCount,
             completedDates,
             quantum: {
               ...task.quantum,
               doneCount: nextCount,
+              wavePulse: Date.now(),
             },
           };
         })
@@ -1315,6 +1041,49 @@ function ScheduleApp() {
     }
   }).current;
   const emptyStateIconSize = isCompact ? 98 : 112;
+  const normalizeStoredTasks = useCallback((storedTasks) => {
+    const normalizeCompletedDates = (value) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return {};
+      }
+      return value;
+    };
+
+    return storedTasks.filter(Boolean).map((task) => {
+      const baseDateKey = task.dateKey ?? (task.date ? getDateKey(task.date) : null);
+      const completedDates = { ...normalizeCompletedDates(task.completedDates) };
+
+      if (task.completed && baseDateKey && !completedDates[baseDateKey]) {
+        completedDates[baseDateKey] = true;
+      }
+
+      const normalizedSubtasks = Array.isArray(task.subtasks)
+        ? task.subtasks.map((subtask) => {
+            const subtaskCompletedDates = {
+              ...normalizeCompletedDates(subtask.completedDates),
+            };
+            if (subtask.completed && baseDateKey && !subtaskCompletedDates[baseDateKey]) {
+              subtaskCompletedDates[baseDateKey] = true;
+            }
+            const { completed, ...restSubtask } = subtask;
+            return {
+              ...restSubtask,
+              completedDates: subtaskCompletedDates,
+            };
+          })
+        : task.subtasks;
+
+      const { completed, ...restTask } = task;
+
+      return {
+        ...restTask,
+        dateKey: baseDateKey,
+        completedDates,
+        subtasks: normalizedSubtasks,
+        repeat: normalizeRepeatConfig(task.repeat),
+      };
+    });
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -1332,7 +1101,7 @@ function ScheduleApp() {
         }
 
         if (Array.isArray(storedTasks)) {
-          setTasks(storedTasks);
+          setTasks(normalizeStoredTasks(storedTasks));
         }
 
         if (storedSettings) {
@@ -1365,28 +1134,33 @@ function ScheduleApp() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [normalizeStoredTasks]);
 
   useEffect(() => {
     if (!isHydrated) {
-      return;
+      return undefined;
     }
-    void saveTasks(tasks);
-  }, [isHydrated, tasks]);
 
-  useEffect(() => {
-    if (!isHydrated) {
-      return;
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
     }
-    void saveUserSettings(userSettings);
-  }, [isHydrated, userSettings]);
 
-  useEffect(() => {
-    if (!isHydrated) {
-      return;
-    }
-    void saveHistory(history);
-  }, [history, isHydrated]);
+    const timeoutId = setTimeout(() => {
+      const normalizedTasks = tasks.map((task) => ({
+        ...task,
+        repeat: normalizeRepeatConfig(task.repeat),
+      }));
+      void saveTasks(normalizedTasks);
+      void saveUserSettings(userSettings);
+      void saveHistory(history);
+    }, 500);
+
+    saveTimeoutRef.current = timeoutId;
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [history, isHydrated, tasks, userSettings]);
 
   const handleUpdateMonthImage = useCallback(
     async (monthIndex, uri) => {
@@ -1603,10 +1377,14 @@ function ScheduleApp() {
 
   const handleToggleTaskCompletion = useCallback(
     (taskId, dateKey = selectedDateKey) => {
-      const targetDateKey = dateKey ?? selectedDateKey;
+      const initialDateKey = dateKey ?? selectedDateKey;
       const targetTask = tasks.find((task) => task.id === taskId);
+      const resolvedDateKey =
+        initialDateKey ??
+        targetTask?.dateKey ??
+        (targetTask?.date ? getDateKey(targetTask.date) : null);
       const wasCompleted = targetTask
-        ? getTaskCompletionStatus(targetTask, targetDateKey)
+        ? getTaskCompletionStatus(targetTask, resolvedDateKey)
         : false;
 
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
@@ -1617,25 +1395,24 @@ function ScheduleApp() {
           }
 
           const completedDates = { ...(task.completedDates ?? {}) };
-          const isCompletedForDate = getTaskCompletionStatus(task, targetDateKey);
+          const isCompletedForDate = getTaskCompletionStatus(task, resolvedDateKey);
 
           if (isCompletedForDate) {
-            delete completedDates[targetDateKey];
-          } else if (targetDateKey) {
-            completedDates[targetDateKey] = true;
+            delete completedDates[resolvedDateKey];
+          } else if (resolvedDateKey) {
+            completedDates[resolvedDateKey] = true;
           }
 
           return {
             ...task,
             completedDates,
-            completed: Boolean(completedDates[targetDateKey]),
           };
         })
       );
 
       appendHistoryEntry('task_completion_toggled', {
         taskId,
-        dateKey: targetDateKey,
+        dateKey: resolvedDateKey,
         completed: !wasCompleted,
       });
     },
@@ -1657,7 +1434,6 @@ function ScheduleApp() {
         return {
           id: `${now}-${index}-${Math.random().toString(36).slice(2, 8)}`,
           title,
-          completed: false,
           completedDates: {},
         };
       });
@@ -1695,6 +1471,7 @@ function ScheduleApp() {
     const dateKey = getDateKey(normalizedDate);
     const color = habit?.color ?? '#d1d7ff';
     const title = getUniqueTitle(habit?.title, null);
+    const repeat = normalizeRepeatConfig(habit?.repeat);
     const newTask = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       title,
@@ -1704,16 +1481,16 @@ function ScheduleApp() {
       time: habit?.time,
       date: normalizedDate,
       dateKey,
-      completed: false,
       completedDates: {},
       subtasks: convertSubtasks(habit?.subtasks ?? []),
-      repeat: habit?.repeat,
+      repeat,
       reminder: habit?.reminder,
       tag: habit?.tag,
       tagLabel: habit?.tagLabel,
-      type: habit?.type,
+      type: habit?.type ?? 'normal',
       typeLabel: habit?.typeLabel,
       quantum: habit?.quantum,
+      profileLocked: false,
     };
     setTasks((previous) => [...previous, newTask]);
     setSelectedDate(normalizedDate);
@@ -1742,6 +1519,17 @@ function ScheduleApp() {
           }
           const nextDate = normalizedDate ? new Date(normalizedDate) : new Date(task.date);
           nextDate.setHours(0, 0, 0, 0);
+          const nextQuantum = habit?.quantum ?? task.quantum;
+          let mergedQuantum = nextQuantum;
+          if (nextQuantum && task.quantum) {
+            const sameMode = nextQuantum.mode === task.quantum.mode;
+            mergedQuantum = {
+              ...task.quantum,
+              ...nextQuantum,
+              doneSeconds: sameMode ? task.quantum.doneSeconds ?? 0 : 0,
+              doneCount: sameMode ? task.quantum.doneCount ?? 0 : 0,
+            };
+          }
           return {
             ...task,
             title: nextTitle,
@@ -1750,15 +1538,16 @@ function ScheduleApp() {
             customImage: habit?.customImage ?? task.customImage ?? null,
             time: habit?.time,
             subtasks: convertSubtasks(habit?.subtasks ?? [], task.subtasks ?? []),
-            repeat: habit?.repeat,
+            repeat: normalizeRepeatConfig(habit?.repeat ?? task.repeat),
             reminder: habit?.reminder,
             tag: habit?.tag,
             tagLabel: habit?.tagLabel,
             type: habit?.type,
             typeLabel: habit?.typeLabel,
-            quantum: habit?.quantum,
+            quantum: mergedQuantum,
             date: nextDate,
             dateKey: getDateKey(nextDate),
+            profileLocked: task.profileLocked ?? false,
           };
         })
       );
@@ -1778,8 +1567,11 @@ function ScheduleApp() {
   const handleToggleSubtask = useCallback(
     (taskId, subtaskId) => {
       triggerSelection();
-      const targetDateKey = selectedDateKey;
       const targetTask = tasks.find((task) => task.id === taskId);
+      const targetDateKey =
+        selectedDateKey ??
+        targetTask?.dateKey ??
+        (targetTask?.date ? getDateKey(targetTask.date) : null);
       const targetSubtask = targetTask?.subtasks?.find((item) => item.id === subtaskId);
       const wasCompleted = targetSubtask
         ? getSubtaskCompletionStatus(targetSubtask, targetDateKey)
@@ -1805,7 +1597,6 @@ function ScheduleApp() {
               return {
                 ...subtask,
                 completedDates,
-                completed: Boolean(targetDateKey && completedDates[targetDateKey]),
               };
             }),
           };
@@ -2135,6 +1926,9 @@ function ScheduleApp() {
                           openHabitSheet('copy', duplicated);
                         }}
                         onDelete={() => {
+                          if (task.profileLocked) {
+                            return;
+                          }
                           setTasks((previous) => previous.filter((current) => current.id !== task.id));
                         }}
                         onEdit={() => {
@@ -2203,6 +1997,14 @@ function ScheduleApp() {
                 >
                    <Ionicons name="images-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
                    <Text style={styles.customizeButtonText}>Customize Calendar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.profileTasksButton}
+                  onPress={handleOpenProfileTasks}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="list-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.profileTasksButtonText}>Open tasks</Text>
                 </TouchableOpacity>
              </View>
           ) : (
@@ -2538,6 +2340,20 @@ function ScheduleApp() {
         customImages={customMonthImages}
         onUpdateImage={handleUpdateMonthImage}
       />
+      <ProfileTasksModal
+        visible={isProfileTasksOpen}
+        tasks={profileTasks}
+        onClose={handleCloseProfileTasks}
+        onSelectTask={(taskId) => setActiveProfileTaskId(taskId)}
+        onDeleteTask={handleDeleteProfileTask}
+        onDeleteSelected={handleDeleteProfileTasks}
+      />
+      <ProfileTaskDetailModal
+        visible={isProfileTasksOpen && !!activeProfileTaskId}
+        task={activeProfileTask}
+        onClose={() => setActiveProfileTaskId(null)}
+        onToggleLock={handleToggleProfileTaskLock}
+      />
     </View>
   );
 }
@@ -2556,8 +2372,18 @@ function SwipeableTaskCard({
   onEdit,
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
+  const wavePhaseAnim = useRef(new Animated.Value(0)).current;
+  const waveIntensityAnim = useRef(new Animated.Value(1)).current;
   const actionWidth = 168;
   const [isOpen, setIsOpen] = useState(false);
+  const [cardSize, setCardSize] = useState({ width: 0, height: 0 });
+  const [wavePathFront, setWavePathFront] = useState('');
+  const [wavePathBack, setWavePathBack] = useState('');
+  const [waveColor, setWaveColor] = useState('#e9f5ff');
+  const [hasImageError, setHasImageError] = useState(false);
+  const waterLevelAnim = useRef(new Animated.Value(0)).current;
+  const wavePhaseRef = useRef(0);
+  const waveIntensityRef = useRef(1);
   const currentOffsetRef = useRef(0);
 
   useEffect(() => {
@@ -2568,6 +2394,10 @@ function SwipeableTaskCard({
       translateX.removeListener(id);
     };
   }, [translateX]);
+
+  useEffect(() => {
+    setHasImageError(false);
+  }, [task.customImage]);
 
   const closeActions = useCallback(() => {
     Animated.spring(translateX, {
@@ -2649,11 +2479,127 @@ function SwipeableTaskCard({
   }, [completedSubtasks, task, totalSubtasks]);
 
   const isQuantum = task.type === 'quantum';
+  const isWaterAnimation = task.quantum?.animation === 'water';
+  const waterPercent = useMemo(() => getQuantumProgressPercent(task), [task]);
+  const waveHeight = 34;
+  const updateWavePaths = useCallback(() => {
+    if (!cardSize.width) {
+      return;
+    }
+    const intensityValue = waveIntensityRef.current;
+    const phaseValue = wavePhaseRef.current;
+    const frontAmplitude = 6 + intensityValue * 2.5;
+    const backAmplitude = 4 + intensityValue * 1.6;
+    const frontPath = buildWavePath({
+      width: cardSize.width,
+      height: waveHeight,
+      amplitude: frontAmplitude,
+      phase: phaseValue,
+    });
+    const backPath = buildWavePath({
+      width: cardSize.width,
+      height: waveHeight,
+      amplitude: backAmplitude,
+      phase: phaseValue + Math.PI / 2,
+    });
+    setWavePathFront(frontPath);
+    setWavePathBack(backPath);
+  }, [cardSize.width, waveHeight]);
+  const waterFillHeight = useMemo(() => {
+    if (!cardSize.height) {
+      return 0;
+    }
+    return waterLevelAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, cardSize.height],
+    });
+  }, [cardSize.height, waterLevelAnim]);
+
+  useEffect(() => {
+    if (!isQuantum || !isWaterAnimation) {
+      wavePhaseAnim.stopAnimation();
+      wavePhaseAnim.setValue(0);
+      return undefined;
+    }
+
+    const animationLoop = Animated.loop(
+      Animated.timing(wavePhaseAnim, {
+        toValue: Math.PI * 2,
+        duration: 3600,
+        easing: Easing.inOut(Easing.sin),
+        useNativeDriver: false,
+      })
+    );
+
+    animationLoop.start();
+    return () => {
+      animationLoop.stop();
+      wavePhaseAnim.setValue(0);
+    };
+  }, [isQuantum, isWaterAnimation, wavePhaseAnim]);
+
+  useEffect(() => {
+    const id = wavePhaseAnim.addListener(({ value }) => {
+      wavePhaseRef.current = value;
+      updateWavePaths();
+    });
+    const intensityId = waveIntensityAnim.addListener(({ value }) => {
+      waveIntensityRef.current = value;
+      const normalized = clamp01((value - 1) / 4);
+      setWaveColor(interpolateHexColor('#e9f5ff', '#c3e6ff', normalized));
+      updateWavePaths();
+    });
+    return () => {
+      wavePhaseAnim.removeListener(id);
+      waveIntensityAnim.removeListener(intensityId);
+    };
+  }, [updateWavePaths, waveIntensityAnim, wavePhaseAnim]);
+
+  useEffect(() => {
+    updateWavePaths();
+  }, [cardSize.width, updateWavePaths]);
+
+  useEffect(() => {
+    if (!isQuantum || !isWaterAnimation || !cardSize.height) {
+      return;
+    }
+    Animated.spring(waterLevelAnim, {
+      toValue: waterPercent,
+      damping: 10,
+      stiffness: 140,
+      mass: 0.9,
+      useNativeDriver: false,
+    }).start();
+  }, [cardSize.height, isQuantum, isWaterAnimation, waterLevelAnim, waterPercent]);
+
+  useEffect(() => {
+    if (!isQuantum || !isWaterAnimation || !task.quantum?.wavePulse) {
+      return;
+    }
+    waveIntensityAnim.stopAnimation();
+    waveIntensityAnim.setValue(1);
+    Animated.sequence([
+      Animated.spring(waveIntensityAnim, {
+        toValue: 4.8,
+        damping: 6,
+        stiffness: 180,
+        mass: 0.6,
+        useNativeDriver: false,
+      }),
+      Animated.spring(waveIntensityAnim, {
+        toValue: 1,
+        damping: 8,
+        stiffness: 120,
+        mass: 0.8,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [isQuantum, isWaterAnimation, task.quantum?.wavePulse, waveIntensityAnim]);
   const toggleAction = isQuantum ? onAdjustQuantum : onToggleCompletion;
   const isQuantumComplete = isQuantum && getQuantumProgressLabel(task) && task.completed;
 
   return (
-    <View style={styles.swipeableWrapper}>
+    <View style={[styles.swipeableWrapper, { zIndex: isOpen ? 10 : 1 }]}>
       <View style={styles.swipeableActions}>
         <TouchableOpacity
           style={[styles.swipeActionButton, styles.swipeActionCopy]}
@@ -2665,13 +2611,26 @@ function SwipeableTaskCard({
           <Text style={styles.swipeActionText}>Copy</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.swipeActionButton, styles.swipeActionDelete]}
+          style={[
+            styles.swipeActionButton,
+            styles.swipeActionDelete,
+            task.profileLocked && styles.swipeActionButtonDisabled,
+          ]}
           onPress={() => handleAction(onDelete)}
           accessibilityRole="button"
           accessibilityLabel="Delete task"
+          disabled={task.profileLocked}
         >
           <Ionicons name="trash-outline" size={18} color="#fff" />
-          <Text style={[styles.swipeActionText, styles.swipeActionTextDelete]}>Delete</Text>
+          <Text
+            style={[
+              styles.swipeActionText,
+              styles.swipeActionTextDelete,
+              task.profileLocked && styles.swipeActionTextDisabled,
+            ]}
+          >
+            Delete
+          </Text>
         </TouchableOpacity>
       </View>
       <Animated.View
@@ -2679,18 +2638,45 @@ function SwipeableTaskCard({
         style={[
           styles.taskCard,
           {
-            backgroundColor,
+            backgroundColor: backgroundColor || '#fff',
             borderColor,
             transform: [{ translateX }],
           },
         ]}
+        onLayout={(event) => {
+          const { width, height } = event.nativeEvent.layout;
+          setCardSize({ width, height });
+        }}
       >
+        {isQuantum && isWaterAnimation && (
+          <View pointerEvents="none" style={styles.waterFillContainer}>
+            <AnimatedLinearGradient
+              colors={['rgba(107, 190, 255, 0.6)', 'rgba(64, 148, 255, 0.9)']}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={[styles.waterFill, { height: waterFillHeight }]}
+            >
+              <Svg width={cardSize.width} height={waveHeight} style={styles.waterWaveSvg}>
+                {wavePathBack ? (
+                  <Path d={wavePathBack} fill={waveColor} opacity={0.55} />
+                ) : null}
+                {wavePathFront ? (
+                  <Path d={wavePathFront} fill="#f4fbff" opacity={0.8} />
+                ) : null}
+              </Svg>
+            </AnimatedLinearGradient>
+          </View>
+        )}
         <Pressable style={styles.taskCardContent} onPress={handlePress}>
           <View style={styles.taskInfo}>
-            {task.customImage ? (
-              <Image source={{ uri: task.customImage }} style={styles.taskEmojiImage} />
+            {task.customImage && !hasImageError ? (
+              <Image
+                source={{ uri: task.customImage }}
+                style={styles.taskEmojiImage}
+                onError={() => setHasImageError(true)}
+              />
             ) : (
-              <Text style={styles.taskEmoji}>{task.emoji}</Text>
+              <Text style={styles.taskEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
             )}
             <View style={styles.taskDetails}>
               <Text
@@ -2739,6 +2725,575 @@ function SwipeableTaskCard({
   );
 }
 
+function ProfileSwipeTaskCard({
+  task,
+  onPress,
+  onDelete,
+  onToggleSelect,
+  isSelected,
+  selectionMode,
+}) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const actionWidth = 92;
+  const [isOpen, setIsOpen] = useState(false);
+  const [hasImageError, setHasImageError] = useState(false);
+  const currentOffsetRef = useRef(0);
+
+  useEffect(() => {
+    setHasImageError(false);
+  }, [task.customImage]);
+
+  useEffect(() => {
+    const id = translateX.addListener(({ value }) => {
+      currentOffsetRef.current = value;
+    });
+    return () => {
+      translateX.removeListener(id);
+    };
+  }, [translateX]);
+
+  const closeActions = useCallback(() => {
+    Animated.spring(translateX, {
+      toValue: 0,
+      damping: 20,
+      stiffness: 220,
+      mass: 0.9,
+      useNativeDriver: USE_NATIVE_DRIVER,
+    }).start(() => setIsOpen(false));
+  }, [translateX]);
+
+  const handlePanRelease = useCallback(() => {
+    const clampedValue = Math.min(0, Math.max(-actionWidth, currentOffsetRef.current));
+    const shouldOpen = clampedValue <= -actionWidth * 0.5;
+    const targetValue = shouldOpen ? -actionWidth : 0;
+
+    setIsOpen(shouldOpen);
+    currentOffsetRef.current = targetValue;
+
+    Animated.spring(translateX, {
+      toValue: targetValue,
+      damping: 20,
+      stiffness: 220,
+      mass: 0.9,
+      useNativeDriver: USE_NATIVE_DRIVER,
+    }).start();
+  }, [actionWidth, translateX]);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          Math.abs(gesture.dx) > 6 && Math.abs(gesture.dy) < 10,
+        onPanResponderMove: (_, gesture) => {
+          if (gesture.dx < 0) {
+            translateX.setValue(Math.max(-actionWidth, gesture.dx));
+          } else if (isOpen) {
+            translateX.setValue(Math.min(0, -actionWidth + gesture.dx));
+          }
+        },
+        onPanResponderRelease: () => {
+          handlePanRelease();
+        },
+        onPanResponderTerminate: () => {
+          handlePanRelease();
+        },
+      }),
+    [actionWidth, handlePanRelease, isOpen, translateX]
+  );
+
+  const handlePress = useCallback(() => {
+    if (isOpen) {
+      closeActions();
+      return;
+    }
+    if (selectionMode) {
+      onToggleSelect?.(task.id);
+      return;
+    }
+    onPress?.();
+  }, [closeActions, isOpen, onPress, onToggleSelect, selectionMode, task.id]);
+
+  const handleLongPress = useCallback(() => {
+    onToggleSelect?.(task.id);
+  }, [onToggleSelect, task.id]);
+
+  const handleDelete = useCallback(() => {
+    closeActions();
+    triggerSelection();
+    onDelete?.(task.id);
+  }, [closeActions, onDelete, task.id]);
+
+  const tagLabel = getTaskTagDisplayLabel(task);
+  const backgroundColor = lightenColor(task.color, 0.92);
+
+  return (
+    <View style={styles.profileSwipeWrapper}>
+      <View style={styles.profileSwipeActions}>
+        <TouchableOpacity
+          style={[
+            styles.profileSwipeDelete,
+            task.profileLocked && styles.profileSwipeDeleteDisabled,
+          ]}
+          onPress={handleDelete}
+          accessibilityRole="button"
+          accessibilityLabel="Delete task"
+          disabled={task.profileLocked}
+        >
+          <Ionicons name="trash-outline" size={18} color="#fff" />
+          <Text style={styles.profileSwipeDeleteText}>Delete</Text>
+        </TouchableOpacity>
+      </View>
+      <Animated.View
+        {...panResponder.panHandlers}
+        style={[
+          styles.profileTaskCard,
+          isSelected && styles.profileTaskCardSelected,
+          {
+            borderColor: task.color,
+            backgroundColor,
+            transform: [{ translateX }],
+          },
+        ]}
+      >
+        <Pressable
+          style={styles.profileTaskCardContent}
+          onPress={handlePress}
+          onLongPress={handleLongPress}
+        >
+          <View style={styles.profileTaskIcon}>
+            {task.customImage && !hasImageError ? (
+              <Image
+                source={{ uri: task.customImage }}
+                style={styles.profileTaskEmojiImage}
+                onError={() => setHasImageError(true)}
+              />
+            ) : (
+              <Text style={styles.profileTaskEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
+            )}
+          </View>
+          <View style={styles.profileTaskDetails}>
+            <View style={styles.profileTaskTitleRow}>
+              <Text style={styles.profileTaskTitle} numberOfLines={1}>
+                {task.title}
+              </Text>
+              {task.profileLocked ? (
+                <Ionicons
+                  name="lock-closed"
+                  size={14}
+                  color="#9aa3b2"
+                  style={styles.profileTaskLockIcon}
+                />
+              ) : null}
+            </View>
+            <View style={styles.profileTaskMetaRow}>
+              <Text style={styles.profileTaskTime}>{formatTaskTime(task.time)}</Text>
+              {tagLabel ? (
+                <View style={styles.profileTaskTag}>
+                  <Text style={styles.profileTaskTagText}>{tagLabel}</Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
+}
+
+function ProfileTasksModal({
+  visible,
+  tasks,
+  onClose,
+  onSelectTask,
+  onDeleteTask,
+  onDeleteSelected,
+}) {
+  const [searchValue, setSearchValue] = useState('');
+  const [selectedTag, setSelectedTag] = useState('all');
+  const [selectedRepeat, setSelectedRepeat] = useState('all');
+  const [selectedTaskIds, setSelectedTaskIds] = useState([]);
+
+  useEffect(() => {
+    if (!visible) {
+      setSearchValue('');
+      setSelectedTag('all');
+      setSelectedRepeat('all');
+      setSelectedTaskIds([]);
+    }
+  }, [visible]);
+
+  const tagOptions = useMemo(() => {
+    const seen = new Map();
+    tasks.forEach((task) => {
+      const key = normalizeTaskTagKey(task);
+      if (!key || seen.has(key)) {
+        return;
+      }
+      seen.set(key, getTaskTagDisplayLabel(task) ?? 'Tag');
+    });
+    return Array.from(seen.entries()).map(([key, label]) => ({ key, label }));
+  }, [tasks]);
+
+  const repeatOptions = useMemo(() => {
+    const seen = new Set();
+    tasks.forEach((task) => {
+      const repeatConfig = normalizeRepeatConfig(task.repeat);
+      if (!repeatConfig.enabled) {
+        seen.add('one-time');
+        return;
+      }
+      const frequency = repeatConfig.frequency ?? repeatConfig.option ?? 'daily';
+      seen.add(frequency);
+    });
+    return Array.from(seen);
+  }, [tasks]);
+
+  const repeatLabels = useMemo(
+    () => ({
+      daily: 'Daily',
+      weekly: 'Weekly',
+      monthly: 'Monthly',
+      weekend: 'Weekend',
+      weekdays: 'Weekdays',
+      'one-time': 'One-time',
+    }),
+    []
+  );
+
+  const filteredTasks = useMemo(() => {
+    const normalizedSearch = searchValue.trim().toLowerCase();
+    return tasks.filter((task) => {
+      if (
+        normalizedSearch &&
+        !(task.title || '').toLowerCase().includes(normalizedSearch)
+      ) {
+        return false;
+      }
+      if (selectedTag !== 'all' && normalizeTaskTagKey(task) !== selectedTag) {
+        return false;
+      }
+      if (selectedRepeat !== 'all') {
+        const repeatConfig = normalizeRepeatConfig(task.repeat);
+        if (!repeatConfig.enabled) {
+          return selectedRepeat === 'one-time';
+        }
+        const frequency = repeatConfig.frequency ?? repeatConfig.option ?? 'daily';
+        if (frequency !== selectedRepeat) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [searchValue, selectedTag, selectedRepeat, tasks]);
+
+  const toggleSelectedTask = useCallback((taskId) => {
+    setSelectedTaskIds((previous) =>
+      previous.includes(taskId)
+        ? previous.filter((id) => id !== taskId)
+        : [...previous, taskId]
+    );
+  }, []);
+
+  const selectionMode = selectedTaskIds.length > 0;
+  const handleBulkDelete = useCallback(() => {
+    if (selectedTaskIds.length === 0) {
+      return;
+    }
+    onDeleteSelected?.(selectedTaskIds);
+    setSelectedTaskIds([]);
+  }, [onDeleteSelected, selectedTaskIds]);
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={styles.profileTasksContainer}>
+        <View style={styles.profileTasksHeader}>
+          <View>
+            <Text style={styles.profileTasksTitle}>Your tasks</Text>
+            <Text style={styles.profileTasksSubtitle}>
+              Minimal view to keep your profile organized.
+            </Text>
+          </View>
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close profile tasks"
+            hitSlop={8}
+          >
+            <Ionicons name="close" size={20} color="#1F2742" />
+          </Pressable>
+        </View>
+        <View style={styles.profileTasksFilters}>
+          <View style={styles.profileTasksSearchRow}>
+            <Ionicons name="search-outline" size={18} color="#9aa5b5" />
+            <TextInput
+              style={styles.profileTasksSearchInput}
+              value={searchValue}
+              onChangeText={setSearchValue}
+              placeholder="Search by name"
+              placeholderTextColor="#9aa5b5"
+            />
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.profileTasksFilterRow}
+          >
+            <Pressable
+              style={[
+                styles.profileTasksFilterPill,
+                selectedTag === 'all' && styles.profileTasksFilterPillActive,
+              ]}
+              onPress={() => setSelectedTag('all')}
+            >
+              <Text
+                style={[
+                  styles.profileTasksFilterText,
+                  selectedTag === 'all' && styles.profileTasksFilterTextActive,
+                ]}
+              >
+                All tags
+              </Text>
+            </Pressable>
+            {tagOptions.map((option) => (
+              <Pressable
+                key={option.key}
+                style={[
+                  styles.profileTasksFilterPill,
+                  selectedTag === option.key && styles.profileTasksFilterPillActive,
+                ]}
+                onPress={() => setSelectedTag(option.key)}
+              >
+                <Text
+                  style={[
+                    styles.profileTasksFilterText,
+                    selectedTag === option.key && styles.profileTasksFilterTextActive,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.profileTasksFilterRow}
+          >
+            <Pressable
+              style={[
+                styles.profileTasksFilterPill,
+                selectedRepeat === 'all' && styles.profileTasksFilterPillActive,
+              ]}
+              onPress={() => setSelectedRepeat('all')}
+            >
+              <Text
+                style={[
+                  styles.profileTasksFilterText,
+                  selectedRepeat === 'all' && styles.profileTasksFilterTextActive,
+                ]}
+              >
+                All repeats
+              </Text>
+            </Pressable>
+            {repeatOptions.map((option) => (
+              <Pressable
+                key={option}
+                style={[
+                  styles.profileTasksFilterPill,
+                  selectedRepeat === option && styles.profileTasksFilterPillActive,
+                ]}
+                onPress={() => setSelectedRepeat(option)}
+              >
+                <Text
+                  style={[
+                    styles.profileTasksFilterText,
+                    selectedRepeat === option && styles.profileTasksFilterTextActive,
+                  ]}
+                >
+                  {repeatLabels[option] ?? option}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+        {filteredTasks.length === 0 ? (
+          <View style={styles.profileTasksEmpty}>
+            <Text style={styles.profileTasksEmptyText}>
+              No tasks match the current filters.
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredTasks}
+            keyExtractor={(task) => task.id}
+            renderItem={({ item }) => (
+              <ProfileSwipeTaskCard
+                task={item}
+                onPress={() => onSelectTask?.(item.id)}
+                onDelete={onDeleteTask}
+                onToggleSelect={toggleSelectedTask}
+                isSelected={selectedTaskIds.includes(item.id)}
+                selectionMode={selectionMode}
+              />
+            )}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.profileTasksList}
+          />
+        )}
+        {selectionMode ? (
+          <View style={styles.profileTasksBulkBar}>
+            <Text style={styles.profileTasksBulkText}>
+              {selectedTaskIds.length} selected
+            </Text>
+            <Pressable
+              style={styles.profileTasksBulkDelete}
+              onPress={handleBulkDelete}
+              accessibilityRole="button"
+              accessibilityLabel="Delete selected tasks"
+            >
+              <Ionicons name="trash-outline" size={18} color="#fff" />
+              <Text style={styles.profileTasksBulkDeleteText}>Delete selected</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+    </Modal>
+  );
+}
+
+function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock }) {
+  const [hasImageError, setHasImageError] = useState(false);
+
+  useEffect(() => {
+    setHasImageError(false);
+  }, [task?.customImage, visible]);
+
+  if (!visible || !task) {
+    return null;
+  }
+
+  const normalizedDate = normalizeDateValue(task.date ?? task.dateKey);
+  const dateLabel = normalizedDate ? format(normalizedDate, 'PPP', { locale: ptBR }) : 'Not set';
+  const tagLabel = getTaskTagDisplayLabel(task) ?? 'No tag';
+  const typeLabel = task.typeLabel ?? task.type ?? 'Standard';
+  const isQuantum = task.type === 'quantum';
+  const repeatConfig = normalizeRepeatConfig(task.repeat);
+  const quantumLabel = isQuantum ? getQuantumProgressLabel(task) : null;
+  const quantumModeLabel =
+    task.quantum?.mode === 'timer' ? 'Timer' : task.quantum?.mode ? 'Cont' : 'Quantum';
+  const repeatLabel = repeatConfig.enabled
+    ? repeatConfig.frequency === 'daily'
+      ? repeatConfig.interval === 1
+        ? 'Daily'
+        : `Every ${repeatConfig.interval} days`
+      : repeatConfig.frequency === 'weekly'
+      ? repeatConfig.interval === 1
+        ? 'Weekly'
+        : `Every ${repeatConfig.interval} weeks`
+      : repeatConfig.frequency === 'monthly'
+      ? repeatConfig.interval === 1
+        ? 'Monthly'
+        : `Every ${repeatConfig.interval} months`
+      : repeatConfig.frequency === 'weekend'
+      ? 'Weekends'
+      : repeatConfig.frequency === 'weekdays'
+      ? 'Weekdays'
+      : repeatConfig.frequency
+    : 'One-time';
+  const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.profileDetailOverlay}>
+        <Pressable style={styles.profileDetailBackdrop} onPress={onClose} accessibilityRole="button" />
+        <View style={styles.profileDetailCard}>
+          <View style={styles.profileDetailHeader}>
+            <View style={styles.profileDetailHeaderInfo}>
+              {task.customImage && !hasImageError ? (
+                <Image
+                  source={{ uri: task.customImage }}
+                  style={styles.profileDetailEmojiImage}
+                  onError={() => setHasImageError(true)}
+                />
+              ) : (
+                <Text style={styles.profileDetailEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
+              )}
+              <View style={styles.profileDetailTitleBlock}>
+                <Text style={styles.profileDetailTitle}>{task.title}</Text>
+                <Text style={styles.profileDetailTime}>{formatTaskTime(task.time)}</Text>
+              </View>
+            </View>
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close task details"
+              hitSlop={8}
+            >
+              <Ionicons name="close" size={20} color="#1F2742" />
+            </Pressable>
+          </View>
+          <View style={styles.profileDetailBody}>
+            <View style={styles.profileDetailRow}>
+              <Text style={styles.profileDetailLabel}>Start date</Text>
+              <Text style={styles.profileDetailValue}>{dateLabel}</Text>
+            </View>
+            <View style={styles.profileDetailRow}>
+              <Text style={styles.profileDetailLabel}>Repeat</Text>
+              <Text style={styles.profileDetailValue}>{repeatLabel}</Text>
+            </View>
+            <View style={styles.profileDetailRow}>
+              <Text style={styles.profileDetailLabel}>Type</Text>
+              <Text style={styles.profileDetailValue}>{typeLabel}</Text>
+            </View>
+            <View style={styles.profileDetailRow}>
+              <Text style={styles.profileDetailLabel}>Tag</Text>
+              <Text style={styles.profileDetailValue}>{tagLabel}</Text>
+            </View>
+            {isQuantum ? (
+              <View style={styles.profileDetailRow}>
+                <Text style={styles.profileDetailLabel}>{quantumModeLabel}</Text>
+                <Text style={styles.profileDetailValue}>{quantumLabel ?? 'Not set'}</Text>
+              </View>
+            ) : (
+              <View style={styles.profileDetailRow}>
+                <Text style={styles.profileDetailLabel}>Subtasks</Text>
+                <Text style={styles.profileDetailValue}>{totalSubtasks}</Text>
+              </View>
+            )}
+          </View>
+          <Pressable
+            style={[
+              styles.profileDetailLockButton,
+              task.profileLocked && styles.profileDetailLockButtonActive,
+            ]}
+            onPress={() => onToggleLock?.(task.id)}
+            accessibilityRole="button"
+            accessibilityLabel={task.profileLocked ? 'Unlock task' : 'Lock task'}
+          >
+            <Ionicons
+              name={task.profileLocked ? 'lock-closed' : 'lock-open'}
+              size={18}
+              color={task.profileLocked ? '#fff' : '#3c2ba7'}
+            />
+            <Text
+              style={[
+                styles.profileDetailLockButtonText,
+                task.profileLocked && styles.profileDetailLockButtonTextActive,
+              ]}
+            >
+              {task.profileLocked ? 'Unlock task' : 'Lock task'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function TaskDetailModal({
   visible,
   task,
@@ -2748,6 +3303,12 @@ function TaskDetailModal({
   onToggleCompletion,
   onEdit,
 }) {
+  const [hasImageError, setHasImageError] = useState(false);
+
+  useEffect(() => {
+    setHasImageError(false);
+  }, [task?.customImage, visible]);
+
   if (!visible || !task) {
     return null;
   }
@@ -2772,17 +3333,29 @@ function TaskDetailModal({
           <View style={[styles.detailCard, { backgroundColor: cardBackground, borderColor: task.color }]}>
             <View style={styles.detailHeaderRow}>
               <View style={styles.detailHeaderInfo}>
-              {task.customImage ? (
-                <Image source={{ uri: task.customImage }} style={styles.detailEmojiImage} />
+              {task.customImage && !hasImageError ? (
+                <Image
+                  source={{ uri: task.customImage }}
+                  style={styles.detailEmojiImage}
+                  onError={() => setHasImageError(true)}
+                />
               ) : (
-                <Text style={styles.detailEmoji}>{task.emoji}</Text>
+                <Text style={styles.detailEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
               )}
-                <View style={styles.detailTitleContainer}>
+              <View style={styles.detailTitleContainer}>
+                <View style={styles.detailTitleRow}>
                   <Text style={styles.detailTitle}>{task.title}</Text>
-                  <Text style={styles.detailTime}>{formatTaskTime(task.time)}</Text>
-                  {quantumLabel ? (
-                    <Text style={styles.detailSubtaskSummaryLabel}>{quantumLabel}</Text>
-                  ) : totalSubtasks > 0 ? (
+                  <Ionicons
+                    name={task.profileLocked ? 'lock-closed' : 'lock-open-outline'}
+                    size={14}
+                    color="#9aa5b5"
+                    style={styles.detailTitleLock}
+                  />
+                </View>
+                <Text style={styles.detailTime}>{formatTaskTime(task.time)}</Text>
+                {quantumLabel ? (
+                  <Text style={styles.detailSubtaskSummaryLabel}>{quantumLabel}</Text>
+                ) : totalSubtasks > 0 ? (
                     <Text style={styles.detailSubtaskSummaryLabel}>
                       {completedSubtasks}/{totalSubtasks} subtasks completed
                     </Text>
@@ -2850,8 +3423,10 @@ function TaskDetailModal({
               accessibilityRole="button"
               accessibilityLabel="Edit task"
             >
-              <Ionicons name="create-outline" size={18} color="#3c2ba7" />
-              <Text style={styles.detailEditButtonText}>Edit Task</Text>
+              <View style={styles.detailEditContent}>
+                <Ionicons name="create-outline" size={18} color="#3c2ba7" />
+                <Text style={styles.detailEditButtonText}>Edit Task</Text>
+              </View>
             </Pressable>
           </View>
         </View>
@@ -2873,12 +3448,8 @@ function QuantumAdjustModal({
   onSubtract,
   onClose,
 }) {
-  if (!visible || !task) {
-    return null;
-  }
-
-  const isTimer = task.quantum?.mode === 'timer';
-  const limitLabel = getQuantumProgressLabel(task);
+  const isTimer = task?.quantum?.mode === 'timer';
+  const limitLabel = task ? getQuantumProgressLabel(task) : null;
   const handleMinutesChange = useCallback(
     (value) => {
       onChangeMinutes(value.replace(/\D/g, '').slice(0, 2));
@@ -2900,6 +3471,10 @@ function QuantumAdjustModal({
   const disableActions = isTimer
     ? (Number.parseInt(minutesValue, 10) || 0) * 60 + (Number.parseInt(secondsValue, 10) || 0) <= 0
     : (Number.parseInt(countValue, 10) || 0) <= 0;
+
+  if (!visible || !task) {
+    return null;
+  }
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -3186,10 +3761,36 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderWidth: 1,
+    overflow: 'hidden',
+    backgroundColor: '#ffffff',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  waterFillContainer: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 18,
+    overflow: 'hidden',
+    alignItems: 'stretch',
+    justifyContent: 'flex-end',
+  },
+  waterFill: {
+    width: '100%',
+    position: 'relative',
+  },
+  waterWaveSvg: {
+    position: 'absolute',
+    top: -18,
+    left: 0,
+    right: 0,
   },
   swipeableWrapper: {
     marginBottom: 14,
     position: 'relative',
+    borderRadius: 18,
+    backgroundColor: 'transparent',
   },
   swipeableActions: {
     position: 'absolute',
@@ -3202,7 +3803,9 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     paddingVertical: 8,
     paddingHorizontal: 12,
-    backgroundColor: '#f3f4fb',
+    backgroundColor: '#f6f6fb',
+    borderRadius: 18,
+    zIndex: -1,
   },
   swipeActionButton: {
     flex: 1,
@@ -3230,6 +3833,12 @@ const styles = StyleSheet.create({
   swipeActionTextDelete: {
     color: '#ffffff',
   },
+  swipeActionButtonDisabled: {
+    opacity: 0.55,
+  },
+  swipeActionTextDisabled: {
+    color: '#ffffff',
+  },
   taskInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3246,12 +3855,6 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 23,
-    resizeMode: 'cover',
-  },
-  taskEmojiImage: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
     resizeMode: 'cover',
   },
   taskDetails: {
@@ -3346,10 +3949,18 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     flex: 1,
   },
+  detailTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   detailTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: '#1a1a2e',
+  },
+  detailTitleLock: {
+    opacity: 0.7,
   },
   detailTime: {
     marginTop: 4,
@@ -3511,9 +4122,15 @@ const styles = StyleSheet.create({
   detailEditLink: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     gap: 8,
     paddingVertical: 12,
+    alignSelf: 'center',
+  },
+  detailEditContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   detailEditButtonText: {
     fontSize: 15,
@@ -3523,15 +4140,6 @@ const styles = StyleSheet.create({
   calendarListContent: {
     paddingBottom: 60,
     gap: 12,
-  },
-  calendarMonthSection: {
-    marginBottom: 24,
-  },
-  calendarMonthSeparator: {
-    height: 12,
-    backgroundColor: '#000000',
-    borderRadius: 6,
-    marginBottom: 12,
   },
   calendarMonthContainer: {
     marginBottom: 20,
@@ -3777,11 +4385,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 4,
   },
-  headerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.15)',
-    borderRadius: 0,
-  },
   // --- ESTILOS DO RELATÓRIO ---
   reportOverlay: {
     flex: 1,
@@ -3973,6 +4576,341 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  profileTasksButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+    backgroundColor: '#3c2ba7',
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderRadius: 26,
+    shadowColor: '#3c2ba7',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  profileTasksButtonText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  profileTasksContainer: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 28,
+  },
+  profileTasksHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  profileTasksTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  profileTasksSubtitle: {
+    fontSize: 13,
+    color: '#6f7a86',
+    marginTop: 4,
+  },
+  profileTasksList: {
+    paddingBottom: 96,
+  },
+  profileTasksEmpty: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  profileTasksEmptyText: {
+    fontSize: 14,
+    color: '#6f7a86',
+    textAlign: 'center',
+  },
+  profileTasksFilters: {
+    gap: 12,
+    marginBottom: 16,
+  },
+  profileTasksSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#f4f6fb',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  profileTasksSearchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1a1a2e',
+  },
+  profileTasksFilterRow: {
+    gap: 8,
+  },
+  profileTasksFilterPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#edefff',
+  },
+  profileTasksFilterPillActive: {
+    backgroundColor: '#3c2ba7',
+  },
+  profileTasksFilterText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#3c2ba7',
+  },
+  profileTasksFilterTextActive: {
+    color: '#ffffff',
+  },
+  profileTasksBulkBar: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 24,
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000000',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  profileTasksBulkText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1a1a2e',
+  },
+  profileTasksBulkDelete: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: '#ff6b6b',
+  },
+  profileTasksBulkDeleteText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
+    textTransform: 'uppercase',
+  },
+  profileSwipeWrapper: {
+    marginBottom: 12,
+  },
+  profileSwipeActions: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 92,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
+    backgroundColor: '#f5f5fb',
+  },
+  profileSwipeDelete: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ff6b6b',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    gap: 4,
+  },
+  profileSwipeDeleteDisabled: {
+    opacity: 0.55,
+  },
+  profileSwipeDeleteText: {
+    fontSize: 11,
+    color: '#ffffff',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  profileTaskCard: {
+    borderWidth: 1,
+    borderRadius: 18,
+  },
+  profileTaskCardSelected: {
+    borderColor: '#3c2ba7',
+    shadowColor: '#3c2ba7',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  profileTaskCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  profileTaskIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+  },
+  profileTaskEmoji: {
+    fontSize: 26,
+  },
+  profileTaskEmojiImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    resizeMode: 'cover',
+  },
+  profileTaskDetails: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  profileTaskTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  profileTaskTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1a1a2e',
+    flexShrink: 1,
+  },
+  profileTaskLockIcon: {
+    marginLeft: 6,
+  },
+  profileTaskMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 6,
+  },
+  profileTaskTime: {
+    fontSize: 12,
+    color: '#6f7a86',
+    fontWeight: '500',
+  },
+  profileTaskTag: {
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#d7dbeb',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  profileTaskTagText: {
+    fontSize: 11,
+    color: '#3c2ba7',
+    fontWeight: '600',
+  },
+  profileDetailOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(10, 12, 30, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  profileDetailBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  profileDetailCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  profileDetailHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  profileDetailHeaderInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  profileDetailEmoji: {
+    fontSize: 34,
+  },
+  profileDetailEmojiImage: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    resizeMode: 'cover',
+  },
+  profileDetailTitleBlock: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  profileDetailTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  profileDetailTime: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#6f7a86',
+  },
+  profileDetailBody: {
+    gap: 12,
+  },
+  profileDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  profileDetailLabel: {
+    fontSize: 13,
+    color: '#6f7a86',
+    fontWeight: '600',
+  },
+  profileDetailValue: {
+    fontSize: 13,
+    color: '#1a1a2e',
+    fontWeight: '600',
+  },
+  profileDetailLockButton: {
+    marginTop: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#3c2ba7',
+    gap: 8,
+  },
+  profileDetailLockButtonActive: {
+    backgroundColor: '#3c2ba7',
+  },
+  profileDetailLockButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#3c2ba7',
+  },
+  profileDetailLockButtonTextActive: {
+    color: '#ffffff',
+  },
   
   // Customize Modal Styles
   customizeModalContainer: {
@@ -4009,10 +4947,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     justifyContent: 'center',
     paddingHorizontal: 16,
-  },
-  customizeCardOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.2)',
   },
   customizeCardText: {
     color: '#fff',
