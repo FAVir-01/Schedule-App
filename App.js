@@ -2872,9 +2872,19 @@ function ProfileSwipeTaskCard({
             )}
           </View>
           <View style={styles.profileTaskDetails}>
-            <Text style={styles.profileTaskTitle} numberOfLines={1}>
-              {task.title}
-            </Text>
+            <View style={styles.profileTaskTitleRow}>
+              <Text style={styles.profileTaskTitle} numberOfLines={1}>
+                {task.title}
+              </Text>
+              {task.profileLocked ? (
+                <Ionicons
+                  name="lock-closed"
+                  size={14}
+                  color="#9aa3b2"
+                  style={styles.profileTaskLockIcon}
+                />
+              ) : null}
+            </View>
             <View style={styles.profileTaskMetaRow}>
               <Text style={styles.profileTaskTime}>{formatTaskTime(task.time)}</Text>
               {tagLabel ? (
@@ -4767,10 +4777,18 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 12,
   },
+  profileTaskTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   profileTaskTitle: {
     fontSize: 15,
     fontWeight: '600',
     color: '#1a1a2e',
+    flexShrink: 1,
+  },
+  profileTaskLockIcon: {
+    marginLeft: 6,
   },
   profileTaskMetaRow: {
     flexDirection: 'row',
