@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import { formatDuration } from '../utils/timeUtils';
 
 const SHEET_OPEN_DURATION = 300;
 const SHEET_CLOSE_DURATION = 220;
@@ -1523,6 +1524,10 @@ export default function AddHabitSheet({
                   onChangeTimerSeconds={setQuantumTimerSeconds}
                   onChangeCountValue={setQuantumCountValue}
                   onChangeCountUnit={setQuantumCountUnit}
+                  previewTitle={title}
+                  previewEmoji={selectedEmoji}
+                  previewImage={customImage}
+                  previewTimeLabel={timeValue}
                 />
               ) : (
                 <SubtasksPanel value={subtasks} onChange={setSubtasks} />
@@ -1685,6 +1690,10 @@ export default function AddHabitSheet({
                       onChangeTimerSeconds={setPendingQuantumTimerSeconds}
                       onChangeCountValue={setPendingQuantumCountValue}
                       onChangeCountUnit={setPendingQuantumCountUnit}
+                      previewTitle={title}
+                      previewEmoji={selectedEmoji}
+                      previewImage={customImage}
+                      previewTimeLabel={timeValue}
                       showTitle={false}
                     />
                   </>
@@ -1883,6 +1892,27 @@ function normalizeNumericText(value, { max, fallback = '' } = {}) {
   return `${numeric}`;
 }
 
+function getQuantumPreviewLabel({ mode, timerMinutes, timerSeconds, countValue, countUnit }) {
+  if (mode === 'timer') {
+    const minutes = Number.parseInt(timerMinutes, 10) || 0;
+    const seconds = Number.parseInt(timerSeconds, 10) || 0;
+    const limitSeconds = minutes * 60 + seconds;
+    if (!limitSeconds) {
+      return null;
+    }
+    return `0:00/${formatDuration(limitSeconds)}`;
+  }
+  if (mode === 'count') {
+    const limitValue = Number.parseInt(countValue, 10) || 0;
+    if (!limitValue) {
+      return null;
+    }
+    const unit = countUnit?.trim() ?? '';
+    return `0/${limitValue}${unit ? ` ${unit}` : ''}`;
+  }
+  return null;
+}
+
 function QuantumPanel({
   mode,
   animation,
@@ -1895,9 +1925,30 @@ function QuantumPanel({
   onChangeTimerSeconds,
   onChangeCountValue,
   onChangeCountUnit,
+  previewTitle,
+  previewEmoji,
+  previewImage,
+  previewTimeLabel,
   showTitle = true,
 }) {
   const isTimer = mode === 'timer';
+  const previewLabel = useMemo(
+    () =>
+      getQuantumPreviewLabel({
+        mode,
+        timerMinutes,
+        timerSeconds,
+        countValue,
+        countUnit,
+      }),
+    [countUnit, countValue, mode, timerMinutes, timerSeconds]
+  );
+  const animationLabel = useMemo(
+    () => QUANTUM_ANIMATIONS.find((option) => option.key === animation)?.label ?? animation,
+    [animation]
+  );
+  const displayTitle = previewTitle?.trim() || 'New habit';
+  const displayTimeLabel = previewTimeLabel?.trim() || 'Anytime';
 
   return (
     <View style={styles.subtasksPanel}>
@@ -1990,6 +2041,33 @@ function QuantumPanel({
                 </Pressable>
               );
             })}
+          </View>
+        </View>
+        <View style={styles.quantumPreviewSection}>
+          <Text style={styles.quantumFieldLabel}>Preview</Text>
+          <View style={styles.quantumPreviewCard}>
+            <View style={styles.quantumPreviewInfo}>
+              {previewImage ? (
+                <Image source={{ uri: previewImage }} style={styles.quantumPreviewImage} />
+              ) : (
+                <Text style={styles.quantumPreviewEmoji}>{previewEmoji || DEFAULT_EMOJI}</Text>
+              )}
+              <View style={styles.quantumPreviewDetails}>
+                <Text style={styles.quantumPreviewTitle} numberOfLines={1}>
+                  {displayTitle}
+                </Text>
+                <Text style={styles.quantumPreviewTime}>{displayTimeLabel}</Text>
+                {previewLabel ? (
+                  <View style={styles.quantumPreviewBadge}>
+                    <Text style={styles.quantumPreviewBadgeText}>{previewLabel}</Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+            <View style={styles.quantumPreviewMeta}>
+              <Text style={styles.quantumPreviewMetaLabel}>Animation</Text>
+              <Text style={styles.quantumPreviewMetaValue}>{animationLabel}</Text>
+            </View>
           </View>
         </View>
       </View>
@@ -3024,6 +3102,71 @@ const styles = StyleSheet.create({
   quantumAnimationRow: {
     flexDirection: 'row',
     gap: 12,
+  },
+  quantumPreviewSection: {
+    gap: 8,
+  },
+  quantumPreviewCard: {
+    backgroundColor: '#F8FAFF',
+    borderRadius: 16,
+    padding: 14,
+    gap: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(109, 125, 150, 0.16)',
+  },
+  quantumPreviewInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  quantumPreviewEmoji: {
+    fontSize: 28,
+  },
+  quantumPreviewImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+  },
+  quantumPreviewDetails: {
+    flex: 1,
+    gap: 4,
+  },
+  quantumPreviewTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2742',
+  },
+  quantumPreviewTime: {
+    fontSize: 12,
+    color: '#7F8A9A',
+  },
+  quantumPreviewBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#EEF3FF',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  quantumPreviewBadgeText: {
+    fontSize: 12,
+    color: '#1F2742',
+    fontWeight: '600',
+  },
+  quantumPreviewMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  quantumPreviewMetaLabel: {
+    fontSize: 12,
+    color: '#7F8A9A',
+    fontWeight: '600',
+  },
+  quantumPreviewMetaValue: {
+    fontSize: 12,
+    color: '#1F2742',
+    fontWeight: '600',
+    textTransform: 'capitalize',
   },
   quantumField: {
     flex: 1,
