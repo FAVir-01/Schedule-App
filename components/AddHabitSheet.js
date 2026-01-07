@@ -1536,7 +1536,23 @@ export default function AddHabitSheet({
                   previewColor={selectedColor}
                 />
               ) : (
-                <SubtasksPanel value={subtasks} onChange={setSubtasks} />
+                <>
+                  <SubtasksPanel value={subtasks} onChange={setSubtasks} />
+                  {selectedType !== 'list' ? (
+                    <View style={styles.quantumPreviewSection}>
+                      <Text style={styles.quantumFieldLabel}>Preview</Text>
+                      <HabitPreviewCard
+                        title={title}
+                        emoji={selectedEmoji}
+                        image={customImage}
+                        timeLabel={timeValue}
+                        color={selectedColor}
+                        isQuantum={false}
+                        subtaskCount={subtasks.length}
+                      />
+                    </View>
+                  ) : null}
+                </>
               )}
             </ScrollView>
             {activePanel === 'date' && (
@@ -1656,7 +1672,7 @@ export default function AddHabitSheet({
                   selectedKey={pendingType}
                   onSelect={setPendingType}
                 />
-                {pendingType === 'quantum' && (
+                {pendingType === 'quantum' ? (
                   <>
                     <View style={styles.quantumModeRow}>
                       {QUANTUM_MODES.map((option) => {
@@ -1704,7 +1720,20 @@ export default function AddHabitSheet({
                       showTitle={false}
                     />
                   </>
-                )}
+                ) : pendingType === 'default' ? (
+                  <View style={styles.quantumPreviewSection}>
+                    <Text style={styles.quantumFieldLabel}>Preview</Text>
+                    <HabitPreviewCard
+                      title={title}
+                      emoji={selectedEmoji}
+                      image={customImage}
+                      timeLabel={timeValue}
+                      color={selectedColor}
+                      isQuantum={false}
+                      subtaskCount={subtasks.length}
+                    />
+                  </View>
+                ) : null}
               </OptionOverlay>
             )}
           </View>
@@ -1905,7 +1934,7 @@ function getQuantumPreviewData({ mode, timerMinutes, timerSeconds, countValue, c
     const seconds = Number.parseInt(timerSeconds, 10) || 0;
     const limitSeconds = minutes * 60 + seconds;
     if (!limitSeconds) {
-      return { label: null, percent: 0 };
+      return { label: null, percent: 0.5 };
     }
     const doneSeconds = Math.round(limitSeconds * 0.5);
     return {
@@ -1916,7 +1945,7 @@ function getQuantumPreviewData({ mode, timerMinutes, timerSeconds, countValue, c
   if (mode === 'count') {
     const limitValue = Number.parseInt(countValue, 10) || 0;
     if (!limitValue) {
-      return { label: null, percent: 0 };
+      return { label: null, percent: 0.5 };
     }
     const unit = countUnit?.trim() ?? '';
     const doneValue = Math.round(limitValue * 0.5);
@@ -1928,7 +1957,7 @@ function getQuantumPreviewData({ mode, timerMinutes, timerSeconds, countValue, c
   return { label: null, percent: 0 };
 }
 
-function QuantumPreviewCard({
+function HabitPreviewCard({
   title,
   emoji,
   image,
@@ -1940,13 +1969,15 @@ function QuantumPreviewCard({
   countValue,
   countUnit,
   color,
+  isQuantum,
+  subtaskCount,
 }) {
-  const cardSize = useRef({ width: 0, height: 0 });
+  const [cardSize, setCardSize] = useState({ width: 0, height: 0 });
   const [wavePathFront, setWavePathFront] = useState('');
   const [wavePathBack, setWavePathBack] = useState('');
   const wavePhaseAnim = useRef(new Animated.Value(0)).current;
   const wavePhaseRef = useRef(0);
-  const isWaterAnimation = animation === 'water';
+  const isWaterAnimation = isQuantum && animation === 'water';
   const waveHeight = 34;
   const previewTitle = title?.trim() || 'New habit';
   const previewTimeLabel = timeLabel?.trim() || 'Anytime';
@@ -1961,25 +1992,29 @@ function QuantumPreviewCard({
       }),
     [countUnit, countValue, mode, timerMinutes, timerSeconds]
   );
-  const waterFillHeight = useMemo(() => {
-    if (!cardSize.current.height) {
-      return 0;
+  const waterFillHeight = useMemo(
+    () => cardSize.height * (previewData.percent || 0),
+    [cardSize.height, previewData.percent]
+  );
+  const subtaskLabel = useMemo(() => {
+    if (!subtaskCount) {
+      return null;
     }
-    return cardSize.current.height * (previewData.percent || 0);
-  }, [previewData.percent]);
+    return `0/${subtaskCount}`;
+  }, [subtaskCount]);
   const updateWavePaths = useCallback(() => {
-    if (!cardSize.current.width) {
+    if (!cardSize.width) {
       return;
     }
     const phaseValue = wavePhaseRef.current;
     const frontPath = buildWavePath({
-      width: cardSize.current.width,
+      width: cardSize.width,
       height: waveHeight,
       amplitude: 8,
       phase: phaseValue,
     });
     const backPath = buildWavePath({
-      width: cardSize.current.width,
+      width: cardSize.width,
       height: waveHeight,
       amplitude: 5,
       phase: phaseValue + Math.PI / 2,
@@ -2033,7 +2068,7 @@ function QuantumPreviewCard({
       ]}
       onLayout={(event) => {
         const { width, height } = event.nativeEvent.layout;
-        cardSize.current = { width, height };
+        setCardSize({ width, height });
         updateWavePaths();
       }}
     >
@@ -2045,7 +2080,7 @@ function QuantumPreviewCard({
             end={{ x: 0.5, y: 1 }}
             style={[styles.quantumPreviewWaterFill, { height: waterFillHeight }]}
           >
-            <Svg width={cardSize.current.width} height={waveHeight} style={styles.quantumPreviewWave}>
+            <Svg width={cardSize.width} height={waveHeight} style={styles.quantumPreviewWave}>
               {wavePathBack ? (
                 <Path d={wavePathBack} fill="#c3e6ff" opacity={0.55} />
               ) : null}
@@ -2066,9 +2101,14 @@ function QuantumPreviewCard({
               {previewTitle}
             </Text>
             <Text style={styles.quantumPreviewTime}>{previewTimeLabel}</Text>
-            {previewData.label ? (
+            {isQuantum && previewData.label ? (
               <View style={styles.quantumPreviewBadge}>
                 <Text style={styles.quantumPreviewBadgeText}>{previewData.label}</Text>
+              </View>
+            ) : null}
+            {!isQuantum && subtaskLabel ? (
+              <View style={styles.quantumPreviewBadge}>
+                <Text style={styles.quantumPreviewBadgeText}>{subtaskLabel}</Text>
               </View>
             ) : null}
           </View>
@@ -2199,7 +2239,7 @@ function QuantumPanel({
         </View>
         <View style={styles.quantumPreviewSection}>
           <Text style={styles.quantumFieldLabel}>Preview</Text>
-          <QuantumPreviewCard
+          <HabitPreviewCard
             title={displayTitle}
             emoji={previewEmoji}
             image={previewImage}
@@ -2211,6 +2251,7 @@ function QuantumPanel({
             countValue={countValue}
             countUnit={countUnit}
             color={previewColor}
+            isQuantum
           />
         </View>
       </View>
