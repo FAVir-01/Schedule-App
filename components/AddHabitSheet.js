@@ -3,6 +3,7 @@ import {
   AccessibilityInfo,
   Animated,
   BackHandler,
+  Easing,
   Image,
   KeyboardAvoidingView,
   PanResponder,
@@ -28,6 +29,7 @@ const SHEET_CLOSE_DURATION = 220;
 const BACKDROP_MAX_OPACITY = 0.5;
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
+const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
 const COLORS = ['#FFCF70', '#F7A6A1', '#B39DD6', '#79C3FF', '#A8E6CF', '#FDE2A6'];
 const EMOJIS = [
