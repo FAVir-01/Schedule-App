@@ -3,6 +3,7 @@ import {
   AccessibilityInfo,
   Animated,
   BackHandler,
+  Easing,
   Image,
   KeyboardAvoidingView,
   PanResponder,
@@ -18,16 +19,20 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Path } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { formatTaskTime } from '../utils/timeUtils';
-import { getQuantumProgressLabel } from '../utils/taskUtils';
+import { getQuantumProgressLabel, getQuantumProgressPercent } from '../utils/taskUtils';
+import { buildWavePath } from '../utils/waveUtils';
 
 const SHEET_OPEN_DURATION = 300;
 const SHEET_CLOSE_DURATION = 220;
 const BACKDROP_MAX_OPACITY = 0.5;
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
+const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
 const COLORS = ['#FFCF70', '#F7A6A1', '#B39DD6', '#79C3FF', '#A8E6CF', '#FDE2A6'];
 const EMOJIS = [
@@ -1297,30 +1302,36 @@ export default function AddHabitSheet({
       }),
     [hasSpecifiedTime, normalizedPeriodTime, normalizedPointTime, timeMode]
   );
-  const previewQuantum = useMemo(
-    () => ({
+  const previewQuantum = useMemo(() => {
+    const minutes = Number.parseInt(pendingQuantumTimerMinutes, 10) || 0;
+    const seconds = Number.parseInt(pendingQuantumTimerSeconds, 10) || 0;
+    const totalSeconds = minutes * 60 + seconds;
+    const limitValue = Number.parseInt(pendingQuantumCountValue, 10) || 0;
+    const halfSeconds = totalSeconds ? Math.max(1, Math.floor(totalSeconds / 2)) : 0;
+    const halfCount = limitValue ? Math.max(1, Math.floor(limitValue / 2)) : 0;
+
+    return {
       mode: pendingQuantumMode,
       animation: pendingQuantumAnimation,
       timer: {
-        minutes: Number.parseInt(pendingQuantumTimerMinutes, 10) || 0,
-        seconds: Number.parseInt(pendingQuantumTimerSeconds, 10) || 0,
+        minutes,
+        seconds,
       },
       count: {
-        value: Number.parseInt(pendingQuantumCountValue, 10) || 0,
+        value: limitValue,
         unit: pendingQuantumCountUnit.trim(),
       },
-      doneSeconds: 0,
-      doneCount: 0,
-    }),
-    [
-      pendingQuantumAnimation,
-      pendingQuantumCountUnit,
-      pendingQuantumCountValue,
-      pendingQuantumMode,
-      pendingQuantumTimerMinutes,
-      pendingQuantumTimerSeconds,
-    ]
-  );
+      doneSeconds: pendingQuantumMode === 'timer' ? halfSeconds : 0,
+      doneCount: pendingQuantumMode === 'count' ? halfCount : 0,
+    };
+  }, [
+    pendingQuantumAnimation,
+    pendingQuantumCountUnit,
+    pendingQuantumCountValue,
+    pendingQuantumMode,
+    pendingQuantumTimerMinutes,
+    pendingQuantumTimerSeconds,
+  ]);
   const previewSummary = useMemo(() => {
     if (pendingType === 'quantum') {
       return getQuantumProgressLabel({ type: 'quantum', quantum: previewQuantum });
@@ -1330,6 +1341,104 @@ export default function AddHabitSheet({
     }
     return `0/${subtasks.length}`;
   }, [pendingType, previewQuantum, subtasks.length]);
+  const [previewCardSize, setPreviewCardSize] = useState({ width: 0, height: 0 });
+  const previewWavePhaseAnim = useRef(new Animated.Value(0)).current;
+  const previewWaterLevelAnim = useRef(new Animated.Value(0)).current;
+  const previewWavePhaseRef = useRef(0);
+  const [previewWavePathFront, setPreviewWavePathFront] = useState('');
+  const [previewWavePathBack, setPreviewWavePathBack] = useState('');
+  const previewWaveHeight = 34;
+  const isPreviewWater = pendingType === 'quantum' && pendingQuantumAnimation === 'water';
+  const previewTask = useMemo(
+    () => ({
+      type: pendingType,
+      quantum: previewQuantum,
+    }),
+    [pendingType, previewQuantum]
+  );
+  const previewWaterPercent = useMemo(
+    () => getQuantumProgressPercent(previewTask),
+    [previewTask]
+  );
+  const previewWaterFillHeight = useMemo(() => {
+    if (!previewCardSize.height) {
+      return 0;
+    }
+    return previewWaterLevelAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, previewCardSize.height],
+    });
+  }, [previewCardSize.height, previewWaterLevelAnim]);
+  const updatePreviewWavePaths = useCallback(() => {
+    if (!previewCardSize.width) {
+      return;
+    }
+    const phaseValue = previewWavePhaseRef.current;
+    const frontPath = buildWavePath({
+      width: previewCardSize.width,
+      height: previewWaveHeight,
+      amplitude: 6,
+      phase: phaseValue,
+    });
+    const backPath = buildWavePath({
+      width: previewCardSize.width,
+      height: previewWaveHeight,
+      amplitude: 4,
+      phase: phaseValue + Math.PI / 2,
+    });
+    setPreviewWavePathFront(frontPath);
+    setPreviewWavePathBack(backPath);
+  }, [previewCardSize.width, previewWaveHeight]);
+
+  useEffect(() => {
+    if (!isPreviewWater) {
+      previewWavePhaseAnim.stopAnimation();
+      previewWavePhaseAnim.setValue(0);
+      return undefined;
+    }
+    const animationLoop = Animated.loop(
+      Animated.timing(previewWavePhaseAnim, {
+        toValue: Math.PI * 2,
+        duration: 3600,
+        easing: Easing.inOut(Easing.sin),
+        useNativeDriver: false,
+      })
+    );
+    animationLoop.start();
+    return () => {
+      animationLoop.stop();
+      previewWavePhaseAnim.setValue(0);
+    };
+  }, [isPreviewWater, previewWavePhaseAnim]);
+
+  useEffect(() => {
+    const id = previewWavePhaseAnim.addListener(({ value }) => {
+      previewWavePhaseRef.current = value;
+      updatePreviewWavePaths();
+    });
+    return () => {
+      previewWavePhaseAnim.removeListener(id);
+    };
+  }, [previewWavePhaseAnim, updatePreviewWavePaths]);
+
+  useEffect(() => {
+    updatePreviewWavePaths();
+  }, [previewCardSize.width, updatePreviewWavePaths]);
+
+  useEffect(() => {
+    if (!isPreviewWater || !previewCardSize.height) {
+      previewWaterLevelAnim.stopAnimation();
+      previewWaterLevelAnim.setValue(0);
+      return;
+    }
+    Animated.spring(previewWaterLevelAnim, {
+      toValue: previewWaterPercent,
+      damping: 10,
+      stiffness: 140,
+      mass: 0.9,
+      useNativeDriver: false,
+    }).start();
+  }, [isPreviewWater, previewCardSize.height, previewWaterLevelAnim, previewWaterPercent]);
 
   if (!isMounted) {
     return null;
@@ -1745,7 +1854,34 @@ export default function AddHabitSheet({
                       styles.typePreviewCard,
                       { backgroundColor: sheetBackgroundColor, borderColor: selectedColor },
                     ]}
+                    onLayout={(event) => {
+                      const { width, height } = event.nativeEvent.layout;
+                      setPreviewCardSize({ width, height });
+                    }}
                   >
+                    {isPreviewWater && (
+                      <View pointerEvents="none" style={styles.typePreviewWaterFillContainer}>
+                        <AnimatedLinearGradient
+                          colors={['rgba(107, 190, 255, 0.6)', 'rgba(64, 148, 255, 0.9)']}
+                          start={{ x: 0.5, y: 0 }}
+                          end={{ x: 0.5, y: 1 }}
+                          style={[styles.typePreviewWaterFill, { height: previewWaterFillHeight }]}
+                        >
+                          <Svg
+                            width={previewCardSize.width}
+                            height={previewWaveHeight}
+                            style={styles.typePreviewWaterWave}
+                          >
+                            {previewWavePathBack ? (
+                              <Path d={previewWavePathBack} fill="#e9f5ff" opacity={0.55} />
+                            ) : null}
+                            {previewWavePathFront ? (
+                              <Path d={previewWavePathFront} fill="#f4fbff" opacity={0.8} />
+                            ) : null}
+                          </Svg>
+                        </AnimatedLinearGradient>
+                      </View>
+                    )}
                     <View style={styles.typePreviewInfo}>
                       {customImage ? (
                         <Image source={{ uri: customImage }} style={styles.typePreviewEmojiImage} />
@@ -3253,6 +3389,23 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+  },
+  typePreviewWaterFillContainer: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 18,
+    overflow: 'hidden',
+    alignItems: 'stretch',
+    justifyContent: 'flex-end',
+  },
+  typePreviewWaterFill: {
+    width: '100%',
+    position: 'relative',
+  },
+  typePreviewWaterWave: {
+    position: 'absolute',
+    top: -18,
+    left: 0,
+    right: 0,
   },
   typePreviewInfo: {
     flexDirection: 'row',
