@@ -20,6 +20,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import TaskCard from './TaskCard';
+import { formatDuration } from '../utils/timeUtils';
 
 const SHEET_OPEN_DURATION = 300;
 const SHEET_CLOSE_DURATION = 220;
@@ -1238,6 +1240,15 @@ export default function AddHabitSheet({
     }
     return formatPeriod(normalizedPeriodTime);
   }, [hasSpecifiedTime, normalizedPeriodTime, normalizedPointTime, timeMode]);
+  const previewTime = useMemo(
+    () => ({
+      specified: hasSpecifiedTime,
+      mode: timeMode,
+      point: pointTime,
+      period: periodTime,
+    }),
+    [hasSpecifiedTime, periodTime, pointTime, timeMode]
+  );
   const reminderOptions = useMemo(
     () =>
       REMINDER_OPTIONS.map((option) => ({
@@ -1523,9 +1534,37 @@ export default function AddHabitSheet({
                   onChangeTimerSeconds={setQuantumTimerSeconds}
                   onChangeCountValue={setQuantumCountValue}
                   onChangeCountUnit={setQuantumCountUnit}
+                  previewTitle={title}
+                  previewEmoji={selectedEmoji}
+                  previewImage={customImage}
+                  previewTime={previewTime}
+                  previewColor={selectedColor}
                 />
               ) : (
-                <SubtasksPanel value={subtasks} onChange={setSubtasks} />
+                <>
+                  <SubtasksPanel value={subtasks} onChange={setSubtasks} />
+                  {selectedType !== 'list' ? (
+                    <View style={styles.quantumPreviewSection}>
+                      <Text style={styles.quantumFieldLabel}>Preview</Text>
+                      <TaskCard
+                        task={{
+                          title: title.trim() || 'New habit',
+                          emoji: selectedEmoji,
+                          customImage,
+                          time: previewTime,
+                          type: 'default',
+                          completed: false,
+                        }}
+                        backgroundColor={lightenColor(selectedColor, 0.75)}
+                        borderColor={selectedColor}
+                        totalSubtasks={subtasks.length}
+                        completedSubtasks={0}
+                        onPress={() => {}}
+                        onToggleCompletion={() => {}}
+                      />
+                    </View>
+                  ) : null}
+                </>
               )}
             </ScrollView>
             {activePanel === 'date' && (
@@ -1645,7 +1684,7 @@ export default function AddHabitSheet({
                   selectedKey={pendingType}
                   onSelect={setPendingType}
                 />
-                {pendingType === 'quantum' && (
+                {pendingType === 'quantum' ? (
                   <>
                     <View style={styles.quantumModeRow}>
                       {QUANTUM_MODES.map((option) => {
@@ -1685,10 +1724,35 @@ export default function AddHabitSheet({
                       onChangeTimerSeconds={setPendingQuantumTimerSeconds}
                       onChangeCountValue={setPendingQuantumCountValue}
                       onChangeCountUnit={setPendingQuantumCountUnit}
+                      previewTitle={title}
+                      previewEmoji={selectedEmoji}
+                      previewImage={customImage}
+                      previewTime={previewTime}
+                      previewColor={selectedColor}
                       showTitle={false}
                     />
                   </>
-                )}
+                ) : pendingType === 'default' ? (
+                  <View style={styles.quantumPreviewSection}>
+                    <Text style={styles.quantumFieldLabel}>Preview</Text>
+                    <TaskCard
+                      task={{
+                        title: title.trim() || 'New habit',
+                        emoji: selectedEmoji,
+                        customImage,
+                        time: previewTime,
+                        type: 'default',
+                        completed: false,
+                      }}
+                      backgroundColor={lightenColor(selectedColor, 0.75)}
+                      borderColor={selectedColor}
+                      totalSubtasks={subtasks.length}
+                      completedSubtasks={0}
+                      onPress={() => {}}
+                      onToggleCompletion={() => {}}
+                    />
+                  </View>
+                ) : null}
               </OptionOverlay>
             )}
           </View>
@@ -1883,6 +1947,29 @@ function normalizeNumericText(value, { max, fallback = '' } = {}) {
   return `${numeric}`;
 }
 
+function getQuantumPreviewLabel({ mode, timerMinutes, timerSeconds, countValue, countUnit }) {
+  if (mode === 'timer') {
+    const minutes = Number.parseInt(timerMinutes, 10) || 0;
+    const seconds = Number.parseInt(timerSeconds, 10) || 0;
+    const limitSeconds = minutes * 60 + seconds;
+    if (!limitSeconds) {
+      return null;
+    }
+    const doneSeconds = Math.round(limitSeconds * 0.5);
+    return `${formatDuration(doneSeconds)}/${formatDuration(limitSeconds)}`;
+  }
+  if (mode === 'count') {
+    const limitValue = Number.parseInt(countValue, 10) || 0;
+    if (!limitValue) {
+      return null;
+    }
+    const unit = countUnit?.trim() ?? '';
+    const doneValue = Math.round(limitValue * 0.5);
+    return `${doneValue}/${limitValue}${unit ? ` ${unit}` : ''}`;
+  }
+  return null;
+}
+
 function QuantumPanel({
   mode,
   animation,
@@ -1895,9 +1982,26 @@ function QuantumPanel({
   onChangeTimerSeconds,
   onChangeCountValue,
   onChangeCountUnit,
+  previewTitle,
+  previewEmoji,
+  previewImage,
+  previewTime,
+  previewColor,
   showTitle = true,
 }) {
   const isTimer = mode === 'timer';
+  const displayTitle = previewTitle?.trim() || 'New habit';
+  const previewLabel = useMemo(
+    () =>
+      getQuantumPreviewLabel({
+        mode,
+        timerMinutes,
+        timerSeconds,
+        countValue,
+        countUnit,
+      }),
+    [countUnit, countValue, mode, timerMinutes, timerSeconds]
+  );
 
   return (
     <View style={styles.subtasksPanel}>
@@ -1991,6 +2095,37 @@ function QuantumPanel({
               );
             })}
           </View>
+        </View>
+        <View style={styles.quantumPreviewSection}>
+          <Text style={styles.quantumFieldLabel}>Preview</Text>
+          <TaskCard
+            task={{
+              title: displayTitle,
+              emoji: previewEmoji,
+              customImage: previewImage,
+              time: previewTime,
+              type: 'quantum',
+              completed: false,
+              quantum: {
+                mode,
+                animation,
+                timer: {
+                  minutes: Number.parseInt(timerMinutes, 10) || 0,
+                  seconds: Number.parseInt(timerSeconds, 10) || 0,
+                },
+                count: {
+                  value: Number.parseInt(countValue, 10) || 0,
+                  unit: countUnit?.trim() ?? '',
+                },
+              },
+            }}
+            backgroundColor={lightenColor(previewColor, 0.75)}
+            borderColor={previewColor}
+            previewProgress={0.5}
+            previewLabel={previewLabel}
+            onPress={() => {}}
+            onAdjustQuantum={() => {}}
+          />
         </View>
       </View>
       <Text style={styles.subtasksPanelHint}>
@@ -3024,6 +3159,9 @@ const styles = StyleSheet.create({
   quantumAnimationRow: {
     flexDirection: 'row',
     gap: 12,
+  },
+  quantumPreviewSection: {
+    gap: 8,
   },
   quantumField: {
     flex: 1,
