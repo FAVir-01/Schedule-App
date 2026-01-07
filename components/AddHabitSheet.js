@@ -3,6 +3,7 @@ import {
   AccessibilityInfo,
   Animated,
   BackHandler,
+  Easing,
   Image,
   KeyboardAvoidingView,
   PanResponder,
@@ -20,12 +21,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import Svg, { Path } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
+import { formatDuration } from '../utils/timeUtils';
+import { buildWavePath } from '../utils/waveUtils';
 
 const SHEET_OPEN_DURATION = 300;
 const SHEET_CLOSE_DURATION = 220;
 const BACKDROP_MAX_OPACITY = 0.5;
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
+const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
 const COLORS = ['#FFCF70', '#F7A6A1', '#B39DD6', '#79C3FF', '#A8E6CF', '#FDE2A6'];
 const EMOJIS = [
@@ -1523,9 +1529,30 @@ export default function AddHabitSheet({
                   onChangeTimerSeconds={setQuantumTimerSeconds}
                   onChangeCountValue={setQuantumCountValue}
                   onChangeCountUnit={setQuantumCountUnit}
+                  previewTitle={title}
+                  previewEmoji={selectedEmoji}
+                  previewImage={customImage}
+                  previewTimeLabel={timeValue}
+                  previewColor={selectedColor}
                 />
               ) : (
-                <SubtasksPanel value={subtasks} onChange={setSubtasks} />
+                <>
+                  <SubtasksPanel value={subtasks} onChange={setSubtasks} />
+                  {selectedType !== 'list' ? (
+                    <View style={styles.quantumPreviewSection}>
+                      <Text style={styles.quantumFieldLabel}>Preview</Text>
+                      <HabitPreviewCard
+                        title={title}
+                        emoji={selectedEmoji}
+                        image={customImage}
+                        timeLabel={timeValue}
+                        color={selectedColor}
+                        isQuantum={false}
+                        subtaskCount={subtasks.length}
+                      />
+                    </View>
+                  ) : null}
+                </>
               )}
             </ScrollView>
             {activePanel === 'date' && (
@@ -1645,7 +1672,7 @@ export default function AddHabitSheet({
                   selectedKey={pendingType}
                   onSelect={setPendingType}
                 />
-                {pendingType === 'quantum' && (
+                {pendingType === 'quantum' ? (
                   <>
                     <View style={styles.quantumModeRow}>
                       {QUANTUM_MODES.map((option) => {
@@ -1685,10 +1712,28 @@ export default function AddHabitSheet({
                       onChangeTimerSeconds={setPendingQuantumTimerSeconds}
                       onChangeCountValue={setPendingQuantumCountValue}
                       onChangeCountUnit={setPendingQuantumCountUnit}
+                      previewTitle={title}
+                      previewEmoji={selectedEmoji}
+                      previewImage={customImage}
+                      previewTimeLabel={timeValue}
+                      previewColor={selectedColor}
                       showTitle={false}
                     />
                   </>
-                )}
+                ) : pendingType === 'default' ? (
+                  <View style={styles.quantumPreviewSection}>
+                    <Text style={styles.quantumFieldLabel}>Preview</Text>
+                    <HabitPreviewCard
+                      title={title}
+                      emoji={selectedEmoji}
+                      image={customImage}
+                      timeLabel={timeValue}
+                      color={selectedColor}
+                      isQuantum={false}
+                      subtaskCount={subtasks.length}
+                    />
+                  </View>
+                ) : null}
               </OptionOverlay>
             )}
           </View>
@@ -1883,6 +1928,199 @@ function normalizeNumericText(value, { max, fallback = '' } = {}) {
   return `${numeric}`;
 }
 
+function getQuantumPreviewData({ mode, timerMinutes, timerSeconds, countValue, countUnit }) {
+  if (mode === 'timer') {
+    const minutes = Number.parseInt(timerMinutes, 10) || 0;
+    const seconds = Number.parseInt(timerSeconds, 10) || 0;
+    const limitSeconds = minutes * 60 + seconds;
+    if (!limitSeconds) {
+      return { label: null, percent: 0.5 };
+    }
+    const doneSeconds = Math.round(limitSeconds * 0.5);
+    return {
+      label: `${formatDuration(doneSeconds)}/${formatDuration(limitSeconds)}`,
+      percent: 0.5,
+    };
+  }
+  if (mode === 'count') {
+    const limitValue = Number.parseInt(countValue, 10) || 0;
+    if (!limitValue) {
+      return { label: null, percent: 0.5 };
+    }
+    const unit = countUnit?.trim() ?? '';
+    const doneValue = Math.round(limitValue * 0.5);
+    return {
+      label: `${doneValue}/${limitValue}${unit ? ` ${unit}` : ''}`,
+      percent: 0.5,
+    };
+  }
+  return { label: null, percent: 0 };
+}
+
+function HabitPreviewCard({
+  title,
+  emoji,
+  image,
+  timeLabel,
+  mode,
+  animation,
+  timerMinutes,
+  timerSeconds,
+  countValue,
+  countUnit,
+  color,
+  isQuantum,
+  subtaskCount,
+}) {
+  const [cardSize, setCardSize] = useState({ width: 0, height: 0 });
+  const [wavePathFront, setWavePathFront] = useState('');
+  const [wavePathBack, setWavePathBack] = useState('');
+  const wavePhaseAnim = useRef(new Animated.Value(0)).current;
+  const wavePhaseRef = useRef(0);
+  const isWaterAnimation = isQuantum && animation === 'water';
+  const waveHeight = 34;
+  const previewTitle = title?.trim() || 'New habit';
+  const previewTimeLabel = timeLabel?.trim() || 'Anytime';
+  const previewData = useMemo(
+    () =>
+      getQuantumPreviewData({
+        mode,
+        timerMinutes,
+        timerSeconds,
+        countValue,
+        countUnit,
+      }),
+    [countUnit, countValue, mode, timerMinutes, timerSeconds]
+  );
+  const waterFillHeight = useMemo(
+    () => cardSize.height * (previewData.percent || 0),
+    [cardSize.height, previewData.percent]
+  );
+  const subtaskLabel = useMemo(() => {
+    if (!subtaskCount) {
+      return null;
+    }
+    return `0/${subtaskCount}`;
+  }, [subtaskCount]);
+  const updateWavePaths = useCallback(() => {
+    if (!cardSize.width) {
+      return;
+    }
+    const phaseValue = wavePhaseRef.current;
+    const frontPath = buildWavePath({
+      width: cardSize.width,
+      height: waveHeight,
+      amplitude: 8,
+      phase: phaseValue,
+    });
+    const backPath = buildWavePath({
+      width: cardSize.width,
+      height: waveHeight,
+      amplitude: 5,
+      phase: phaseValue + Math.PI / 2,
+    });
+    setWavePathFront(frontPath);
+    setWavePathBack(backPath);
+  }, [waveHeight]);
+
+  useEffect(() => {
+    if (!isWaterAnimation) {
+      wavePhaseAnim.stopAnimation();
+      wavePhaseAnim.setValue(0);
+      return undefined;
+    }
+
+    const animationLoop = Animated.loop(
+      Animated.timing(wavePhaseAnim, {
+        toValue: Math.PI * 2,
+        duration: 3600,
+        easing: Easing.inOut(Easing.sin),
+        useNativeDriver: false,
+      })
+    );
+
+    animationLoop.start();
+    return () => {
+      animationLoop.stop();
+      wavePhaseAnim.setValue(0);
+    };
+  }, [isWaterAnimation, wavePhaseAnim]);
+
+  useEffect(() => {
+    if (!isWaterAnimation) {
+      return undefined;
+    }
+    const id = wavePhaseAnim.addListener(({ value }) => {
+      wavePhaseRef.current = value;
+      updateWavePaths();
+    });
+    updateWavePaths();
+    return () => {
+      wavePhaseAnim.removeListener(id);
+    };
+  }, [isWaterAnimation, updateWavePaths, wavePhaseAnim]);
+
+  return (
+    <View
+      style={[
+        styles.quantumPreviewCard,
+        { backgroundColor: lightenColor(color, 0.75), borderColor: color },
+      ]}
+      onLayout={(event) => {
+        const { width, height } = event.nativeEvent.layout;
+        setCardSize({ width, height });
+        updateWavePaths();
+      }}
+    >
+      {isWaterAnimation ? (
+        <View pointerEvents="none" style={styles.quantumPreviewWaterFill}>
+          <AnimatedLinearGradient
+            colors={['rgba(107, 190, 255, 0.6)', 'rgba(64, 148, 255, 0.9)']}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={[styles.quantumPreviewWaterFill, { height: waterFillHeight }]}
+          >
+            <Svg width={cardSize.width} height={waveHeight} style={styles.quantumPreviewWave}>
+              {wavePathBack ? (
+                <Path d={wavePathBack} fill="#c3e6ff" opacity={0.55} />
+              ) : null}
+              {wavePathFront ? <Path d={wavePathFront} fill="#f4fbff" opacity={0.8} /> : null}
+            </Svg>
+          </AnimatedLinearGradient>
+        </View>
+      ) : null}
+      <View style={styles.quantumPreviewContent}>
+        <View style={styles.quantumPreviewInfo}>
+          {image ? (
+            <Image source={{ uri: image }} style={styles.quantumPreviewImage} />
+          ) : (
+            <Text style={styles.quantumPreviewEmoji}>{emoji || DEFAULT_EMOJI}</Text>
+          )}
+          <View style={styles.quantumPreviewDetails}>
+            <Text style={styles.quantumPreviewTitle} numberOfLines={1}>
+              {previewTitle}
+            </Text>
+            <Text style={styles.quantumPreviewTime}>{previewTimeLabel}</Text>
+            {isQuantum && previewData.label ? (
+              <View style={styles.quantumPreviewBadge}>
+                <Text style={styles.quantumPreviewBadgeText}>{previewData.label}</Text>
+              </View>
+            ) : null}
+            {!isQuantum && subtaskLabel ? (
+              <View style={styles.quantumPreviewBadge}>
+                <Text style={styles.quantumPreviewBadgeText}>{subtaskLabel}</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </View>
+      <View style={styles.quantumPreviewToggle}>
+        <Ionicons name="add" size={18} color="#1F2742" />
+      </View>
+    </View>
+  );
+}
+
 function QuantumPanel({
   mode,
   animation,
@@ -1895,9 +2133,16 @@ function QuantumPanel({
   onChangeTimerSeconds,
   onChangeCountValue,
   onChangeCountUnit,
+  previewTitle,
+  previewEmoji,
+  previewImage,
+  previewTimeLabel,
+  previewColor,
   showTitle = true,
 }) {
   const isTimer = mode === 'timer';
+  const displayTitle = previewTitle?.trim() || 'New habit';
+  const displayTimeLabel = previewTimeLabel?.trim() || 'Anytime';
 
   return (
     <View style={styles.subtasksPanel}>
@@ -1991,6 +2236,23 @@ function QuantumPanel({
               );
             })}
           </View>
+        </View>
+        <View style={styles.quantumPreviewSection}>
+          <Text style={styles.quantumFieldLabel}>Preview</Text>
+          <HabitPreviewCard
+            title={displayTitle}
+            emoji={previewEmoji}
+            image={previewImage}
+            timeLabel={displayTimeLabel}
+            mode={mode}
+            animation={animation}
+            timerMinutes={timerMinutes}
+            timerSeconds={timerSeconds}
+            countValue={countValue}
+            countUnit={countUnit}
+            color={previewColor}
+            isQuantum
+          />
         </View>
       </View>
       <Text style={styles.subtasksPanelHint}>
@@ -3024,6 +3286,94 @@ const styles = StyleSheet.create({
   quantumAnimationRow: {
     flexDirection: 'row',
     gap: 12,
+  },
+  quantumPreviewSection: {
+    gap: 8,
+  },
+  quantumPreviewCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+    backgroundColor: '#ffffff',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  quantumPreviewWaterFill: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 18,
+    overflow: 'hidden',
+    alignItems: 'stretch',
+    justifyContent: 'flex-end',
+  },
+  quantumPreviewWave: {
+    position: 'absolute',
+    top: -18,
+    left: 0,
+    right: 0,
+  },
+  quantumPreviewContent: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  quantumPreviewInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  quantumPreviewEmoji: {
+    fontSize: 34,
+  },
+  quantumPreviewImage: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+  },
+  quantumPreviewDetails: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  quantumPreviewTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a2e',
+  },
+  quantumPreviewTime: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#6f7a86',
+  },
+  quantumPreviewBadge: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#d7dbeb',
+  },
+  quantumPreviewBadgeText: {
+    fontSize: 12,
+    color: '#3c2ba7',
+    fontWeight: '600',
+  },
+  quantumPreviewToggle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#c5cadb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
   },
   quantumField: {
     flex: 1,
