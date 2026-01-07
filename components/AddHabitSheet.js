@@ -20,6 +20,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import { formatTaskTime } from '../utils/timeUtils';
+import { getQuantumProgressLabel } from '../utils/taskUtils';
 
 const SHEET_OPEN_DURATION = 300;
 const SHEET_CLOSE_DURATION = 220;
@@ -1281,6 +1283,53 @@ export default function AddHabitSheet({
     pendingHasSpecifiedTime,
     pendingTimeMode,
   ]);
+  const previewTitle = useMemo(
+    () => (title.trim() ? title.trim() : 'Untitled task'),
+    [title]
+  );
+  const previewTimeLabel = useMemo(
+    () =>
+      formatTaskTime({
+        specified: hasSpecifiedTime,
+        mode: timeMode,
+        point: normalizedPointTime,
+        period: normalizedPeriodTime,
+      }),
+    [hasSpecifiedTime, normalizedPeriodTime, normalizedPointTime, timeMode]
+  );
+  const previewQuantum = useMemo(
+    () => ({
+      mode: pendingQuantumMode,
+      animation: pendingQuantumAnimation,
+      timer: {
+        minutes: Number.parseInt(pendingQuantumTimerMinutes, 10) || 0,
+        seconds: Number.parseInt(pendingQuantumTimerSeconds, 10) || 0,
+      },
+      count: {
+        value: Number.parseInt(pendingQuantumCountValue, 10) || 0,
+        unit: pendingQuantumCountUnit.trim(),
+      },
+      doneSeconds: 0,
+      doneCount: 0,
+    }),
+    [
+      pendingQuantumAnimation,
+      pendingQuantumCountUnit,
+      pendingQuantumCountValue,
+      pendingQuantumMode,
+      pendingQuantumTimerMinutes,
+      pendingQuantumTimerSeconds,
+    ]
+  );
+  const previewSummary = useMemo(() => {
+    if (pendingType === 'quantum') {
+      return getQuantumProgressLabel({ type: 'quantum', quantum: previewQuantum });
+    }
+    if (!subtasks.length) {
+      return null;
+    }
+    return `0/${subtasks.length}`;
+  }, [pendingType, previewQuantum, subtasks.length]);
 
   if (!isMounted) {
     return null;
@@ -1689,6 +1738,35 @@ export default function AddHabitSheet({
                     />
                   </>
                 )}
+                <View style={styles.typePreviewSection}>
+                  <Text style={styles.typePreviewLabel}>Preview</Text>
+                  <View
+                    style={[
+                      styles.typePreviewCard,
+                      { backgroundColor: sheetBackgroundColor, borderColor: selectedColor },
+                    ]}
+                  >
+                    <View style={styles.typePreviewInfo}>
+                      {customImage ? (
+                        <Image source={{ uri: customImage }} style={styles.typePreviewEmojiImage} />
+                      ) : (
+                        <Text style={styles.typePreviewEmoji}>{selectedEmoji || DEFAULT_EMOJI}</Text>
+                      )}
+                      <View style={styles.typePreviewDetails}>
+                        <Text style={styles.typePreviewTitle} numberOfLines={1}>
+                          {previewTitle}
+                        </Text>
+                        <Text style={styles.typePreviewTime}>{previewTimeLabel}</Text>
+                        {previewSummary ? (
+                          <View style={styles.typePreviewSummary}>
+                            <Text style={styles.typePreviewSummaryText}>{previewSummary}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    </View>
+                    <View style={styles.typePreviewToggle} />
+                  </View>
+                </View>
               </OptionOverlay>
             )}
           </View>
@@ -3149,6 +3227,85 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F7FF',
     borderRadius: 20,
     overflow: 'hidden',
+  },
+  typePreviewSection: {
+    marginTop: 24,
+    gap: 10,
+  },
+  typePreviewLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.6,
+    color: '#7F8A9A',
+    textTransform: 'uppercase',
+  },
+  typePreviewCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    backgroundColor: '#FFFFFF',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  typePreviewInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  typePreviewEmoji: {
+    fontSize: 34,
+  },
+  typePreviewEmojiImage: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    resizeMode: 'cover',
+  },
+  typePreviewDetails: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  typePreviewTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a2e',
+  },
+  typePreviewTime: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#6f7a86',
+  },
+  typePreviewSummary: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#d7dbeb',
+  },
+  typePreviewSummaryText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#3c2ba7',
+  },
+  typePreviewToggle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#c5cadb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
   },
   tagPanel: {
     gap: 18,
