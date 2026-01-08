@@ -32,6 +32,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import {
   addMonths as addMonthsDateFns,
   eachDayOfInterval,
+  differenceInCalendarDays,
   endOfMonth,
   endOfWeek,
   format,
@@ -890,6 +891,70 @@ function ScheduleApp() {
     () => tasks.find((task) => task.id === activeProfileTaskId) ?? null,
     [activeProfileTaskId, tasks]
   );
+  const profileStats = useMemo(() => {
+    const committedHabits = tasks.length;
+    const dateCandidates = [];
+
+    history.forEach((entry) => {
+      if (entry?.timestamp) {
+        const normalized = normalizeDateValue(entry.timestamp);
+        if (normalized) {
+          dateCandidates.push(normalized);
+        }
+      }
+    });
+
+    tasks.forEach((task) => {
+      const normalized = normalizeDateValue(task.date ?? task.dateKey);
+      if (normalized) {
+        dateCandidates.push(normalized);
+      }
+    });
+
+    const minDate = dateCandidates.length
+      ? new Date(Math.min(...dateCandidates.map((date) => date.getTime())))
+      : today;
+    const startDate = minDate > today ? today : minDate;
+    const totalDays = Math.max(0, differenceInCalendarDays(today, startDate) + 1);
+
+    if (!tasks.length) {
+      return {
+        totalDays,
+        committedHabits,
+        currentStreak: 0,
+        bestStreak: 0,
+      };
+    }
+
+    const dateRange = eachDayOfInterval({ start: startDate, end: today });
+    let currentStreak = 0;
+    let bestStreak = 0;
+
+    dateRange.forEach((date) => {
+      const scheduledTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, date));
+      if (scheduledTasks.length === 0) {
+        return;
+      }
+      const isComplete = scheduledTasks.every((task) => getTaskCompletionStatus(task, date));
+      if (isComplete) {
+        currentStreak += 1;
+        bestStreak = Math.max(bestStreak, currentStreak);
+      } else {
+        currentStreak = 0;
+      }
+    });
+
+    return {
+      totalDays,
+      committedHabits,
+      currentStreak,
+      bestStreak,
+    };
+  }, [history, tasks, today]);
+  const totalDaysUnit = profileStats.totalDays === 1 ? 'day' : 'days';
+  const habitsUnit = profileStats.committedHabits === 1 ? 'habit' : 'habits';
+  const currentStreakUnit = profileStats.currentStreak === 1 ? 'day' : 'days';
+  const bestStreakUnit = profileStats.bestStreak === 1 ? 'day' : 'days';
   const activeTaskForSelectedDate = useMemo(
     () =>
       activeTask
@@ -1981,14 +2046,39 @@ function ScheduleApp() {
             </View>
           ) : activeTab === 'profile' ? (
              <View style={styles.profileContainer}>
-                <View style={styles.avatarContainer}>
-                  <Ionicons name="person" size={40} color="#3c2ba7" />
+                <View style={styles.profileStatsSection}>
+                  <Text style={styles.profileStatsTitle}>Stats</Text>
+                  <View style={styles.profileStatsGrid}>
+                    <View style={styles.profileStatCard}>
+                      <Text style={styles.profileStatLabel}>Total days</Text>
+                      <View style={styles.profileStatValueRow}>
+                        <Text style={styles.profileStatValue}>{profileStats.totalDays}</Text>
+                        <Text style={styles.profileStatUnit}>{totalDaysUnit}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.profileStatCard}>
+                      <Text style={styles.profileStatLabel}>Committed habits</Text>
+                      <View style={styles.profileStatValueRow}>
+                        <Text style={styles.profileStatValue}>{profileStats.committedHabits}</Text>
+                        <Text style={styles.profileStatUnit}>{habitsUnit}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.profileStatCard}>
+                      <Text style={styles.profileStatLabel}>Current streak</Text>
+                      <View style={styles.profileStatValueRow}>
+                        <Text style={styles.profileStatValue}>{profileStats.currentStreak}</Text>
+                        <Text style={styles.profileStatUnit}>{currentStreakUnit}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.profileStatCard}>
+                      <Text style={styles.profileStatLabel}>Best streak</Text>
+                      <View style={styles.profileStatValueRow}>
+                        <Text style={styles.profileStatValue}>{profileStats.bestStreak}</Text>
+                        <Text style={styles.profileStatUnit}>{bestStreakUnit}</Text>
+                      </View>
+                    </View>
+                  </View>
                 </View>
-
-                <Text style={styles.profileTitle}>Profile</Text>
-                <Text style={styles.profileSubtitle}>
-                  Personalize your experience and tweak how your calendar looks.
-                </Text>
 
                 <TouchableOpacity
                   style={styles.customizeButton}
@@ -4533,8 +4623,9 @@ const styles = StyleSheet.create({
   profileContainer: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: 32,
+    paddingTop: 24,
   },
   avatarContainer: {
     width: 80,
@@ -4557,6 +4648,51 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 32,
     lineHeight: 22,
+  },
+  profileStatsSection: {
+    alignSelf: 'stretch',
+    marginBottom: 28,
+  },
+  profileStatsTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a2e',
+    marginBottom: 12,
+  },
+  profileStatsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  profileStatCard: {
+    width: '48%',
+    borderRadius: 20,
+    backgroundColor: '#f1f1f5',
+    padding: 12,
+    marginBottom: 10,
+  },
+  profileStatLabel: {
+    fontSize: 11,
+    color: '#6f7a86',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
+  profileStatValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+  },
+  profileStatValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#1a1a2e',
+  },
+  profileStatUnit: {
+    fontSize: 12,
+    color: '#6f7a86',
+    fontWeight: '600',
   },
   customizeButton: {
     flexDirection: 'row',
