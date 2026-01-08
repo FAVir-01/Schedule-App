@@ -982,7 +982,8 @@ function ScheduleApp() {
       setQuantumAdjustMinutes('0');
       setQuantumAdjustSeconds('0');
     } else {
-      setQuantumAdjustCount('1');
+      const lastAdjust = task.quantum?.lastAdjustCount;
+      setQuantumAdjustCount(String(lastAdjust ?? 1));
     }
   }, []);
 
@@ -1102,6 +1103,7 @@ function ScheduleApp() {
                 },
               },
               doneCount: nextCount,
+              lastAdjustCount: deltaCount,
               wavePulse: Date.now(),
             },
           };
@@ -3608,6 +3610,12 @@ function QuantumAdjustModal({
 }) {
   const isTimer = task?.quantum?.mode === 'timer';
   const limitLabel = task ? getQuantumProgressLabel(task, dateKey) : null;
+  const limitCount = task?.quantum?.count?.value ?? 0;
+  const lastAdjustCount = task?.quantum?.lastAdjustCount ?? null;
+  const normalizedCountValue = Number.parseInt(countValue, 10) || 0;
+  const lastCountValue = lastAdjustCount ?? Math.max(1, normalizedCountValue || 1);
+  const halfCountValue = limitCount ? Math.max(1, Math.round(limitCount / 2)) : 0;
+  const maxCountValue = limitCount ?? 0;
   const handleMinutesChange = useCallback(
     (value) => {
       onChangeMinutes(value.replace(/\D/g, '').slice(0, 2));
@@ -3623,6 +3631,15 @@ function QuantumAdjustModal({
   const handleCountChange = useCallback(
     (value) => {
       onChangeCount(value.replace(/\D/g, '').slice(0, 4));
+    },
+    [onChangeCount]
+  );
+  const handlePresetSelect = useCallback(
+    (value) => {
+      if (!value) {
+        return;
+      }
+      onChangeCount(String(value));
     },
     [onChangeCount]
   );
@@ -3683,20 +3700,80 @@ function QuantumAdjustModal({
               </View>
             </View>
           ) : (
-            <View style={styles.quantumModalRow}>
-              <View style={styles.quantumModalField}>
-                <Text style={styles.quantumModalFieldLabel}>Amount</Text>
-                <TextInput
-                  style={styles.quantumModalInput}
-                  value={countValue}
-                  onChangeText={handleCountChange}
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  placeholder="0"
-                  placeholderTextColor="#9AA5B5"
-                />
+            <>
+              <View style={styles.quantumModalPresetRow}>
+                <Pressable
+                  style={[
+                    styles.quantumModalPresetButton,
+                    normalizedCountValue === lastCountValue && styles.quantumModalPresetButtonSelected,
+                  ]}
+                  onPress={() => handlePresetSelect(lastCountValue)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Use last amount ${lastCountValue}`}
+                >
+                  <Text
+                    style={[
+                      styles.quantumModalPresetText,
+                      normalizedCountValue === lastCountValue && styles.quantumModalPresetTextSelected,
+                    ]}
+                  >
+                    {lastCountValue}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.quantumModalPresetButton,
+                    normalizedCountValue === halfCountValue && styles.quantumModalPresetButtonSelected,
+                  ]}
+                  onPress={() => handlePresetSelect(halfCountValue)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Use half"
+                  disabled={!halfCountValue}
+                >
+                  <Text
+                    style={[
+                      styles.quantumModalPresetText,
+                      normalizedCountValue === halfCountValue && styles.quantumModalPresetTextSelected,
+                    ]}
+                  >
+                    half
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.quantumModalPresetButton,
+                    normalizedCountValue === maxCountValue && styles.quantumModalPresetButtonSelected,
+                  ]}
+                  onPress={() => handlePresetSelect(maxCountValue)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Use max"
+                  disabled={!maxCountValue}
+                >
+                  <Text
+                    style={[
+                      styles.quantumModalPresetText,
+                      normalizedCountValue === maxCountValue && styles.quantumModalPresetTextSelected,
+                    ]}
+                  >
+                    max
+                  </Text>
+                </Pressable>
               </View>
-            </View>
+              <View style={styles.quantumModalRow}>
+                <View style={styles.quantumModalField}>
+                  <Text style={styles.quantumModalFieldLabel}>Amount</Text>
+                  <TextInput
+                    style={styles.quantumModalInput}
+                    value={countValue}
+                    onChangeText={handleCountChange}
+                    keyboardType="number-pad"
+                    maxLength={4}
+                    placeholder="0"
+                    placeholderTextColor="#9AA5B5"
+                  />
+                </View>
+              </View>
+            </>
           )}
           <View style={styles.quantumModalActions}>
             <Pressable
@@ -4197,6 +4274,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 16,
+  },
+  quantumModalPresetRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 14,
+  },
+  quantumModalPresetButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EEF3FF',
+  },
+  quantumModalPresetButtonSelected: {
+    backgroundColor: '#1F2742',
+  },
+  quantumModalPresetText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1F2742',
+  },
+  quantumModalPresetTextSelected: {
+    color: '#FFFFFF',
   },
   quantumModalField: {
     flex: 1,
