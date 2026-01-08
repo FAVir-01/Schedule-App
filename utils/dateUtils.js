@@ -109,7 +109,7 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
   }
 
   const normalizedTargetDate = normalizeDateValue(targetDate);
-  const normalizedStartDate = normalizeDateValue(task.date ?? task.dateKey);
+  const normalizedStartDate = normalizeDateValue(task.dateKey ?? task.date);
 
   if (!normalizedTargetDate || !normalizedStartDate) {
     return false;
