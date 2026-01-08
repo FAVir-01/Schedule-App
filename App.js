@@ -322,6 +322,7 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
   const imageSource = date ? getMonthImageSource(date.getMonth(), customImages) : null;
 
   const totalTasks = tasks.length;
+  const dateKey = date ? getDateKey(date) : null;
   const completedTasks = tasks.filter((t) => t.completed).length;
   const targetSuccessRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
   const [imageErrors, setImageErrors] = useState({});
@@ -469,7 +470,7 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
                   {tasks.map((task, index) => {
                     const baseColor = task.color || '#3c2ba7';
                     const lightBg = lightenColor(baseColor, 0.85);
-                    const quantumLabel = getQuantumProgressLabel(task);
+                    const quantumLabel = getQuantumProgressLabel(task, dateKey);
 
                     return (
                       <View
@@ -1017,14 +1018,21 @@ function ScheduleApp() {
             if (!limitSeconds) {
               return task;
             }
-            const currentSeconds = task.quantum?.doneSeconds ?? 0;
+            const baseDateKey =
+              dateKey ?? task.dateKey ?? (task.date ? getDateKey(task.date) : null);
+            if (!baseDateKey) {
+              return task;
+            }
+            const progressByDate = {
+              ...(task.quantum?.progressByDate ?? {}),
+            };
+            const currentEntry = progressByDate[baseDateKey] ?? {};
+            const currentSeconds = currentEntry?.doneSeconds ?? 0;
             const nextSeconds = clampValue(
               currentSeconds + direction * deltaSeconds,
               0,
               limitSeconds
             );
-            const baseDateKey =
-              dateKey ?? task.dateKey ?? (task.date ? getDateKey(task.date) : null);
             const completedDates = { ...(task.completedDates ?? {}) };
             if (baseDateKey) {
               if (nextSeconds === limitSeconds) {
@@ -1038,6 +1046,13 @@ function ScheduleApp() {
               completedDates,
               quantum: {
                 ...task.quantum,
+                progressByDate: {
+                  ...progressByDate,
+                  [baseDateKey]: {
+                    ...currentEntry,
+                    doneSeconds: nextSeconds,
+                  },
+                },
                 doneSeconds: nextSeconds,
                 wavePulse: Date.now(),
               },
@@ -1051,14 +1066,21 @@ function ScheduleApp() {
           if (!limitCount) {
             return task;
           }
-          const currentCount = task.quantum?.doneCount ?? 0;
+          const baseDateKey =
+            dateKey ?? task.dateKey ?? (task.date ? getDateKey(task.date) : null);
+          if (!baseDateKey) {
+            return task;
+          }
+          const progressByDate = {
+            ...(task.quantum?.progressByDate ?? {}),
+          };
+          const currentEntry = progressByDate[baseDateKey] ?? {};
+          const currentCount = currentEntry?.doneCount ?? 0;
           const nextCount = clampValue(
             currentCount + direction * deltaCount,
             0,
             limitCount
           );
-          const baseDateKey =
-            dateKey ?? task.dateKey ?? (task.date ? getDateKey(task.date) : null);
           const completedDates = { ...(task.completedDates ?? {}) };
           if (baseDateKey) {
             if (nextCount === limitCount) {
@@ -1072,6 +1094,13 @@ function ScheduleApp() {
             completedDates,
             quantum: {
               ...task.quantum,
+              progressByDate: {
+                ...progressByDate,
+                [baseDateKey]: {
+                  ...currentEntry,
+                  doneCount: nextCount,
+                },
+              },
               doneCount: nextCount,
               wavePulse: Date.now(),
             },
@@ -1122,6 +1151,35 @@ function ScheduleApp() {
         completedDates[baseDateKey] = true;
       }
 
+      const normalizedQuantum = task.quantum
+        ? (() => {
+            const progressByDate =
+              task.quantum.progressByDate &&
+              typeof task.quantum.progressByDate === 'object' &&
+              !Array.isArray(task.quantum.progressByDate)
+                ? { ...task.quantum.progressByDate }
+                : {};
+            if (baseDateKey) {
+              const legacyDoneSeconds = task.quantum.doneSeconds;
+              const legacyDoneCount = task.quantum.doneCount;
+              if (
+                typeof legacyDoneSeconds === 'number' ||
+                typeof legacyDoneCount === 'number'
+              ) {
+                progressByDate[baseDateKey] = {
+                  ...progressByDate[baseDateKey],
+                  doneSeconds: typeof legacyDoneSeconds === 'number' ? legacyDoneSeconds : 0,
+                  doneCount: typeof legacyDoneCount === 'number' ? legacyDoneCount : 0,
+                };
+              }
+            }
+            return {
+              ...task.quantum,
+              progressByDate,
+            };
+          })()
+        : task.quantum;
+
       const normalizedSubtasks = Array.isArray(task.subtasks)
         ? task.subtasks.map((subtask) => {
             const subtaskCompletedDates = {
@@ -1146,6 +1204,7 @@ function ScheduleApp() {
         completedDates,
         subtasks: normalizedSubtasks,
         repeat: normalizeRepeatConfig(task.repeat),
+        quantum: normalizedQuantum,
       };
     });
   }, []);
@@ -1976,6 +2035,7 @@ function ScheduleApp() {
                         task={task}
                         backgroundColor={task.backgroundColor}
                         borderColor={task.borderColor}
+                        dateKey={selectedDateKey}
                         totalSubtasks={task.totalSubtasks}
                         completedSubtasks={task.completedSubtasks}
                         onPress={() => setActiveTaskId(task.id)}
@@ -2417,6 +2477,7 @@ function ScheduleApp() {
         minutesValue={quantumAdjustMinutes}
         secondsValue={quantumAdjustSeconds}
         countValue={quantumAdjustCount}
+        dateKey={selectedDateKey}
         onChangeMinutes={setQuantumAdjustMinutes}
         onChangeSeconds={setQuantumAdjustSeconds}
         onChangeCount={setQuantumAdjustCount}
@@ -2452,6 +2513,7 @@ function SwipeableTaskCard({
   task,
   backgroundColor,
   borderColor,
+  dateKey,
   totalSubtasks,
   completedSubtasks,
   onPress,
@@ -2558,7 +2620,7 @@ function SwipeableTaskCard({
   );
 
   const totalLabel = useMemo(() => {
-    const quantumLabel = getQuantumProgressLabel(task);
+    const quantumLabel = getQuantumProgressLabel(task, dateKey);
     if (quantumLabel) {
       return quantumLabel;
     }
@@ -2570,7 +2632,10 @@ function SwipeableTaskCard({
 
   const isQuantum = task.type === 'quantum';
   const isWaterAnimation = task.quantum?.animation === 'water';
-  const waterPercent = useMemo(() => getQuantumProgressPercent(task), [task]);
+  const waterPercent = useMemo(
+    () => getQuantumProgressPercent(task, dateKey),
+    [dateKey, task]
+  );
   const waveHeight = 34;
   const updateWavePaths = useCallback(() => {
     if (!cardSize.width) {
@@ -2686,7 +2751,8 @@ function SwipeableTaskCard({
     ]).start();
   }, [isQuantum, isWaterAnimation, task.quantum?.wavePulse, waveIntensityAnim]);
   const toggleAction = isQuantum ? onAdjustQuantum : onToggleCompletion;
-  const isQuantumComplete = isQuantum && getQuantumProgressLabel(task) && task.completed;
+  const isQuantumComplete =
+    isQuantum && getQuantumProgressLabel(task, dateKey) && task.completed;
 
   return (
     <View style={[styles.swipeableWrapper, { zIndex: isOpen ? 10 : 1 }]}>
@@ -3272,7 +3338,8 @@ function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock }) {
   const typeLabel = task.typeLabel ?? task.type ?? 'Standard';
   const isQuantum = task.type === 'quantum';
   const repeatConfig = normalizeRepeatConfig(task.repeat);
-  const quantumLabel = isQuantum ? getQuantumProgressLabel(task) : null;
+  const todayKey = getDateKey(new Date());
+  const quantumLabel = isQuantum ? getQuantumProgressLabel(task, todayKey) : null;
   const quantumModeLabel =
     task.quantum?.mode === 'timer' ? 'Timer' : task.quantum?.mode ? 'Cont' : 'Quantum';
   const repeatLabel = repeatConfig.enabled
@@ -3407,7 +3474,7 @@ function TaskDetailModal({
   const completedSubtasks = Array.isArray(task.subtasks)
     ? task.subtasks.filter((item) => getSubtaskCompletionStatus(item, dateKey)).length
     : 0;
-  const quantumLabel = getQuantumProgressLabel(task);
+  const quantumLabel = getQuantumProgressLabel(task, dateKey);
   const cardBackground = lightenColor(task.color, 0.85);
 
   return (
@@ -3531,6 +3598,7 @@ function QuantumAdjustModal({
   minutesValue,
   secondsValue,
   countValue,
+  dateKey,
   onChangeMinutes,
   onChangeSeconds,
   onChangeCount,
@@ -3539,7 +3607,7 @@ function QuantumAdjustModal({
   onClose,
 }) {
   const isTimer = task?.quantum?.mode === 'timer';
-  const limitLabel = task ? getQuantumProgressLabel(task) : null;
+  const limitLabel = task ? getQuantumProgressLabel(task, dateKey) : null;
   const handleMinutesChange = useCallback(
     (value) => {
       onChangeMinutes(value.replace(/\D/g, '').slice(0, 2));
