@@ -32,6 +32,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import {
   addMonths as addMonthsDateFns,
   eachDayOfInterval,
+  differenceInCalendarDays,
   endOfMonth,
   endOfWeek,
   format,
@@ -321,6 +322,7 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
   const imageSource = date ? getMonthImageSource(date.getMonth(), customImages) : null;
 
   const totalTasks = tasks.length;
+  const dateKey = date ? getDateKey(date) : null;
   const completedTasks = tasks.filter((t) => t.completed).length;
   const targetSuccessRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
   const [imageErrors, setImageErrors] = useState({});
@@ -468,7 +470,7 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
                   {tasks.map((task, index) => {
                     const baseColor = task.color || '#3c2ba7';
                     const lightBg = lightenColor(baseColor, 0.85);
-                    const quantumLabel = getQuantumProgressLabel(task);
+                    const quantumLabel = getQuantumProgressLabel(task, dateKey);
 
                     return (
                       <View
@@ -890,6 +892,70 @@ function ScheduleApp() {
     () => tasks.find((task) => task.id === activeProfileTaskId) ?? null,
     [activeProfileTaskId, tasks]
   );
+  const profileStats = useMemo(() => {
+    const committedHabits = tasks.length;
+    const dateCandidates = [];
+
+    history.forEach((entry) => {
+      if (entry?.timestamp) {
+        const normalized = normalizeDateValue(entry.timestamp);
+        if (normalized) {
+          dateCandidates.push(normalized);
+        }
+      }
+    });
+
+    tasks.forEach((task) => {
+      const normalized = normalizeDateValue(task.date ?? task.dateKey);
+      if (normalized) {
+        dateCandidates.push(normalized);
+      }
+    });
+
+    const minDate = dateCandidates.length
+      ? new Date(Math.min(...dateCandidates.map((date) => date.getTime())))
+      : today;
+    const startDate = minDate > today ? today : minDate;
+    const totalDays = Math.max(0, differenceInCalendarDays(today, startDate) + 1);
+
+    if (!tasks.length) {
+      return {
+        totalDays,
+        committedHabits,
+        currentStreak: 0,
+        bestStreak: 0,
+      };
+    }
+
+    const dateRange = eachDayOfInterval({ start: startDate, end: today });
+    let currentStreak = 0;
+    let bestStreak = 0;
+
+    dateRange.forEach((date) => {
+      const scheduledTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, date));
+      if (scheduledTasks.length === 0) {
+        return;
+      }
+      const isComplete = scheduledTasks.every((task) => getTaskCompletionStatus(task, date));
+      if (isComplete) {
+        currentStreak += 1;
+        bestStreak = Math.max(bestStreak, currentStreak);
+      } else {
+        currentStreak = 0;
+      }
+    });
+
+    return {
+      totalDays,
+      committedHabits,
+      currentStreak,
+      bestStreak,
+    };
+  }, [history, tasks, today]);
+  const totalDaysUnit = profileStats.totalDays === 1 ? 'day' : 'days';
+  const habitsUnit = profileStats.committedHabits === 1 ? 'habit' : 'habits';
+  const currentStreakUnit = profileStats.currentStreak === 1 ? 'day' : 'days';
+  const bestStreakUnit = profileStats.bestStreak === 1 ? 'day' : 'days';
   const activeTaskForSelectedDate = useMemo(
     () =>
       activeTask
@@ -916,7 +982,8 @@ function ScheduleApp() {
       setQuantumAdjustMinutes('0');
       setQuantumAdjustSeconds('0');
     } else {
-      setQuantumAdjustCount('1');
+      const lastAdjust = task.quantum?.lastAdjustCount;
+      setQuantumAdjustCount(String(lastAdjust ?? 1));
     }
   }, []);
 
@@ -952,14 +1019,21 @@ function ScheduleApp() {
             if (!limitSeconds) {
               return task;
             }
-            const currentSeconds = task.quantum?.doneSeconds ?? 0;
+            const baseDateKey =
+              dateKey ?? task.dateKey ?? (task.date ? getDateKey(task.date) : null);
+            if (!baseDateKey) {
+              return task;
+            }
+            const progressByDate = {
+              ...(task.quantum?.progressByDate ?? {}),
+            };
+            const currentEntry = progressByDate[baseDateKey] ?? {};
+            const currentSeconds = currentEntry?.doneSeconds ?? 0;
             const nextSeconds = clampValue(
               currentSeconds + direction * deltaSeconds,
               0,
               limitSeconds
             );
-            const baseDateKey =
-              dateKey ?? task.dateKey ?? (task.date ? getDateKey(task.date) : null);
             const completedDates = { ...(task.completedDates ?? {}) };
             if (baseDateKey) {
               if (nextSeconds === limitSeconds) {
@@ -973,6 +1047,13 @@ function ScheduleApp() {
               completedDates,
               quantum: {
                 ...task.quantum,
+                progressByDate: {
+                  ...progressByDate,
+                  [baseDateKey]: {
+                    ...currentEntry,
+                    doneSeconds: nextSeconds,
+                  },
+                },
                 doneSeconds: nextSeconds,
                 wavePulse: Date.now(),
               },
@@ -986,14 +1067,21 @@ function ScheduleApp() {
           if (!limitCount) {
             return task;
           }
-          const currentCount = task.quantum?.doneCount ?? 0;
+          const baseDateKey =
+            dateKey ?? task.dateKey ?? (task.date ? getDateKey(task.date) : null);
+          if (!baseDateKey) {
+            return task;
+          }
+          const progressByDate = {
+            ...(task.quantum?.progressByDate ?? {}),
+          };
+          const currentEntry = progressByDate[baseDateKey] ?? {};
+          const currentCount = currentEntry?.doneCount ?? 0;
           const nextCount = clampValue(
             currentCount + direction * deltaCount,
             0,
             limitCount
           );
-          const baseDateKey =
-            dateKey ?? task.dateKey ?? (task.date ? getDateKey(task.date) : null);
           const completedDates = { ...(task.completedDates ?? {}) };
           if (baseDateKey) {
             if (nextCount === limitCount) {
@@ -1007,7 +1095,15 @@ function ScheduleApp() {
             completedDates,
             quantum: {
               ...task.quantum,
+              progressByDate: {
+                ...progressByDate,
+                [baseDateKey]: {
+                  ...currentEntry,
+                  doneCount: nextCount,
+                },
+              },
               doneCount: nextCount,
+              lastAdjustCount: deltaCount,
               wavePulse: Date.now(),
             },
           };
@@ -1057,6 +1153,35 @@ function ScheduleApp() {
         completedDates[baseDateKey] = true;
       }
 
+      const normalizedQuantum = task.quantum
+        ? (() => {
+            const progressByDate =
+              task.quantum.progressByDate &&
+              typeof task.quantum.progressByDate === 'object' &&
+              !Array.isArray(task.quantum.progressByDate)
+                ? { ...task.quantum.progressByDate }
+                : {};
+            if (baseDateKey) {
+              const legacyDoneSeconds = task.quantum.doneSeconds;
+              const legacyDoneCount = task.quantum.doneCount;
+              if (
+                typeof legacyDoneSeconds === 'number' ||
+                typeof legacyDoneCount === 'number'
+              ) {
+                progressByDate[baseDateKey] = {
+                  ...progressByDate[baseDateKey],
+                  doneSeconds: typeof legacyDoneSeconds === 'number' ? legacyDoneSeconds : 0,
+                  doneCount: typeof legacyDoneCount === 'number' ? legacyDoneCount : 0,
+                };
+              }
+            }
+            return {
+              ...task.quantum,
+              progressByDate,
+            };
+          })()
+        : task.quantum;
+
       const normalizedSubtasks = Array.isArray(task.subtasks)
         ? task.subtasks.map((subtask) => {
             const subtaskCompletedDates = {
@@ -1081,6 +1206,7 @@ function ScheduleApp() {
         completedDates,
         subtasks: normalizedSubtasks,
         repeat: normalizeRepeatConfig(task.repeat),
+        quantum: normalizedQuantum,
       };
     });
   }, []);
@@ -1911,6 +2037,7 @@ function ScheduleApp() {
                         task={task}
                         backgroundColor={task.backgroundColor}
                         borderColor={task.borderColor}
+                        dateKey={selectedDateKey}
                         totalSubtasks={task.totalSubtasks}
                         completedSubtasks={task.completedSubtasks}
                         onPress={() => setActiveTaskId(task.id)}
@@ -1981,14 +2108,39 @@ function ScheduleApp() {
             </View>
           ) : activeTab === 'profile' ? (
              <View style={styles.profileContainer}>
-                <View style={styles.avatarContainer}>
-                  <Ionicons name="person" size={40} color="#3c2ba7" />
+                <View style={styles.profileStatsSection}>
+                  <Text style={styles.profileStatsTitle}>Stats</Text>
+                  <View style={styles.profileStatsGrid}>
+                    <View style={styles.profileStatCard}>
+                      <Text style={styles.profileStatLabel}>Total days</Text>
+                      <View style={styles.profileStatValueRow}>
+                        <Text style={styles.profileStatValue}>{profileStats.totalDays}</Text>
+                        <Text style={styles.profileStatUnit}>{totalDaysUnit}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.profileStatCard}>
+                      <Text style={styles.profileStatLabel}>Committed habits</Text>
+                      <View style={styles.profileStatValueRow}>
+                        <Text style={styles.profileStatValue}>{profileStats.committedHabits}</Text>
+                        <Text style={styles.profileStatUnit}>{habitsUnit}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.profileStatCard}>
+                      <Text style={styles.profileStatLabel}>Current streak</Text>
+                      <View style={styles.profileStatValueRow}>
+                        <Text style={styles.profileStatValue}>{profileStats.currentStreak}</Text>
+                        <Text style={styles.profileStatUnit}>{currentStreakUnit}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.profileStatCard}>
+                      <Text style={styles.profileStatLabel}>Best streak</Text>
+                      <View style={styles.profileStatValueRow}>
+                        <Text style={styles.profileStatValue}>{profileStats.bestStreak}</Text>
+                        <Text style={styles.profileStatUnit}>{bestStreakUnit}</Text>
+                      </View>
+                    </View>
+                  </View>
                 </View>
-
-                <Text style={styles.profileTitle}>Profile</Text>
-                <Text style={styles.profileSubtitle}>
-                  Personalize your experience and tweak how your calendar looks.
-                </Text>
 
                 <TouchableOpacity
                   style={styles.customizeButton}
@@ -2327,6 +2479,7 @@ function ScheduleApp() {
         minutesValue={quantumAdjustMinutes}
         secondsValue={quantumAdjustSeconds}
         countValue={quantumAdjustCount}
+        dateKey={selectedDateKey}
         onChangeMinutes={setQuantumAdjustMinutes}
         onChangeSeconds={setQuantumAdjustSeconds}
         onChangeCount={setQuantumAdjustCount}
@@ -2362,6 +2515,7 @@ function SwipeableTaskCard({
   task,
   backgroundColor,
   borderColor,
+  dateKey,
   totalSubtasks,
   completedSubtasks,
   onPress,
@@ -2468,7 +2622,7 @@ function SwipeableTaskCard({
   );
 
   const totalLabel = useMemo(() => {
-    const quantumLabel = getQuantumProgressLabel(task);
+    const quantumLabel = getQuantumProgressLabel(task, dateKey);
     if (quantumLabel) {
       return quantumLabel;
     }
@@ -2480,7 +2634,10 @@ function SwipeableTaskCard({
 
   const isQuantum = task.type === 'quantum';
   const isWaterAnimation = task.quantum?.animation === 'water';
-  const waterPercent = useMemo(() => getQuantumProgressPercent(task), [task]);
+  const waterPercent = useMemo(
+    () => getQuantumProgressPercent(task, dateKey),
+    [dateKey, task]
+  );
   const waveHeight = 34;
   const updateWavePaths = useCallback(() => {
     if (!cardSize.width) {
@@ -2596,7 +2753,8 @@ function SwipeableTaskCard({
     ]).start();
   }, [isQuantum, isWaterAnimation, task.quantum?.wavePulse, waveIntensityAnim]);
   const toggleAction = isQuantum ? onAdjustQuantum : onToggleCompletion;
-  const isQuantumComplete = isQuantum && getQuantumProgressLabel(task) && task.completed;
+  const isQuantumComplete =
+    isQuantum && getQuantumProgressLabel(task, dateKey) && task.completed;
 
   return (
     <View style={[styles.swipeableWrapper, { zIndex: isOpen ? 10 : 1 }]}>
@@ -3182,7 +3340,8 @@ function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock }) {
   const typeLabel = task.typeLabel ?? task.type ?? 'Standard';
   const isQuantum = task.type === 'quantum';
   const repeatConfig = normalizeRepeatConfig(task.repeat);
-  const quantumLabel = isQuantum ? getQuantumProgressLabel(task) : null;
+  const todayKey = getDateKey(new Date());
+  const quantumLabel = isQuantum ? getQuantumProgressLabel(task, todayKey) : null;
   const quantumModeLabel =
     task.quantum?.mode === 'timer' ? 'Timer' : task.quantum?.mode ? 'Cont' : 'Quantum';
   const repeatLabel = repeatConfig.enabled
@@ -3317,7 +3476,7 @@ function TaskDetailModal({
   const completedSubtasks = Array.isArray(task.subtasks)
     ? task.subtasks.filter((item) => getSubtaskCompletionStatus(item, dateKey)).length
     : 0;
-  const quantumLabel = getQuantumProgressLabel(task);
+  const quantumLabel = getQuantumProgressLabel(task, dateKey);
   const cardBackground = lightenColor(task.color, 0.85);
 
   return (
@@ -3441,6 +3600,7 @@ function QuantumAdjustModal({
   minutesValue,
   secondsValue,
   countValue,
+  dateKey,
   onChangeMinutes,
   onChangeSeconds,
   onChangeCount,
@@ -3449,7 +3609,13 @@ function QuantumAdjustModal({
   onClose,
 }) {
   const isTimer = task?.quantum?.mode === 'timer';
-  const limitLabel = task ? getQuantumProgressLabel(task) : null;
+  const limitLabel = task ? getQuantumProgressLabel(task, dateKey) : null;
+  const limitCount = task?.quantum?.count?.value ?? 0;
+  const lastAdjustCount = task?.quantum?.lastAdjustCount ?? null;
+  const normalizedCountValue = Number.parseInt(countValue, 10) || 0;
+  const lastCountValue = lastAdjustCount ?? Math.max(1, normalizedCountValue || 1);
+  const halfCountValue = limitCount ? Math.max(1, Math.round(limitCount / 2)) : 0;
+  const maxCountValue = limitCount ?? 0;
   const handleMinutesChange = useCallback(
     (value) => {
       onChangeMinutes(value.replace(/\D/g, '').slice(0, 2));
@@ -3465,6 +3631,15 @@ function QuantumAdjustModal({
   const handleCountChange = useCallback(
     (value) => {
       onChangeCount(value.replace(/\D/g, '').slice(0, 4));
+    },
+    [onChangeCount]
+  );
+  const handlePresetSelect = useCallback(
+    (value) => {
+      if (!value) {
+        return;
+      }
+      onChangeCount(String(value));
     },
     [onChangeCount]
   );
@@ -3525,20 +3700,80 @@ function QuantumAdjustModal({
               </View>
             </View>
           ) : (
-            <View style={styles.quantumModalRow}>
-              <View style={styles.quantumModalField}>
-                <Text style={styles.quantumModalFieldLabel}>Amount</Text>
-                <TextInput
-                  style={styles.quantumModalInput}
-                  value={countValue}
-                  onChangeText={handleCountChange}
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  placeholder="0"
-                  placeholderTextColor="#9AA5B5"
-                />
+            <>
+              <View style={styles.quantumModalPresetRow}>
+                <Pressable
+                  style={[
+                    styles.quantumModalPresetButton,
+                    normalizedCountValue === lastCountValue && styles.quantumModalPresetButtonSelected,
+                  ]}
+                  onPress={() => handlePresetSelect(lastCountValue)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Use last amount ${lastCountValue}`}
+                >
+                  <Text
+                    style={[
+                      styles.quantumModalPresetText,
+                      normalizedCountValue === lastCountValue && styles.quantumModalPresetTextSelected,
+                    ]}
+                  >
+                    {lastCountValue}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.quantumModalPresetButton,
+                    normalizedCountValue === halfCountValue && styles.quantumModalPresetButtonSelected,
+                  ]}
+                  onPress={() => handlePresetSelect(halfCountValue)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Use half"
+                  disabled={!halfCountValue}
+                >
+                  <Text
+                    style={[
+                      styles.quantumModalPresetText,
+                      normalizedCountValue === halfCountValue && styles.quantumModalPresetTextSelected,
+                    ]}
+                  >
+                    half
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.quantumModalPresetButton,
+                    normalizedCountValue === maxCountValue && styles.quantumModalPresetButtonSelected,
+                  ]}
+                  onPress={() => handlePresetSelect(maxCountValue)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Use max"
+                  disabled={!maxCountValue}
+                >
+                  <Text
+                    style={[
+                      styles.quantumModalPresetText,
+                      normalizedCountValue === maxCountValue && styles.quantumModalPresetTextSelected,
+                    ]}
+                  >
+                    max
+                  </Text>
+                </Pressable>
               </View>
-            </View>
+              <View style={styles.quantumModalRow}>
+                <View style={styles.quantumModalField}>
+                  <Text style={styles.quantumModalFieldLabel}>Amount</Text>
+                  <TextInput
+                    style={styles.quantumModalInput}
+                    value={countValue}
+                    onChangeText={handleCountChange}
+                    keyboardType="number-pad"
+                    maxLength={4}
+                    placeholder="0"
+                    placeholderTextColor="#9AA5B5"
+                  />
+                </View>
+              </View>
+            </>
           )}
           <View style={styles.quantumModalActions}>
             <Pressable
@@ -4040,6 +4275,30 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 16,
   },
+  quantumModalPresetRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 14,
+  },
+  quantumModalPresetButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EEF3FF',
+  },
+  quantumModalPresetButtonSelected: {
+    backgroundColor: '#1F2742',
+  },
+  quantumModalPresetText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1F2742',
+  },
+  quantumModalPresetTextSelected: {
+    color: '#FFFFFF',
+  },
   quantumModalField: {
     flex: 1,
     gap: 6,
@@ -4533,8 +4792,9 @@ const styles = StyleSheet.create({
   profileContainer: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: 32,
+    paddingTop: 24,
   },
   avatarContainer: {
     width: 80,
@@ -4557,6 +4817,51 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 32,
     lineHeight: 22,
+  },
+  profileStatsSection: {
+    alignSelf: 'stretch',
+    marginBottom: 28,
+  },
+  profileStatsTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a2e',
+    marginBottom: 12,
+  },
+  profileStatsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  profileStatCard: {
+    width: '48%',
+    borderRadius: 20,
+    backgroundColor: '#f1f1f5',
+    padding: 12,
+    marginBottom: 10,
+  },
+  profileStatLabel: {
+    fontSize: 11,
+    color: '#6f7a86',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
+  profileStatValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+  },
+  profileStatValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#1a1a2e',
+  },
+  profileStatUnit: {
+    fontSize: 12,
+    color: '#6f7a86',
+    fontWeight: '600',
   },
   customizeButton: {
     flexDirection: 'row',
