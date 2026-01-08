@@ -105,6 +105,9 @@ const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
 const FALLBACK_EMOJI = '📝';
 const DEFAULT_REPEAT_CONFIG = { enabled: true, frequency: 'daily', interval: 1 };
+const CONFETTI_COLORS = ['#ff6b6b', '#ffd93d', '#6bcB77', '#4d96ff', '#845ec2'];
+const CONFETTI_COUNT = 32;
+const CONFETTI_DURATION_MS = 2400;
 
 const normalizeRepeatConfig = (repeatConfig) => {
   if (!repeatConfig) {
@@ -146,6 +149,78 @@ const triggerSelection = () => {
   } catch (error) {
     // Ignore web environments without haptics support
   }
+};
+
+const ConfettiOverlay = ({ visible, onComplete }) => {
+  const { width, height } = useWindowDimensions();
+  const pieces = useMemo(
+    () =>
+      Array.from({ length: CONFETTI_COUNT }, (_, index) => ({
+        id: `${Date.now()}-${index}`,
+        x: Math.random() * width,
+        size: 6 + Math.random() * 6,
+        delay: Math.random() * 400,
+        rotate: Math.random() * 120,
+        color: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
+        anim: new Animated.Value(-20 - Math.random() * 120),
+      })),
+    [width]
+  );
+
+  useEffect(() => {
+    if (!visible) {
+      return undefined;
+    }
+
+    const animations = pieces.map((piece) =>
+      Animated.timing(piece.anim, {
+        toValue: height + 80,
+        duration: CONFETTI_DURATION_MS,
+        delay: piece.delay,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      })
+    );
+
+    const animation = Animated.stagger(40, animations);
+    animation.start();
+
+    const timeoutId = setTimeout(() => {
+      onComplete?.();
+    }, CONFETTI_DURATION_MS + 500);
+
+    return () => {
+      animation.stop();
+      clearTimeout(timeoutId);
+    };
+  }, [height, onComplete, pieces, visible]);
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <View pointerEvents="none" style={styles.confettiContainer}>
+      {pieces.map((piece) => (
+        <Animated.View
+          key={piece.id}
+          style={[
+            styles.confettiPiece,
+            {
+              width: piece.size,
+              height: piece.size * 1.6,
+              backgroundColor: piece.color,
+              transform: [
+                { translateX: piece.x },
+                { translateY: piece.anim },
+                { rotate: `${piece.rotate}deg` },
+              ],
+            },
+          ]}
+        />
+      ))}
+    </View>
+  );
 };
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -884,6 +959,21 @@ function ScheduleApp() {
     () => tasksForSelectedDate.filter((task) => getTaskCompletionStatus(task, selectedDateKey)).length,
     [selectedDateKey, tasksForSelectedDate]
   );
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [confettiKey, setConfettiKey] = useState(0);
+  const previousCompletionRef = useRef(false);
+
+  useEffect(() => {
+    if (allTasksCompletedForSelectedDay && !previousCompletionRef.current) {
+      setConfettiKey((previous) => previous + 1);
+      setShowConfetti(true);
+    }
+    previousCompletionRef.current = allTasksCompletedForSelectedDay;
+  }, [allTasksCompletedForSelectedDay]);
+
+  useEffect(() => {
+    previousCompletionRef.current = false;
+  }, [selectedDateKey]);
   const activeTask = useMemo(
     () => tasks.find((task) => task.id === activeTaskId) ?? null,
     [activeTaskId, tasks]
@@ -1877,6 +1967,12 @@ function ScheduleApp() {
         barStyle="dark-content"
         backgroundColor="#f6f6fb"
         translucent={false}
+      />
+
+      <ConfettiOverlay
+        key={confettiKey}
+        visible={showConfetti}
+        onComplete={() => setShowConfetti(false)}
       />
 
       <View style={styles.container}>
@@ -3838,6 +3934,20 @@ const styles = StyleSheet.create({
   appFrame: {
     flex: 1,
     backgroundColor: '#f6f6fb',
+  },
+  confettiContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 20,
+    elevation: 10,
+  },
+  confettiPiece: {
+    position: 'absolute',
+    borderRadius: 2,
+    opacity: 0.9,
   },
   content: {
     flex: 1,
