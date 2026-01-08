@@ -40,7 +40,31 @@ const getSubtaskCompletionStatus = (subtask, dateKey) => {
   return Boolean(subtask.completed);
 };
 
-const getQuantumProgressLabel = (task) => {
+const getQuantumProgressValues = (task, dateKey) => {
+  if (!task || task.type !== 'quantum' || !task.quantum) {
+    return { doneSeconds: 0, doneCount: 0 };
+  }
+  if (dateKey) {
+    const progressByDate = task.quantum.progressByDate;
+    if (progressByDate && typeof progressByDate === 'object' && !Array.isArray(progressByDate)) {
+      const entry = progressByDate[dateKey];
+      if (entry && typeof entry === 'object') {
+        return {
+          doneSeconds: typeof entry.doneSeconds === 'number' ? entry.doneSeconds : 0,
+          doneCount: typeof entry.doneCount === 'number' ? entry.doneCount : 0,
+        };
+      }
+    }
+    return { doneSeconds: 0, doneCount: 0 };
+  }
+
+  return {
+    doneSeconds: typeof task.quantum.doneSeconds === 'number' ? task.quantum.doneSeconds : 0,
+    doneCount: typeof task.quantum.doneCount === 'number' ? task.quantum.doneCount : 0,
+  };
+};
+
+const getQuantumProgressLabel = (task, dateKey) => {
   if (!task || task.type !== 'quantum' || !task.quantum) {
     return null;
   }
@@ -52,8 +76,7 @@ const getQuantumProgressLabel = (task) => {
     if (!limitSeconds) {
       return null;
     }
-    const doneSeconds =
-      typeof task.quantum.doneSeconds === 'number' ? task.quantum.doneSeconds : 0;
+    const { doneSeconds } = getQuantumProgressValues(task, dateKey);
     return `${formatDuration(doneSeconds)}/${formatDuration(limitSeconds)}`;
   }
   if (mode === 'count') {
@@ -62,14 +85,13 @@ const getQuantumProgressLabel = (task) => {
       return null;
     }
     const unit = task.quantum.count?.unit?.trim() ?? '';
-    const doneValue =
-      typeof task.quantum.doneCount === 'number' ? task.quantum.doneCount : 0;
-    return `${doneValue}/${limitValue}${unit ? ` ${unit}` : ''}`;
+    const { doneCount } = getQuantumProgressValues(task, dateKey);
+    return `${doneCount}/${limitValue}${unit ? ` ${unit}` : ''}`;
   }
   return null;
 };
 
-const getQuantumProgressPercent = (task) => {
+const getQuantumProgressPercent = (task, dateKey) => {
   if (!task || task.type !== 'quantum' || !task.quantum) {
     return 0;
   }
@@ -81,8 +103,7 @@ const getQuantumProgressPercent = (task) => {
     if (!totalSeconds) {
       return 0;
     }
-    const doneSeconds =
-      typeof task.quantum.doneSeconds === 'number' ? task.quantum.doneSeconds : 0;
+    const { doneSeconds } = getQuantumProgressValues(task, dateKey);
     return clamp01(doneSeconds / totalSeconds);
   }
 
@@ -91,7 +112,7 @@ const getQuantumProgressPercent = (task) => {
     if (!limitValue) {
       return 0;
     }
-    const doneCount = typeof task.quantum.doneCount === 'number' ? task.quantum.doneCount : 0;
+    const { doneCount } = getQuantumProgressValues(task, dateKey);
     return clamp01(doneCount / limitValue);
   }
 
