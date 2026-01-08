@@ -2046,15 +2046,6 @@ function ScheduleApp() {
             </View>
           ) : activeTab === 'profile' ? (
              <View style={styles.profileContainer}>
-                <View style={styles.avatarContainer}>
-                  <Ionicons name="person" size={40} color="#3c2ba7" />
-                </View>
-
-                <Text style={styles.profileTitle}>Profile</Text>
-                <Text style={styles.profileSubtitle}>
-                  Personalize your experience and tweak how your calendar looks.
-                </Text>
-
                 <View style={styles.profileStatsSection}>
                   <Text style={styles.profileStatsTitle}>Stats</Text>
                   <View style={styles.profileStatsGrid}>
@@ -4632,8 +4623,9 @@ const styles = StyleSheet.create({
   profileContainer: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: 32,
+    paddingTop: 24,
   },
   avatarContainer: {
     width: 80,
@@ -4662,7 +4654,7 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   profileStatsTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: '#1a1a2e',
     marginBottom: 12,
@@ -4675,17 +4667,17 @@ const styles = StyleSheet.create({
   profileStatCard: {
     width: '48%',
     borderRadius: 20,
-    backgroundColor: '#f7f7fb',
-    padding: 16,
-    marginBottom: 12,
+    backgroundColor: '#f1f1f5',
+    padding: 12,
+    marginBottom: 10,
   },
   profileStatLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#6f7a86',
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   profileStatValueRow: {
     flexDirection: 'row',
@@ -4693,12 +4685,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   profileStatValue: {
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: '800',
     color: '#1a1a2e',
   },
   profileStatUnit: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#6f7a86',
     fontWeight: '600',
   },
