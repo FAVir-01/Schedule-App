@@ -109,6 +109,9 @@ const DEFAULT_REPEAT_CONFIG = { enabled: true, frequency: 'daily', interval: 1 }
 const CONFETTI_COLORS = ['#ff6b6b', '#ffd93d', '#6bcB77', '#4d96ff', '#845ec2'];
 const CONFETTI_COUNT = 32;
 const CONFETTI_DURATION_MS = 2400;
+const TIMER_HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => index);
+const TIMER_MINUTE_OPTIONS = Array.from({ length: 12 }, (_, index) => index * 5);
+const formatTwoDigits = (value) => String(value).padStart(2, '0');
 
 const normalizeRepeatConfig = (repeatConfig) => {
   if (!repeatConfig) {
@@ -1158,8 +1161,11 @@ function ScheduleApp() {
     }
     setQuantumAdjustTaskId(task.id);
     if (task.quantum?.mode === 'timer') {
-      setQuantumAdjustMinutes('0');
-      setQuantumAdjustSeconds('0');
+      const lastAdjustTimerSeconds = task.quantum?.lastAdjustTimerSeconds ?? 0;
+      const nextMinutesValue = Math.floor(lastAdjustTimerSeconds / 60);
+      const nextSecondsValue = lastAdjustTimerSeconds % 60;
+      setQuantumAdjustMinutes(String(nextMinutesValue));
+      setQuantumAdjustSeconds(String(nextSecondsValue));
     } else {
       const lastAdjust = task.quantum?.lastAdjustCount;
       setQuantumAdjustCount(String(lastAdjust ?? 1));
@@ -1234,6 +1240,7 @@ function ScheduleApp() {
                   },
                 },
                 doneSeconds: nextSeconds,
+                lastAdjustTimerSeconds: deltaSeconds,
                 wavePulse: Date.now(),
               },
             };
@@ -3797,22 +3804,40 @@ function QuantumAdjustModal({
   const isTimer = task?.quantum?.mode === 'timer';
   const limitLabel = task ? getQuantumProgressLabel(task, dateKey) : null;
   const limitCount = task?.quantum?.count?.value ?? 0;
+  const limitSeconds =
+    (task?.quantum?.timer?.minutes ?? 0) * 60 + (task?.quantum?.timer?.seconds ?? 0);
+  const normalizedMinutesValue = Number.parseInt(minutesValue, 10) || 0;
+  const normalizedSecondsValue = Number.parseInt(secondsValue, 10) || 0;
   const lastAdjustCount = task?.quantum?.lastAdjustCount ?? null;
   const normalizedCountValue = Number.parseInt(countValue, 10) || 0;
   const lastCountValue = lastAdjustCount ?? Math.max(1, normalizedCountValue || 1);
   const halfCountValue = limitCount ? Math.max(1, Math.round(limitCount / 2)) : 0;
   const maxCountValue = limitCount ?? 0;
-  const handleMinutesChange = useCallback(
-    (value) => {
-      onChangeMinutes(value.replace(/\D/g, '').slice(0, 2));
+  const presetTimerOptions = [
+    { key: '30m', label: '30 min', seconds: 30 * 60 },
+    { key: '1h', label: '1h', seconds: 60 * 60 },
+    { key: 'max', label: 'max', seconds: limitSeconds },
+  ];
+  const handleTimerSelect = useCallback(
+    (nextHours, nextMinutes) => {
+      const safeHours = Math.max(0, nextHours || 0);
+      const safeMinutes = Math.max(0, nextMinutes || 0);
+      onChangeMinutes(String(safeHours));
+      onChangeSeconds(String(safeMinutes));
     },
-    [onChangeMinutes]
+    [onChangeMinutes, onChangeSeconds]
   );
-  const handleSecondsChange = useCallback(
-    (value) => {
-      onChangeSeconds(value.replace(/\D/g, '').slice(0, 2));
+  const handleTimerPresetSelect = useCallback(
+    (seconds) => {
+      if (!seconds) {
+        return;
+      }
+      const safeSeconds = Math.max(0, seconds);
+      const nextHours = Math.floor(safeSeconds / 60);
+      const nextMinutes = safeSeconds % 60;
+      handleTimerSelect(nextHours, nextMinutes);
     },
-    [onChangeSeconds]
+    [handleTimerSelect]
   );
   const handleCountChange = useCallback(
     (value) => {
@@ -3830,7 +3855,7 @@ function QuantumAdjustModal({
     [onChangeCount]
   );
   const disableActions = isTimer
-    ? (Number.parseInt(minutesValue, 10) || 0) * 60 + (Number.parseInt(secondsValue, 10) || 0) <= 0
+    ? normalizedMinutesValue * 60 + normalizedSecondsValue <= 0
     : (Number.parseInt(countValue, 10) || 0) <= 0;
 
   if (!visible || !task) {
@@ -3859,32 +3884,98 @@ function QuantumAdjustModal({
             <Text style={styles.quantumModalSubtitle}>Current: {limitLabel}</Text>
           )}
           {isTimer ? (
-            <View style={styles.quantumModalRow}>
-              <View style={styles.quantumModalField}>
+            <>
+              <View style={styles.quantumModalPresetRow}>
+                {presetTimerOptions.map((option) => {
+                  const isDisabled = !option.seconds;
+                  const isSelected =
+                    option.seconds &&
+                    normalizedMinutesValue * 60 + normalizedSecondsValue === option.seconds;
+                  return (
+                    <Pressable
+                      key={option.key}
+                      style={[
+                        styles.quantumModalPresetButton,
+                        isSelected && styles.quantumModalPresetButtonSelected,
+                      ]}
+                      onPress={() => handleTimerPresetSelect(option.seconds)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Use ${option.label}`}
+                      disabled={isDisabled}
+                    >
+                      <Text
+                        style={[
+                          styles.quantumModalPresetText,
+                          isSelected && styles.quantumModalPresetTextSelected,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <View style={styles.quantumModalSelector}>
                 <Text style={styles.quantumModalFieldLabel}>Hour</Text>
-                <TextInput
-                  style={styles.quantumModalInput}
-                  value={minutesValue}
-                  onChangeText={handleMinutesChange}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  placeholder="0"
-                  placeholderTextColor="#9AA5B5"
-                />
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.quantumModalPillRow}
+                >
+                  {TIMER_HOUR_OPTIONS.map((value) => (
+                    <Pressable
+                      key={`hour-${value}`}
+                      style={[
+                        styles.quantumModalPill,
+                        value === normalizedMinutesValue && styles.quantumModalPillSelected,
+                      ]}
+                      onPress={() => handleTimerSelect(value, normalizedSecondsValue)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Set hours to ${value}`}
+                    >
+                      <Text
+                        style={[
+                          styles.quantumModalPillText,
+                          value === normalizedMinutesValue && styles.quantumModalPillTextSelected,
+                        ]}
+                      >
+                        {formatTwoDigits(value)}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
               </View>
-              <View style={styles.quantumModalField}>
+              <View style={styles.quantumModalSelector}>
                 <Text style={styles.quantumModalFieldLabel}>Min</Text>
-                <TextInput
-                  style={styles.quantumModalInput}
-                  value={secondsValue}
-                  onChangeText={handleSecondsChange}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  placeholder="0"
-                  placeholderTextColor="#9AA5B5"
-                />
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.quantumModalPillRow}
+                >
+                  {TIMER_MINUTE_OPTIONS.map((value) => (
+                    <Pressable
+                      key={`minute-${value}`}
+                      style={[
+                        styles.quantumModalPill,
+                        value === normalizedSecondsValue && styles.quantumModalPillSelected,
+                      ]}
+                      onPress={() => handleTimerSelect(normalizedMinutesValue, value)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Set minutes to ${value}`}
+                    >
+                      <Text
+                        style={[
+                          styles.quantumModalPillText,
+                          value === normalizedSecondsValue && styles.quantumModalPillTextSelected,
+                        ]}
+                      >
+                        {formatTwoDigits(value)}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
               </View>
-            </View>
+            </>
           ) : (
             <>
               <View style={styles.quantumModalPresetRow}>
@@ -4479,6 +4570,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 14,
+  },
+  quantumModalSelector: {
+    marginTop: 12,
+  },
+  quantumModalPillRow: {
+    paddingTop: 6,
+    paddingBottom: 4,
+    gap: 8,
+  },
+  quantumModalPill: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: '#EEF3FF',
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quantumModalPillSelected: {
+    backgroundColor: '#1F2742',
+  },
+  quantumModalPillText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2742',
+  },
+  quantumModalPillTextSelected: {
+    color: '#FFFFFF',
   },
   quantumModalPresetButton: {
     flex: 1,
