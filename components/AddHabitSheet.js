@@ -1333,9 +1333,9 @@ export default function AddHabitSheet({
     [hasSpecifiedTime, normalizedPeriodTime, normalizedPointTime, timeMode]
   );
   const previewQuantum = useMemo(() => {
-    const minutes = Number.parseInt(pendingQuantumTimerMinutes, 10) || 0;
-    const seconds = Number.parseInt(pendingQuantumTimerSeconds, 10) || 0;
-    const totalSeconds = minutes * 60 + seconds;
+    const hours = Number.parseInt(pendingQuantumTimerMinutes, 10) || 0;
+    const minutes = Number.parseInt(pendingQuantumTimerSeconds, 10) || 0;
+    const totalSeconds = hours * 3600 + minutes * 60;
     const limitValue = Number.parseInt(pendingQuantumCountValue, 10) || 0;
     const halfSeconds = totalSeconds ? Math.max(1, Math.floor(totalSeconds / 2)) : 0;
     const halfCount = limitValue ? Math.max(1, Math.floor(limitValue / 2)) : 0;
@@ -1344,8 +1344,8 @@ export default function AddHabitSheet({
       mode: pendingQuantumMode,
       animation: pendingQuantumAnimation,
       timer: {
-        minutes,
-        seconds,
+        minutes: hours,
+        seconds: minutes,
       },
       count: {
         value: limitValue,
@@ -2152,7 +2152,7 @@ function QuantumPanel({
         {isTimer ? (
           <View style={styles.quantumTimerRow}>
             <View style={styles.quantumField}>
-              <Text style={styles.quantumFieldLabel}>Min</Text>
+              <Text style={styles.quantumFieldLabel}>Hour</Text>
               <TextInput
                 style={styles.quantumFieldInput}
                 value={timerMinutes}
@@ -2161,11 +2161,11 @@ function QuantumPanel({
                 maxLength={2}
                 placeholder="00"
                 placeholderTextColor="#9AA5B5"
-                accessibilityLabel="Timer minutes"
+                accessibilityLabel="Timer hours"
               />
             </View>
             <View style={styles.quantumField}>
-              <Text style={styles.quantumFieldLabel}>Sec</Text>
+              <Text style={styles.quantumFieldLabel}>Min</Text>
               <TextInput
                 style={styles.quantumFieldInput}
                 value={timerSeconds}
@@ -2174,7 +2174,7 @@ function QuantumPanel({
                 maxLength={2}
                 placeholder="00"
                 placeholderTextColor="#9AA5B5"
-                accessibilityLabel="Timer seconds"
+                accessibilityLabel="Timer minutes"
               />
             </View>
           </View>
@@ -2239,7 +2239,7 @@ function QuantumPanel({
       </View>
       <Text style={styles.subtasksPanelHint}>
         {isTimer
-          ? 'Set the timer duration in minutes and seconds.'
+          ? 'Set the timer duration in hours and minutes.'
           : 'Set the count and the unit for this habit.'}
       </Text>
     </View>
