@@ -1333,9 +1333,9 @@ export default function AddHabitSheet({
     [hasSpecifiedTime, normalizedPeriodTime, normalizedPointTime, timeMode]
   );
   const previewQuantum = useMemo(() => {
-    const hours = Number.parseInt(pendingQuantumTimerMinutes, 10) || 0;
-    const minutes = Number.parseInt(pendingQuantumTimerSeconds, 10) || 0;
-    const totalSeconds = hours * 3600 + minutes * 60;
+    const minutes = Number.parseInt(pendingQuantumTimerMinutes, 10) || 0;
+    const seconds = Number.parseInt(pendingQuantumTimerSeconds, 10) || 0;
+    const totalSeconds = minutes * 60 + seconds;
     const limitValue = Number.parseInt(pendingQuantumCountValue, 10) || 0;
     const halfSeconds = totalSeconds ? Math.max(1, Math.floor(totalSeconds / 2)) : 0;
     const halfCount = limitValue ? Math.max(1, Math.floor(limitValue / 2)) : 0;
@@ -1344,8 +1344,8 @@ export default function AddHabitSheet({
       mode: pendingQuantumMode,
       animation: pendingQuantumAnimation,
       timer: {
-        minutes: hours,
-        seconds: minutes,
+        minutes,
+        seconds,
       },
       count: {
         value: limitValue,
