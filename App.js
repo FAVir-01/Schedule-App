@@ -163,8 +163,8 @@ const triggerSuccessFeedback = async () => {
 
   try {
     const { sound } = await Audio.Sound.createAsync(
-      { uri: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3' },
-      { shouldPlay: true }
+      { uri: 'https://www.soundjay.com/buttons/sounds/button-30.mp3' },
+      { shouldPlay: true, volume: 0.25 }
     );
 
     sound.setOnPlaybackStatusUpdate((status) => {
@@ -177,8 +177,9 @@ const triggerSuccessFeedback = async () => {
   }
 };
 
-const ConfettiOverlay = ({ visible, onComplete }) => {
+const ConfettiOverlay = React.memo(({ visible, onComplete }) => {
   const { width, height } = useWindowDimensions();
+  const hasStartedRef = useRef(false);
   const pieces = useMemo(
     () =>
       Array.from({ length: CONFETTI_COUNT }, (_, index) => ({
@@ -202,8 +203,13 @@ const ConfettiOverlay = ({ visible, onComplete }) => {
 
   useEffect(() => {
     if (!visible) {
+      hasStartedRef.current = false;
       return undefined;
     }
+    if (hasStartedRef.current) {
+      return undefined;
+    }
+    hasStartedRef.current = true;
 
     const animations = pieces.map((piece) =>
       Animated.timing(piece.anim, {
@@ -281,7 +287,7 @@ const ConfettiOverlay = ({ visible, onComplete }) => {
       ))}
     </View>
   );
-};
+});
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CALENDAR_DAY_SIZE = Math.floor(SCREEN_WIDTH / 7);
@@ -1022,6 +1028,9 @@ function ScheduleApp() {
   const [showConfetti, setShowConfetti] = useState(false);
   const [confettiKey, setConfettiKey] = useState(0);
   const previousCompletionRef = useRef(false);
+  const handleConfettiComplete = useCallback(() => {
+    setShowConfetti(false);
+  }, []);
 
   useEffect(() => {
     if (allTasksCompletedForSelectedDay && !previousCompletionRef.current) {
@@ -2033,7 +2042,7 @@ function ScheduleApp() {
       <ConfettiOverlay
         key={confettiKey}
         visible={showConfetti}
-        onComplete={() => setShowConfetti(false)}
+        onComplete={handleConfettiComplete}
       />
 
       <View style={styles.container}>
