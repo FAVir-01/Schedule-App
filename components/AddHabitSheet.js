@@ -2152,7 +2152,7 @@ function QuantumPanel({
         {isTimer ? (
           <View style={styles.quantumTimerRow}>
             <View style={styles.quantumField}>
-              <Text style={styles.quantumFieldLabel}>Min</Text>
+              <Text style={styles.quantumFieldLabel}>Hour</Text>
               <TextInput
                 style={styles.quantumFieldInput}
                 value={timerMinutes}
@@ -2161,11 +2161,11 @@ function QuantumPanel({
                 maxLength={2}
                 placeholder="00"
                 placeholderTextColor="#9AA5B5"
-                accessibilityLabel="Timer minutes"
+                accessibilityLabel="Timer hours"
               />
             </View>
             <View style={styles.quantumField}>
-              <Text style={styles.quantumFieldLabel}>Sec</Text>
+              <Text style={styles.quantumFieldLabel}>Min</Text>
               <TextInput
                 style={styles.quantumFieldInput}
                 value={timerSeconds}
@@ -2174,7 +2174,7 @@ function QuantumPanel({
                 maxLength={2}
                 placeholder="00"
                 placeholderTextColor="#9AA5B5"
-                accessibilityLabel="Timer seconds"
+                accessibilityLabel="Timer minutes"
               />
             </View>
           </View>
@@ -2239,7 +2239,7 @@ function QuantumPanel({
       </View>
       <Text style={styles.subtasksPanelHint}>
         {isTimer
-          ? 'Set the timer duration in minutes and seconds.'
+          ? 'Set the timer duration in hours and minutes.'
           : 'Set the count and the unit for this habit.'}
       </Text>
     </View>

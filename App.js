@@ -3861,7 +3861,7 @@ function QuantumAdjustModal({
           {isTimer ? (
             <View style={styles.quantumModalRow}>
               <View style={styles.quantumModalField}>
-                <Text style={styles.quantumModalFieldLabel}>Min</Text>
+                <Text style={styles.quantumModalFieldLabel}>Hour</Text>
                 <TextInput
                   style={styles.quantumModalInput}
                   value={minutesValue}
@@ -3873,7 +3873,7 @@ function QuantumAdjustModal({
                 />
               </View>
               <View style={styles.quantumModalField}>
-                <Text style={styles.quantumModalFieldLabel}>Sec</Text>
+                <Text style={styles.quantumModalFieldLabel}>Min</Text>
                 <TextInput
                   style={styles.quantumModalInput}
                   value={secondsValue}
