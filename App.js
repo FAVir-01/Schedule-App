@@ -109,9 +109,6 @@ const DEFAULT_REPEAT_CONFIG = { enabled: true, frequency: 'daily', interval: 1 }
 const CONFETTI_COLORS = ['#ff6b6b', '#ffd93d', '#6bcB77', '#4d96ff', '#845ec2'];
 const CONFETTI_COUNT = 32;
 const CONFETTI_DURATION_MS = 2400;
-const TIMER_HOUR_VALUES = Array.from({ length: 100 }, (_, index) => index);
-const TIMER_MINUTE_VALUES = Array.from({ length: 60 }, (_, index) => index);
-const formatWheelValue = (value) => String(value).padStart(2, '0');
 
 const normalizeRepeatConfig = (repeatConfig) => {
   if (!repeatConfig) {
@@ -1161,11 +1158,8 @@ function ScheduleApp() {
     }
     setQuantumAdjustTaskId(task.id);
     if (task.quantum?.mode === 'timer') {
-      const lastAdjustTimerSeconds = task.quantum?.lastAdjustTimerSeconds ?? 0;
-      const nextMinutesValue = Math.floor(lastAdjustTimerSeconds / 60);
-      const nextSecondsValue = lastAdjustTimerSeconds % 60;
-      setQuantumAdjustMinutes(String(nextMinutesValue));
-      setQuantumAdjustSeconds(String(nextSecondsValue));
+      setQuantumAdjustMinutes('0');
+      setQuantumAdjustSeconds('0');
     } else {
       const lastAdjust = task.quantum?.lastAdjustCount;
       setQuantumAdjustCount(String(lastAdjust ?? 1));
@@ -1240,7 +1234,6 @@ function ScheduleApp() {
                   },
                 },
                 doneSeconds: nextSeconds,
-                lastAdjustTimerSeconds: deltaSeconds,
                 wavePulse: Date.now(),
               },
             };
@@ -3804,49 +3797,22 @@ function QuantumAdjustModal({
   const isTimer = task?.quantum?.mode === 'timer';
   const limitLabel = task ? getQuantumProgressLabel(task, dateKey) : null;
   const limitCount = task?.quantum?.count?.value ?? 0;
-  const limitSeconds =
-    (task?.quantum?.timer?.minutes ?? 0) * 60 + (task?.quantum?.timer?.seconds ?? 0);
-  const normalizedMinutesValue = Number.parseInt(minutesValue, 10) || 0;
-  const normalizedSecondsValue = Number.parseInt(secondsValue, 10) || 0;
   const lastAdjustCount = task?.quantum?.lastAdjustCount ?? null;
   const normalizedCountValue = Number.parseInt(countValue, 10) || 0;
   const lastCountValue = lastAdjustCount ?? Math.max(1, normalizedCountValue || 1);
   const halfCountValue = limitCount ? Math.max(1, Math.round(limitCount / 2)) : 0;
   const maxCountValue = limitCount ?? 0;
-  const presetTimerOptions = [
-    { key: '30m', label: '30 min', seconds: 30 * 60 },
-    { key: '1h', label: '1h', seconds: 60 * 60 },
-    { key: 'max', label: 'max', seconds: limitSeconds },
-  ];
-  const timerHourIndex = Math.max(
-    0,
-    TIMER_HOUR_VALUES.indexOf(Math.min(Math.max(normalizedMinutesValue, 0), 99))
-  );
-  const timerMinuteIndex = Math.max(
-    0,
-    TIMER_MINUTE_VALUES.indexOf(Math.min(Math.max(normalizedSecondsValue, 0), 59))
-  );
-  const handleTimerSelect = useCallback(
-    (nextSeconds) => {
-      if (!nextSeconds && nextSeconds !== 0) {
-        return;
-      }
-      const safeSeconds = Math.max(0, nextSeconds);
-      const nextMinutesValue = Math.floor(safeSeconds / 60);
-      const nextSecondsValue = safeSeconds % 60;
-      onChangeMinutes(String(nextMinutesValue));
-      onChangeSeconds(String(nextSecondsValue));
+  const handleMinutesChange = useCallback(
+    (value) => {
+      onChangeMinutes(value.replace(/\D/g, '').slice(0, 2));
     },
-    [onChangeMinutes, onChangeSeconds]
+    [onChangeMinutes]
   );
-  const handleTimerPresetSelect = useCallback(
-    (seconds) => {
-      if (!seconds) {
-        return;
-      }
-      handleTimerSelect(seconds);
+  const handleSecondsChange = useCallback(
+    (value) => {
+      onChangeSeconds(value.replace(/\D/g, '').slice(0, 2));
     },
-    [handleTimerSelect]
+    [onChangeSeconds]
   );
   const handleCountChange = useCallback(
     (value) => {
@@ -3864,7 +3830,7 @@ function QuantumAdjustModal({
     [onChangeCount]
   );
   const disableActions = isTimer
-    ? normalizedMinutesValue * 60 + normalizedSecondsValue <= 0
+    ? (Number.parseInt(minutesValue, 10) || 0) * 60 + (Number.parseInt(secondsValue, 10) || 0) <= 0
     : (Number.parseInt(countValue, 10) || 0) <= 0;
 
   if (!visible || !task) {
@@ -3893,64 +3859,32 @@ function QuantumAdjustModal({
             <Text style={styles.quantumModalSubtitle}>Current: {limitLabel}</Text>
           )}
           {isTimer ? (
-            <>
-              <View style={styles.quantumModalPresetRow}>
-                {presetTimerOptions.map((option) => {
-                  const isDisabled = !option.seconds;
-                  const isSelected =
-                    option.seconds &&
-                    normalizedMinutesValue * 60 + normalizedSecondsValue === option.seconds;
-                  return (
-                    <Pressable
-                      key={option.key}
-                      style={[
-                        styles.quantumModalPresetButton,
-                        isSelected && styles.quantumModalPresetButtonSelected,
-                      ]}
-                      onPress={() => handleTimerPresetSelect(option.seconds)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Use ${option.label}`}
-                      disabled={isDisabled}
-                    >
-                      <Text
-                        style={[
-                          styles.quantumModalPresetText,
-                          isSelected && styles.quantumModalPresetTextSelected,
-                        ]}
-                      >
-                        {option.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+            <View style={styles.quantumModalRow}>
+              <View style={styles.quantumModalField}>
+                <Text style={styles.quantumModalFieldLabel}>Hour</Text>
+                <TextInput
+                  style={styles.quantumModalInput}
+                  value={minutesValue}
+                  onChangeText={handleMinutesChange}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  placeholder="0"
+                  placeholderTextColor="#9AA5B5"
+                />
               </View>
-              <View style={styles.wheelGroup}>
-                <View style={styles.wheelLabelsRow}>
-                  <Text style={styles.wheelLabel}>Hour</Text>
-                  <Text style={styles.wheelLabel}>Min</Text>
-                </View>
-                <View style={styles.wheelArea}>
-                  <View pointerEvents="none" style={styles.wheelHighlight} />
-                  <View style={styles.wheelRow}>
-                    <WheelColumn
-                      values={TIMER_HOUR_VALUES}
-                      selectedIndex={timerHourIndex}
-                      onSelect={(value) => handleTimerSelect(value * 60 + normalizedSecondsValue)}
-                      formatter={formatWheelValue}
-                    />
-                    <Text pointerEvents="none" style={styles.wheelDivider}>
-                      :
-                    </Text>
-                    <WheelColumn
-                      values={TIMER_MINUTE_VALUES}
-                      selectedIndex={timerMinuteIndex}
-                      onSelect={(value) => handleTimerSelect(normalizedMinutesValue * 60 + value)}
-                      formatter={formatWheelValue}
-                    />
-                  </View>
-                </View>
+              <View style={styles.quantumModalField}>
+                <Text style={styles.quantumModalFieldLabel}>Min</Text>
+                <TextInput
+                  style={styles.quantumModalInput}
+                  value={secondsValue}
+                  onChangeText={handleSecondsChange}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  placeholder="0"
+                  placeholderTextColor="#9AA5B5"
+                />
               </View>
-            </>
+            </View>
           ) : (
             <>
               <View style={styles.quantumModalPresetRow}>
@@ -4052,112 +3986,6 @@ function QuantumAdjustModal({
         </View>
       </View>
     </Modal>
-  );
-}
-
-const WHEEL_ITEM_HEIGHT = 48;
-
-function WheelColumn({
-  values,
-  selectedIndex,
-  onSelect,
-  formatter = (value) => value,
-  itemHeight = WHEEL_ITEM_HEIGHT,
-}) {
-  const scrollRef = useRef(null);
-  const isMomentumScrolling = useRef(false);
-  const isDragging = useRef(false);
-
-  useEffect(() => {
-    if (!scrollRef.current || isMomentumScrolling.current || isDragging.current) {
-      return undefined;
-    }
-    const frame = requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({ y: selectedIndex * itemHeight, animated: false });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [selectedIndex, itemHeight]);
-
-  const finalizeSelection = useCallback(
-    (offsetY) => {
-      const maxOffset = Math.max(0, (values.length - 1) * itemHeight);
-      const clampedOffset = Math.min(Math.max(offsetY, 0), maxOffset);
-      const index = Math.round(clampedOffset / itemHeight);
-      const clampedIndex = Math.min(Math.max(index, 0), values.length - 1);
-
-      if (clampedIndex !== selectedIndex) {
-        onSelect(values[clampedIndex]);
-        if (HAPTICS_SUPPORTED && typeof Haptics.selectionAsync === 'function') {
-          try {
-            Haptics.selectionAsync();
-          } catch (error) {
-            // Ignore missing haptics support on web
-          }
-        }
-      }
-    },
-    [itemHeight, values, onSelect, selectedIndex]
-  );
-
-  const handleMomentumBegin = useCallback(() => {
-    isMomentumScrolling.current = true;
-  }, []);
-
-  const handleMomentumEnd = useCallback(
-    (event) => {
-      isMomentumScrolling.current = false;
-      finalizeSelection(event.nativeEvent.contentOffset.y ?? 0);
-    },
-    [finalizeSelection]
-  );
-
-  const handleScrollBeginDrag = useCallback(() => {
-    isDragging.current = true;
-  }, []);
-
-  const handleScrollEndDrag = useCallback(
-    (e) => {
-      isDragging.current = false;
-      if (!isMomentumScrolling.current) {
-        finalizeSelection(e.nativeEvent.contentOffset.y ?? 0);
-      }
-    },
-    [finalizeSelection]
-  );
-
-  return (
-    <ScrollView
-      ref={scrollRef}
-      style={styles.wheelColumn}
-      contentContainerStyle={[
-        styles.wheelColumnContent,
-        { paddingVertical: itemHeight * 2 },
-      ]}
-      showsVerticalScrollIndicator={false}
-      snapToInterval={itemHeight}
-      decelerationRate={Platform.select({ ios: 'fast', android: 0.998 })}
-      overScrollMode="never"
-      bounces
-      scrollEventThrottle={16}
-      nestedScrollEnabled
-      onStartShouldSetResponderCapture={() => true}
-      onMoveShouldSetResponderCapture={() => true}
-      onMomentumScrollBegin={handleMomentumBegin}
-      onMomentumScrollEnd={handleMomentumEnd}
-      onScrollBeginDrag={handleScrollBeginDrag}
-      onScrollEndDrag={handleScrollEndDrag}
-    >
-      {values.map((value, index) => {
-        const isActive = index === selectedIndex;
-        return (
-          <View key={`${value}-${index}`} style={[styles.wheelItem, { height: itemHeight }]}>
-            <Text style={[styles.wheelItemText, isActive && styles.wheelItemTextActive]}>
-              {formatter(value)}
-            </Text>
-          </View>
-        );
-      })}
-    </ScrollView>
   );
 }
 
@@ -4651,68 +4479,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 14,
-  },
-  wheelGroup: {
-    marginTop: 12,
-  },
-  wheelLabelsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 32,
-    marginBottom: 8,
-  },
-  wheelLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#7F8A9A',
-    width: '45%',
-    textAlign: 'center',
-  },
-  wheelArea: {
-    borderRadius: 16,
-    backgroundColor: '#F4F6FB',
-    paddingVertical: 6,
-  },
-  wheelHighlight: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    top: '50%',
-    marginTop: -24,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-  },
-  wheelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  wheelColumn: {
-    flex: 1,
-    maxHeight: 48 * 5,
-  },
-  wheelColumnContent: {
-    alignItems: 'center',
-  },
-  wheelItem: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  wheelItemText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#7F8A9A',
-  },
-  wheelItemTextActive: {
-    color: '#1F2742',
-    fontSize: 18,
-  },
-  wheelDivider: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2742',
-    marginHorizontal: 6,
   },
   quantumModalPresetButton: {
     flex: 1,
