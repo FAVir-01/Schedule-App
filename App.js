@@ -944,6 +944,21 @@ function ScheduleApp() {
     };
     return filtered.slice().sort((a, b) => getSortValue(a) - getSortValue(b));
   }, [selectedDate, tasks]);
+  const availableTagOptions = useMemo(() => {
+    const seen = new Set();
+    return tasks.reduce((options, task) => {
+      const key = normalizeTaskTagKey(task);
+      if (!key || seen.has(key)) {
+        return options;
+      }
+      seen.add(key);
+      options.push({
+        key,
+        label: getTaskTagDisplayLabel(task) ?? 'Tag',
+      });
+      return options;
+    }, []);
+  }, [tasks]);
   const tagOptions = useMemo(() => {
     const seen = new Set();
     return tasksForSelectedDate.reduce((options, task) => {
@@ -960,11 +975,15 @@ function ScheduleApp() {
     }, []);
   }, [tasksForSelectedDate]);
   useEffect(() => {
-    if (selectedTagFilter !== 'all' && !tagOptions.some((option) => option.key === selectedTagFilter)) {
+    if (
+      selectedTagFilter !== 'all' &&
+      availableTagOptions.length > 0 &&
+      !availableTagOptions.some((option) => option.key === selectedTagFilter)
+    ) {
       setSelectedTagFilter('all');
       updateUserSettings({ selectedTagFilter: 'all' });
     }
-  }, [selectedTagFilter, tagOptions, updateUserSettings]);
+  }, [availableTagOptions, selectedTagFilter, updateUserSettings]);
   const visibleTasks = useMemo(() => {
     if (selectedTagFilter === 'all') {
       return tasksForSelectedDate;
@@ -2638,6 +2657,7 @@ function ScheduleApp() {
         }}
         mode={habitSheetMode}
         initialHabit={habitSheetInitialTask}
+        availableTagOptions={availableTagOptions}
       />
       <QuantumAdjustModal
         task={tasks.find((task) => task.id === quantumAdjustTaskId) ?? null}
