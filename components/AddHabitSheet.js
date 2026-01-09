@@ -147,6 +147,21 @@ const createTagKey = (label, existingKeys) => {
   return candidate;
 };
 
+const mergeTagOptions = (primaryOptions = [], secondaryOptions = []) => {
+  const merged = new Map();
+  primaryOptions.forEach((option) => {
+    if (option?.key) {
+      merged.set(option.key, option);
+    }
+  });
+  secondaryOptions.forEach((option) => {
+    if (option?.key && !merged.has(option.key)) {
+      merged.set(option.key, option);
+    }
+  });
+  return Array.from(merged.values());
+};
+
 const HOUR_VALUES = Array.from({ length: 12 }, (_, i) => i + 1);
 const MINUTE_VALUES = Array.from({ length: 60 }, (_, i) => i);
 const MERIDIEM_VALUES = ['AM', 'PM'];
@@ -426,6 +441,7 @@ export default function AddHabitSheet({
   onUpdate,
   mode = 'create',
   initialHabit,
+  availableTagOptions = [],
 }) {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -457,7 +473,9 @@ export default function AddHabitSheet({
     end: { hour: 10, minute: 0, meridiem: 'AM' },
   });
   const [reminderOption, setReminderOption] = useState('none');
-  const [tagOptions, setTagOptions] = useState(() => [...DEFAULT_TAG_OPTIONS]);
+  const [tagOptions, setTagOptions] = useState(() =>
+    mergeTagOptions(DEFAULT_TAG_OPTIONS, availableTagOptions)
+  );
   const [selectedTag, setSelectedTag] = useState('none');
   const [selectedType, setSelectedType] = useState(DEFAULT_TYPE_OPTIONS[0].key);
   const [quantumMode, setQuantumMode] = useState(QUANTUM_MODES[0].key);
@@ -514,6 +532,10 @@ export default function AddHabitSheet({
     : isCopyMode
     ? 'Close duplicate habit'
     : 'Close create habit';
+  const mergedDefaultTagOptions = useMemo(
+    () => mergeTagOptions(DEFAULT_TAG_OPTIONS, availableTagOptions),
+    [availableTagOptions]
+  );
 
   const handlePendingPointTimeChange = useCallback((next) => {
     setPendingPointTime((prev) => {
@@ -738,6 +760,13 @@ export default function AddHabitSheet({
     setSelectedTag(pendingTag);
     closePanel();
   }, [closePanel, pendingTag]);
+
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    setTagOptions((prev) => mergeTagOptions(mergedDefaultTagOptions, prev));
+  }, [mergedDefaultTagOptions, visible]);
 
   const handleApplyType = useCallback(() => {
     setSelectedType(pendingType);
@@ -995,7 +1024,7 @@ export default function AddHabitSheet({
           });
           setReminderOption('none');
           setSelectedTag('none');
-          setTagOptions([...DEFAULT_TAG_OPTIONS]);
+          setTagOptions(mergedDefaultTagOptions);
           setPendingTag('none');
           setSelectedType(DEFAULT_TYPE_OPTIONS[0].key);
           setPendingType(DEFAULT_TYPE_OPTIONS[0].key);
@@ -1022,6 +1051,7 @@ export default function AddHabitSheet({
     backdropOpacity,
     height,
     isMounted,
+    mergedDefaultTagOptions,
     sheetHeight,
     translateY,
     visible,
