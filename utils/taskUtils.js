@@ -70,9 +70,9 @@ const getQuantumProgressLabel = (task, dateKey) => {
   }
   const mode = task.quantum.mode;
   if (mode === 'timer') {
-    const hours = task.quantum.timer?.minutes ?? 0;
-    const minutes = task.quantum.timer?.seconds ?? 0;
-    const limitSeconds = hours * 3600 + minutes * 60;
+    const minutes = task.quantum.timer?.minutes ?? 0;
+    const seconds = task.quantum.timer?.seconds ?? 0;
+    const limitSeconds = minutes * 60 + seconds;
     if (!limitSeconds) {
       return null;
     }
@@ -97,9 +97,9 @@ const getQuantumProgressPercent = (task, dateKey) => {
   }
   const mode = task.quantum.mode;
   if (mode === 'timer') {
-    const hours = task.quantum.timer?.minutes ?? 0;
-    const minutes = task.quantum.timer?.seconds ?? 0;
-    const totalSeconds = hours * 3600 + minutes * 60;
+    const minutes = task.quantum.timer?.minutes ?? 0;
+    const seconds = task.quantum.timer?.seconds ?? 0;
+    const totalSeconds = minutes * 60 + seconds;
     if (!totalSeconds) {
       return 0;
     }
