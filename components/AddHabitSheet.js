@@ -164,6 +164,8 @@ const mergeTagOptions = (primaryOptions = [], secondaryOptions = []) => {
 
 const HOUR_VALUES = Array.from({ length: 12 }, (_, i) => i + 1);
 const MINUTE_VALUES = Array.from({ length: 60 }, (_, i) => i);
+const TIMER_HOUR_VALUES = Array.from({ length: 100 }, (_, i) => i);
+const TIMER_MINUTE_VALUES = Array.from({ length: 60 }, (_, i) => i);
 const MERIDIEM_VALUES = ['AM', 'PM'];
 const INTERVAL_VALUES = Array.from({ length: 99 }, (_, i) => i + 1);
 
@@ -1333,9 +1335,9 @@ export default function AddHabitSheet({
     [hasSpecifiedTime, normalizedPeriodTime, normalizedPointTime, timeMode]
   );
   const previewQuantum = useMemo(() => {
-    const minutes = Number.parseInt(pendingQuantumTimerMinutes, 10) || 0;
-    const seconds = Number.parseInt(pendingQuantumTimerSeconds, 10) || 0;
-    const totalSeconds = minutes * 60 + seconds;
+    const hours = Number.parseInt(pendingQuantumTimerMinutes, 10) || 0;
+    const minutes = Number.parseInt(pendingQuantumTimerSeconds, 10) || 0;
+    const totalSeconds = hours * 3600 + minutes * 60;
     const limitValue = Number.parseInt(pendingQuantumCountValue, 10) || 0;
     const halfSeconds = totalSeconds ? Math.max(1, Math.floor(totalSeconds / 2)) : 0;
     const halfCount = limitValue ? Math.max(1, Math.floor(limitValue / 2)) : 0;
@@ -1344,8 +1346,8 @@ export default function AddHabitSheet({
       mode: pendingQuantumMode,
       animation: pendingQuantumAnimation,
       timer: {
-        minutes,
-        seconds,
+        minutes: hours,
+        seconds: minutes,
       },
       count: {
         value: limitValue,
@@ -2142,6 +2144,14 @@ function QuantumPanel({
   showTitle = true,
 }) {
   const isTimer = mode === 'timer';
+  const timerHourIndex = Math.max(
+    0,
+    TIMER_HOUR_VALUES.indexOf(Number.parseInt(timerMinutes, 10) || 0)
+  );
+  const timerMinuteIndex = Math.max(
+    0,
+    TIMER_MINUTE_VALUES.indexOf(Number.parseInt(timerSeconds, 10) || 0)
+  );
 
   return (
     <View style={styles.subtasksPanel}>
@@ -2150,32 +2160,30 @@ function QuantumPanel({
       ) : null}
       <View style={styles.subtasksCard}>
         {isTimer ? (
-          <View style={styles.quantumTimerRow}>
-            <View style={styles.quantumField}>
-              <Text style={styles.quantumFieldLabel}>Min</Text>
-              <TextInput
-                style={styles.quantumFieldInput}
-                value={timerMinutes}
-                onChangeText={(value) => onChangeTimerMinutes(normalizeNumericText(value, { max: 99 }))}
-                keyboardType="number-pad"
-                maxLength={2}
-                placeholder="00"
-                placeholderTextColor="#9AA5B5"
-                accessibilityLabel="Timer minutes"
-              />
+          <View style={styles.wheelGroup}>
+            <View style={styles.wheelLabelsRow}>
+              <Text style={styles.wheelLabel}>Hour</Text>
+              <Text style={styles.wheelLabel}>Min</Text>
             </View>
-            <View style={styles.quantumField}>
-              <Text style={styles.quantumFieldLabel}>Sec</Text>
-              <TextInput
-                style={styles.quantumFieldInput}
-                value={timerSeconds}
-                onChangeText={(value) => onChangeTimerSeconds(normalizeNumericText(value, { max: 59 }))}
-                keyboardType="number-pad"
-                maxLength={2}
-                placeholder="00"
-                placeholderTextColor="#9AA5B5"
-                accessibilityLabel="Timer seconds"
-              />
+            <View style={styles.wheelArea}>
+              <View pointerEvents="none" style={styles.wheelHighlight} />
+              <View style={styles.wheelRow}>
+                <WheelColumn
+                  values={TIMER_HOUR_VALUES}
+                  selectedIndex={timerHourIndex}
+                  onSelect={(value) => onChangeTimerMinutes(String(value))}
+                  formatter={(value) => formatNumber(value)}
+                />
+                <Text pointerEvents="none" style={styles.wheelDivider}>
+                  :
+                </Text>
+                <WheelColumn
+                  values={TIMER_MINUTE_VALUES}
+                  selectedIndex={timerMinuteIndex}
+                  onSelect={(value) => onChangeTimerSeconds(String(value))}
+                  formatter={(value) => formatNumber(value)}
+                />
+              </View>
             </View>
           </View>
         ) : (
@@ -2239,7 +2247,7 @@ function QuantumPanel({
       </View>
       <Text style={styles.subtasksPanelHint}>
         {isTimer
-          ? 'Set the timer duration in minutes and seconds.'
+          ? 'Set the timer duration in hours and minutes.'
           : 'Set the count and the unit for this habit.'}
       </Text>
     </View>
