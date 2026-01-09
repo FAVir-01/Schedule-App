@@ -73,7 +73,7 @@ import {
   getTaskTagDisplayLabel,
   normalizeTaskTagKey,
 } from './utils/taskUtils';
-import { formatTaskTime, toMinutes } from './utils/timeUtils';
+import { formatNumber, formatTaskTime, toMinutes } from './utils/timeUtils';
 import { buildWavePath } from './utils/waveUtils';
 
 // --- COMPONENTE DA FAIXA DO TOPO ---
@@ -104,6 +104,8 @@ const habitImage = require('./assets/add-habit.png');
 const reflectionImage = require('./assets/add-reflection.png');
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
+const TIMER_HOUR_VALUES = Array.from({ length: 100 }, (_, index) => index);
+const TIMER_MINUTE_VALUES = Array.from({ length: 60 }, (_, index) => index);
 const FALLBACK_EMOJI = '📝';
 const DEFAULT_REPEAT_CONFIG = { enabled: true, frequency: 'daily', interval: 1 };
 const CONFETTI_COLORS = ['#ff6b6b', '#ffd93d', '#6bcB77', '#4d96ff', '#845ec2'];
@@ -1152,19 +1154,30 @@ function ScheduleApp() {
     [activeTask, selectedDateKey]
   );
 
-  const openQuantumAdjust = useCallback((task) => {
-    if (!task || task.type !== 'quantum') {
-      return;
-    }
-    setQuantumAdjustTaskId(task.id);
-    if (task.quantum?.mode === 'timer') {
-      setQuantumAdjustMinutes('0');
-      setQuantumAdjustSeconds('0');
-    } else {
-      const lastAdjust = task.quantum?.lastAdjustCount;
-      setQuantumAdjustCount(String(lastAdjust ?? 1));
-    }
+  const applyQuantumAdjustTimer = useCallback((totalSeconds) => {
+    const safeSeconds = Math.max(0, totalSeconds || 0);
+    const hours = Math.floor(safeSeconds / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
+    setQuantumAdjustMinutes(String(hours));
+    setQuantumAdjustSeconds(String(minutes));
   }, []);
+
+  const openQuantumAdjust = useCallback(
+    (task) => {
+      if (!task || task.type !== 'quantum') {
+        return;
+      }
+      setQuantumAdjustTaskId(task.id);
+      if (task.quantum?.mode === 'timer') {
+        const lastAdjustSeconds = task.quantum?.lastAdjustSeconds ?? 0;
+        applyQuantumAdjustTimer(lastAdjustSeconds);
+      } else {
+        const lastAdjust = task.quantum?.lastAdjustCount;
+        setQuantumAdjustCount(String(lastAdjust ?? 1));
+      }
+    },
+    [applyQuantumAdjustTimer]
+  );
 
   const closeQuantumAdjust = useCallback(() => {
     setQuantumAdjustTaskId(null);
@@ -1187,14 +1200,14 @@ function ScheduleApp() {
             return task;
           }
           if (mode === 'timer') {
-            const minutes = Number.parseInt(quantumAdjustMinutes, 10) || 0;
-            const seconds = Number.parseInt(quantumAdjustSeconds, 10) || 0;
-            const deltaSeconds = minutes * 60 + seconds;
+            const hours = Number.parseInt(quantumAdjustMinutes, 10) || 0;
+            const minutes = Number.parseInt(quantumAdjustSeconds, 10) || 0;
+            const deltaSeconds = hours * 3600 + minutes * 60;
             if (!deltaSeconds) {
               return task;
             }
             const limitSeconds =
-              (task.quantum?.timer?.minutes ?? 0) * 60 + (task.quantum?.timer?.seconds ?? 0);
+              (task.quantum?.timer?.minutes ?? 0) * 3600 + (task.quantum?.timer?.seconds ?? 0) * 60;
             if (!limitSeconds) {
               return task;
             }
@@ -1234,6 +1247,7 @@ function ScheduleApp() {
                   },
                 },
                 doneSeconds: nextSeconds,
+                lastAdjustSeconds: deltaSeconds,
                 wavePulse: Date.now(),
               },
             };
@@ -3780,6 +3794,114 @@ function TaskDetailModal({
   );
 }
 
+const WHEEL_ITEM_HEIGHT = 46;
+
+function WheelColumn({
+  values,
+  selectedIndex,
+  onSelect,
+  formatter = (value) => value,
+  itemHeight = WHEEL_ITEM_HEIGHT,
+}) {
+  const scrollRef = useRef(null);
+  const isMomentumScrolling = useRef(false);
+  const isDragging = useRef(false);
+
+  useEffect(() => {
+    if (!scrollRef.current || isMomentumScrolling.current || isDragging.current) {
+      return undefined;
+    }
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: selectedIndex * itemHeight, animated: false });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [selectedIndex, itemHeight]);
+
+  const finalizeSelection = useCallback(
+    (offsetY) => {
+      const maxOffset = Math.max(0, (values.length - 1) * itemHeight);
+      const clampedOffset = Math.min(Math.max(offsetY, 0), maxOffset);
+      const index = Math.round(clampedOffset / itemHeight);
+      const clampedIndex = Math.min(Math.max(index, 0), values.length - 1);
+
+      if (clampedIndex !== selectedIndex) {
+        onSelect(values[clampedIndex]);
+        if (HAPTICS_SUPPORTED && typeof Haptics.selectionAsync === 'function') {
+          try {
+            Haptics.selectionAsync();
+          } catch {
+            // Ignore missing haptics support on web
+          }
+        }
+      }
+    },
+    [itemHeight, values, onSelect, selectedIndex]
+  );
+
+  const handleMomentumBegin = useCallback(() => {
+    isMomentumScrolling.current = true;
+  }, []);
+
+  const handleMomentumEnd = useCallback(
+    (event) => {
+      isMomentumScrolling.current = false;
+      finalizeSelection(event.nativeEvent.contentOffset.y ?? 0);
+    },
+    [finalizeSelection]
+  );
+
+  const handleScrollBeginDrag = useCallback(() => {
+    isDragging.current = true;
+  }, []);
+
+  const handleScrollEndDrag = useCallback(
+    (event) => {
+      isDragging.current = false;
+      if (!isMomentumScrolling.current) {
+        finalizeSelection(event.nativeEvent.contentOffset.y ?? 0);
+      }
+    },
+    [finalizeSelection]
+  );
+
+  return (
+    <ScrollView
+      ref={scrollRef}
+      style={styles.quantumModalWheelColumn}
+      contentContainerStyle={[
+        styles.quantumModalWheelColumnContent,
+        { paddingVertical: itemHeight * 2 },
+      ]}
+      showsVerticalScrollIndicator={false}
+      snapToInterval={itemHeight}
+      decelerationRate={Platform.select({ ios: 'fast', android: 0.998 })}
+      overScrollMode="never"
+      bounces
+      scrollEventThrottle={16}
+      nestedScrollEnabled
+      onStartShouldSetResponderCapture={() => true}
+      onMoveShouldSetResponderCapture={() => true}
+      onMomentumScrollBegin={handleMomentumBegin}
+      onMomentumScrollEnd={handleMomentumEnd}
+      onScrollBeginDrag={handleScrollBeginDrag}
+      onScrollEndDrag={handleScrollEndDrag}
+    >
+      {values.map((value, index) => {
+        const isActive = index === selectedIndex;
+        return (
+          <View key={`${value}-${index}`} style={[styles.quantumModalWheelItem, { height: itemHeight }]}>
+            <Text
+              style={[styles.quantumModalWheelItemText, isActive && styles.quantumModalWheelItemTextActive]}
+            >
+              {formatter(value)}
+            </Text>
+          </View>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 function QuantumAdjustModal({
   task,
   visible,
@@ -3802,17 +3924,27 @@ function QuantumAdjustModal({
   const lastCountValue = lastAdjustCount ?? Math.max(1, normalizedCountValue || 1);
   const halfCountValue = limitCount ? Math.max(1, Math.round(limitCount / 2)) : 0;
   const maxCountValue = limitCount ?? 0;
-  const handleMinutesChange = useCallback(
+  const timerHours = Number.parseInt(minutesValue, 10) || 0;
+  const timerMinutes = Number.parseInt(secondsValue, 10) || 0;
+  const timerSeconds = timerHours * 3600 + timerMinutes * 60;
+  const limitTimerSeconds =
+    (task?.quantum?.timer?.minutes ?? 0) * 3600 + (task?.quantum?.timer?.seconds ?? 0) * 60;
+  const timerHourIndex = Math.max(0, TIMER_HOUR_VALUES.indexOf(timerHours));
+  const timerMinuteIndex = Math.max(0, TIMER_MINUTE_VALUES.indexOf(timerMinutes));
+  const presetThirtyMinutes = 30 * 60;
+  const presetOneHour = 60 * 60;
+  const handleTimerPreset = useCallback(
     (value) => {
-      onChangeMinutes(value.replace(/\D/g, '').slice(0, 2));
+      if (!value && value !== 0) {
+        return;
+      }
+      const clampedSeconds = Math.max(0, value);
+      const hours = Math.floor(clampedSeconds / 3600);
+      const minutes = Math.floor((clampedSeconds % 3600) / 60);
+      onChangeMinutes(String(hours));
+      onChangeSeconds(String(minutes));
     },
-    [onChangeMinutes]
-  );
-  const handleSecondsChange = useCallback(
-    (value) => {
-      onChangeSeconds(value.replace(/\D/g, '').slice(0, 2));
-    },
-    [onChangeSeconds]
+    [onChangeMinutes, onChangeSeconds]
   );
   const handleCountChange = useCallback(
     (value) => {
@@ -3829,9 +3961,7 @@ function QuantumAdjustModal({
     },
     [onChangeCount]
   );
-  const disableActions = isTimer
-    ? (Number.parseInt(minutesValue, 10) || 0) * 60 + (Number.parseInt(secondsValue, 10) || 0) <= 0
-    : (Number.parseInt(countValue, 10) || 0) <= 0;
+  const disableActions = isTimer ? timerSeconds <= 0 : (Number.parseInt(countValue, 10) || 0) <= 0;
 
   if (!visible || !task) {
     return null;
@@ -3859,32 +3989,95 @@ function QuantumAdjustModal({
             <Text style={styles.quantumModalSubtitle}>Current: {limitLabel}</Text>
           )}
           {isTimer ? (
-            <View style={styles.quantumModalRow}>
-              <View style={styles.quantumModalField}>
-                <Text style={styles.quantumModalFieldLabel}>Hour</Text>
-                <TextInput
-                  style={styles.quantumModalInput}
-                  value={minutesValue}
-                  onChangeText={handleMinutesChange}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  placeholder="0"
-                  placeholderTextColor="#9AA5B5"
-                />
+            <>
+              <View style={styles.quantumModalPresetRow}>
+                <Pressable
+                  style={[
+                    styles.quantumModalPresetButton,
+                    timerSeconds === presetThirtyMinutes && styles.quantumModalPresetButtonSelected,
+                  ]}
+                  onPress={() => handleTimerPreset(presetThirtyMinutes)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Use 30 minutes"
+                >
+                  <Text
+                    style={[
+                      styles.quantumModalPresetText,
+                      timerSeconds === presetThirtyMinutes && styles.quantumModalPresetTextSelected,
+                    ]}
+                  >
+                    30 min
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.quantumModalPresetButton,
+                    timerSeconds === presetOneHour && styles.quantumModalPresetButtonSelected,
+                  ]}
+                  onPress={() => handleTimerPreset(presetOneHour)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Use 1 hour"
+                >
+                  <Text
+                    style={[
+                      styles.quantumModalPresetText,
+                      timerSeconds === presetOneHour && styles.quantumModalPresetTextSelected,
+                    ]}
+                  >
+                    1h
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.quantumModalPresetButton,
+                    limitTimerSeconds > 0 &&
+                      timerSeconds === limitTimerSeconds &&
+                      styles.quantumModalPresetButtonSelected,
+                  ]}
+                  onPress={() => handleTimerPreset(limitTimerSeconds)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Use max"
+                  disabled={!limitTimerSeconds}
+                >
+                  <Text
+                    style={[
+                      styles.quantumModalPresetText,
+                      limitTimerSeconds > 0 &&
+                        timerSeconds === limitTimerSeconds &&
+                        styles.quantumModalPresetTextSelected,
+                    ]}
+                  >
+                    max
+                  </Text>
+                </Pressable>
               </View>
-              <View style={styles.quantumModalField}>
-                <Text style={styles.quantumModalFieldLabel}>Min</Text>
-                <TextInput
-                  style={styles.quantumModalInput}
-                  value={secondsValue}
-                  onChangeText={handleSecondsChange}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  placeholder="0"
-                  placeholderTextColor="#9AA5B5"
-                />
+              <View style={styles.quantumModalWheelGroup}>
+                <View style={styles.quantumModalWheelLabelsRow}>
+                  <Text style={styles.quantumModalWheelLabel}>Hour</Text>
+                  <Text style={styles.quantumModalWheelLabel}>Min</Text>
+                </View>
+                <View style={styles.quantumModalWheelArea}>
+                  <View pointerEvents="none" style={styles.quantumModalWheelHighlight} />
+                  <View style={styles.quantumModalWheelRow}>
+                    <WheelColumn
+                      values={TIMER_HOUR_VALUES}
+                      selectedIndex={timerHourIndex}
+                      onSelect={(value) => onChangeMinutes(String(value))}
+                      formatter={(value) => formatNumber(value)}
+                    />
+                    <Text pointerEvents="none" style={styles.quantumModalWheelDivider}>
+                      :
+                    </Text>
+                    <WheelColumn
+                      values={TIMER_MINUTE_VALUES}
+                      selectedIndex={timerMinuteIndex}
+                      onSelect={(value) => onChangeSeconds(String(value))}
+                      formatter={(value) => formatNumber(value)}
+                    />
+                  </View>
+                </View>
               </View>
-            </View>
+            </>
           ) : (
             <>
               <View style={styles.quantumModalPresetRow}>
@@ -4479,6 +4672,62 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 14,
+  },
+  quantumModalWheelGroup: {
+    marginTop: 14,
+  },
+  quantumModalWheelLabelsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  quantumModalWheelLabel: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#7F8A9A',
+    textAlign: 'center',
+  },
+  quantumModalWheelArea: {
+    backgroundColor: '#F4F6FB',
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  quantumModalWheelHighlight: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: WHEEL_ITEM_HEIGHT * 2,
+    height: WHEEL_ITEM_HEIGHT,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+  },
+  quantumModalWheelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  quantumModalWheelDivider: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2742',
+    marginHorizontal: 4,
+  },
+  quantumModalWheelColumn: {
+    flex: 1,
+  },
+  quantumModalWheelColumnContent: {
+    alignItems: 'center',
+  },
+  quantumModalWheelItem: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quantumModalWheelItemText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#7F8A9A',
+  },
+  quantumModalWheelItemTextActive: {
+    color: '#1F2742',
   },
   quantumModalPresetButton: {
     flex: 1,
