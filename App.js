@@ -4752,7 +4752,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS,
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 6,
     overflow: 'hidden',
   },
   timerWheelHighlight: {
@@ -4775,7 +4775,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'stretch',
-    gap: 12,
+    gap: 6,
   },
   timerWheelDivider: {
     alignSelf: 'center',
@@ -4787,7 +4787,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   timerWheelColumnWrapper: {
-    width: 68,
+    width: 90,
     height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS,
     overflow: 'hidden',
   },
