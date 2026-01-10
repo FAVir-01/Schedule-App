@@ -3797,15 +3797,11 @@ function QuantumAdjustModal({
   const isTimer = task?.quantum?.mode === 'timer';
   const limitLabel = task ? getQuantumProgressLabel(task, dateKey) : null;
   const limitCount = task?.quantum?.count?.value ?? 0;
-  const timerLimitSeconds =
-    (task?.quantum?.timer?.minutes ?? 0) * 60 + (task?.quantum?.timer?.seconds ?? 0);
   const lastAdjustCount = task?.quantum?.lastAdjustCount ?? null;
   const normalizedCountValue = Number.parseInt(countValue, 10) || 0;
   const lastCountValue = lastAdjustCount ?? Math.max(1, normalizedCountValue || 1);
   const halfCountValue = limitCount ? Math.max(1, Math.round(limitCount / 2)) : 0;
   const maxCountValue = limitCount ?? 0;
-  const timerValueSeconds =
-    (Number.parseInt(minutesValue, 10) || 0) * 60 + (Number.parseInt(secondsValue, 10) || 0);
   const handleMinutesChange = useCallback(
     (value) => {
       onChangeMinutes(value.replace(/\D/g, '').slice(0, 2));
@@ -3832,18 +3828,6 @@ function QuantumAdjustModal({
       onChangeCount(String(value));
     },
     [onChangeCount]
-  );
-  const handleTimerPreset = useCallback(
-    (presetSeconds) => {
-      if (!presetSeconds) {
-        return;
-      }
-      const minutes = Math.floor(presetSeconds / 60);
-      const seconds = presetSeconds % 60;
-      onChangeMinutes(String(minutes));
-      onChangeSeconds(String(seconds).padStart(2, '0'));
-    },
-    [onChangeMinutes, onChangeSeconds]
   );
   const disableActions = isTimer
     ? (Number.parseInt(minutesValue, 10) || 0) * 60 + (Number.parseInt(secondsValue, 10) || 0) <= 0
@@ -3875,93 +3859,32 @@ function QuantumAdjustModal({
             <Text style={styles.quantumModalSubtitle}>Current: {limitLabel}</Text>
           )}
           {isTimer ? (
-            <>
-              <View style={styles.quantumModalPresetRow}>
-                <Pressable
-                  style={[
-                    styles.quantumModalPresetButton,
-                    timerValueSeconds === 30 * 60 && styles.quantumModalPresetButtonSelected,
-                  ]}
-                  onPress={() => handleTimerPreset(30 * 60)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Use 30 minutes"
-                >
-                  <Text
-                    style={[
-                      styles.quantumModalPresetText,
-                      timerValueSeconds === 30 * 60 && styles.quantumModalPresetTextSelected,
-                    ]}
-                  >
-                    30 min
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[
-                    styles.quantumModalPresetButton,
-                    timerValueSeconds === 60 * 60 && styles.quantumModalPresetButtonSelected,
-                  ]}
-                  onPress={() => handleTimerPreset(60 * 60)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Use 1 hour"
-                >
-                  <Text
-                    style={[
-                      styles.quantumModalPresetText,
-                      timerValueSeconds === 60 * 60 && styles.quantumModalPresetTextSelected,
-                    ]}
-                  >
-                    1 hour
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[
-                    styles.quantumModalPresetButton,
-                    timerLimitSeconds > 0 &&
-                      timerValueSeconds === timerLimitSeconds &&
-                      styles.quantumModalPresetButtonSelected,
-                  ]}
-                  onPress={() => handleTimerPreset(timerLimitSeconds)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Use max"
-                  disabled={!timerLimitSeconds}
-                >
-                  <Text
-                    style={[
-                      styles.quantumModalPresetText,
-                      timerLimitSeconds > 0 &&
-                        timerValueSeconds === timerLimitSeconds &&
-                        styles.quantumModalPresetTextSelected,
-                    ]}
-                  >
-                    max
-                  </Text>
-                </Pressable>
+            <View style={styles.quantumModalRow}>
+              <View style={styles.quantumModalField}>
+                <Text style={styles.quantumModalFieldLabel}>Hour</Text>
+                <TextInput
+                  style={styles.quantumModalInput}
+                  value={minutesValue}
+                  onChangeText={handleMinutesChange}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  placeholder="0"
+                  placeholderTextColor="#9AA5B5"
+                />
               </View>
-              <View style={styles.quantumModalAmountSection}>
-                <Text style={styles.quantumModalFieldLabel}>Amount</Text>
-                <View style={styles.quantumModalAmountField}>
-                  <TextInput
-                    style={styles.quantumModalAmountInput}
-                    value={minutesValue}
-                    onChangeText={handleMinutesChange}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                    placeholder="00"
-                    placeholderTextColor="#9AA5B5"
-                  />
-                  <Text style={styles.quantumModalAmountSeparator}>:</Text>
-                  <TextInput
-                    style={styles.quantumModalAmountInput}
-                    value={secondsValue}
-                    onChangeText={handleSecondsChange}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                    placeholder="00"
-                    placeholderTextColor="#9AA5B5"
-                  />
-                </View>
+              <View style={styles.quantumModalField}>
+                <Text style={styles.quantumModalFieldLabel}>Min</Text>
+                <TextInput
+                  style={styles.quantumModalInput}
+                  value={secondsValue}
+                  onChangeText={handleSecondsChange}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  placeholder="0"
+                  placeholderTextColor="#9AA5B5"
+                />
               </View>
-            </>
+            </View>
           ) : (
             <>
               <View style={styles.quantumModalPresetRow}>
@@ -4560,21 +4483,13 @@ const styles = StyleSheet.create({
   quantumModalPresetButton: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 18,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#D2D9E8',
-    shadowColor: '#1F2742',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 3,
+    backgroundColor: '#EEF3FF',
   },
   quantumModalPresetButtonSelected: {
     backgroundColor: '#1F2742',
-    borderColor: '#1F2742',
   },
   quantumModalPresetText: {
     fontSize: 14,
@@ -4603,33 +4518,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1F2742',
   },
-  quantumModalAmountSection: {
-    marginTop: 16,
-    gap: 8,
-  },
-  quantumModalAmountField: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F8FAFF',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#D2D9E8',
-    paddingVertical: 12,
-  },
-  quantumModalAmountInput: {
-    minWidth: 60,
-    textAlign: 'center',
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#1F2742',
-  },
-  quantumModalAmountSeparator: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1F2742',
-    paddingHorizontal: 6,
-  },
   quantumModalActions: {
     flexDirection: 'row',
     gap: 12,
@@ -4638,24 +4526,15 @@ const styles = StyleSheet.create({
   quantumModalButton: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 18,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#D2D9E8',
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#1F2742',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 3,
   },
   quantumModalButtonAdd: {
     backgroundColor: '#1F2742',
-    borderColor: '#1F2742',
   },
   quantumModalButtonSubtract: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#EEF3FF',
   },
   quantumModalButtonText: {
     fontSize: 18,
