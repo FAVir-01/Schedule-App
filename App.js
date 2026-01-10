@@ -1158,8 +1158,16 @@ function ScheduleApp() {
     }
     setQuantumAdjustTaskId(task.id);
     if (task.quantum?.mode === 'timer') {
-      setQuantumAdjustMinutes('0');
-      setQuantumAdjustSeconds('0');
+      const limitSeconds =
+        (task.quantum?.timer?.minutes ?? 0) * 60 + (task.quantum?.timer?.seconds ?? 0);
+      const lastAdjustSeconds = task.quantum?.lastAdjustTimerSeconds ?? 0;
+      const clampedSeconds = limitSeconds
+        ? Math.min(Math.max(lastAdjustSeconds, 0), limitSeconds)
+        : Math.max(lastAdjustSeconds, 0);
+      const lastHours = Math.floor(clampedSeconds / 60);
+      const lastMinutes = clampedSeconds % 60;
+      setQuantumAdjustMinutes(String(lastHours));
+      setQuantumAdjustSeconds(String(lastMinutes));
     } else {
       const lastAdjust = task.quantum?.lastAdjustCount;
       setQuantumAdjustCount(String(lastAdjust ?? 1));
@@ -1234,6 +1242,7 @@ function ScheduleApp() {
                   },
                 },
                 doneSeconds: nextSeconds,
+                lastAdjustTimerSeconds: deltaSeconds,
                 wavePulse: Date.now(),
               },
             };
@@ -3807,6 +3816,7 @@ function QuantumAdjustModal({
   const totalTimerMinutes = normalizedMinutesValue * 60 + normalizedSecondsValue;
   const isThirtySelected = totalTimerMinutes === 30 || totalTimerMinutes === 90;
   const isOneHourSelected = totalTimerMinutes === 60 || totalTimerMinutes === 90;
+  const presetTotalMinutes = (isThirtySelected ? 30 : 0) + (isOneHourSelected ? 60 : 0);
   const lastCountValue = lastAdjustCount ?? Math.max(1, normalizedCountValue || 1);
   const halfCountValue = limitCount ? Math.max(1, Math.round(limitCount / 2)) : 0;
   const maxCountValue = limitCount ?? 0;
@@ -3868,10 +3878,12 @@ function QuantumAdjustModal({
       const shouldRemove =
         (presetMinutes === 30 && isThirtySelected) ||
         (presetMinutes === 60 && isOneHourSelected);
-      const nextTotal = shouldRemove ? totalTimerMinutes - presetMinutes : totalTimerMinutes + presetMinutes;
+      const nextTotal = shouldRemove
+        ? presetTotalMinutes - presetMinutes
+        : presetTotalMinutes + presetMinutes;
       updateTimerFromTotal(nextTotal);
     },
-    [isOneHourSelected, isThirtySelected, totalTimerMinutes, updateTimerFromTotal]
+    [isOneHourSelected, isThirtySelected, presetTotalMinutes, updateTimerFromTotal]
   );
   const disableActions = isTimer
     ? (Number.parseInt(minutesValue, 10) || 0) * 60 + (Number.parseInt(secondsValue, 10) || 0) <= 0
