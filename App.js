@@ -3799,11 +3799,14 @@ function QuantumAdjustModal({
   const limitCount = task?.quantum?.count?.value ?? 0;
   const maxTimerMinutes = task?.quantum?.timer?.minutes ?? 0;
   const maxTimerSeconds = task?.quantum?.timer?.seconds ?? 0;
-  const maxTimerTotalSeconds = maxTimerMinutes * 60 + maxTimerSeconds;
+  const maxTimerTotalMinutes = maxTimerMinutes * 60 + maxTimerSeconds;
   const lastAdjustCount = task?.quantum?.lastAdjustCount ?? null;
   const normalizedCountValue = Number.parseInt(countValue, 10) || 0;
   const normalizedMinutesValue = Number.parseInt(minutesValue, 10) || 0;
   const normalizedSecondsValue = Number.parseInt(secondsValue, 10) || 0;
+  const totalTimerMinutes = normalizedMinutesValue * 60 + normalizedSecondsValue;
+  const isThirtySelected = totalTimerMinutes === 30 || totalTimerMinutes === 90;
+  const isOneHourSelected = totalTimerMinutes === 60 || totalTimerMinutes === 90;
   const lastCountValue = lastAdjustCount ?? Math.max(1, normalizedCountValue || 1);
   const halfCountValue = limitCount ? Math.max(1, Math.round(limitCount / 2)) : 0;
   const maxCountValue = limitCount ?? 0;
@@ -3844,6 +3847,32 @@ function QuantumAdjustModal({
     },
     [onChangeMinutes, onChangeSeconds]
   );
+  const updateTimerFromTotal = useCallback(
+    (totalMinutes) => {
+      const clampedTotal =
+        maxTimerTotalMinutes > 0
+          ? Math.min(Math.max(totalMinutes, 0), maxTimerTotalMinutes)
+          : Math.max(totalMinutes, 0);
+      const nextHours = Math.floor(clampedTotal / 60);
+      const nextMinutes = clampedTotal % 60;
+      onChangeMinutes(String(nextHours));
+      onChangeSeconds(String(nextMinutes));
+    },
+    [maxTimerTotalMinutes, onChangeMinutes, onChangeSeconds]
+  );
+  const handleTimerPresetToggle = useCallback(
+    (presetMinutes) => {
+      if (!presetMinutes) {
+        return;
+      }
+      const shouldRemove =
+        (presetMinutes === 30 && isThirtySelected) ||
+        (presetMinutes === 60 && isOneHourSelected);
+      const nextTotal = shouldRemove ? totalTimerMinutes - presetMinutes : totalTimerMinutes + presetMinutes;
+      updateTimerFromTotal(nextTotal);
+    },
+    [isOneHourSelected, isThirtySelected, totalTimerMinutes, updateTimerFromTotal]
+  );
   const disableActions = isTimer
     ? (Number.parseInt(minutesValue, 10) || 0) * 60 + (Number.parseInt(secondsValue, 10) || 0) <= 0
     : (Number.parseInt(countValue, 10) || 0) <= 0;
@@ -3879,20 +3908,16 @@ function QuantumAdjustModal({
                 <Pressable
                   style={[
                     styles.quantumModalPresetButton,
-                    normalizedMinutesValue === 0 &&
-                      normalizedSecondsValue === 30 &&
-                      styles.quantumModalPresetButtonSelected,
+                    isThirtySelected && styles.quantumModalPresetButtonSelected,
                   ]}
-                  onPress={() => handleTimerPresetSelect(0, 30)}
+                  onPress={() => handleTimerPresetToggle(30)}
                   accessibilityRole="button"
                   accessibilityLabel="Use 30 minutes"
                 >
                   <Text
                     style={[
                       styles.quantumModalPresetText,
-                      normalizedMinutesValue === 0 &&
-                        normalizedSecondsValue === 30 &&
-                        styles.quantumModalPresetTextSelected,
+                      isThirtySelected && styles.quantumModalPresetTextSelected,
                     ]}
                   >
                     30 min
@@ -3901,20 +3926,16 @@ function QuantumAdjustModal({
                 <Pressable
                   style={[
                     styles.quantumModalPresetButton,
-                    normalizedMinutesValue === 1 &&
-                      normalizedSecondsValue === 0 &&
-                      styles.quantumModalPresetButtonSelected,
+                    isOneHourSelected && styles.quantumModalPresetButtonSelected,
                   ]}
-                  onPress={() => handleTimerPresetSelect(1, 0)}
+                  onPress={() => handleTimerPresetToggle(60)}
                   accessibilityRole="button"
                   accessibilityLabel="Use 1 hour"
                 >
                   <Text
                     style={[
                       styles.quantumModalPresetText,
-                      normalizedMinutesValue === 1 &&
-                        normalizedSecondsValue === 0 &&
-                        styles.quantumModalPresetTextSelected,
+                      isOneHourSelected && styles.quantumModalPresetTextSelected,
                     ]}
                   >
                     1 hour
@@ -3925,20 +3946,20 @@ function QuantumAdjustModal({
                     styles.quantumModalPresetButton,
                     normalizedMinutesValue === maxTimerMinutes &&
                       normalizedSecondsValue === maxTimerSeconds &&
-                      maxTimerTotalSeconds > 0 &&
+                      maxTimerTotalMinutes > 0 &&
                       styles.quantumModalPresetButtonSelected,
                   ]}
                   onPress={() => handleTimerPresetSelect(maxTimerMinutes, maxTimerSeconds)}
                   accessibilityRole="button"
                   accessibilityLabel="Use max"
-                  disabled={maxTimerTotalSeconds <= 0}
+                  disabled={maxTimerTotalMinutes <= 0}
                 >
                   <Text
                     style={[
                       styles.quantumModalPresetText,
                       normalizedMinutesValue === maxTimerMinutes &&
                         normalizedSecondsValue === maxTimerSeconds &&
-                        maxTimerTotalSeconds > 0 &&
+                        maxTimerTotalMinutes > 0 &&
                         styles.quantumModalPresetTextSelected,
                     ]}
                   >
