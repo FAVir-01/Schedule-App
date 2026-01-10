@@ -3949,25 +3949,17 @@ function QuantumAdjustModal({
               <View style={styles.quantumModalAmount}>
                 <Text style={styles.quantumModalAmountLabel}>Amount</Text>
                 <View style={styles.quantumModalAmountInput}>
-                  <TextInput
-                    style={styles.quantumModalAmountValue}
-                    value={minutesValue}
-                    onChangeText={handleMinutesChange}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                    placeholder="00"
-                    placeholderTextColor="#B4BCCB"
+                  <WheelPicker
+                    values={TIMER_HOUR_OPTIONS}
+                    value={normalizeTimerValue(minutesValue, TIMER_HOUR_OPTIONS)}
+                    onChange={handleMinutesChange}
                     accessibilityLabel="Timer hours"
                   />
                   <Text style={styles.quantumModalAmountSeparator}>:</Text>
-                  <TextInput
-                    style={styles.quantumModalAmountValue}
-                    value={secondsValue}
-                    onChangeText={handleSecondsChange}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                    placeholder="00"
-                    placeholderTextColor="#B4BCCB"
+                  <WheelPicker
+                    values={TIMER_MINUTE_OPTIONS}
+                    value={normalizeTimerValue(secondsValue, TIMER_MINUTE_OPTIONS)}
+                    onChange={handleSecondsChange}
                     accessibilityLabel="Timer minutes"
                   />
                 </View>
@@ -4074,6 +4066,91 @@ function QuantumAdjustModal({
         </View>
       </View>
     </Modal>
+  );
+}
+
+const WHEEL_ITEM_HEIGHT = 32;
+const WHEEL_VISIBLE_ITEMS = 3;
+const WHEEL_CONTAINER_HEIGHT = WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS;
+
+const TIMER_HOUR_OPTIONS = Array.from({ length: 100 }, (_, index) =>
+  String(index).padStart(2, '0')
+);
+const TIMER_MINUTE_OPTIONS = Array.from({ length: 60 }, (_, index) =>
+  String(index).padStart(2, '0')
+);
+
+function normalizeTimerValue(value, options) {
+  const sanitized = value?.replace(/\D/g, '') ?? '';
+  if (!sanitized) {
+    return options[0];
+  }
+  const normalized = Number.parseInt(sanitized, 10);
+  if (Number.isNaN(normalized)) {
+    return options[0];
+  }
+  const clamped = Math.min(Math.max(normalized, 0), options.length - 1);
+  return options[clamped];
+}
+
+function WheelPicker({ values, value, onChange, accessibilityLabel }) {
+  const listRef = useRef(null);
+  const valueIndex = Math.max(0, values.indexOf(value));
+
+  const scrollToIndex = useCallback(
+    (index, animated = false) => {
+      listRef.current?.scrollToOffset({
+        offset: index * WHEEL_ITEM_HEIGHT,
+        animated,
+      });
+    },
+    []
+  );
+
+  useEffect(() => {
+    scrollToIndex(valueIndex, false);
+  }, [scrollToIndex, valueIndex]);
+
+  const handleScrollEnd = useCallback(
+    (event) => {
+      const offsetY = event.nativeEvent.contentOffset.y;
+      const nextIndex = Math.min(
+        values.length - 1,
+        Math.max(0, Math.round(offsetY / WHEEL_ITEM_HEIGHT))
+      );
+      const nextValue = values[nextIndex];
+      if (nextValue && nextValue !== value) {
+        onChange(nextValue);
+      }
+    },
+    [onChange, value, values]
+  );
+
+  return (
+    <View style={styles.wheelPicker} accessibilityLabel={accessibilityLabel}>
+      <FlatList
+        ref={listRef}
+        data={values}
+        keyExtractor={(item) => item}
+        snapToInterval={WHEEL_ITEM_HEIGHT}
+        decelerationRate="fast"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.wheelContent}
+        getItemLayout={(_, index) => ({
+          length: WHEEL_ITEM_HEIGHT,
+          offset: WHEEL_ITEM_HEIGHT * index,
+          index,
+        })}
+        onMomentumScrollEnd={handleScrollEnd}
+        onScrollEndDrag={handleScrollEnd}
+        renderItem={({ item }) => (
+          <View style={styles.wheelItem}>
+            <Text style={styles.wheelItemText}>{item}</Text>
+          </View>
+        )}
+      />
+      <View pointerEvents="none" style={styles.wheelHighlight} />
+    </View>
   );
 }
 
@@ -4629,17 +4706,38 @@ const styles = StyleSheet.create({
     borderColor: '#D5DBE8',
     backgroundColor: '#F8FAFF',
   },
-  quantumModalAmountValue: {
-    minWidth: 64,
-    textAlign: 'center',
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1F2742',
-  },
   quantumModalAmountSeparator: {
     fontSize: 26,
     fontWeight: '700',
     color: '#1F2742',
+  },
+  wheelPicker: {
+    width: 70,
+    height: WHEEL_CONTAINER_HEIGHT,
+    justifyContent: 'center',
+  },
+  wheelContent: {
+    paddingVertical: WHEEL_ITEM_HEIGHT,
+  },
+  wheelItem: {
+    height: WHEEL_ITEM_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wheelItemText: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1F2742',
+  },
+  wheelHighlight: {
+    position: 'absolute',
+    top: WHEEL_ITEM_HEIGHT,
+    left: 0,
+    right: 0,
+    height: WHEEL_ITEM_HEIGHT,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#D5DBE8',
   },
   quantumModalActions: {
     flexDirection: 'row',
