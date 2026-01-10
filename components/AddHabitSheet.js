@@ -2805,6 +2805,9 @@ function TimePanel({
                     onSelect={(value) => onPointTimeChange({ ...pointTime, hour: value })}
                     formatter={(value) => formatNumber(value)}
                   />
+                  <Text pointerEvents="none" style={styles.wheelDivider}>
+                    :
+                  </Text>
                   <WheelColumn
                     values={MINUTE_VALUES}
                     selectedIndex={minuteIndex}
@@ -2841,6 +2844,9 @@ function TimePanel({
                       }
                       formatter={(value) => formatNumber(value)}
                     />
+                    <Text pointerEvents="none" style={styles.wheelDivider}>
+                      :
+                    </Text>
                     <WheelColumn
                       values={MINUTE_VALUES}
                       selectedIndex={startMinuteIndex}
@@ -2883,6 +2889,9 @@ function TimePanel({
                       }
                       formatter={(value) => formatNumber(value)}
                     />
+                    <Text pointerEvents="none" style={styles.wheelDivider}>
+                      :
+                    </Text>
                     <WheelColumn
                       values={MINUTE_VALUES}
                       selectedIndex={endMinuteIndex}
@@ -2940,8 +2949,6 @@ function WheelColumn({
   const scrollRef = useRef(null);
   const isMomentumScrolling = useRef(false);
   const isDragging = useRef(false);
-  const [displayIndex, setDisplayIndex] = useState(selectedIndex);
-  const lastHapticIndex = useRef(selectedIndex);
 
   useEffect(() => {
     if (!scrollRef.current || isMomentumScrolling.current || isDragging.current) {
@@ -2952,11 +2959,6 @@ function WheelColumn({
     });
     return () => cancelAnimationFrame(frame);
   }, [selectedIndex, itemHeight]);
-
-  useEffect(() => {
-    setDisplayIndex(selectedIndex);
-    lastHapticIndex.current = selectedIndex;
-  }, [selectedIndex]);
 
   const finalizeSelection = useCallback(
     (offsetY) => {
@@ -2977,32 +2979,6 @@ function WheelColumn({
       }
     },
     [itemHeight, values, onSelect, selectedIndex]
-  );
-
-  const handleScroll = useCallback(
-    (event) => {
-      const offsetY = event.nativeEvent.contentOffset.y ?? 0;
-      const maxOffset = Math.max(0, (values.length - 1) * itemHeight);
-      const clampedOffset = Math.min(Math.max(offsetY, 0), maxOffset);
-      const index = Math.round(clampedOffset / itemHeight);
-      const clampedIndex = Math.min(Math.max(index, 0), values.length - 1);
-
-      if (clampedIndex !== displayIndex) {
-        setDisplayIndex(clampedIndex);
-      }
-
-      if (clampedIndex !== lastHapticIndex.current) {
-        lastHapticIndex.current = clampedIndex;
-        if (HAPTICS_SUPPORTED && typeof Haptics.selectionAsync === 'function') {
-          try {
-            Haptics.selectionAsync();
-          } catch (error) {
-            // Ignore missing haptics support on web
-          }
-        }
-      }
-    },
-    [displayIndex, itemHeight, values.length]
   );
 
   const handleMomentumBegin = useCallback(() => {
@@ -3042,7 +3018,7 @@ function WheelColumn({
       showsVerticalScrollIndicator={false}
       // deixa o sistema cuidar do momentum e nós só "arredondamos" no fim:
       snapToInterval={itemHeight}
-      decelerationRate="fast"
+      decelerationRate={Platform.select({ ios: 'fast', android: 0.998 })}
       overScrollMode="never"
       bounces
       scrollEventThrottle={16}
@@ -3050,14 +3026,13 @@ function WheelColumn({
       // evita que o gesto suba para o pan da folha:
       onStartShouldSetResponderCapture={() => true}
       onMoveShouldSetResponderCapture={() => true}
-      onScroll={handleScroll}
       onMomentumScrollBegin={handleMomentumBegin}
       onMomentumScrollEnd={handleMomentumEnd}
       onScrollBeginDrag={handleScrollBeginDrag}
       onScrollEndDrag={handleScrollEndDrag}
     >
       {values.map((value, index) => {
-        const isActive = index === displayIndex;
+        const isActive = index === selectedIndex;
         return (
           <View key={`${value}-${index}`} style={[styles.wheelItem, { height: itemHeight }]}>
             <Text style={[styles.wheelItemText, isActive && styles.wheelItemTextActive]}>
@@ -3994,6 +3969,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     color: '#7F8A9A',
     textTransform: 'uppercase',
+  },
+  wheelDivider: {
+    alignSelf: 'center',
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#1F2742',
+    marginHorizontal: 2,
   },
   periodSection: {
     marginTop: 6,
