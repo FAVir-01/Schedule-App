@@ -27,9 +27,9 @@ const formatTaskTime = (time) => {
 
 const formatDuration = (totalSeconds) => {
   const safeSeconds = Math.max(0, totalSeconds || 0);
-  const minutes = Math.floor(safeSeconds / 60);
-  const seconds = safeSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  return `${hours}:${formatNumber(minutes)}`;
 };
 
 export { formatDuration, formatNumber, formatTaskTime, formatTimeValue, toMinutes };
