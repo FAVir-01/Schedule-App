@@ -4797,6 +4797,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1F2742',
   },
+  wheelHighlight: {
+    position: 'absolute',
+    top: WHEEL_ITEM_HEIGHT,
+    left: 0,
+    right: 0,
+    height: WHEEL_ITEM_HEIGHT,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#D5DBE8',
+  },
   quantumModalActions: {
     flexDirection: 'row',
     gap: 12,
