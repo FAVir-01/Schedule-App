@@ -7,7 +7,6 @@ import {
   Easing,
   Platform,
   Image,
-  FlatList,
   Modal,
   PanResponder,
   Pressable,
@@ -16,6 +15,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  FlatList,
   TouchableOpacity,
   View,
   useWindowDimensions,
@@ -2816,7 +2816,7 @@ function SwipeableTaskCard({
       return null;
     }
     return `${completedSubtasks}/${totalSubtasks}`;
-  }, [completedSubtasks, dateKey, task, totalSubtasks]);
+  }, [completedSubtasks, task, totalSubtasks]);
 
   const isQuantum = task.type === 'quantum';
   const isWaterAnimation = task.quantum?.animation === 'water';
@@ -3949,24 +3949,19 @@ function QuantumAdjustModal({
               <View style={styles.quantumModalAmount}>
                 <Text style={styles.quantumModalAmountLabel}>Amount</Text>
                 <View style={styles.quantumModalAmountInput}>
-                  <View style={styles.timerWheelArea}>
-                    <View pointerEvents="none" style={styles.timerWheelHighlight} />
-                    <View style={styles.timerWheelRow}>
-                      <WheelPicker
-                        values={TIMER_HOUR_OPTIONS}
-                        value={normalizeTimerValue(minutesValue, TIMER_HOUR_OPTIONS)}
-                        onChange={handleMinutesChange}
-                        accessibilityLabel="Timer hours"
-                      />
-                      <Text style={styles.timerWheelDivider}>:</Text>
-                      <WheelPicker
-                        values={TIMER_MINUTE_OPTIONS}
-                        value={normalizeTimerValue(secondsValue, TIMER_MINUTE_OPTIONS)}
-                        onChange={handleSecondsChange}
-                        accessibilityLabel="Timer minutes"
-                      />
-                    </View>
-                  </View>
+                  <WheelPicker
+                    values={TIMER_HOUR_OPTIONS}
+                    value={normalizeTimerValue(minutesValue, TIMER_HOUR_OPTIONS)}
+                    onChange={handleMinutesChange}
+                    accessibilityLabel="Timer hours"
+                  />
+                  <Text style={styles.quantumModalAmountSeparator}>:</Text>
+                  <WheelPicker
+                    values={TIMER_MINUTE_OPTIONS}
+                    value={normalizeTimerValue(secondsValue, TIMER_MINUTE_OPTIONS)}
+                    onChange={handleSecondsChange}
+                    accessibilityLabel="Timer minutes"
+                  />
                 </View>
               </View>
             </>
@@ -4074,8 +4069,9 @@ function QuantumAdjustModal({
   );
 }
 
-const WHEEL_ITEM_HEIGHT = 34;
+const WHEEL_ITEM_HEIGHT = 32;
 const WHEEL_VISIBLE_ITEMS = 3;
+const WHEEL_CONTAINER_HEIGHT = WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS;
 
 const TIMER_HOUR_OPTIONS = Array.from({ length: 100 }, (_, index) =>
   String(index).padStart(2, '0')
@@ -4097,101 +4093,64 @@ function normalizeTimerValue(value, options) {
   return options[clamped];
 }
 
-function WheelPicker({ values, value, onChange, accessibilityLabel, itemHeight = WHEEL_ITEM_HEIGHT }) {
-  const scrollRef = useRef(null);
-  const isMomentumScrolling = useRef(false);
-  const isDragging = useRef(false);
+function WheelPicker({ values, value, onChange, accessibilityLabel }) {
+  const listRef = useRef(null);
   const valueIndex = Math.max(0, values.indexOf(value));
 
+  const scrollToIndex = useCallback(
+    (index, animated = false) => {
+      listRef.current?.scrollToOffset({
+        offset: index * WHEEL_ITEM_HEIGHT,
+        animated,
+      });
+    },
+    []
+  );
+
   useEffect(() => {
-    if (!scrollRef.current || isMomentumScrolling.current || isDragging.current) {
-      return undefined;
-    }
-    const frame = requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({ y: valueIndex * itemHeight, animated: false });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [valueIndex, itemHeight]);
+    scrollToIndex(valueIndex, false);
+  }, [scrollToIndex, valueIndex]);
 
-  const finalizeSelection = useCallback(
-    (offsetY) => {
-      const maxOffset = Math.max(0, (values.length - 1) * itemHeight);
-      const clampedOffset = Math.min(Math.max(offsetY, 0), maxOffset);
-      const index = Math.round(clampedOffset / itemHeight);
-      const clampedIndex = Math.min(Math.max(index, 0), values.length - 1);
-      const nextValue = values[clampedIndex];
-
-      if (nextValue && clampedIndex !== valueIndex) {
+  const handleScrollEnd = useCallback(
+    (event) => {
+      const offsetY = event.nativeEvent.contentOffset.y;
+      const nextIndex = Math.min(
+        values.length - 1,
+        Math.max(0, Math.round(offsetY / WHEEL_ITEM_HEIGHT))
+      );
+      const nextValue = values[nextIndex];
+      if (nextValue && nextValue !== value) {
         onChange(nextValue);
-        if (HAPTICS_SUPPORTED && typeof Haptics.selectionAsync === 'function') {
-          try {
-            Haptics.selectionAsync();
-          } catch {
-            // Ignore missing haptics support on web
-          }
-        }
       }
     },
-    [itemHeight, onChange, valueIndex, values]
-  );
-
-  const handleMomentumBegin = useCallback(() => {
-    isMomentumScrolling.current = true;
-  }, []);
-
-  const handleMomentumEnd = useCallback(
-    (event) => {
-      isMomentumScrolling.current = false;
-      finalizeSelection(event.nativeEvent.contentOffset.y ?? 0);
-    },
-    [finalizeSelection]
-  );
-
-  const handleScrollBeginDrag = useCallback(() => {
-    isDragging.current = true;
-  }, []);
-
-  const handleScrollEndDrag = useCallback(
-    (event) => {
-      isDragging.current = false;
-      if (!isMomentumScrolling.current) {
-        finalizeSelection(event.nativeEvent.contentOffset.y ?? 0);
-      }
-    },
-    [finalizeSelection]
+    [onChange, value, values]
   );
 
   return (
-    <ScrollView
-      ref={scrollRef}
-      style={styles.timerWheelColumn}
-      contentContainerStyle={[styles.timerWheelColumnContent, { paddingVertical: itemHeight }]}
-      showsVerticalScrollIndicator={false}
-      snapToInterval={itemHeight}
-      decelerationRate={Platform.select({ ios: 'fast', android: 0.998 })}
-      overScrollMode="never"
-      bounces
-      scrollEventThrottle={16}
-      nestedScrollEnabled
-      onStartShouldSetResponderCapture={() => true}
-      onMoveShouldSetResponderCapture={() => true}
-      onMomentumScrollBegin={handleMomentumBegin}
-      onMomentumScrollEnd={handleMomentumEnd}
-      onScrollBeginDrag={handleScrollBeginDrag}
-      onScrollEndDrag={handleScrollEndDrag}
-      accessibilityLabel={accessibilityLabel}
-    >
-      {values.map((item, index) => {
-        const isActive = index === valueIndex;
-        return (
-          <View key={`${item}-${index}`} style={[styles.timerWheelItem, { height: itemHeight }]}>
-            <Text style={[styles.timerWheelItemText, isActive && styles.timerWheelItemTextActive]}>
-              {item}
-            </Text>
+    <View style={styles.wheelPicker} accessibilityLabel={accessibilityLabel}>
+      <FlatList
+        ref={listRef}
+        data={values}
+        keyExtractor={(item) => item}
+        snapToInterval={WHEEL_ITEM_HEIGHT}
+        decelerationRate="fast"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.wheelContent}
+        getItemLayout={(_, index) => ({
+          length: WHEEL_ITEM_HEIGHT,
+          offset: WHEEL_ITEM_HEIGHT * index,
+          index,
+        })}
+        onMomentumScrollEnd={handleScrollEnd}
+        onScrollEndDrag={handleScrollEnd}
+        renderItem={({ item }) => (
+          <View style={styles.wheelItem}>
+            <Text style={styles.wheelItemText}>{item}</Text>
           </View>
-        );
-      })}
-    </ScrollView>
+        )}
+      />
+      <View pointerEvents="none" style={styles.wheelHighlight} />
+    </View>
   );
 }
 
@@ -4737,63 +4696,35 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   quantumModalAmountInput: {
-    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: '#D5DBE8',
     backgroundColor: '#F8FAFF',
   },
-  timerWheelArea: {
-    position: 'relative',
-    height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  timerWheelHighlight: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    top: WHEEL_ITEM_HEIGHT,
-    height: WHEEL_ITEM_HEIGHT,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(31,39,66,0.16)',
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#1F2742',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  timerWheelRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'stretch',
-    gap: 12,
-  },
-  timerWheelDivider: {
-    alignSelf: 'center',
-    fontSize: 18,
+  quantumModalAmountSeparator: {
+    fontSize: 26,
     fontWeight: '700',
     color: '#1F2742',
   },
-  timerWheelColumn: {
-    width: 68,
+  wheelPicker: {
+    width: 70,
+    height: WHEEL_CONTAINER_HEIGHT,
+    justifyContent: 'center',
   },
-  timerWheelColumnContent: {
+  wheelContent: {
     paddingVertical: WHEEL_ITEM_HEIGHT,
   },
-  timerWheelItem: {
+  wheelItem: {
     height: WHEEL_ITEM_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  timerWheelItemText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#A3AEC1',
-  },
-  timerWheelItemTextActive: {
+  wheelItemText: {
     fontSize: 22,
     fontWeight: '700',
     color: '#1F2742',
@@ -5288,6 +5219,28 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     paddingHorizontal: 32,
     paddingTop: 24,
+  },
+  avatarContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#F0EFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  profileTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1a1a2e',
+    marginBottom: 8,
+  },
+  profileSubtitle: {
+    fontSize: 15,
+    color: '#6f7a86',
+    textAlign: 'center',
+    marginBottom: 32,
+    lineHeight: 22,
   },
   profileStatsSection: {
     alignSelf: 'stretch',
