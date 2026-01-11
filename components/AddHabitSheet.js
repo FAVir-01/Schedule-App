@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
+  Alert,
   Animated,
   BackHandler,
   Easing,
@@ -23,6 +24,8 @@ import Svg, { Path } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as Notifications from 'expo-notifications';
+import { REMINDER_OPTIONS } from '../constants/reminders';
 import { formatTaskTime } from '../utils/timeUtils';
 import { getQuantumProgressLabel, getQuantumProgressPercent } from '../utils/taskUtils';
 import { buildWavePath } from '../utils/waveUtils';
@@ -94,15 +97,6 @@ const FREQUENCY_LABELS = {
   weekly: { singular: 'week', plural: 'weeks' },
   monthly: { singular: 'month', plural: 'months' },
 };
-
-const REMINDER_OPTIONS = [
-  { key: 'none', label: 'No reminder' },
-  { key: 'at_time', label: 'At time of event', offsetMinutes: 0 },
-  { key: '5m', label: '5 minutes early', offsetMinutes: -5 },
-  { key: '15m', label: '15 minutes early', offsetMinutes: -15 },
-  { key: '30m', label: '30 minutes early', offsetMinutes: -30 },
-  { key: '1h', label: '1 hour early', offsetMinutes: -60 },
-];
 
 const DEFAULT_TAG_OPTIONS = [
   { key: 'none', label: 'No tag' },
@@ -751,10 +745,36 @@ export default function AddHabitSheet({
     pendingTimeMode,
   ]);
 
-  const handleApplyReminder = useCallback(() => {
+  const requestNotificationPermission = useCallback(async () => {
+    try {
+      const settings = await Notifications.getPermissionsAsync();
+      if (settings.granted) {
+        return true;
+      }
+      const result = await Notifications.requestPermissionsAsync();
+      return result.granted;
+    } catch (error) {
+      return false;
+    }
+  }, []);
+
+  const handleApplyReminder = useCallback(async () => {
+    if (pendingReminder !== 'none') {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        Alert.alert(
+          'Permissão necessária',
+          'Ative as notificações para receber lembretes deste hábito.'
+        );
+        setPendingReminder('none');
+        setReminderOption('none');
+        closePanel();
+        return;
+      }
+    }
     setReminderOption(pendingReminder);
     closePanel();
-  }, [closePanel, pendingReminder]);
+  }, [closePanel, pendingReminder, requestNotificationPermission]);
 
   const handleApplyTag = useCallback(() => {
     setSelectedTag(pendingTag);
