@@ -1900,6 +1900,14 @@ function ScheduleApp() {
       if (!reminderDate) {
         return null;
       }
+      const diffSeconds = Math.max(
+        1,
+        Math.ceil((reminderDate.getTime() - Date.now()) / 1000)
+      );
+      const trigger =
+        diffSeconds <= 120
+          ? { seconds: diffSeconds }
+          : reminderDate;
       return Notifications.scheduleNotificationAsync({
         content: {
           title: 'Lembrete',
@@ -1907,7 +1915,7 @@ function ScheduleApp() {
           sound: true,
           channelId: 'default',
         },
-        trigger: reminderDate,
+        trigger,
       });
     },
     [findNextReminderDate]
@@ -4445,8 +4453,9 @@ export default function App() {
     }
     void Notifications.setNotificationChannelAsync('default', {
       name: 'Default',
-      importance: Notifications.AndroidImportance.DEFAULT,
+      importance: Notifications.AndroidImportance.HIGH,
       sound: 'default',
+      enableVibrate: true,
     });
   }, []);
 
