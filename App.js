@@ -255,6 +255,22 @@ const ensureNotificationChannel = async () => {
   });
 };
 
+const ensureNotificationPermissions = async () => {
+  try {
+    const settings = await Notifications.getPermissionsAsync();
+    if (settings.granted) {
+      return true;
+    }
+    if (settings.canAskAgain === false) {
+      return false;
+    }
+    const result = await Notifications.requestPermissionsAsync();
+    return result.granted;
+  } catch (error) {
+    return false;
+  }
+};
+
 const scheduleTaskNotification = async (task) => {
   if (!task?.reminder || task.reminder === 'none') {
     return [];
@@ -263,8 +279,8 @@ const scheduleTaskNotification = async (task) => {
   if (!referenceTime) {
     return [];
   }
-  const permissions = await Notifications.getPermissionsAsync();
-  if (!permissions.granted) {
+  const granted = await ensureNotificationPermissions();
+  if (!granted) {
     return [];
   }
   await ensureNotificationChannel();
