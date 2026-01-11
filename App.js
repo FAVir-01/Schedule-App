@@ -222,25 +222,28 @@ const buildReminderDate = (baseDate, referenceTime, offsetMinutes) => {
 const findNextReminderDate = (task, fromDate = new Date()) => {
   const referenceTime = getTaskReferenceTime(task);
   const offsetMinutes = getReminderOffsetMinutes(task?.reminder);
+
   if (!referenceTime || offsetMinutes === null) {
     return null;
   }
+
   const start = new Date(fromDate);
   start.setHours(0, 0, 0, 0);
-  const maxLookaheadDays = 400;
 
-  for (let i = 0; i <= maxLookaheadDays; i += 1) {
+  for (let i = 0; i <= 30; i += 1) {
     const candidate = new Date(start);
     candidate.setDate(start.getDate() + i);
+
     if (!shouldTaskAppearOnDate(task, candidate)) {
       continue;
     }
+
     const reminderDate = buildReminderDate(candidate, referenceTime, offsetMinutes);
+
     if (reminderDate && reminderDate.getTime() > fromDate.getTime()) {
       return reminderDate;
     }
   }
-
   return null;
 };
 
@@ -255,34 +258,65 @@ const ensureNotificationChannel = async () => {
   });
 };
 
+const ensureNotificationPermissions = async () => {
+  try {
+    const settings = await Notifications.getPermissionsAsync();
+    if (settings.granted) {
+      return true;
+    }
+    if (settings.canAskAgain !== false) {
+      const result = await Notifications.requestPermissionsAsync();
+      return result.granted;
+    }
+    return false;
+  } catch (error) {
+    console.error('Erro ao verificar permissões:', error);
+    return false;
+  }
+};
+
 const scheduleTaskNotification = async (task) => {
   if (!task?.reminder || task.reminder === 'none') {
+    console.log(`[Notificação] Lembrete desativado para: ${task.title}`);
     return [];
   }
-  const referenceTime = getTaskReferenceTime(task);
-  if (!referenceTime) {
+
+  const granted = await ensureNotificationPermissions();
+  if (!granted) {
+    console.warn('[Notificação] Permissão de notificação negada.');
+    alert('As notificações estão desativadas para este app.');
     return [];
   }
-  const permissions = await Notifications.getPermissionsAsync();
-  if (!permissions.granted) {
-    return [];
-  }
+
   await ensureNotificationChannel();
   const reminderDate = findNextReminderDate(task);
+
   if (!reminderDate) {
+    console.log(`[Notificação] Nenhuma data futura encontrada para: ${task.title}`);
     return [];
   }
-  const id = await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'Lembrete',
-      body: task.title ?? 'Está na hora do hábito.',
-      sound: 'default',
-      channelId: NOTIFICATION_CHANNEL_ID,
-      data: { taskId: task.id },
-    },
-    trigger: reminderDate,
-  });
-  return [id];
+
+  console.log(
+    `[Notificação] Agendando "${task.title}" para: ${reminderDate.toLocaleString()}`
+  );
+
+  try {
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Lembrete de Hábito',
+        body: task.title ?? 'Está na hora do seu hábito!',
+        sound: 'default',
+        priority: Notifications.AndroidPriority.HIGH,
+      },
+      trigger: reminderDate,
+    });
+
+    console.log(`[Notificação] Sucesso! ID: ${id}`);
+    return [id];
+  } catch (error) {
+    console.error('[Notificação] Erro ao agendar:', error);
+    return [];
+  }
 };
 
 const cancelScheduledNotifications = async (notificationIds = []) => {
