@@ -613,6 +613,17 @@ export default function AddHabitSheet({
     setCustomImage(null);
   }, []);
 
+  const requestNotificationPermission = useCallback(async () => {
+    if (!NOTIFICATIONS_SUPPORTED || requestedNotificationPermissionRef.current) {
+      return;
+    }
+    requestedNotificationPermissionRef.current = true;
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status !== 'granted') {
+      await Notifications.requestPermissionsAsync();
+    }
+  }, []);
+
   const handleOpenPanel = useCallback(
     (panel) => {
       setActivePanel(panel);
@@ -637,15 +648,7 @@ export default function AddHabitSheet({
         });
       } else if (panel === 'reminder') {
         setPendingReminder(reminderOption);
-        if (NOTIFICATIONS_SUPPORTED && !requestedNotificationPermissionRef.current) {
-          requestedNotificationPermissionRef.current = true;
-          void (async () => {
-            const { status } = await Notifications.getPermissionsAsync();
-            if (status !== 'granted') {
-              await Notifications.requestPermissionsAsync();
-            }
-          })();
-        }
+        void requestNotificationPermission();
       } else if (panel === 'tag') {
         setPendingTag(selectedTag);
       } else if (panel === 'type') {
@@ -664,6 +667,7 @@ export default function AddHabitSheet({
       handlePendingPeriodTimeChange,
       handlePendingPointTimeChange,
       hasSpecifiedTime,
+      requestNotificationPermission,
       subtasks,
       quantumMode,
       quantumAnimation,
@@ -1817,7 +1821,12 @@ export default function AddHabitSheet({
                 <OptionList
                   options={reminderOptions}
                   selectedKey={pendingReminder}
-                  onSelect={setPendingReminder}
+                  onSelect={(nextReminder) => {
+                    setPendingReminder(nextReminder);
+                    if (nextReminder !== 'none') {
+                      void requestNotificationPermission();
+                    }
+                  }}
                 />
               </OptionOverlay>
             )}

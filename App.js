@@ -1864,8 +1864,15 @@ function ScheduleApp() {
           continue;
         }
         const reminderDate = buildReminderDateTime(candidateDate, baseTime, offsetMinutes);
-        if (reminderDate && reminderDate > now) {
+        if (!reminderDate) {
+          continue;
+        }
+        if (reminderDate > now) {
           return reminderDate;
+        }
+        const msDifference = now.getTime() - reminderDate.getTime();
+        if (offset === 0 && msDifference <= 60000) {
+          return new Date(now.getTime() + 5000);
         }
       }
       return null;
@@ -4427,6 +4434,16 @@ export default function App() {
     };
 
     void lockOrientation();
+  }, []);
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+    void Notifications.setNotificationChannelAsync('default', {
+      name: 'Default',
+      importance: Notifications.AndroidImportance.DEFAULT,
+      sound: 'default',
+    });
   }, []);
 
   return (
