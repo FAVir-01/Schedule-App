@@ -30,6 +30,7 @@ import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Notifications from 'expo-notifications';
 import {
   addMonths as addMonthsDateFns,
   eachDayOfInterval,
@@ -54,6 +55,7 @@ import {
 } from './storage';
 import AddHabitSheet from './components/AddHabitSheet';
 import { MONTH_NAMES, getMonthImageSource } from './constants/months';
+import { REMINDER_OPTIONS } from './constants/reminders';
 import { DEFAULT_USER_SETTINGS } from './constants/userSettings';
 import { LEFT_TABS, RIGHT_TABS, getNavigationBarThemeForTab } from './constants/navigation';
 import { interpolateHexColor, lightenColor } from './utils/colorUtils';
@@ -109,6 +111,15 @@ const DEFAULT_REPEAT_CONFIG = { enabled: true, frequency: 'daily', interval: 1 }
 const CONFETTI_COLORS = ['#ff6b6b', '#ffd93d', '#6bcB77', '#4d96ff', '#845ec2'];
 const CONFETTI_COUNT = 32;
 const CONFETTI_DURATION_MS = 2400;
+const NOTIFICATION_CHANNEL_ID = 'habit-reminders';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 const normalizeRepeatConfig = (repeatConfig) => {
   if (!repeatConfig) {
@@ -175,6 +186,114 @@ const triggerSuccessFeedback = async () => {
   } catch (error) {
     console.log('Unable to play success sound', error);
   }
+};
+
+const getReminderOffsetMinutes = (reminderKey) => {
+  const match = REMINDER_OPTIONS.find((option) => option.key === reminderKey);
+  if (!match || typeof match.offsetMinutes !== 'number') {
+    return null;
+  }
+  return match.offsetMinutes;
+};
+
+const getTaskReferenceTime = (task) => {
+  if (!task?.time?.specified) {
+    return null;
+  }
+  if (task.time.mode === 'period') {
+    return task.time.period?.start ?? null;
+  }
+  return task.time.point ?? null;
+};
+
+const buildReminderDate = (baseDate, referenceTime, offsetMinutes) => {
+  if (!referenceTime || typeof offsetMinutes !== 'number') {
+    return null;
+  }
+  const totalMinutes = toMinutes(referenceTime);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const reminderDate = new Date(baseDate);
+  reminderDate.setHours(hours, minutes, 0, 0);
+  reminderDate.setTime(reminderDate.getTime() + offsetMinutes * 60 * 1000);
+  return reminderDate;
+};
+
+const findNextReminderDate = (task, fromDate = new Date()) => {
+  const referenceTime = getTaskReferenceTime(task);
+  const offsetMinutes = getReminderOffsetMinutes(task?.reminder);
+  if (!referenceTime || offsetMinutes === null) {
+    return null;
+  }
+  const start = new Date(fromDate);
+  start.setHours(0, 0, 0, 0);
+  const maxLookaheadDays = 400;
+
+  for (let i = 0; i <= maxLookaheadDays; i += 1) {
+    const candidate = new Date(start);
+    candidate.setDate(start.getDate() + i);
+    if (!shouldTaskAppearOnDate(task, candidate)) {
+      continue;
+    }
+    const reminderDate = buildReminderDate(candidate, referenceTime, offsetMinutes);
+    if (reminderDate && reminderDate.getTime() > fromDate.getTime()) {
+      return reminderDate;
+    }
+  }
+
+  return null;
+};
+
+const ensureNotificationChannel = async () => {
+  if (Platform.OS !== 'android') {
+    return;
+  }
+  await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNEL_ID, {
+    name: 'Habit reminders',
+    importance: Notifications.AndroidImportance.DEFAULT,
+    sound: 'default',
+  });
+};
+
+const scheduleTaskNotification = async (task) => {
+  if (!task?.reminder || task.reminder === 'none') {
+    return [];
+  }
+  const referenceTime = getTaskReferenceTime(task);
+  if (!referenceTime) {
+    return [];
+  }
+  const permissions = await Notifications.getPermissionsAsync();
+  if (!permissions.granted) {
+    return [];
+  }
+  await ensureNotificationChannel();
+  const reminderDate = findNextReminderDate(task);
+  if (!reminderDate) {
+    return [];
+  }
+  const id = await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Lembrete',
+      body: task.title ?? 'Está na hora do hábito.',
+      sound: 'default',
+      channelId: NOTIFICATION_CHANNEL_ID,
+      data: { taskId: task.id },
+    },
+    trigger: reminderDate,
+  });
+  return [id];
+};
+
+const cancelScheduledNotifications = async (notificationIds = []) => {
+  if (!Array.isArray(notificationIds) || notificationIds.length === 0) {
+    return;
+  }
+  await Promise.all(
+    notificationIds.map((notificationId) =>
+      Notifications.cancelScheduledNotificationAsync(notificationId)
+    )
+  );
 };
 
 const ConfettiOverlay = React.memo(({ visible, onComplete }) => {
@@ -879,15 +998,21 @@ function ScheduleApp() {
     setProfileTasksOpen(false);
     setActiveProfileTaskId(null);
   }, []);
-  const handleDeleteProfileTasks = useCallback((taskIds) => {
-    setTasks((previous) =>
-      previous.filter((task) => task.profileLocked || !taskIds.includes(task.id))
-    );
-    setActiveProfileTaskId((current) => (taskIds.includes(current) ? null : current));
-  }, []);
+  const handleDeleteProfileTasks = useCallback(
+    async (taskIds) => {
+      const tasksToDelete = tasks.filter((task) => taskIds.includes(task.id));
+      const notificationIds = tasksToDelete.flatMap((task) => task.notificationIds ?? []);
+      await cancelScheduledNotifications(notificationIds);
+      setTasks((previous) =>
+        previous.filter((task) => task.profileLocked || !taskIds.includes(task.id))
+      );
+      setActiveProfileTaskId((current) => (taskIds.includes(current) ? null : current));
+    },
+    [tasks]
+  );
   const handleDeleteProfileTask = useCallback(
     (taskId) => {
-      handleDeleteProfileTasks([taskId]);
+      void handleDeleteProfileTasks([taskId]);
     },
     [handleDeleteProfileTasks]
   );
@@ -900,6 +1025,16 @@ function ScheduleApp() {
       )
     );
   }, []);
+
+  const handleDeleteTask = useCallback(
+    async (taskId) => {
+      const taskToDelete = tasks.find((task) => task.id === taskId);
+      const notificationIds = taskToDelete?.notificationIds ?? [];
+      await cancelScheduledNotifications(notificationIds);
+      setTasks((previous) => previous.filter((task) => task.id !== taskId));
+    },
+    [tasks]
+  );
 
   const loadMoreCalendarMonths = useCallback(() => {
     setCalendarMonths((previous) => {
@@ -1779,7 +1914,7 @@ function ScheduleApp() {
     [tasks]
   );
 
-  const handleCreateHabit = useCallback((habit) => {
+  const handleCreateHabit = useCallback(async (habit) => {
     const normalizedDate = new Date(habit?.startDate ?? new Date());
     normalizedDate.setHours(0, 0, 0, 0);
     const dateKey = getDateKey(normalizedDate);
@@ -1806,7 +1941,9 @@ function ScheduleApp() {
       quantum: habit?.quantum,
       profileLocked: false,
     };
-    setTasks((previous) => [...previous, newTask]);
+    const notificationIds = await scheduleTaskNotification(newTask);
+    const taskWithNotifications = { ...newTask, notificationIds };
+    setTasks((previous) => [...previous, taskWithNotifications]);
     setSelectedDate(normalizedDate);
     triggerImpact(Haptics.ImpactFeedbackStyle.Light);
     appendHistoryEntry('task_created', {
@@ -1817,7 +1954,7 @@ function ScheduleApp() {
   }, [appendHistoryEntry, convertSubtasks, getUniqueTitle]);
 
   const handleUpdateHabit = useCallback(
-    (taskId, habit) => {
+    async (taskId, habit) => {
       const normalizedDate = habit?.startDate ? new Date(habit.startDate) : null;
       if (normalizedDate) {
         normalizedDate.setHours(0, 0, 0, 0);
@@ -1826,6 +1963,9 @@ function ScheduleApp() {
       const nextTitle = habit?.title
         ? getUniqueTitle(habit.title, taskId)
         : existingTask?.title ?? 'Untitled task';
+      const existingNotificationIds = existingTask?.notificationIds ?? [];
+      await cancelScheduledNotifications(existingNotificationIds);
+      let nextTaskData = null;
       setTasks((previous) =>
         previous.map((task) => {
           if (task.id !== taskId) {
@@ -1844,7 +1984,7 @@ function ScheduleApp() {
               doneCount: sameMode ? task.quantum.doneCount ?? 0 : 0,
             };
           }
-          return {
+          nextTaskData = {
             ...task,
             title: nextTitle,
             color: habit?.color ?? task.color,
@@ -1863,8 +2003,17 @@ function ScheduleApp() {
             dateKey: getDateKey(nextDate),
             profileLocked: task.profileLocked ?? false,
           };
+          return nextTaskData;
         })
       );
+      if (nextTaskData) {
+        const notificationIds = await scheduleTaskNotification(nextTaskData);
+        setTasks((previous) =>
+          previous.map((task) =>
+            task.id === taskId ? { ...task, notificationIds } : task
+          )
+        );
+      }
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
       if (normalizedDate) {
         setSelectedDate(normalizedDate);
@@ -2250,7 +2399,7 @@ function ScheduleApp() {
                           if (task.profileLocked) {
                             return;
                           }
-                          setTasks((previous) => previous.filter((current) => current.id !== task.id));
+                          void handleDeleteTask(task.id);
                         }}
                         onEdit={() => {
                           const editable = {
