@@ -1904,10 +1904,20 @@ function ScheduleApp() {
         1,
         Math.ceil((reminderDate.getTime() - Date.now()) / 1000)
       );
+      const timeIntervalType =
+        Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL ?? 'timeInterval';
+      const dateType = Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date';
       const trigger =
         diffSeconds <= 120
-          ? { seconds: diffSeconds }
-          : reminderDate;
+          ? {
+              type: timeIntervalType,
+              seconds: diffSeconds,
+              repeats: false,
+            }
+          : {
+              type: dateType,
+              date: reminderDate,
+            };
       return Notifications.scheduleNotificationAsync({
         content: {
           title: 'Lembrete',
@@ -2001,27 +2011,30 @@ function ScheduleApp() {
         normalizedDate.setHours(0, 0, 0, 0);
       }
       const existingTask = tasks.find((task) => task.id === taskId);
+      if (!existingTask) {
+        return;
+      }
       const nextTitle = habit?.title
         ? getUniqueTitle(habit.title, taskId)
         : existingTask?.title ?? 'Untitled task';
       const existingNotificationId = existingTask?.notificationId ?? null;
+      const nextDate = normalizedDate ? new Date(normalizedDate) : new Date(existingTask.date);
+      nextDate.setHours(0, 0, 0, 0);
+      const nextQuantum = habit?.quantum ?? existingTask.quantum;
+      let mergedQuantum = nextQuantum;
+      if (nextQuantum && existingTask.quantum) {
+        const sameMode = nextQuantum.mode === existingTask.quantum.mode;
+        mergedQuantum = {
+          ...existingTask.quantum,
+          ...nextQuantum,
+          doneSeconds: sameMode ? existingTask.quantum.doneSeconds ?? 0 : 0,
+          doneCount: sameMode ? existingTask.quantum.doneCount ?? 0 : 0,
+        };
+      }
       setTasks((previous) =>
         previous.map((task) => {
           if (task.id !== taskId) {
             return task;
-          }
-          const nextDate = normalizedDate ? new Date(normalizedDate) : new Date(task.date);
-          nextDate.setHours(0, 0, 0, 0);
-          const nextQuantum = habit?.quantum ?? task.quantum;
-          let mergedQuantum = nextQuantum;
-          if (nextQuantum && task.quantum) {
-            const sameMode = nextQuantum.mode === task.quantum.mode;
-            mergedQuantum = {
-              ...task.quantum,
-              ...nextQuantum,
-              doneSeconds: sameMode ? task.quantum.doneSeconds ?? 0 : 0,
-              doneCount: sameMode ? task.quantum.doneCount ?? 0 : 0,
-            };
           }
           return {
             ...task,
