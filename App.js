@@ -7,6 +7,7 @@ import {
   Easing,
   Platform,
   Image,
+  LayoutAnimation,
   FlatList,
   Modal,
   PanResponder,
@@ -20,6 +21,7 @@ import {
   View,
   useWindowDimensions,
   ImageBackground,
+  UIManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Path } from 'react-native-svg';
@@ -194,6 +196,12 @@ const triggerSuccessFeedback = async () => {
     });
   } catch (error) {
     console.log('Unable to play success sound', error);
+  }
+};
+
+const enableLayoutAnimation = () => {
+  if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
   }
 };
 
@@ -736,6 +744,9 @@ function ScheduleApp() {
   const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
   const saveTimeoutRef = useRef(null);
+  useEffect(() => {
+    enableLayoutAnimation();
+  }, []);
   const [calendarMonths, setCalendarMonths] = useState(() => {
     const today = new Date();
     const months = [];
@@ -1025,9 +1036,31 @@ function ScheduleApp() {
       })),
     [selectedDateKey, visibleTasks]
   );
+  const sortedVisibleTasksForSelectedDay = useMemo(() => {
+    const incomplete = [];
+    const completed = [];
+
+    visibleTasksForSelectedDay.forEach((task) => {
+      if (task.completed) {
+        completed.push(task);
+      } else {
+        incomplete.push(task);
+      }
+    });
+
+    return [...incomplete, ...completed];
+  }, [visibleTasksForSelectedDay]);
+  const previousTaskOrderRef = useRef(null);
+  useEffect(() => {
+    const currentOrder = sortedVisibleTasksForSelectedDay.map((task) => task.id).join('|');
+    if (previousTaskOrderRef.current && previousTaskOrderRef.current !== currentOrder) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
+    previousTaskOrderRef.current = currentOrder;
+  }, [sortedVisibleTasksForSelectedDay]);
   const visibleTasksWithStats = useMemo(
     () =>
-      visibleTasksForSelectedDay.map((task) => {
+      sortedVisibleTasksForSelectedDay.map((task) => {
         const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
         const completedSubtasks = Array.isArray(task.subtasks)
           ? task.subtasks.filter((item) => getSubtaskCompletionStatus(item, selectedDateKey)).length
@@ -1041,7 +1074,7 @@ function ScheduleApp() {
           borderColor: task.color,
         };
       }),
-    [selectedDateKey, visibleTasksForSelectedDay]
+    [selectedDateKey, sortedVisibleTasksForSelectedDay]
   );
   const profileTasks = useMemo(() => {
     const getSortDate = (task) => {
@@ -1740,6 +1773,7 @@ function ScheduleApp() {
         : false;
 
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setTasks((previous) =>
         previous.map((task) => {
           if (task.id !== taskId) {
@@ -2440,10 +2474,10 @@ function ScheduleApp() {
                     </Text>
                   </View>
                 ) : (
-                  <FlatList
-                    data={visibleTasksWithStats}
-                    renderItem={({ item: task }) => (
+                  <View style={styles.tasksList}>
+                    {visibleTasksWithStats.map((task) => (
                       <SwipeableTaskCard
+                        key={task.id}
                         task={task}
                         backgroundColor={task.backgroundColor}
                         borderColor={task.borderColor}
@@ -2477,11 +2511,8 @@ function ScheduleApp() {
                           openHabitSheet('edit', editable);
                         }}
                       />
-                    )}
-                    keyExtractor={(task) => task.id}
-                    scrollEnabled={false}
-                    contentContainerStyle={styles.tasksList}
-                  />
+                    ))}
+                  </View>
                 )}
               </View>
             </ScrollView>
