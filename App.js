@@ -1050,6 +1050,14 @@ function ScheduleApp() {
 
     return [...incomplete, ...completed];
   }, [visibleTasksForSelectedDay]);
+  const previousTaskOrderRef = useRef(null);
+  useEffect(() => {
+    const currentOrder = sortedVisibleTasksForSelectedDay.map((task) => task.id).join('|');
+    if (previousTaskOrderRef.current && previousTaskOrderRef.current !== currentOrder) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
+    previousTaskOrderRef.current = currentOrder;
+  }, [sortedVisibleTasksForSelectedDay]);
   const visibleTasksWithStats = useMemo(
     () =>
       sortedVisibleTasksForSelectedDay.map((task) => {
@@ -2466,10 +2474,10 @@ function ScheduleApp() {
                     </Text>
                   </View>
                 ) : (
-                  <FlatList
-                    data={visibleTasksWithStats}
-                    renderItem={({ item: task }) => (
+                  <View style={styles.tasksList}>
+                    {visibleTasksWithStats.map((task) => (
                       <SwipeableTaskCard
+                        key={task.id}
                         task={task}
                         backgroundColor={task.backgroundColor}
                         borderColor={task.borderColor}
@@ -2503,11 +2511,8 @@ function ScheduleApp() {
                           openHabitSheet('edit', editable);
                         }}
                       />
-                    )}
-                    keyExtractor={(task) => task.id}
-                    scrollEnabled={false}
-                    contentContainerStyle={styles.tasksList}
-                  />
+                    ))}
+                  </View>
                 )}
               </View>
             </ScrollView>
