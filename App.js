@@ -1889,9 +1889,12 @@ function ScheduleApp() {
       if (offsetMinutes === null) {
         return null;
       }
-      const { status } = await Notifications.getPermissionsAsync();
-      if (status !== 'granted') {
-        return null;
+      const permissionResponse = await Notifications.getPermissionsAsync();
+      if (permissionResponse.status !== 'granted') {
+        const requestResponse = await Notifications.requestPermissionsAsync();
+        if (requestResponse.status !== 'granted') {
+          return null;
+        }
       }
       const reminderDate = findNextReminderDate(task);
       if (!reminderDate) {
@@ -1902,6 +1905,7 @@ function ScheduleApp() {
           title: 'Lembrete',
           body: task?.title ? `Hora de: ${task.title}` : 'Você tem uma tarefa pendente.',
           sound: true,
+          channelId: 'default',
         },
         trigger: reminderDate,
       });
