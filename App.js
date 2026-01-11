@@ -1904,15 +1904,18 @@ function ScheduleApp() {
         1,
         Math.ceil((reminderDate.getTime() - Date.now()) / 1000)
       );
+      const timeIntervalType =
+        Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL ?? 'timeInterval';
+      const dateType = Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date';
       const trigger =
         diffSeconds <= 120
           ? {
-              type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+              type: timeIntervalType,
               seconds: diffSeconds,
               repeats: false,
             }
           : {
-              type: Notifications.SchedulableTriggerInputTypes.DATE,
+              type: dateType,
               date: reminderDate,
             };
       return Notifications.scheduleNotificationAsync({
