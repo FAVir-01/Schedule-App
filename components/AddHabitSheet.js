@@ -23,6 +23,7 @@ import Svg, { Path } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as Notifications from 'expo-notifications';
 import { formatTaskTime } from '../utils/timeUtils';
 import { getQuantumProgressLabel, getQuantumProgressPercent } from '../utils/taskUtils';
 import { buildWavePath } from '../utils/waveUtils';
@@ -32,6 +33,7 @@ const SHEET_CLOSE_DURATION = 220;
 const BACKDROP_MAX_OPACITY = 0.5;
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
+const NOTIFICATIONS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
 const COLORS = ['#FFCF70', '#F7A6A1', '#B39DD6', '#79C3FF', '#A8E6CF', '#FDE2A6'];
@@ -517,6 +519,7 @@ export default function AddHabitSheet({
   const translateY = useRef(new Animated.Value(sheetHeight || height)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const isClosingRef = useRef(false);
+  const requestedNotificationPermissionRef = useRef(false);
   const sheetBackgroundColor = useMemo(() => lightenColor(selectedColor, 0.75), [selectedColor]);
   const isEditMode = mode === 'edit';
   const isCopyMode = mode === 'copy';
@@ -634,6 +637,15 @@ export default function AddHabitSheet({
         });
       } else if (panel === 'reminder') {
         setPendingReminder(reminderOption);
+        if (NOTIFICATIONS_SUPPORTED && !requestedNotificationPermissionRef.current) {
+          requestedNotificationPermissionRef.current = true;
+          void (async () => {
+            const { status } = await Notifications.getPermissionsAsync();
+            if (status !== 'granted') {
+              await Notifications.requestPermissionsAsync();
+            }
+          })();
+        }
       } else if (panel === 'tag') {
         setPendingTag(selectedTag);
       } else if (panel === 'type') {
@@ -1043,6 +1055,7 @@ export default function AddHabitSheet({
           setSubtasks([]);
           setCustomImage(null);
           setIsLoadingImage(false);
+          requestedNotificationPermissionRef.current = false;
         }
       });
     }

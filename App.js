@@ -30,6 +30,7 @@ import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Notifications from 'expo-notifications';
 import {
   addMonths as addMonthsDateFns,
   eachDayOfInterval,
@@ -104,11 +105,30 @@ const habitImage = require('./assets/add-habit.png');
 const reflectionImage = require('./assets/add-reflection.png');
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
+const NOTIFICATIONS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
 const FALLBACK_EMOJI = '📝';
 const DEFAULT_REPEAT_CONFIG = { enabled: true, frequency: 'daily', interval: 1 };
 const CONFETTI_COLORS = ['#ff6b6b', '#ffd93d', '#6bcB77', '#4d96ff', '#845ec2'];
 const CONFETTI_COUNT = 32;
 const CONFETTI_DURATION_MS = 2400;
+const REMINDER_OFFSETS = {
+  none: null,
+  at_time: 0,
+  '5m': -5,
+  '15m': -15,
+  '30m': -30,
+  '1h': -60,
+};
+
+if (NOTIFICATIONS_SUPPORTED) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 const normalizeRepeatConfig = (repeatConfig) => {
   if (!repeatConfig) {
@@ -879,12 +899,19 @@ function ScheduleApp() {
     setProfileTasksOpen(false);
     setActiveProfileTaskId(null);
   }, []);
-  const handleDeleteProfileTasks = useCallback((taskIds) => {
-    setTasks((previous) =>
-      previous.filter((task) => task.profileLocked || !taskIds.includes(task.id))
-    );
-    setActiveProfileTaskId((current) => (taskIds.includes(current) ? null : current));
-  }, []);
+  const handleDeleteProfileTasks = useCallback(
+    (taskIds) => {
+      const tasksToDelete = tasks.filter((task) => taskIds.includes(task.id));
+      tasksToDelete.forEach((task) => {
+        void cancelTaskReminder(task.notificationId);
+      });
+      setTasks((previous) =>
+        previous.filter((task) => task.profileLocked || !taskIds.includes(task.id))
+      );
+      setActiveProfileTaskId((current) => (taskIds.includes(current) ? null : current));
+    },
+    [cancelTaskReminder, tasks]
+  );
   const handleDeleteProfileTask = useCallback(
     (taskId) => {
       handleDeleteProfileTasks([taskId]);
@@ -1452,6 +1479,17 @@ function ScheduleApp() {
 
   useEffect(() => {
     if (!isHydrated) {
+      return;
+    }
+    tasks.forEach((task) => {
+      if (!task.notificationId && REMINDER_OFFSETS[task.reminder] != null) {
+        void refreshTaskReminder(task, null);
+      }
+    });
+  }, [isHydrated, refreshTaskReminder, tasks]);
+
+  useEffect(() => {
+    if (!isHydrated) {
       return undefined;
     }
 
@@ -1779,6 +1817,125 @@ function ScheduleApp() {
     [tasks]
   );
 
+  const getReminderBaseTime = useCallback((time) => {
+    if (!time?.specified) {
+      return null;
+    }
+    if (time.mode === 'period') {
+      return time.period?.start ?? null;
+    }
+    return time.point ?? null;
+  }, []);
+
+  const buildReminderDateTime = useCallback((date, timeValue, offsetMinutes) => {
+    if (!date || !timeValue || typeof offsetMinutes !== 'number') {
+      return null;
+    }
+    const reminderDate = new Date(date);
+    reminderDate.setHours(0, 0, 0, 0);
+    reminderDate.setMinutes(toMinutes(timeValue) + offsetMinutes);
+    return reminderDate;
+  }, []);
+
+  const findNextReminderDate = useCallback(
+    (task) => {
+      const offsetMinutes = REMINDER_OFFSETS[task?.reminder] ?? null;
+      if (offsetMinutes === null) {
+        return null;
+      }
+      const baseTime = getReminderBaseTime(task?.time);
+      if (!baseTime) {
+        return null;
+      }
+      const startDate = normalizeDateValue(task?.date ?? task?.dateKey);
+      if (!startDate) {
+        return null;
+      }
+      const now = new Date();
+      const today = new Date(now);
+      today.setHours(0, 0, 0, 0);
+      const initialDate = startDate > today ? startDate : today;
+      const limitDays = 366;
+
+      for (let offset = 0; offset <= limitDays; offset += 1) {
+        const candidateDate = new Date(initialDate);
+        candidateDate.setDate(candidateDate.getDate() + offset);
+        if (!shouldTaskAppearOnDate(task, candidateDate)) {
+          continue;
+        }
+        const reminderDate = buildReminderDateTime(candidateDate, baseTime, offsetMinutes);
+        if (reminderDate && reminderDate > now) {
+          return reminderDate;
+        }
+      }
+      return null;
+    },
+    [buildReminderDateTime, getReminderBaseTime]
+  );
+
+  const scheduleTaskReminder = useCallback(
+    async (task) => {
+      if (!NOTIFICATIONS_SUPPORTED) {
+        return null;
+      }
+      const offsetMinutes = REMINDER_OFFSETS[task?.reminder] ?? null;
+      if (offsetMinutes === null) {
+        return null;
+      }
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted') {
+        return null;
+      }
+      const reminderDate = findNextReminderDate(task);
+      if (!reminderDate) {
+        return null;
+      }
+      return Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Lembrete',
+          body: task?.title ? `Hora de: ${task.title}` : 'Você tem uma tarefa pendente.',
+          sound: true,
+        },
+        trigger: reminderDate,
+      });
+    },
+    [findNextReminderDate]
+  );
+
+  const cancelTaskReminder = useCallback(async (notificationId) => {
+    if (!NOTIFICATIONS_SUPPORTED || !notificationId) {
+      return;
+    }
+    try {
+      await Notifications.cancelScheduledNotificationAsync(notificationId);
+    } catch (error) {
+      console.warn('Failed to cancel notification', error);
+    }
+  }, []);
+
+  const updateTaskNotificationId = useCallback((taskId, notificationId) => {
+    setTasks((previous) =>
+      previous.map((task) =>
+        task.id === taskId ? { ...task, notificationId } : task
+      )
+    );
+  }, []);
+
+  const refreshTaskReminder = useCallback(
+    async (task, existingNotificationId) => {
+      if (existingNotificationId) {
+        await cancelTaskReminder(existingNotificationId);
+      }
+      const nextNotificationId = await scheduleTaskReminder(task);
+      if (nextNotificationId) {
+        updateTaskNotificationId(task.id, nextNotificationId);
+      } else if (existingNotificationId) {
+        updateTaskNotificationId(task.id, null);
+      }
+    },
+    [cancelTaskReminder, scheduleTaskReminder, updateTaskNotificationId]
+  );
+
   const handleCreateHabit = useCallback((habit) => {
     const normalizedDate = new Date(habit?.startDate ?? new Date());
     normalizedDate.setHours(0, 0, 0, 0);
@@ -1805,8 +1962,10 @@ function ScheduleApp() {
       typeLabel: habit?.typeLabel,
       quantum: habit?.quantum,
       profileLocked: false,
+      notificationId: null,
     };
     setTasks((previous) => [...previous, newTask]);
+    void refreshTaskReminder(newTask, null);
     setSelectedDate(normalizedDate);
     triggerImpact(Haptics.ImpactFeedbackStyle.Light);
     appendHistoryEntry('task_created', {
@@ -1814,7 +1973,7 @@ function ScheduleApp() {
       title,
       dateKey: newTask.dateKey,
     });
-  }, [appendHistoryEntry, convertSubtasks, getUniqueTitle]);
+  }, [appendHistoryEntry, convertSubtasks, getUniqueTitle, refreshTaskReminder]);
 
   const handleUpdateHabit = useCallback(
     (taskId, habit) => {
@@ -1826,6 +1985,7 @@ function ScheduleApp() {
       const nextTitle = habit?.title
         ? getUniqueTitle(habit.title, taskId)
         : existingTask?.title ?? 'Untitled task';
+      const existingNotificationId = existingTask?.notificationId ?? null;
       setTasks((previous) =>
         previous.map((task) => {
           if (task.id !== taskId) {
@@ -1862,9 +2022,33 @@ function ScheduleApp() {
             date: nextDate,
             dateKey: getDateKey(nextDate),
             profileLocked: task.profileLocked ?? false,
+            notificationId: task.notificationId ?? null,
           };
         })
       );
+      if (existingTask) {
+        const updatedTask = {
+          ...existingTask,
+          title: nextTitle,
+          color: habit?.color ?? existingTask.color,
+          emoji: habit?.emoji ?? existingTask.emoji,
+          customImage: habit?.customImage ?? existingTask.customImage ?? null,
+          time: habit?.time,
+          subtasks: convertSubtasks(habit?.subtasks ?? [], existingTask.subtasks ?? []),
+          repeat: normalizeRepeatConfig(habit?.repeat ?? existingTask.repeat),
+          reminder: habit?.reminder,
+          tag: habit?.tag,
+          tagLabel: habit?.tagLabel,
+          type: habit?.type,
+          typeLabel: habit?.typeLabel,
+          quantum: mergedQuantum,
+          date: nextDate,
+          dateKey: getDateKey(nextDate),
+          profileLocked: existingTask.profileLocked ?? false,
+          notificationId: existingNotificationId,
+        };
+        void refreshTaskReminder(updatedTask, existingNotificationId);
+      }
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
       if (normalizedDate) {
         setSelectedDate(normalizedDate);
@@ -1875,7 +2059,7 @@ function ScheduleApp() {
         dateKey: normalizedDate ? getDateKey(normalizedDate) : undefined,
       });
     },
-    [appendHistoryEntry, convertSubtasks, getUniqueTitle, tasks]
+    [appendHistoryEntry, convertSubtasks, getUniqueTitle, refreshTaskReminder, tasks]
   );
 
   const handleToggleSubtask = useCallback(
