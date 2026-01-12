@@ -24,7 +24,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
-import { formatTaskTime } from '../utils/timeUtils';
+import { formatTaskTime, toTimerSeconds } from '../utils/timeUtils';
 import { getQuantumProgressLabel, getQuantumProgressPercent } from '../utils/taskUtils';
 import { buildWavePath } from '../utils/waveUtils';
 
@@ -1352,7 +1352,7 @@ export default function AddHabitSheet({
   const previewQuantum = useMemo(() => {
     const minutes = Number.parseInt(pendingQuantumTimerMinutes, 10) || 0;
     const seconds = Number.parseInt(pendingQuantumTimerSeconds, 10) || 0;
-    const totalSeconds = minutes * 60 + seconds;
+    const totalSeconds = toTimerSeconds(minutes, seconds);
     const limitValue = Number.parseInt(pendingQuantumCountValue, 10) || 0;
     const halfSeconds = totalSeconds ? Math.max(1, Math.floor(totalSeconds / 2)) : 0;
     const halfCount = limitValue ? Math.max(1, Math.floor(limitValue / 2)) : 0;
