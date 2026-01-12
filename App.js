@@ -736,6 +736,8 @@ function ScheduleApp() {
   const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
   const saveTimeoutRef = useRef(null);
+  const taskPositionsRef = useRef(new Map());
+  const taskAnimationsRef = useRef(new Map());
   const [calendarMonths, setCalendarMonths] = useState(() => {
     const today = new Date();
     const months = [];
@@ -1025,9 +1027,52 @@ function ScheduleApp() {
       })),
     [selectedDateKey, visibleTasks]
   );
+  const sortedVisibleTasksForSelectedDay = useMemo(() => {
+    const incomplete = [];
+    const completed = [];
+
+    visibleTasksForSelectedDay.forEach((task) => {
+      if (task.completed) {
+        completed.push(task);
+      } else {
+        incomplete.push(task);
+      }
+    });
+
+    return [...incomplete, ...completed];
+  }, [visibleTasksForSelectedDay]);
+  const getTaskTranslateY = useCallback(
+    (taskId) => {
+      if (!taskAnimationsRef.current.has(taskId)) {
+        taskAnimationsRef.current.set(taskId, new Animated.Value(0));
+      }
+      return taskAnimationsRef.current.get(taskId);
+    },
+    []
+  );
+  const handleTaskLayout = useCallback(
+    (taskId, event) => {
+      const { y } = event.nativeEvent.layout;
+      const previousY = taskPositionsRef.current.get(taskId);
+      taskPositionsRef.current.set(taskId, y);
+      if (previousY === undefined || previousY === y) {
+        return;
+      }
+      const translateY = getTaskTranslateY(taskId);
+      translateY.stopAnimation();
+      translateY.setValue(previousY - y);
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 280,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    },
+    [getTaskTranslateY]
+  );
   const visibleTasksWithStats = useMemo(
     () =>
-      visibleTasksForSelectedDay.map((task) => {
+      sortedVisibleTasksForSelectedDay.map((task) => {
         const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
         const completedSubtasks = Array.isArray(task.subtasks)
           ? task.subtasks.filter((item) => getSubtaskCompletionStatus(item, selectedDateKey)).length
@@ -1041,7 +1086,7 @@ function ScheduleApp() {
           borderColor: task.color,
         };
       }),
-    [selectedDateKey, visibleTasksForSelectedDay]
+    [selectedDateKey, sortedVisibleTasksForSelectedDay]
   );
   const profileTasks = useMemo(() => {
     const getSortDate = (task) => {
@@ -2440,48 +2485,50 @@ function ScheduleApp() {
                     </Text>
                   </View>
                 ) : (
-                  <FlatList
-                    data={visibleTasksWithStats}
-                    renderItem={({ item: task }) => (
-                      <SwipeableTaskCard
-                        task={task}
-                        backgroundColor={task.backgroundColor}
-                        borderColor={task.borderColor}
-                        dateKey={selectedDateKey}
-                        totalSubtasks={task.totalSubtasks}
-                        completedSubtasks={task.completedSubtasks}
-                        onPress={() => setActiveTaskId(task.id)}
-                        onToggleCompletion={() => handleToggleTaskCompletion(task.id, selectedDateKey)}
-                        onAdjustQuantum={() => openQuantumAdjust(task)}
-                        onCopy={() => {
-                          const duplicated = {
-                            ...task,
-                            title: `${task.title} 1`,
-                            subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
-                            startDate: task.date,
-                          };
-                          openHabitSheet('copy', duplicated);
-                        }}
-                        onDelete={() => {
-                          if (task.profileLocked) {
-                            return;
-                          }
-                          setTasks((previous) => previous.filter((current) => current.id !== task.id));
-                        }}
-                        onEdit={() => {
-                          const editable = {
-                            ...task,
-                            startDate: task.date,
-                            subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
-                          };
-                          openHabitSheet('edit', editable);
-                        }}
-                      />
-                    )}
-                    keyExtractor={(task) => task.id}
-                    scrollEnabled={false}
-                    contentContainerStyle={styles.tasksList}
-                  />
+                  <View style={styles.tasksList}>
+                    {visibleTasksWithStats.map((task) => (
+                      <Animated.View
+                        key={task.id}
+                        onLayout={(event) => handleTaskLayout(task.id, event)}
+                        style={{ transform: [{ translateY: getTaskTranslateY(task.id) }] }}
+                      >
+                        <SwipeableTaskCard
+                          task={task}
+                          backgroundColor={task.backgroundColor}
+                          borderColor={task.borderColor}
+                          dateKey={selectedDateKey}
+                          totalSubtasks={task.totalSubtasks}
+                          completedSubtasks={task.completedSubtasks}
+                          onPress={() => setActiveTaskId(task.id)}
+                          onToggleCompletion={() => handleToggleTaskCompletion(task.id, selectedDateKey)}
+                          onAdjustQuantum={() => openQuantumAdjust(task)}
+                          onCopy={() => {
+                            const duplicated = {
+                              ...task,
+                              title: `${task.title} 1`,
+                              subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+                              startDate: task.date,
+                            };
+                            openHabitSheet('copy', duplicated);
+                          }}
+                          onDelete={() => {
+                            if (task.profileLocked) {
+                              return;
+                            }
+                            setTasks((previous) => previous.filter((current) => current.id !== task.id));
+                          }}
+                          onEdit={() => {
+                            const editable = {
+                              ...task,
+                              startDate: task.date,
+                              subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+                            };
+                            openHabitSheet('edit', editable);
+                          }}
+                        />
+                      </Animated.View>
+                    ))}
+                  </View>
                 )}
               </View>
             </ScrollView>
