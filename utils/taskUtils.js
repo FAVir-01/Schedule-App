@@ -1,6 +1,6 @@
 import { getDateKey } from './dateUtils';
 import { clamp01 } from './mathUtils';
-import { formatDuration } from './timeUtils';
+import { formatDuration, getTimerTotalSeconds } from './timeUtils';
 
 const getTaskCompletionStatus = (task, date) => {
   if (!task || !date) {
@@ -70,9 +70,7 @@ const getQuantumProgressLabel = (task, dateKey) => {
   }
   const mode = task.quantum.mode;
   if (mode === 'timer') {
-    const minutes = task.quantum.timer?.minutes ?? 0;
-    const seconds = task.quantum.timer?.seconds ?? 0;
-    const limitSeconds = minutes * 60 + seconds;
+    const limitSeconds = getTimerTotalSeconds(task.quantum.timer);
     if (!limitSeconds) {
       return null;
     }
@@ -97,9 +95,7 @@ const getQuantumProgressPercent = (task, dateKey) => {
   }
   const mode = task.quantum.mode;
   if (mode === 'timer') {
-    const minutes = task.quantum.timer?.minutes ?? 0;
-    const seconds = task.quantum.timer?.seconds ?? 0;
-    const totalSeconds = minutes * 60 + seconds;
+    const totalSeconds = getTimerTotalSeconds(task.quantum.timer);
     if (!totalSeconds) {
       return 0;
     }
