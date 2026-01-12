@@ -744,9 +744,8 @@ function ScheduleApp() {
   const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
   const saveTimeoutRef = useRef(null);
-  useEffect(() => {
-    enableLayoutAnimation();
-  }, []);
+  const taskPositionsRef = useRef(new Map());
+  const taskAnimationsRef = useRef(new Map());
   const [calendarMonths, setCalendarMonths] = useState(() => {
     const today = new Date();
     const months = [];
@@ -1050,14 +1049,35 @@ function ScheduleApp() {
 
     return [...incomplete, ...completed];
   }, [visibleTasksForSelectedDay]);
-  const previousTaskOrderRef = useRef(null);
-  useEffect(() => {
-    const currentOrder = sortedVisibleTasksForSelectedDay.map((task) => task.id).join('|');
-    if (previousTaskOrderRef.current && previousTaskOrderRef.current !== currentOrder) {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    }
-    previousTaskOrderRef.current = currentOrder;
-  }, [sortedVisibleTasksForSelectedDay]);
+  const getTaskTranslateY = useCallback(
+    (taskId) => {
+      if (!taskAnimationsRef.current.has(taskId)) {
+        taskAnimationsRef.current.set(taskId, new Animated.Value(0));
+      }
+      return taskAnimationsRef.current.get(taskId);
+    },
+    []
+  );
+  const handleTaskLayout = useCallback(
+    (taskId, event) => {
+      const { y } = event.nativeEvent.layout;
+      const previousY = taskPositionsRef.current.get(taskId);
+      taskPositionsRef.current.set(taskId, y);
+      if (previousY === undefined || previousY === y) {
+        return;
+      }
+      const translateY = getTaskTranslateY(taskId);
+      translateY.stopAnimation();
+      translateY.setValue(previousY - y);
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 280,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    },
+    [getTaskTranslateY]
+  );
   const visibleTasksWithStats = useMemo(
     () =>
       sortedVisibleTasksForSelectedDay.map((task) => {
@@ -2476,41 +2496,46 @@ function ScheduleApp() {
                 ) : (
                   <View style={styles.tasksList}>
                     {visibleTasksWithStats.map((task) => (
-                      <SwipeableTaskCard
+                      <Animated.View
                         key={task.id}
-                        task={task}
-                        backgroundColor={task.backgroundColor}
-                        borderColor={task.borderColor}
-                        dateKey={selectedDateKey}
-                        totalSubtasks={task.totalSubtasks}
-                        completedSubtasks={task.completedSubtasks}
-                        onPress={() => setActiveTaskId(task.id)}
-                        onToggleCompletion={() => handleToggleTaskCompletion(task.id, selectedDateKey)}
-                        onAdjustQuantum={() => openQuantumAdjust(task)}
-                        onCopy={() => {
-                          const duplicated = {
-                            ...task,
-                            title: `${task.title} 1`,
-                            subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
-                            startDate: task.date,
-                          };
-                          openHabitSheet('copy', duplicated);
-                        }}
-                        onDelete={() => {
-                          if (task.profileLocked) {
-                            return;
-                          }
-                          setTasks((previous) => previous.filter((current) => current.id !== task.id));
-                        }}
-                        onEdit={() => {
-                          const editable = {
-                            ...task,
-                            startDate: task.date,
-                            subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
-                          };
-                          openHabitSheet('edit', editable);
-                        }}
-                      />
+                        onLayout={(event) => handleTaskLayout(task.id, event)}
+                        style={{ transform: [{ translateY: getTaskTranslateY(task.id) }] }}
+                      >
+                        <SwipeableTaskCard
+                          task={task}
+                          backgroundColor={task.backgroundColor}
+                          borderColor={task.borderColor}
+                          dateKey={selectedDateKey}
+                          totalSubtasks={task.totalSubtasks}
+                          completedSubtasks={task.completedSubtasks}
+                          onPress={() => setActiveTaskId(task.id)}
+                          onToggleCompletion={() => handleToggleTaskCompletion(task.id, selectedDateKey)}
+                          onAdjustQuantum={() => openQuantumAdjust(task)}
+                          onCopy={() => {
+                            const duplicated = {
+                              ...task,
+                              title: `${task.title} 1`,
+                              subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+                              startDate: task.date,
+                            };
+                            openHabitSheet('copy', duplicated);
+                          }}
+                          onDelete={() => {
+                            if (task.profileLocked) {
+                              return;
+                            }
+                            setTasks((previous) => previous.filter((current) => current.id !== task.id));
+                          }}
+                          onEdit={() => {
+                            const editable = {
+                              ...task,
+                              startDate: task.date,
+                              subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+                            };
+                            openHabitSheet('edit', editable);
+                          }}
+                        />
+                      </Animated.View>
                     ))}
                   </View>
                 )}
