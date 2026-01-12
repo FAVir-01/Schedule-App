@@ -7,6 +7,8 @@ import {
   Easing,
   Platform,
   Image,
+  LayoutAnimation,
+  FlatList,
   Modal,
   PanResponder,
   Pressable,
@@ -15,11 +17,11 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  FlatList,
   TouchableOpacity,
   View,
   useWindowDimensions,
   ImageBackground,
+  UIManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Path } from 'react-native-svg';
@@ -27,8 +29,10 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as Haptics from 'expo-haptics';
+import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Notifications from 'expo-notifications';
 import {
   addMonths as addMonthsDateFns,
   eachDayOfInterval,
@@ -103,8 +107,30 @@ const habitImage = require('./assets/add-habit.png');
 const reflectionImage = require('./assets/add-reflection.png');
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
+const NOTIFICATIONS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
 const FALLBACK_EMOJI = '📝';
 const DEFAULT_REPEAT_CONFIG = { enabled: true, frequency: 'daily', interval: 1 };
+const CONFETTI_COLORS = ['#ff6b6b', '#ffd93d', '#6bcB77', '#4d96ff', '#845ec2'];
+const CONFETTI_COUNT = 32;
+const CONFETTI_DURATION_MS = 2400;
+const REMINDER_OFFSETS = {
+  none: null,
+  at_time: 0,
+  '5m': -5,
+  '15m': -15,
+  '30m': -30,
+  '1h': -60,
+};
+
+if (NOTIFICATIONS_SUPPORTED) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 const normalizeRepeatConfig = (repeatConfig) => {
   if (!repeatConfig) {
@@ -147,6 +173,149 @@ const triggerSelection = () => {
     // Ignore web environments without haptics support
   }
 };
+
+const triggerSuccessFeedback = async () => {
+  if (HAPTICS_SUPPORTED) {
+    try {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.log('Unable to trigger success haptics', error);
+    }
+  }
+
+  try {
+    const { sound } = await Audio.Sound.createAsync(
+      { uri: 'https://www.soundjay.com/buttons/sounds/button-30.mp3' },
+      { shouldPlay: true, volume: 0.25 }
+    );
+
+    sound.setOnPlaybackStatusUpdate((status) => {
+      if (status.isLoaded && status.didJustFinish) {
+        void sound.unloadAsync();
+      }
+    });
+  } catch (error) {
+    console.log('Unable to play success sound', error);
+  }
+};
+
+const enableLayoutAnimation = () => {
+  if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
+};
+
+const ConfettiOverlay = React.memo(({ visible, onComplete }) => {
+  const { width, height } = useWindowDimensions();
+  const hasStartedRef = useRef(false);
+  const pieces = useMemo(
+    () =>
+      Array.from({ length: CONFETTI_COUNT }, (_, index) => ({
+        id: `${Date.now()}-${index}`,
+        baseX: new Animated.Value(Math.random() * width),
+        size: 6 + Math.random() * 6,
+        delay: Math.random() * 400,
+        rotate: Math.random() * 120,
+        heightRatio: Math.random() > 0.5 ? 1.5 : 0.8,
+        rotationTurns: 360 * (Math.random() * 4 + 1),
+        swayAmplitude: 12 + Math.random() * 18,
+        swayDuration: 800 + Math.random() * 900,
+        color: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
+        anim: new Animated.Value(-20 - Math.random() * 120),
+        swayAnim: new Animated.Value(0),
+        scaleAnim: new Animated.Value(Math.random() * 0.5 + 0.5),
+        duration: CONFETTI_DURATION_MS + Math.random() * 1000,
+      })),
+    [width]
+  );
+
+  useEffect(() => {
+    if (!visible) {
+      hasStartedRef.current = false;
+      return undefined;
+    }
+    if (hasStartedRef.current) {
+      return undefined;
+    }
+    hasStartedRef.current = true;
+
+    const animations = pieces.map((piece) =>
+      Animated.timing(piece.anim, {
+        toValue: height + 100,
+        duration: piece.duration,
+        delay: piece.delay,
+        easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+        useNativeDriver: true,
+      })
+    );
+    const swayLoops = pieces.map((piece) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(piece.swayAnim, {
+            toValue: piece.swayAmplitude,
+            duration: piece.swayDuration,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+          Animated.timing(piece.swayAnim, {
+            toValue: -piece.swayAmplitude,
+            duration: piece.swayDuration,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+        ])
+      )
+    );
+
+    const animation = Animated.stagger(40, animations);
+    animation.start();
+    swayLoops.forEach((loop) => loop.start());
+
+    const timeoutId = setTimeout(() => {
+      onComplete?.();
+    }, CONFETTI_DURATION_MS + 1500);
+
+    return () => {
+      animation.stop();
+      swayLoops.forEach((loop) => loop.stop());
+      clearTimeout(timeoutId);
+    };
+  }, [height, onComplete, pieces, visible]);
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <View pointerEvents="none" style={styles.confettiContainer}>
+      {pieces.map((piece) => (
+        <Animated.View
+          key={piece.id}
+          style={[
+            styles.confettiPiece,
+            {
+              width: piece.size,
+              height: piece.size * piece.heightRatio,
+              backgroundColor: piece.color,
+              opacity: 0.8,
+              transform: [
+                { translateX: Animated.add(piece.baseX, piece.swayAnim) },
+                { translateY: piece.anim },
+                {
+                  rotate: piece.anim.interpolate({
+                    inputRange: [0, height],
+                    outputRange: ['0deg', `${piece.rotationTurns}deg`],
+                  }),
+                },
+                { scale: piece.scaleAnim },
+              ],
+            },
+          ]}
+        />
+      ))}
+    </View>
+  );
+});
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CALENDAR_DAY_SIZE = Math.floor(SCREEN_WIDTH / 7);
@@ -575,6 +744,8 @@ function ScheduleApp() {
   const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
   const saveTimeoutRef = useRef(null);
+  const taskPositionsRef = useRef(new Map());
+  const taskAnimationsRef = useRef(new Map());
   const [calendarMonths, setCalendarMonths] = useState(() => {
     const today = new Date();
     const months = [];
@@ -738,12 +909,19 @@ function ScheduleApp() {
     setProfileTasksOpen(false);
     setActiveProfileTaskId(null);
   }, []);
-  const handleDeleteProfileTasks = useCallback((taskIds) => {
-    setTasks((previous) =>
-      previous.filter((task) => task.profileLocked || !taskIds.includes(task.id))
-    );
-    setActiveProfileTaskId((current) => (taskIds.includes(current) ? null : current));
-  }, []);
+  const handleDeleteProfileTasks = useCallback(
+    (taskIds) => {
+      const tasksToDelete = tasks.filter((task) => taskIds.includes(task.id));
+      tasksToDelete.forEach((task) => {
+        void cancelTaskReminder(task.notificationId);
+      });
+      setTasks((previous) =>
+        previous.filter((task) => task.profileLocked || !taskIds.includes(task.id))
+      );
+      setActiveProfileTaskId((current) => (taskIds.includes(current) ? null : current));
+    },
+    [cancelTaskReminder, tasks]
+  );
   const handleDeleteProfileTask = useCallback(
     (taskId) => {
       handleDeleteProfileTasks([taskId]);
@@ -803,6 +981,21 @@ function ScheduleApp() {
     };
     return filtered.slice().sort((a, b) => getSortValue(a) - getSortValue(b));
   }, [selectedDate, tasks]);
+  const availableTagOptions = useMemo(() => {
+    const seen = new Set();
+    return tasks.reduce((options, task) => {
+      const key = normalizeTaskTagKey(task);
+      if (!key || seen.has(key)) {
+        return options;
+      }
+      seen.add(key);
+      options.push({
+        key,
+        label: getTaskTagDisplayLabel(task) ?? 'Tag',
+      });
+      return options;
+    }, []);
+  }, [tasks]);
   const tagOptions = useMemo(() => {
     const seen = new Set();
     return tasksForSelectedDate.reduce((options, task) => {
@@ -819,11 +1012,15 @@ function ScheduleApp() {
     }, []);
   }, [tasksForSelectedDate]);
   useEffect(() => {
-    if (selectedTagFilter !== 'all' && !tagOptions.some((option) => option.key === selectedTagFilter)) {
+    if (
+      selectedTagFilter !== 'all' &&
+      availableTagOptions.length > 0 &&
+      !availableTagOptions.some((option) => option.key === selectedTagFilter)
+    ) {
       setSelectedTagFilter('all');
       updateUserSettings({ selectedTagFilter: 'all' });
     }
-  }, [selectedTagFilter, tagOptions, updateUserSettings]);
+  }, [availableTagOptions, selectedTagFilter, updateUserSettings]);
   const visibleTasks = useMemo(() => {
     if (selectedTagFilter === 'all') {
       return tasksForSelectedDate;
@@ -838,9 +1035,52 @@ function ScheduleApp() {
       })),
     [selectedDateKey, visibleTasks]
   );
+  const sortedVisibleTasksForSelectedDay = useMemo(() => {
+    const incomplete = [];
+    const completed = [];
+
+    visibleTasksForSelectedDay.forEach((task) => {
+      if (task.completed) {
+        completed.push(task);
+      } else {
+        incomplete.push(task);
+      }
+    });
+
+    return [...incomplete, ...completed];
+  }, [visibleTasksForSelectedDay]);
+  const getTaskTranslateY = useCallback(
+    (taskId) => {
+      if (!taskAnimationsRef.current.has(taskId)) {
+        taskAnimationsRef.current.set(taskId, new Animated.Value(0));
+      }
+      return taskAnimationsRef.current.get(taskId);
+    },
+    []
+  );
+  const handleTaskLayout = useCallback(
+    (taskId, event) => {
+      const { y } = event.nativeEvent.layout;
+      const previousY = taskPositionsRef.current.get(taskId);
+      taskPositionsRef.current.set(taskId, y);
+      if (previousY === undefined || previousY === y) {
+        return;
+      }
+      const translateY = getTaskTranslateY(taskId);
+      translateY.stopAnimation();
+      translateY.setValue(previousY - y);
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 280,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    },
+    [getTaskTranslateY]
+  );
   const visibleTasksWithStats = useMemo(
     () =>
-      visibleTasksForSelectedDay.map((task) => {
+      sortedVisibleTasksForSelectedDay.map((task) => {
         const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
         const completedSubtasks = Array.isArray(task.subtasks)
           ? task.subtasks.filter((item) => getSubtaskCompletionStatus(item, selectedDateKey)).length
@@ -854,7 +1094,7 @@ function ScheduleApp() {
           borderColor: task.color,
         };
       }),
-    [selectedDateKey, visibleTasksForSelectedDay]
+    [selectedDateKey, sortedVisibleTasksForSelectedDay]
   );
   const profileTasks = useMemo(() => {
     const getSortDate = (task) => {
@@ -884,6 +1124,25 @@ function ScheduleApp() {
     () => tasksForSelectedDate.filter((task) => getTaskCompletionStatus(task, selectedDateKey)).length,
     [selectedDateKey, tasksForSelectedDate]
   );
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [confettiKey, setConfettiKey] = useState(0);
+  const previousCompletionRef = useRef(false);
+  const handleConfettiComplete = useCallback(() => {
+    setShowConfetti(false);
+  }, []);
+
+  useEffect(() => {
+    if (allTasksCompletedForSelectedDay && !previousCompletionRef.current) {
+      setConfettiKey((previous) => previous + 1);
+      setShowConfetti(true);
+      void triggerSuccessFeedback();
+    }
+    previousCompletionRef.current = allTasksCompletedForSelectedDay;
+  }, [allTasksCompletedForSelectedDay]);
+
+  useEffect(() => {
+    previousCompletionRef.current = false;
+  }, [selectedDateKey]);
   const activeTask = useMemo(
     () => tasks.find((task) => task.id === activeTaskId) ?? null,
     [activeTaskId, tasks]
@@ -979,8 +1238,16 @@ function ScheduleApp() {
     }
     setQuantumAdjustTaskId(task.id);
     if (task.quantum?.mode === 'timer') {
-      setQuantumAdjustMinutes('0');
-      setQuantumAdjustSeconds('0');
+      const limitSeconds =
+        (task.quantum?.timer?.minutes ?? 0) * 60 + (task.quantum?.timer?.seconds ?? 0);
+      const lastAdjustSeconds = task.quantum?.lastAdjustTimerSeconds ?? 0;
+      const clampedSeconds = limitSeconds
+        ? Math.min(Math.max(lastAdjustSeconds, 0), limitSeconds)
+        : Math.max(lastAdjustSeconds, 0);
+      const lastHours = Math.floor(clampedSeconds / 60);
+      const lastMinutes = clampedSeconds % 60;
+      setQuantumAdjustMinutes(String(lastHours));
+      setQuantumAdjustSeconds(String(lastMinutes));
     } else {
       const lastAdjust = task.quantum?.lastAdjustCount;
       setQuantumAdjustCount(String(lastAdjust ?? 1));
@@ -1055,6 +1322,7 @@ function ScheduleApp() {
                   },
                 },
                 doneSeconds: nextSeconds,
+                lastAdjustTimerSeconds: deltaSeconds,
                 wavePulse: Date.now(),
               },
             };
@@ -1261,6 +1529,17 @@ function ScheduleApp() {
       isMounted = false;
     };
   }, [normalizeStoredTasks]);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+    tasks.forEach((task) => {
+      if (!task.notificationId && REMINDER_OFFSETS[task.reminder] != null) {
+        void refreshTaskReminder(task, null);
+      }
+    });
+  }, [isHydrated, refreshTaskReminder, tasks]);
 
   useEffect(() => {
     if (!isHydrated) {
@@ -1514,6 +1793,7 @@ function ScheduleApp() {
         : false;
 
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setTasks((previous) =>
         previous.map((task) => {
           if (task.id !== taskId) {
@@ -1591,6 +1871,154 @@ function ScheduleApp() {
     [tasks]
   );
 
+  const getReminderBaseTime = useCallback((time) => {
+    if (!time?.specified) {
+      return null;
+    }
+    if (time.mode === 'period') {
+      return time.period?.start ?? null;
+    }
+    return time.point ?? null;
+  }, []);
+
+  const buildReminderDateTime = useCallback((date, timeValue, offsetMinutes) => {
+    if (!date || !timeValue || typeof offsetMinutes !== 'number') {
+      return null;
+    }
+    const reminderDate = new Date(date);
+    reminderDate.setHours(0, 0, 0, 0);
+    reminderDate.setMinutes(toMinutes(timeValue) + offsetMinutes);
+    return reminderDate;
+  }, []);
+
+  const findNextReminderDate = useCallback(
+    (task) => {
+      const offsetMinutes = REMINDER_OFFSETS[task?.reminder] ?? null;
+      if (offsetMinutes === null) {
+        return null;
+      }
+      const baseTime = getReminderBaseTime(task?.time);
+      if (!baseTime) {
+        return null;
+      }
+      const startDate = normalizeDateValue(task?.date ?? task?.dateKey);
+      if (!startDate) {
+        return null;
+      }
+      const now = new Date();
+      const today = new Date(now);
+      today.setHours(0, 0, 0, 0);
+      const initialDate = startDate > today ? startDate : today;
+      const limitDays = 366;
+
+      for (let offset = 0; offset <= limitDays; offset += 1) {
+        const candidateDate = new Date(initialDate);
+        candidateDate.setDate(candidateDate.getDate() + offset);
+        if (!shouldTaskAppearOnDate(task, candidateDate)) {
+          continue;
+        }
+        const reminderDate = buildReminderDateTime(candidateDate, baseTime, offsetMinutes);
+        if (!reminderDate) {
+          continue;
+        }
+        if (reminderDate > now) {
+          return reminderDate;
+        }
+        const msDifference = now.getTime() - reminderDate.getTime();
+        if (offset === 0 && msDifference <= 60000) {
+          return new Date(now.getTime() + 5000);
+        }
+      }
+      return null;
+    },
+    [buildReminderDateTime, getReminderBaseTime]
+  );
+
+  const scheduleTaskReminder = useCallback(
+    async (task) => {
+      if (!NOTIFICATIONS_SUPPORTED) {
+        return null;
+      }
+      const offsetMinutes = REMINDER_OFFSETS[task?.reminder] ?? null;
+      if (offsetMinutes === null) {
+        return null;
+      }
+      const permissionResponse = await Notifications.getPermissionsAsync();
+      if (permissionResponse.status !== 'granted') {
+        const requestResponse = await Notifications.requestPermissionsAsync();
+        if (requestResponse.status !== 'granted') {
+          return null;
+        }
+      }
+      const reminderDate = findNextReminderDate(task);
+      if (!reminderDate) {
+        return null;
+      }
+      const diffSeconds = Math.max(
+        1,
+        Math.ceil((reminderDate.getTime() - Date.now()) / 1000)
+      );
+      const timeIntervalType =
+        Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL ?? 'timeInterval';
+      const dateType = Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date';
+      const trigger =
+        diffSeconds <= 120
+          ? {
+              type: timeIntervalType,
+              seconds: diffSeconds,
+              repeats: false,
+            }
+          : {
+              type: dateType,
+              date: reminderDate,
+            };
+      return Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Lembrete',
+          body: task?.title ? `Hora de: ${task.title}` : 'Você tem uma tarefa pendente.',
+          sound: true,
+          channelId: 'default',
+        },
+        trigger,
+      });
+    },
+    [findNextReminderDate]
+  );
+
+  const cancelTaskReminder = useCallback(async (notificationId) => {
+    if (!NOTIFICATIONS_SUPPORTED || !notificationId) {
+      return;
+    }
+    try {
+      await Notifications.cancelScheduledNotificationAsync(notificationId);
+    } catch (error) {
+      console.warn('Failed to cancel notification', error);
+    }
+  }, []);
+
+  const updateTaskNotificationId = useCallback((taskId, notificationId) => {
+    setTasks((previous) =>
+      previous.map((task) =>
+        task.id === taskId ? { ...task, notificationId } : task
+      )
+    );
+  }, []);
+
+  const refreshTaskReminder = useCallback(
+    async (task, existingNotificationId) => {
+      if (existingNotificationId) {
+        await cancelTaskReminder(existingNotificationId);
+      }
+      const nextNotificationId = await scheduleTaskReminder(task);
+      if (nextNotificationId) {
+        updateTaskNotificationId(task.id, nextNotificationId);
+      } else if (existingNotificationId) {
+        updateTaskNotificationId(task.id, null);
+      }
+    },
+    [cancelTaskReminder, scheduleTaskReminder, updateTaskNotificationId]
+  );
+
   const handleCreateHabit = useCallback((habit) => {
     const normalizedDate = new Date(habit?.startDate ?? new Date());
     normalizedDate.setHours(0, 0, 0, 0);
@@ -1617,8 +2045,10 @@ function ScheduleApp() {
       typeLabel: habit?.typeLabel,
       quantum: habit?.quantum,
       profileLocked: false,
+      notificationId: null,
     };
     setTasks((previous) => [...previous, newTask]);
+    void refreshTaskReminder(newTask, null);
     setSelectedDate(normalizedDate);
     triggerImpact(Haptics.ImpactFeedbackStyle.Light);
     appendHistoryEntry('task_created', {
@@ -1626,7 +2056,7 @@ function ScheduleApp() {
       title,
       dateKey: newTask.dateKey,
     });
-  }, [appendHistoryEntry, convertSubtasks, getUniqueTitle]);
+  }, [appendHistoryEntry, convertSubtasks, getUniqueTitle, refreshTaskReminder]);
 
   const handleUpdateHabit = useCallback(
     (taskId, habit) => {
@@ -1635,26 +2065,30 @@ function ScheduleApp() {
         normalizedDate.setHours(0, 0, 0, 0);
       }
       const existingTask = tasks.find((task) => task.id === taskId);
+      if (!existingTask) {
+        return;
+      }
       const nextTitle = habit?.title
         ? getUniqueTitle(habit.title, taskId)
         : existingTask?.title ?? 'Untitled task';
+      const existingNotificationId = existingTask?.notificationId ?? null;
+      const nextDate = normalizedDate ? new Date(normalizedDate) : new Date(existingTask.date);
+      nextDate.setHours(0, 0, 0, 0);
+      const nextQuantum = habit?.quantum ?? existingTask.quantum;
+      let mergedQuantum = nextQuantum;
+      if (nextQuantum && existingTask.quantum) {
+        const sameMode = nextQuantum.mode === existingTask.quantum.mode;
+        mergedQuantum = {
+          ...existingTask.quantum,
+          ...nextQuantum,
+          doneSeconds: sameMode ? existingTask.quantum.doneSeconds ?? 0 : 0,
+          doneCount: sameMode ? existingTask.quantum.doneCount ?? 0 : 0,
+        };
+      }
       setTasks((previous) =>
         previous.map((task) => {
           if (task.id !== taskId) {
             return task;
-          }
-          const nextDate = normalizedDate ? new Date(normalizedDate) : new Date(task.date);
-          nextDate.setHours(0, 0, 0, 0);
-          const nextQuantum = habit?.quantum ?? task.quantum;
-          let mergedQuantum = nextQuantum;
-          if (nextQuantum && task.quantum) {
-            const sameMode = nextQuantum.mode === task.quantum.mode;
-            mergedQuantum = {
-              ...task.quantum,
-              ...nextQuantum,
-              doneSeconds: sameMode ? task.quantum.doneSeconds ?? 0 : 0,
-              doneCount: sameMode ? task.quantum.doneCount ?? 0 : 0,
-            };
           }
           return {
             ...task,
@@ -1674,9 +2108,33 @@ function ScheduleApp() {
             date: nextDate,
             dateKey: getDateKey(nextDate),
             profileLocked: task.profileLocked ?? false,
+            notificationId: task.notificationId ?? null,
           };
         })
       );
+      if (existingTask) {
+        const updatedTask = {
+          ...existingTask,
+          title: nextTitle,
+          color: habit?.color ?? existingTask.color,
+          emoji: habit?.emoji ?? existingTask.emoji,
+          customImage: habit?.customImage ?? existingTask.customImage ?? null,
+          time: habit?.time,
+          subtasks: convertSubtasks(habit?.subtasks ?? [], existingTask.subtasks ?? []),
+          repeat: normalizeRepeatConfig(habit?.repeat ?? existingTask.repeat),
+          reminder: habit?.reminder,
+          tag: habit?.tag,
+          tagLabel: habit?.tagLabel,
+          type: habit?.type,
+          typeLabel: habit?.typeLabel,
+          quantum: mergedQuantum,
+          date: nextDate,
+          dateKey: getDateKey(nextDate),
+          profileLocked: existingTask.profileLocked ?? false,
+          notificationId: existingNotificationId,
+        };
+        void refreshTaskReminder(updatedTask, existingNotificationId);
+      }
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
       if (normalizedDate) {
         setSelectedDate(normalizedDate);
@@ -1687,7 +2145,7 @@ function ScheduleApp() {
         dateKey: normalizedDate ? getDateKey(normalizedDate) : undefined,
       });
     },
-    [appendHistoryEntry, convertSubtasks, getUniqueTitle, tasks]
+    [appendHistoryEntry, convertSubtasks, getUniqueTitle, refreshTaskReminder, tasks]
   );
 
   const handleToggleSubtask = useCallback(
@@ -1879,6 +2337,12 @@ function ScheduleApp() {
         translucent={false}
       />
 
+      <ConfettiOverlay
+        key={confettiKey}
+        visible={showConfetti}
+        onComplete={handleConfettiComplete}
+      />
+
       <View style={styles.container}>
         <View
           style={[
@@ -2030,48 +2494,50 @@ function ScheduleApp() {
                     </Text>
                   </View>
                 ) : (
-                  <FlatList
-                    data={visibleTasksWithStats}
-                    renderItem={({ item: task }) => (
-                      <SwipeableTaskCard
-                        task={task}
-                        backgroundColor={task.backgroundColor}
-                        borderColor={task.borderColor}
-                        dateKey={selectedDateKey}
-                        totalSubtasks={task.totalSubtasks}
-                        completedSubtasks={task.completedSubtasks}
-                        onPress={() => setActiveTaskId(task.id)}
-                        onToggleCompletion={() => handleToggleTaskCompletion(task.id, selectedDateKey)}
-                        onAdjustQuantum={() => openQuantumAdjust(task)}
-                        onCopy={() => {
-                          const duplicated = {
-                            ...task,
-                            title: `${task.title} 1`,
-                            subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
-                            startDate: task.date,
-                          };
-                          openHabitSheet('copy', duplicated);
-                        }}
-                        onDelete={() => {
-                          if (task.profileLocked) {
-                            return;
-                          }
-                          setTasks((previous) => previous.filter((current) => current.id !== task.id));
-                        }}
-                        onEdit={() => {
-                          const editable = {
-                            ...task,
-                            startDate: task.date,
-                            subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
-                          };
-                          openHabitSheet('edit', editable);
-                        }}
-                      />
-                    )}
-                    keyExtractor={(task) => task.id}
-                    scrollEnabled={false}
-                    contentContainerStyle={styles.tasksList}
-                  />
+                  <View style={styles.tasksList}>
+                    {visibleTasksWithStats.map((task) => (
+                      <Animated.View
+                        key={task.id}
+                        onLayout={(event) => handleTaskLayout(task.id, event)}
+                        style={{ transform: [{ translateY: getTaskTranslateY(task.id) }] }}
+                      >
+                        <SwipeableTaskCard
+                          task={task}
+                          backgroundColor={task.backgroundColor}
+                          borderColor={task.borderColor}
+                          dateKey={selectedDateKey}
+                          totalSubtasks={task.totalSubtasks}
+                          completedSubtasks={task.completedSubtasks}
+                          onPress={() => setActiveTaskId(task.id)}
+                          onToggleCompletion={() => handleToggleTaskCompletion(task.id, selectedDateKey)}
+                          onAdjustQuantum={() => openQuantumAdjust(task)}
+                          onCopy={() => {
+                            const duplicated = {
+                              ...task,
+                              title: `${task.title} 1`,
+                              subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+                              startDate: task.date,
+                            };
+                            openHabitSheet('copy', duplicated);
+                          }}
+                          onDelete={() => {
+                            if (task.profileLocked) {
+                              return;
+                            }
+                            setTasks((previous) => previous.filter((current) => current.id !== task.id));
+                          }}
+                          onEdit={() => {
+                            const editable = {
+                              ...task,
+                              startDate: task.date,
+                              subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+                            };
+                            openHabitSheet('edit', editable);
+                          }}
+                        />
+                      </Animated.View>
+                    ))}
+                  </View>
                 )}
               </View>
             </ScrollView>
@@ -2472,6 +2938,7 @@ function ScheduleApp() {
         }}
         mode={habitSheetMode}
         initialHabit={habitSheetInitialTask}
+        availableTagOptions={availableTagOptions}
       />
       <QuantumAdjustModal
         task={tasks.find((task) => task.id === quantumAdjustTaskId) ?? null}
@@ -2630,7 +3097,7 @@ function SwipeableTaskCard({
       return null;
     }
     return `${completedSubtasks}/${totalSubtasks}`;
-  }, [completedSubtasks, task, totalSubtasks]);
+  }, [completedSubtasks, dateKey, task, totalSubtasks]);
 
   const isQuantum = task.type === 'quantum';
   const isWaterAnimation = task.quantum?.animation === 'water';
@@ -3611,8 +4078,17 @@ function QuantumAdjustModal({
   const isTimer = task?.quantum?.mode === 'timer';
   const limitLabel = task ? getQuantumProgressLabel(task, dateKey) : null;
   const limitCount = task?.quantum?.count?.value ?? 0;
+  const maxTimerMinutes = task?.quantum?.timer?.minutes ?? 0;
+  const maxTimerSeconds = task?.quantum?.timer?.seconds ?? 0;
+  const maxTimerTotalMinutes = maxTimerMinutes * 60 + maxTimerSeconds;
   const lastAdjustCount = task?.quantum?.lastAdjustCount ?? null;
   const normalizedCountValue = Number.parseInt(countValue, 10) || 0;
+  const normalizedMinutesValue = Number.parseInt(minutesValue, 10) || 0;
+  const normalizedSecondsValue = Number.parseInt(secondsValue, 10) || 0;
+  const totalTimerMinutes = normalizedMinutesValue * 60 + normalizedSecondsValue;
+  const isThirtySelected = totalTimerMinutes === 30 || totalTimerMinutes === 90;
+  const isOneHourSelected = totalTimerMinutes === 60 || totalTimerMinutes === 90;
+  const presetTotalMinutes = (isThirtySelected ? 30 : 0) + (isOneHourSelected ? 60 : 0);
   const lastCountValue = lastAdjustCount ?? Math.max(1, normalizedCountValue || 1);
   const halfCountValue = limitCount ? Math.max(1, Math.round(limitCount / 2)) : 0;
   const maxCountValue = limitCount ?? 0;
@@ -3642,6 +4118,44 @@ function QuantumAdjustModal({
       onChangeCount(String(value));
     },
     [onChangeCount]
+  );
+  const handleTimerPresetSelect = useCallback(
+    (minutes, seconds) => {
+      if (minutes == null || seconds == null) {
+        return;
+      }
+      onChangeMinutes(String(minutes));
+      onChangeSeconds(String(seconds));
+    },
+    [onChangeMinutes, onChangeSeconds]
+  );
+  const updateTimerFromTotal = useCallback(
+    (totalMinutes) => {
+      const clampedTotal =
+        maxTimerTotalMinutes > 0
+          ? Math.min(Math.max(totalMinutes, 0), maxTimerTotalMinutes)
+          : Math.max(totalMinutes, 0);
+      const nextHours = Math.floor(clampedTotal / 60);
+      const nextMinutes = clampedTotal % 60;
+      onChangeMinutes(String(nextHours));
+      onChangeSeconds(String(nextMinutes));
+    },
+    [maxTimerTotalMinutes, onChangeMinutes, onChangeSeconds]
+  );
+  const handleTimerPresetToggle = useCallback(
+    (presetMinutes) => {
+      if (!presetMinutes) {
+        return;
+      }
+      const shouldRemove =
+        (presetMinutes === 30 && isThirtySelected) ||
+        (presetMinutes === 60 && isOneHourSelected);
+      const nextTotal = shouldRemove
+        ? presetTotalMinutes - presetMinutes
+        : presetTotalMinutes + presetMinutes;
+      updateTimerFromTotal(nextTotal);
+    },
+    [isOneHourSelected, isThirtySelected, presetTotalMinutes, updateTimerFromTotal]
   );
   const disableActions = isTimer
     ? (Number.parseInt(minutesValue, 10) || 0) * 60 + (Number.parseInt(secondsValue, 10) || 0) <= 0
@@ -3673,32 +4187,98 @@ function QuantumAdjustModal({
             <Text style={styles.quantumModalSubtitle}>Current: {limitLabel}</Text>
           )}
           {isTimer ? (
-            <View style={styles.quantumModalRow}>
-              <View style={styles.quantumModalField}>
-                <Text style={styles.quantumModalFieldLabel}>Min</Text>
-                <TextInput
-                  style={styles.quantumModalInput}
-                  value={minutesValue}
-                  onChangeText={handleMinutesChange}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  placeholder="0"
-                  placeholderTextColor="#9AA5B5"
-                />
+            <>
+              <View style={styles.quantumModalPresetRow}>
+                <Pressable
+                  style={[
+                    styles.quantumModalPresetButton,
+                    isThirtySelected && styles.quantumModalPresetButtonSelected,
+                  ]}
+                  onPress={() => handleTimerPresetToggle(30)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Use 30 minutes"
+                >
+                  <Text
+                    style={[
+                      styles.quantumModalPresetText,
+                      isThirtySelected && styles.quantumModalPresetTextSelected,
+                    ]}
+                  >
+                    30 min
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.quantumModalPresetButton,
+                    isOneHourSelected && styles.quantumModalPresetButtonSelected,
+                  ]}
+                  onPress={() => handleTimerPresetToggle(60)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Use 1 hour"
+                >
+                  <Text
+                    style={[
+                      styles.quantumModalPresetText,
+                      isOneHourSelected && styles.quantumModalPresetTextSelected,
+                    ]}
+                  >
+                    1 hour
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.quantumModalPresetButton,
+                    normalizedMinutesValue === maxTimerMinutes &&
+                      normalizedSecondsValue === maxTimerSeconds &&
+                      maxTimerTotalMinutes > 0 &&
+                      styles.quantumModalPresetButtonSelected,
+                  ]}
+                  onPress={() => handleTimerPresetSelect(maxTimerMinutes, maxTimerSeconds)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Use max"
+                  disabled={maxTimerTotalMinutes <= 0}
+                >
+                  <Text
+                    style={[
+                      styles.quantumModalPresetText,
+                      normalizedMinutesValue === maxTimerMinutes &&
+                        normalizedSecondsValue === maxTimerSeconds &&
+                        maxTimerTotalMinutes > 0 &&
+                        styles.quantumModalPresetTextSelected,
+                    ]}
+                  >
+                    max
+                  </Text>
+                </Pressable>
               </View>
-              <View style={styles.quantumModalField}>
-                <Text style={styles.quantumModalFieldLabel}>Sec</Text>
-                <TextInput
-                  style={styles.quantumModalInput}
-                  value={secondsValue}
-                  onChangeText={handleSecondsChange}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  placeholder="0"
-                  placeholderTextColor="#9AA5B5"
-                />
+              <View style={styles.quantumModalAmount}>
+                <Text style={styles.quantumModalAmountLabel}>Amount</Text>
+                <View style={styles.quantumModalAmountInput}>
+                  <View style={styles.timerWheelArea}>
+                    <View pointerEvents="none" style={styles.timerWheelHighlight} />
+                    <View style={styles.timerWheelRow}>
+                      <View style={styles.timerWheelColumnWrapper}>
+                        <WheelPicker
+                          values={TIMER_HOUR_OPTIONS}
+                          value={normalizeTimerValue(minutesValue, TIMER_HOUR_OPTIONS)}
+                          onChange={handleMinutesChange}
+                          accessibilityLabel="Timer hours"
+                        />
+                      </View>
+                      <Text style={styles.timerWheelDivider}>:</Text>
+                      <View style={styles.timerWheelColumnWrapper}>
+                        <WheelPicker
+                          values={TIMER_MINUTE_OPTIONS}
+                          value={normalizeTimerValue(secondsValue, TIMER_MINUTE_OPTIONS)}
+                          onChange={handleSecondsChange}
+                          accessibilityLabel="Timer minutes"
+                        />
+                      </View>
+                    </View>
+                  </View>
+                </View>
               </View>
-            </View>
+            </>
           ) : (
             <>
               <View style={styles.quantumModalPresetRow}>
@@ -3803,6 +4383,127 @@ function QuantumAdjustModal({
   );
 }
 
+const WHEEL_ITEM_HEIGHT = 34;
+const WHEEL_VISIBLE_ITEMS = 3;
+
+const TIMER_HOUR_OPTIONS = Array.from({ length: 100 }, (_, index) =>
+  String(index).padStart(2, '0')
+);
+const TIMER_MINUTE_OPTIONS = Array.from({ length: 60 }, (_, index) =>
+  String(index).padStart(2, '0')
+);
+
+function normalizeTimerValue(value, options) {
+  const sanitized = value?.replace(/\D/g, '') ?? '';
+  if (!sanitized) {
+    return options[0];
+  }
+  const normalized = Number.parseInt(sanitized, 10);
+  if (Number.isNaN(normalized)) {
+    return options[0];
+  }
+  const clamped = Math.min(Math.max(normalized, 0), options.length - 1);
+  return options[clamped];
+}
+
+function WheelPicker({ values, value, onChange, accessibilityLabel, itemHeight = WHEEL_ITEM_HEIGHT }) {
+  const scrollRef = useRef(null);
+  const isMomentumScrolling = useRef(false);
+  const isDragging = useRef(false);
+  const valueIndex = Math.max(0, values.indexOf(value));
+
+  useEffect(() => {
+    if (!scrollRef.current || isMomentumScrolling.current || isDragging.current) {
+      return undefined;
+    }
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: valueIndex * itemHeight, animated: false });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [valueIndex, itemHeight]);
+
+  const finalizeSelection = useCallback(
+    (offsetY) => {
+      const maxOffset = Math.max(0, (values.length - 1) * itemHeight);
+      const clampedOffset = Math.min(Math.max(offsetY, 0), maxOffset);
+      const index = Math.round(clampedOffset / itemHeight);
+      const clampedIndex = Math.min(Math.max(index, 0), values.length - 1);
+      const nextValue = values[clampedIndex];
+
+      if (nextValue && clampedIndex !== valueIndex) {
+        onChange(nextValue);
+        if (HAPTICS_SUPPORTED && typeof Haptics.selectionAsync === 'function') {
+          try {
+            Haptics.selectionAsync();
+          } catch {
+            // Ignore missing haptics support on web
+          }
+        }
+      }
+    },
+    [itemHeight, onChange, valueIndex, values]
+  );
+
+  const handleMomentumBegin = useCallback(() => {
+    isMomentumScrolling.current = true;
+  }, []);
+
+  const handleMomentumEnd = useCallback(
+    (event) => {
+      isMomentumScrolling.current = false;
+      finalizeSelection(event.nativeEvent.contentOffset.y ?? 0);
+    },
+    [finalizeSelection]
+  );
+
+  const handleScrollBeginDrag = useCallback(() => {
+    isDragging.current = true;
+  }, []);
+
+  const handleScrollEndDrag = useCallback(
+    (event) => {
+      isDragging.current = false;
+      if (!isMomentumScrolling.current) {
+        finalizeSelection(event.nativeEvent.contentOffset.y ?? 0);
+      }
+    },
+    [finalizeSelection]
+  );
+
+  return (
+    <ScrollView
+      ref={scrollRef}
+      style={styles.timerWheelColumn}
+      contentContainerStyle={[styles.timerWheelColumnContent, { paddingVertical: itemHeight }]}
+      showsVerticalScrollIndicator={false}
+      snapToInterval={itemHeight}
+      decelerationRate={Platform.select({ ios: 'fast', android: 0.998 })}
+      overScrollMode="never"
+      bounces
+      scrollEventThrottle={16}
+      nestedScrollEnabled
+      onStartShouldSetResponderCapture={() => true}
+      onMoveShouldSetResponderCapture={() => true}
+      onMomentumScrollBegin={handleMomentumBegin}
+      onMomentumScrollEnd={handleMomentumEnd}
+      onScrollBeginDrag={handleScrollBeginDrag}
+      onScrollEndDrag={handleScrollEndDrag}
+      accessibilityLabel={accessibilityLabel}
+    >
+      {values.map((item, index) => {
+        const isActive = index === valueIndex;
+        return (
+          <View key={`${item}-${index}`} style={[styles.timerWheelItem, { height: itemHeight }]}>
+            <Text style={[styles.timerWheelItemText, isActive && styles.timerWheelItemTextActive]}>
+              {item}
+            </Text>
+          </View>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 export default function App() {
   useEffect(() => {
     const lockOrientation = async () => {
@@ -3814,6 +4515,17 @@ export default function App() {
     };
 
     void lockOrientation();
+  }, []);
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+    void Notifications.setNotificationChannelAsync('default', {
+      name: 'Default',
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: 'default',
+      enableVibrate: true,
+    });
   }, []);
 
   return (
@@ -3838,6 +4550,20 @@ const styles = StyleSheet.create({
   appFrame: {
     flex: 1,
     backgroundColor: '#f6f6fb',
+  },
+  confettiContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 20,
+    elevation: 10,
+  },
+  confettiPiece: {
+    position: 'absolute',
+    borderRadius: 2,
+    opacity: 0.9,
   },
   content: {
     flex: 1,
@@ -4247,12 +4973,12 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 360,
     backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 20,
+    borderRadius: 26,
+    padding: 22,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
     elevation: 8,
   },
   quantumModalHeader: {
@@ -4261,12 +4987,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   quantumModalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     color: '#1F2742',
   },
   quantumModalSubtitle: {
-    marginTop: 8,
+    marginTop: 6,
     fontSize: 14,
     color: '#7F8A9A',
   },
@@ -4277,19 +5003,22 @@ const styles = StyleSheet.create({
   },
   quantumModalPresetRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 14,
+    gap: 10,
+    marginTop: 16,
   },
   quantumModalPresetButton: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 14,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EEF3FF',
+    backgroundColor: '#F4F6FB',
+    borderWidth: 1,
+    borderColor: '#D5DBE8',
   },
   quantumModalPresetButtonSelected: {
     backgroundColor: '#1F2742',
+    borderColor: '#1F2742',
   },
   quantumModalPresetText: {
     fontSize: 14,
@@ -4318,26 +5047,117 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1F2742',
   },
-  quantumModalActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 20,
+  quantumModalAmount: {
+    marginTop: 16,
   },
-  quantumModalButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 14,
+  quantumModalAmountLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#7F8A9A',
+    marginBottom: 8,
+  },
+  quantumModalAmountInput: {
+    paddingVertical: 6,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#D5DBE8',
+    backgroundColor: '#F8FAFF',
+    overflow: 'hidden',
+  },
+  timerWheelArea: {
+    position: 'relative',
+    height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS,
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+    overflow: 'hidden',
+  },
+  timerWheelHighlight: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: WHEEL_ITEM_HEIGHT - 4,
+    height: WHEEL_ITEM_HEIGHT + 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(31,39,66,0.16)',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#1F2742',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  timerWheelRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'stretch',
+    gap: 6,
+  },
+  timerWheelDivider: {
+    alignSelf: 'center',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2742',
+  },
+  timerWheelColumn: {
+    width: '100%',
+  },
+  timerWheelColumnWrapper: {
+    width: 90,
+    height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS,
+    overflow: 'hidden',
+  },
+  timerWheelColumnContent: {
+    paddingVertical: WHEEL_ITEM_HEIGHT,
+  },
+  timerWheelItem: {
+    height: WHEEL_ITEM_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  timerWheelItemText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#A3AEC1',
+  },
+  timerWheelItemTextActive: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1F2742',
+  },
+  wheelHighlight: {
+    position: 'absolute',
+    top: WHEEL_ITEM_HEIGHT,
+    left: 0,
+    right: 0,
+    height: WHEEL_ITEM_HEIGHT,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#D5DBE8',
+  },
+  quantumModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 22,
+  },
+  quantumModalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#D5DBE8',
+  },
   quantumModalButtonAdd: {
     backgroundColor: '#1F2742',
+    borderColor: '#1F2742',
   },
   quantumModalButtonSubtract: {
-    backgroundColor: '#EEF3FF',
+    backgroundColor: '#F4F6FB',
   },
   quantumModalButtonText: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '700',
     color: '#1F2742',
   },
@@ -4795,28 +5615,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     paddingHorizontal: 32,
     paddingTop: 24,
-  },
-  avatarContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#F0EFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  profileTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1a1a2e',
-    marginBottom: 8,
-  },
-  profileSubtitle: {
-    fontSize: 15,
-    color: '#6f7a86',
-    textAlign: 'center',
-    marginBottom: 32,
-    lineHeight: 22,
   },
   profileStatsSection: {
     alignSelf: 'stretch',

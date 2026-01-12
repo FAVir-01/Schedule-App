@@ -23,6 +23,7 @@ import Svg, { Path } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as Notifications from 'expo-notifications';
 import { formatTaskTime } from '../utils/timeUtils';
 import { getQuantumProgressLabel, getQuantumProgressPercent } from '../utils/taskUtils';
 import { buildWavePath } from '../utils/waveUtils';
@@ -32,6 +33,7 @@ const SHEET_CLOSE_DURATION = 220;
 const BACKDROP_MAX_OPACITY = 0.5;
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
+const NOTIFICATIONS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
 const COLORS = ['#FFCF70', '#F7A6A1', '#B39DD6', '#79C3FF', '#A8E6CF', '#FDE2A6'];
@@ -145,6 +147,21 @@ const createTagKey = (label, existingKeys) => {
     suffix += 1;
   }
   return candidate;
+};
+
+const mergeTagOptions = (primaryOptions = [], secondaryOptions = []) => {
+  const merged = new Map();
+  primaryOptions.forEach((option) => {
+    if (option?.key) {
+      merged.set(option.key, option);
+    }
+  });
+  secondaryOptions.forEach((option) => {
+    if (option?.key && !merged.has(option.key)) {
+      merged.set(option.key, option);
+    }
+  });
+  return Array.from(merged.values());
 };
 
 const HOUR_VALUES = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -426,6 +443,7 @@ export default function AddHabitSheet({
   onUpdate,
   mode = 'create',
   initialHabit,
+  availableTagOptions = [],
 }) {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -457,7 +475,9 @@ export default function AddHabitSheet({
     end: { hour: 10, minute: 0, meridiem: 'AM' },
   });
   const [reminderOption, setReminderOption] = useState('none');
-  const [tagOptions, setTagOptions] = useState(() => [...DEFAULT_TAG_OPTIONS]);
+  const [tagOptions, setTagOptions] = useState(() =>
+    mergeTagOptions(DEFAULT_TAG_OPTIONS, availableTagOptions)
+  );
   const [selectedTag, setSelectedTag] = useState('none');
   const [selectedType, setSelectedType] = useState(DEFAULT_TYPE_OPTIONS[0].key);
   const [quantumMode, setQuantumMode] = useState(QUANTUM_MODES[0].key);
@@ -499,6 +519,7 @@ export default function AddHabitSheet({
   const translateY = useRef(new Animated.Value(sheetHeight || height)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const isClosingRef = useRef(false);
+  const requestedNotificationPermissionRef = useRef(false);
   const sheetBackgroundColor = useMemo(() => lightenColor(selectedColor, 0.75), [selectedColor]);
   const isEditMode = mode === 'edit';
   const isCopyMode = mode === 'copy';
@@ -514,6 +535,10 @@ export default function AddHabitSheet({
     : isCopyMode
     ? 'Close duplicate habit'
     : 'Close create habit';
+  const mergedDefaultTagOptions = useMemo(
+    () => mergeTagOptions(DEFAULT_TAG_OPTIONS, availableTagOptions),
+    [availableTagOptions]
+  );
 
   const handlePendingPointTimeChange = useCallback((next) => {
     setPendingPointTime((prev) => {
@@ -588,6 +613,17 @@ export default function AddHabitSheet({
     setCustomImage(null);
   }, []);
 
+  const requestNotificationPermission = useCallback(async () => {
+    if (!NOTIFICATIONS_SUPPORTED || requestedNotificationPermissionRef.current) {
+      return;
+    }
+    requestedNotificationPermissionRef.current = true;
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status !== 'granted') {
+      await Notifications.requestPermissionsAsync();
+    }
+  }, []);
+
   const handleOpenPanel = useCallback(
     (panel) => {
       setActivePanel(panel);
@@ -612,6 +648,7 @@ export default function AddHabitSheet({
         });
       } else if (panel === 'reminder') {
         setPendingReminder(reminderOption);
+        void requestNotificationPermission();
       } else if (panel === 'tag') {
         setPendingTag(selectedTag);
       } else if (panel === 'type') {
@@ -630,6 +667,7 @@ export default function AddHabitSheet({
       handlePendingPeriodTimeChange,
       handlePendingPointTimeChange,
       hasSpecifiedTime,
+      requestNotificationPermission,
       subtasks,
       quantumMode,
       quantumAnimation,
@@ -738,6 +776,13 @@ export default function AddHabitSheet({
     setSelectedTag(pendingTag);
     closePanel();
   }, [closePanel, pendingTag]);
+
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    setTagOptions((prev) => mergeTagOptions(mergedDefaultTagOptions, prev));
+  }, [mergedDefaultTagOptions, visible]);
 
   const handleApplyType = useCallback(() => {
     setSelectedType(pendingType);
@@ -995,7 +1040,7 @@ export default function AddHabitSheet({
           });
           setReminderOption('none');
           setSelectedTag('none');
-          setTagOptions([...DEFAULT_TAG_OPTIONS]);
+          setTagOptions(mergedDefaultTagOptions);
           setPendingTag('none');
           setSelectedType(DEFAULT_TYPE_OPTIONS[0].key);
           setPendingType(DEFAULT_TYPE_OPTIONS[0].key);
@@ -1014,6 +1059,7 @@ export default function AddHabitSheet({
           setSubtasks([]);
           setCustomImage(null);
           setIsLoadingImage(false);
+          requestedNotificationPermissionRef.current = false;
         }
       });
     }
@@ -1022,6 +1068,7 @@ export default function AddHabitSheet({
     backdropOpacity,
     height,
     isMounted,
+    mergedDefaultTagOptions,
     sheetHeight,
     translateY,
     visible,
@@ -1774,7 +1821,12 @@ export default function AddHabitSheet({
                 <OptionList
                   options={reminderOptions}
                   selectedKey={pendingReminder}
-                  onSelect={setPendingReminder}
+                  onSelect={(nextReminder) => {
+                    setPendingReminder(nextReminder);
+                    if (nextReminder !== 'none') {
+                      void requestNotificationPermission();
+                    }
+                  }}
                 />
               </OptionOverlay>
             )}
@@ -2122,7 +2174,7 @@ function QuantumPanel({
         {isTimer ? (
           <View style={styles.quantumTimerRow}>
             <View style={styles.quantumField}>
-              <Text style={styles.quantumFieldLabel}>Min</Text>
+              <Text style={styles.quantumFieldLabel}>Hour</Text>
               <TextInput
                 style={styles.quantumFieldInput}
                 value={timerMinutes}
@@ -2131,11 +2183,11 @@ function QuantumPanel({
                 maxLength={2}
                 placeholder="00"
                 placeholderTextColor="#9AA5B5"
-                accessibilityLabel="Timer minutes"
+                accessibilityLabel="Timer hours"
               />
             </View>
             <View style={styles.quantumField}>
-              <Text style={styles.quantumFieldLabel}>Sec</Text>
+              <Text style={styles.quantumFieldLabel}>Min</Text>
               <TextInput
                 style={styles.quantumFieldInput}
                 value={timerSeconds}
@@ -2144,7 +2196,7 @@ function QuantumPanel({
                 maxLength={2}
                 placeholder="00"
                 placeholderTextColor="#9AA5B5"
-                accessibilityLabel="Timer seconds"
+                accessibilityLabel="Timer minutes"
               />
             </View>
           </View>
@@ -2209,7 +2261,7 @@ function QuantumPanel({
       </View>
       <Text style={styles.subtasksPanelHint}>
         {isTimer
-          ? 'Set the timer duration in minutes and seconds.'
+          ? 'Set the timer duration in hours and minutes.'
           : 'Set the count and the unit for this habit.'}
       </Text>
     </View>
