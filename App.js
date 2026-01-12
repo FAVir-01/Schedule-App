@@ -7,6 +7,7 @@ import {
   Easing,
   Platform,
   Image,
+  LayoutAnimation,
   FlatList,
   Modal,
   PanResponder,
@@ -20,6 +21,7 @@ import {
   View,
   useWindowDimensions,
   ImageBackground,
+  UIManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Path } from 'react-native-svg';
@@ -194,6 +196,12 @@ const triggerSuccessFeedback = async () => {
     });
   } catch (error) {
     console.log('Unable to play success sound', error);
+  }
+};
+
+const enableLayoutAnimation = () => {
+  if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
   }
 };
 
@@ -1785,6 +1793,7 @@ function ScheduleApp() {
         : false;
 
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setTasks((previous) =>
         previous.map((task) => {
           if (task.id !== taskId) {
