@@ -24,6 +24,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
+import * as FileSystem from 'expo-file-system/legacy';
 import { formatTaskTime, toTimerSeconds } from '../utils/timeUtils';
 import { getQuantumProgressLabel, getQuantumProgressPercent } from '../utils/taskUtils';
 import { buildWavePath } from '../utils/waveUtils';
@@ -599,7 +600,24 @@ export default function AddHabitSheet({
       });
 
       if (!result.canceled && result.assets?.length) {
-        setCustomImage(result.assets[0].uri);
+        const selectedUri = result.assets[0].uri;
+
+        if (Platform.OS === 'web') {
+          setCustomImage(selectedUri);
+          setEmojiPickerVisible(false);
+          return;
+        }
+
+        const extension = selectedUri.split('.').pop().split(/\#|\?/)[0] || 'jpg';
+        const fileName = `custom_habit_icon_${Date.now()}.${extension}`;
+        const persistentUri = `${FileSystem.documentDirectory}${fileName}`;
+
+        await FileSystem.copyAsync({
+          from: selectedUri,
+          to: persistentUri,
+        });
+
+        setCustomImage(persistentUri);
         setEmojiPickerVisible(false);
       }
     } catch (error) {
