@@ -32,4 +32,24 @@ const formatDuration = (totalSeconds) => {
   return `${hours}:${formatNumber(minutes)}`;
 };
 
-export { formatDuration, formatNumber, formatTaskTime, formatTimeValue, toMinutes };
+const toTimerSeconds = (hours, minutes) => {
+  const safeHours = Number.isFinite(hours) ? Math.max(0, hours) : 0;
+  const safeMinutes = Number.isFinite(minutes) ? Math.max(0, minutes) : 0;
+  return safeHours * 3600 + safeMinutes * 60;
+};
+
+const getTimerTotalSeconds = (timer) => {
+  const hours = Number.parseInt(timer?.minutes ?? 0, 10) || 0;
+  const minutes = Number.parseInt(timer?.seconds ?? 0, 10) || 0;
+  return toTimerSeconds(hours, minutes);
+};
+
+export {
+  formatDuration,
+  formatNumber,
+  formatTaskTime,
+  formatTimeValue,
+  getTimerTotalSeconds,
+  toMinutes,
+  toTimerSeconds,
+};

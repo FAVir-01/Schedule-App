@@ -76,7 +76,7 @@ import {
   getTaskTagDisplayLabel,
   normalizeTaskTagKey,
 } from './utils/taskUtils';
-import { formatTaskTime, toMinutes } from './utils/timeUtils';
+import { formatTaskTime, getTimerTotalSeconds, toMinutes, toTimerSeconds } from './utils/timeUtils';
 import { buildWavePath } from './utils/waveUtils';
 
 // --- COMPONENTE DA FAIXA DO TOPO ---
@@ -1238,14 +1238,13 @@ function ScheduleApp() {
     }
     setQuantumAdjustTaskId(task.id);
     if (task.quantum?.mode === 'timer') {
-      const limitSeconds =
-        (task.quantum?.timer?.minutes ?? 0) * 60 + (task.quantum?.timer?.seconds ?? 0);
+      const limitSeconds = getTimerTotalSeconds(task.quantum?.timer);
       const lastAdjustSeconds = task.quantum?.lastAdjustTimerSeconds ?? 0;
       const clampedSeconds = limitSeconds
         ? Math.min(Math.max(lastAdjustSeconds, 0), limitSeconds)
         : Math.max(lastAdjustSeconds, 0);
-      const lastHours = Math.floor(clampedSeconds / 60);
-      const lastMinutes = clampedSeconds % 60;
+      const lastHours = Math.floor(clampedSeconds / 3600);
+      const lastMinutes = Math.floor((clampedSeconds % 3600) / 60);
       setQuantumAdjustMinutes(String(lastHours));
       setQuantumAdjustSeconds(String(lastMinutes));
     } else {
@@ -1277,12 +1276,11 @@ function ScheduleApp() {
           if (mode === 'timer') {
             const minutes = Number.parseInt(quantumAdjustMinutes, 10) || 0;
             const seconds = Number.parseInt(quantumAdjustSeconds, 10) || 0;
-            const deltaSeconds = minutes * 60 + seconds;
+            const deltaSeconds = toTimerSeconds(minutes, seconds);
             if (!deltaSeconds) {
               return task;
             }
-            const limitSeconds =
-              (task.quantum?.timer?.minutes ?? 0) * 60 + (task.quantum?.timer?.seconds ?? 0);
+            const limitSeconds = getTimerTotalSeconds(task.quantum?.timer);
             if (!limitSeconds) {
               return task;
             }
@@ -4107,6 +4105,7 @@ function QuantumAdjustModal({
   const handleCountChange = useCallback(
     (value) => {
       onChangeCount(value.replace(/\D/g, '').slice(0, 4));
+      triggerSelection();
     },
     [onChangeCount]
   );
@@ -4116,6 +4115,7 @@ function QuantumAdjustModal({
         return;
       }
       onChangeCount(String(value));
+      triggerSelection();
     },
     [onChangeCount]
   );
@@ -4126,6 +4126,7 @@ function QuantumAdjustModal({
       }
       onChangeMinutes(String(minutes));
       onChangeSeconds(String(seconds));
+      triggerSelection();
     },
     [onChangeMinutes, onChangeSeconds]
   );
@@ -4154,6 +4155,7 @@ function QuantumAdjustModal({
         ? presetTotalMinutes - presetMinutes
         : presetTotalMinutes + presetMinutes;
       updateTimerFromTotal(nextTotal);
+      triggerSelection();
     },
     [isOneHourSelected, isThirtySelected, presetTotalMinutes, updateTimerFromTotal]
   );
