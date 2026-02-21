@@ -1971,7 +1971,7 @@ export default function AddHabitSheet({
                         ) : null}
                       </View>
                     </View>
-                    <View style={styles.typePreviewToggle} />
+                    {pendingType !== 'reminder' ? <View style={styles.typePreviewToggle} /> : null}
                   </View>
                 </View>
               </OptionOverlay>
