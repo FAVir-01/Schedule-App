@@ -121,6 +121,7 @@ const DEFAULT_TYPE_OPTIONS = [
   { key: 'default', label: 'Defaut' },
   { key: 'quantum', label: 'Quantum' },
   { key: 'list', label: 'List' },
+  { key: 'reminder', label: 'Reminder' },
 ];
 
 const QUANTUM_MODES = [
@@ -1970,7 +1971,7 @@ export default function AddHabitSheet({
                         ) : null}
                       </View>
                     </View>
-                    <View style={styles.typePreviewToggle} />
+                    {pendingType !== 'reminder' ? <View style={styles.typePreviewToggle} /> : null}
                   </View>
                 </View>
               </OptionOverlay>
