@@ -100,6 +100,14 @@ const StickyMonthHeader = ({ date, customImages }) => {
   );
 };
 
+
+const isPassiveTaskType = (task) => {
+  const type = task?.type;
+  return type === 'reminder';
+};
+
+const shouldCountTaskTowardsCompletion = (task) => !isPassiveTaskType(task);
+
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
@@ -490,9 +498,10 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
   // Se 'date' for nulo, não quebra o app
   const imageSource = date ? getMonthImageSource(date.getMonth(), customImages) : null;
 
-  const totalTasks = tasks.length;
+  const scoredTasks = tasks.filter(shouldCountTaskTowardsCompletion);
+  const totalTasks = scoredTasks.length;
   const dateKey = date ? getDateKey(date) : null;
-  const completedTasks = tasks.filter((t) => t.completed).length;
+  const completedTasks = scoredTasks.filter((t) => t.completed).length;
   const targetSuccessRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
   const [imageErrors, setImageErrors] = useState({});
 
@@ -689,19 +698,20 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
                           ) : null}
                         </View>
 
-                        {task.completed ? (
-                          <Ionicons name="checkmark-circle" size={24} color={baseColor} />
-                        ) : (
-                          <View
-                            style={{
-                              width: 20,
-                              height: 20,
-                              borderRadius: 10,
-                              borderWidth: 2,
-                              borderColor: '#ddd',
-                            }}
-                          />
-                        )}
+                        {task.type !== 'reminder' &&
+                          (task.completed ? (
+                            <Ionicons name="checkmark-circle" size={24} color={baseColor} />
+                          ) : (
+                            <View
+                              style={{
+                                width: 20,
+                                height: 20,
+                                borderRadius: 10,
+                                borderWidth: 2,
+                                borderColor: '#ddd',
+                              }}
+                            />
+                          ))}
                       </View>
                     );
                   })}
@@ -855,8 +865,10 @@ function ScheduleApp() {
       date.setDate(base.getDate() + offset);
       const key = getDateKey(date);
       const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, date));
+      const scoredTasks = dayTasks.filter(shouldCountTaskTowardsCompletion);
       const allCompleted =
-        dayTasks.length > 0 && dayTasks.every((task) => getTaskCompletionStatus(task, key));
+        scoredTasks.length > 0 &&
+        scoredTasks.every((task) => getTaskCompletionStatus(task, key));
       return {
         date,
         key,
@@ -870,8 +882,10 @@ function ScheduleApp() {
     (day) => {
       const dateKey = getDateKey(day);
       const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, day));
+      const scoredTasks = dayTasks.filter(shouldCountTaskTowardsCompletion);
       const allCompleted =
-        dayTasks.length > 0 && dayTasks.every((task) => getTaskCompletionStatus(task, dateKey));
+        scoredTasks.length > 0 &&
+        scoredTasks.every((task) => getTaskCompletionStatus(task, dateKey));
       return allCompleted ? 'success' : 'pending';
     },
     [tasks]
@@ -1117,12 +1131,18 @@ function ScheduleApp() {
       .slice()
       .sort((a, b) => getSortDate(a) - getSortDate(b) || getSortTime(a) - getSortTime(b));
   }, [tasks]);
+  const scorableTasksForSelectedDate = useMemo(
+    () => tasksForSelectedDate.filter(shouldCountTaskTowardsCompletion),
+    [tasksForSelectedDate]
+  );
   const allTasksCompletedForSelectedDay =
-    tasksForSelectedDate.length > 0 &&
-    tasksForSelectedDate.every((task) => getTaskCompletionStatus(task, selectedDateKey));
+    scorableTasksForSelectedDate.length > 0 &&
+    scorableTasksForSelectedDate.every((task) => getTaskCompletionStatus(task, selectedDateKey));
   const completedTaskCount = useMemo(
-    () => tasksForSelectedDate.filter((task) => getTaskCompletionStatus(task, selectedDateKey)).length,
-    [selectedDateKey, tasksForSelectedDate]
+    () =>
+      scorableTasksForSelectedDate.filter((task) => getTaskCompletionStatus(task, selectedDateKey))
+        .length,
+    [scorableTasksForSelectedDate, selectedDateKey]
   );
   const [showConfetti, setShowConfetti] = useState(false);
   const [confettiKey, setConfettiKey] = useState(0);
@@ -1192,10 +1212,11 @@ function ScheduleApp() {
 
     dateRange.forEach((date) => {
       const scheduledTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, date));
-      if (scheduledTasks.length === 0) {
+      const scoredTasks = scheduledTasks.filter(shouldCountTaskTowardsCompletion);
+      if (scoredTasks.length === 0) {
         return;
       }
-      const isComplete = scheduledTasks.every((task) => getTaskCompletionStatus(task, date));
+      const isComplete = scoredTasks.every((task) => getTaskCompletionStatus(task, date));
       if (isComplete) {
         currentStreak += 1;
         bestStreak = Math.max(bestStreak, currentStreak);
@@ -1782,6 +1803,9 @@ function ScheduleApp() {
     (taskId, dateKey = selectedDateKey) => {
       const initialDateKey = dateKey ?? selectedDateKey;
       const targetTask = tasks.find((task) => task.id === taskId);
+      if (isPassiveTaskType(targetTask)) {
+        return;
+      }
       const resolvedDateKey =
         initialDateKey ??
         targetTask?.dateKey ??
@@ -2358,7 +2382,7 @@ function ScheduleApp() {
             >
               <View style={styles.todayHeader}>
                 <Text style={styles.todayTitle}>{selectedDateLabel}</Text>
-                {tasksForSelectedDate.length > 0 && (
+                {scorableTasksForSelectedDate.length > 0 && (
                   <Text
                     style={[
                       styles.todaySubtitle,
@@ -2369,7 +2393,7 @@ function ScheduleApp() {
                   >
                     {allTasksCompletedForSelectedDay
                       ? 'All tasks completed'
-                      : `${completedTaskCount}/${tasksForSelectedDate.length} completed`}
+                      : `${completedTaskCount}/${scorableTasksForSelectedDate.length} completed`}
                   </Text>
                 )}
               </View>
@@ -3098,6 +3122,7 @@ function SwipeableTaskCard({
   }, [completedSubtasks, dateKey, task, totalSubtasks]);
 
   const isQuantum = task.type === 'quantum';
+  const isReminder = task.type === 'reminder';
   const isWaterAnimation = task.quantum?.animation === 'water';
   const waterPercent = useMemo(
     () => getQuantumProgressPercent(task, dateKey),
@@ -3317,32 +3342,34 @@ function SwipeableTaskCard({
             </View>
           </View>
         </Pressable>
-        <Pressable
-          onPress={() => handleAction(toggleAction)}
-          style={[
-            styles.taskToggle,
-            (isQuantumComplete || (!isQuantum && task.completed)) && styles.taskToggleCompleted,
-          ]}
-          accessibilityRole={isQuantum ? 'button' : 'checkbox'}
-          accessibilityLabel={
-            isQuantum
-              ? 'Adjust quantum progress'
-              : task.completed
-              ? 'Mark task as incomplete'
-              : 'Mark task as complete'
-          }
-          accessibilityState={isQuantum ? undefined : { checked: task.completed }}
-        >
-          {isQuantum ? (
-            isQuantumComplete ? (
-              <Ionicons name="checkmark" size={18} color="#ffffff" />
+        {!isReminder && (
+          <Pressable
+            onPress={() => handleAction(toggleAction)}
+            style={[
+              styles.taskToggle,
+              (isQuantumComplete || (!isQuantum && task.completed)) && styles.taskToggleCompleted,
+            ]}
+            accessibilityRole={isQuantum ? 'button' : 'checkbox'}
+            accessibilityLabel={
+              isQuantum
+                ? 'Adjust quantum progress'
+                : task.completed
+                ? 'Mark task as incomplete'
+                : 'Mark task as complete'
+            }
+            accessibilityState={isQuantum ? undefined : { checked: task.completed }}
+          >
+            {isQuantum ? (
+              isQuantumComplete ? (
+                <Ionicons name="checkmark" size={18} color="#ffffff" />
+              ) : (
+                <Ionicons name="add" size={18} color="#1F2742" />
+              )
             ) : (
-              <Ionicons name="add" size={18} color="#1F2742" />
-            )
-          ) : (
-            task.completed && <Ionicons name="checkmark" size={18} color="#ffffff" />
-          )}
-        </Pressable>
+              task.completed && <Ionicons name="checkmark" size={18} color="#ffffff" />
+            )}
+          </Pressable>
+        )}
       </Animated.View>
     </View>
   );
@@ -3986,19 +4013,21 @@ function TaskDetailModal({
                   ) : null}
                 </View>
               </View>
-              <Pressable
-                onPress={() => {
-                  onToggleCompletion?.(task.id);
-                }}
-                style={[styles.detailToggle, task.completed && styles.detailToggleCompleted]}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: task.completed }}
-                accessibilityLabel={
-                  task.completed ? 'Mark task as incomplete' : 'Mark task as complete'
-                }
-              >
-                {task.completed && <Ionicons name="checkmark" size={18} color="#fff" />}
-              </Pressable>
+              {task.type !== 'reminder' && (
+                <Pressable
+                  onPress={() => {
+                    onToggleCompletion?.(task.id);
+                  }}
+                  style={[styles.detailToggle, task.completed && styles.detailToggleCompleted]}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: task.completed }}
+                  accessibilityLabel={
+                    task.completed ? 'Mark task as incomplete' : 'Mark task as complete'
+                  }
+                >
+                  {task.completed && <Ionicons name="checkmark" size={18} color="#fff" />}
+                </Pressable>
+              )}
             </View>
             <ScrollView style={styles.detailSubtasksContainer}>
               {totalSubtasks === 0 ? (
