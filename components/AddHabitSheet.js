@@ -121,6 +121,7 @@ const DEFAULT_TYPE_OPTIONS = [
   { key: 'default', label: 'Defaut' },
   { key: 'quantum', label: 'Quantum' },
   { key: 'list', label: 'List' },
+  { key: 'reminder', label: 'Reminder' },
 ];
 
 const QUANTUM_MODES = [
