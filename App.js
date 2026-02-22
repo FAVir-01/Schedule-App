@@ -2642,6 +2642,17 @@ function ScheduleApp() {
                    <Ionicons name="images-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
                    <Text style={styles.customizeButtonText}>{t.profile.customizeCalendar}</Text>
                 </TouchableOpacity>
+                <View style={styles.languageSection}>
+                  <Text style={styles.languageTitle}>{t.profile.language}</Text>
+                  <View style={styles.languageRow}>
+                    <TouchableOpacity style={[styles.languageButton, language === 'en' && styles.languageButtonActive]} onPress={() => updateUserSettings({ language: 'en' })}>
+                      <Text style={[styles.languageButtonText, language === 'en' && styles.languageButtonTextActive]}>{t.profile.english}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.languageButton, language === 'pt' && styles.languageButtonActive]} onPress={() => updateUserSettings({ language: 'pt' })}>
+                      <Text style={[styles.languageButtonText, language === 'pt' && styles.languageButtonTextActive]}>{t.profile.portuguese}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
                 <TouchableOpacity
                   style={styles.profileTasksButton}
                   onPress={handleOpenProfileTasks}
