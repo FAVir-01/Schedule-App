@@ -8,9 +8,24 @@ const toMinutes = ({ hour, minute, meridiem }) => {
   return normalizedHour * 60 + minute;
 };
 
-const formatTaskTime = (time) => {
+const ANYTIME_LABELS = {
+  en: 'Anytime',
+  pt: 'Qualquer horário',
+};
+
+const resolveAnytimeLabel = (options = {}) => {
+  if (typeof options.anytimeLabel === 'string' && options.anytimeLabel.trim()) {
+    return options.anytimeLabel.trim();
+  }
+  const language = typeof options.language === 'string' ? options.language : 'en';
+  return ANYTIME_LABELS[language] ?? ANYTIME_LABELS.en;
+};
+
+const formatTaskTime = (time, options = {}) => {
+  const anytimeLabel = resolveAnytimeLabel(options);
+
   if (!time || !time.specified) {
-    return 'Anytime';
+    return anytimeLabel;
   }
 
   if (time.mode === 'period' && time.period) {
@@ -22,7 +37,7 @@ const formatTaskTime = (time) => {
     return formatTimeValue(time.point);
   }
 
-  return 'Anytime';
+  return anytimeLabel;
 };
 
 const formatDuration = (totalSeconds) => {
@@ -39,9 +54,9 @@ const toTimerSeconds = (hours, minutes) => {
 };
 
 const getTimerTotalSeconds = (timer) => {
-  const hours = Number.parseInt(timer?.minutes ?? 0, 10) || 0;
-  const minutes = Number.parseInt(timer?.seconds ?? 0, 10) || 0;
-  return toTimerSeconds(hours, minutes);
+  const timerHours = Number.parseInt(timer?.hours ?? timer?.minutes ?? 0, 10) || 0;
+  const timerMinutes = Number.parseInt(timer?.minutesPart ?? timer?.seconds ?? 0, 10) || 0;
+  return toTimerSeconds(timerHours, timerMinutes);
 };
 
 export {

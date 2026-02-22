@@ -1,12 +1,10 @@
 const LEFT_TABS = [
   {
     key: 'today',
-    label: 'Today',
     icon: 'time-outline',
   },
   {
     key: 'calendar',
-    label: 'Calendar',
     icon: 'calendar-clear-outline',
   },
 ];
@@ -14,12 +12,10 @@ const LEFT_TABS = [
 const RIGHT_TABS = [
   {
     key: 'discover',
-    label: 'Discover',
     icon: 'compass-outline',
   },
   {
     key: 'profile',
-    label: 'Profile',
     icon: 'person-outline',
   },
 ];

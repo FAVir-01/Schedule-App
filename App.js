@@ -2566,6 +2566,7 @@ function ScheduleApp() {
                             }
                             setTasks((previous) => previous.filter((current) => current.id !== task.id));
                           }}
+                          language={language}
                           onEdit={() => {
                             const editable = {
                               ...task,
@@ -3044,6 +3045,7 @@ function ScheduleApp() {
         onSelectTask={(taskId) => setActiveProfileTaskId(taskId)}
         onDeleteTask={handleDeleteProfileTask}
         onDeleteSelected={handleDeleteProfileTasks}
+        language={language}
       />
       <ProfileTaskDetailModal
         language={language}
@@ -3069,6 +3071,7 @@ function SwipeableTaskCard({
   onCopy,
   onDelete,
   onEdit,
+  language = 'en',
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const wavePhaseAnim = useRef(new Animated.Value(0)).current;
@@ -3389,7 +3392,7 @@ function SwipeableTaskCard({
               >
                 {task.title}
               </Text>
-              <Text style={styles.taskTime}>{formatTaskTime(task.time)}</Text>
+              <Text style={styles.taskTime}>{formatTaskTime(task.time, { language, anytimeLabel: translations[language]?.sheet?.anytime })}</Text>
               {totalLabel && (
                 <View style={styles.taskSubtaskSummary}>
                   <Text style={styles.taskSubtaskSummaryText}>{totalLabel}</Text>
@@ -3438,6 +3441,7 @@ function ProfileSwipeTaskCard({
   onToggleSelect,
   isSelected,
   selectionMode,
+  language = 'en',
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const actionWidth = 92;
@@ -3592,7 +3596,7 @@ function ProfileSwipeTaskCard({
               ) : null}
             </View>
             <View style={styles.profileTaskMetaRow}>
-              <Text style={styles.profileTaskTime}>{formatTaskTime(task.time)}</Text>
+              <Text style={styles.profileTaskTime}>{formatTaskTime(task.time, { language, anytimeLabel: translations[language]?.sheet?.anytime })}</Text>
               {tagLabel ? (
                 <View style={styles.profileTaskTag}>
                   <Text style={styles.profileTaskTagText}>{tagLabel}</Text>
@@ -3613,6 +3617,7 @@ function ProfileTasksModal({
   onSelectTask,
   onDeleteTask,
   onDeleteSelected,
+  language = 'en',
 }) {
   const [searchValue, setSearchValue] = useState('');
   const [selectedTag, setSelectedTag] = useState('all');
@@ -3844,6 +3849,7 @@ function ProfileTasksModal({
                 onToggleSelect={toggleSelectedTask}
                 isSelected={selectedTaskIds.includes(item.id)}
                 selectionMode={selectionMode}
+                language={language}
               />
             )}
             showsVerticalScrollIndicator={false}
@@ -3873,6 +3879,7 @@ function ProfileTasksModal({
 
 function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock, language = 'en' }) {
   const [hasImageError, setHasImageError] = useState(false);
+  const t = translations[language] ?? translations.en;
 
   useEffect(() => {
     setHasImageError(false);
@@ -3932,7 +3939,7 @@ function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock, language
               )}
               <View style={styles.profileDetailTitleBlock}>
                 <Text style={styles.profileDetailTitle}>{task.title}</Text>
-                <Text style={styles.profileDetailTime}>{formatTaskTime(task.time)}</Text>
+                <Text style={styles.profileDetailTime}>{formatTaskTime(task.time, { language, anytimeLabel: t.sheet.anytime })}</Text>
               </View>
             </View>
             <Pressable
@@ -4013,6 +4020,7 @@ function TaskDetailModal({
   onEdit,
 }) {
   const [hasImageError, setHasImageError] = useState(false);
+  const t = translations[language] ?? translations.en;
 
   useEffect(() => {
     setHasImageError(false);
@@ -4062,7 +4070,7 @@ function TaskDetailModal({
                     style={styles.detailTitleLock}
                   />
                 </View>
-                <Text style={styles.detailTime}>{formatTaskTime(task.time)}</Text>
+                <Text style={styles.detailTime}>{formatTaskTime(task.time, { language, anytimeLabel: t.sheet.anytime })}</Text>
                 {quantumLabel ? (
                   <Text style={styles.detailSubtaskSummaryLabel}>{quantumLabel}</Text>
                 ) : totalSubtasks > 0 ? (
