@@ -848,7 +848,7 @@ function ScheduleApp() {
     const locale = language === 'pt' ? 'pt-BR' : 'en-US';
     const weekday = selectedDate.toLocaleDateString(locale, { weekday: 'long' });
     return `${weekday}, ${selectedDate.getDate()}`;
-  }, [isSelectedToday, language, selectedDate, t.tabs.today]);
+  }, [isSelectedToday, language, selectedDate]);
   useEffect(() => {
     const monthStart = getMonthStart(selectedDate);
     setCalendarMonths((previous) => {
