@@ -24,6 +24,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
+import * as FileSystem from 'expo-file-system/legacy';
 import { formatTaskTime, toTimerSeconds } from '../utils/timeUtils';
 import { getQuantumProgressLabel, getQuantumProgressPercent } from '../utils/taskUtils';
 import { buildWavePath } from '../utils/waveUtils';
@@ -120,6 +121,7 @@ const DEFAULT_TYPE_OPTIONS = [
   { key: 'default', label: 'Defaut' },
   { key: 'quantum', label: 'Quantum' },
   { key: 'list', label: 'List' },
+  { key: 'reminder', label: 'Reminder' },
 ];
 
 const QUANTUM_MODES = [
@@ -599,7 +601,24 @@ export default function AddHabitSheet({
       });
 
       if (!result.canceled && result.assets?.length) {
-        setCustomImage(result.assets[0].uri);
+        const selectedUri = result.assets[0].uri;
+
+        if (Platform.OS === 'web') {
+          setCustomImage(selectedUri);
+          setEmojiPickerVisible(false);
+          return;
+        }
+
+        const extension = selectedUri.split('.').pop().split(/\#|\?/)[0] || 'jpg';
+        const fileName = `custom_habit_icon_${Date.now()}.${extension}`;
+        const persistentUri = `${FileSystem.documentDirectory}${fileName}`;
+
+        await FileSystem.copyAsync({
+          from: selectedUri,
+          to: persistentUri,
+        });
+
+        setCustomImage(persistentUri);
         setEmojiPickerVisible(false);
       }
     } catch (error) {
@@ -1952,7 +1971,7 @@ export default function AddHabitSheet({
                         ) : null}
                       </View>
                     </View>
-                    <View style={styles.typePreviewToggle} />
+                    {pendingType !== 'reminder' ? <View style={styles.typePreviewToggle} /> : null}
                   </View>
                 </View>
               </OptionOverlay>
