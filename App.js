@@ -2666,12 +2666,18 @@ function ScheduleApp() {
                 </TouchableOpacity>
                 <View style={styles.languageSection}>
                   <TouchableOpacity
-                    style={styles.languageDisclosure}
+                    style={[styles.profileTasksButton, styles.languageActionButton]}
                     activeOpacity={0.85}
                     onPress={() => setLanguageMenuOpen((prev) => !prev)}
                   >
-                    <Text style={styles.languageTitle}>{t.profile.language}</Text>
-                    <Ionicons name={isLanguageMenuOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#1a1a2e" />
+                    <Ionicons name="language-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.profileTasksButtonText}>{t.profile.language}</Text>
+                    <Ionicons
+                      name={isLanguageMenuOpen ? 'chevron-up' : 'chevron-down'}
+                      size={18}
+                      color="#fff"
+                      style={styles.languageActionChevron}
+                    />
                   </TouchableOpacity>
                   {isLanguageMenuOpen ? (
                     <View style={styles.languageRow}>
@@ -5760,17 +5766,14 @@ const styles = StyleSheet.create({
     width: '100%',
     marginTop: 14,
     marginBottom: 2,
-  },
-  languageTitle: {
-    color: '#1a1a2e',
-    fontWeight: '700',
-  },
-  languageDisclosure: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
+  },
+  languageActionButton: {
+    marginTop: 0,
     marginBottom: 8,
+  },
+  languageActionChevron: {
+    marginLeft: 12,
   },
   languageRow: {
     flexDirection: 'row',
