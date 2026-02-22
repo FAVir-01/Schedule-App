@@ -461,7 +461,9 @@ export default function AddHabitSheet({
   language = 'en',
 }) {
   const { height } = useWindowDimensions();
-  const t = (translations[language] ?? translations.en).sheet;
+  const localePack = translations[language] ?? translations.en;
+  const t = localePack.sheet;
+  const common = localePack.common;
   const insets = useSafeAreaInsets();
   const sheetHeight = useMemo(() => {
     const usableHeight = height - insets.top;
@@ -491,8 +493,18 @@ export default function AddHabitSheet({
     end: { hour: 10, minute: 0, meridiem: 'AM' },
   });
   const [reminderOption, setReminderOption] = useState('none');
+
+  const localizedDefaultTags = useMemo(() => ([
+    { key: 'none', label: t.noTag },
+    { key: 'clean_room', label: language === 'pt' ? 'Limpar o quarto' : 'Clean Room' },
+    { key: 'healthy_lifestyle', label: language === 'pt' ? 'Estilo de vida saudável' : 'Healthy Lifestyle' },
+    { key: 'morning_routine', label: language === 'pt' ? 'Rotina matinal' : 'Morning Routine' },
+    { key: 'relationship', label: language === 'pt' ? 'Relacionamento' : 'Relationship' },
+    { key: 'sleep_better', label: language === 'pt' ? 'Dormir melhor' : 'Sleep Better' },
+    { key: 'workout', label: language === 'pt' ? 'Treino' : 'Workout' },
+  ]), [language, t.noTag]);
   const [tagOptions, setTagOptions] = useState(() =>
-    mergeTagOptions(DEFAULT_TAG_OPTIONS, availableTagOptions)
+    mergeTagOptions(localizedDefaultTags, availableTagOptions)
   );
   const [selectedTag, setSelectedTag] = useState('none');
   const [selectedType, setSelectedType] = useState(DEFAULT_TYPE_OPTIONS[0].key);
@@ -541,7 +553,7 @@ export default function AddHabitSheet({
   const sheetBackgroundColor = useMemo(() => lightenColor(selectedColor, 0.75), [selectedColor]);
   const isEditMode = mode === 'edit';
   const isCopyMode = mode === 'copy';
-  const submitLabel = isEditMode ? 'Save' : 'Create';
+  const submitLabel = isEditMode ? common.save : common.create;
   const isDragCloseEnabled = false;
   const accessibilityAnnouncement = isEditMode
     ? 'Edit habit'
@@ -554,8 +566,8 @@ export default function AddHabitSheet({
     ? 'Close duplicate habit'
     : 'Close create habit';
   const mergedDefaultTagOptions = useMemo(
-    () => mergeTagOptions(DEFAULT_TAG_OPTIONS, availableTagOptions),
-    [availableTagOptions]
+    () => mergeTagOptions(localizedDefaultTags, availableTagOptions),
+    [availableTagOptions, localizedDefaultTags]
   );
 
   const handlePendingPointTimeChange = useCallback((next) => {
@@ -1294,7 +1306,44 @@ export default function AddHabitSheet({
 
   const isSubmitDisabled = !title.trim();
 
-  const dateLabel = useMemo(() => formatDateLabel(startDate), [startDate]);
+  const formatDateLabelLocalized = useCallback((date) => {
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+
+    if (date.toDateString() === today.toDateString()) {
+      return t.quickToday;
+    }
+
+    if (date.toDateString() === tomorrow.toDateString()) {
+      return t.quickTomorrow;
+    }
+
+    const locale = language === 'pt' ? 'pt-BR' : 'en-US';
+    return date.toLocaleDateString(locale, {
+      month: 'short',
+      day: 'numeric',
+      weekday: 'short',
+    });
+  }, [language, t.quickToday, t.quickTomorrow]);
+
+  const getRepeatLabelLocalized = useCallback((config, start) => {
+    if (!config?.enabled) {
+      return t.noRepeat;
+    }
+
+    const units = {
+      daily: { singular: t.daySingle, plural: t.dayPlural },
+      weekly: { singular: t.weekSingle, plural: t.weekPlural },
+      monthly: { singular: t.monthSingle, plural: t.monthPlural },
+    };
+    const unit = units[config.frequency] || units.daily;
+    const everyText = `${t.repeatEvery} ${config.interval} ${config.interval === 1 ? unit.singular : unit.plural}`;
+    const endText = config.endDate ? ` ${t.until} ${formatDateLabelLocalized(config.endDate)}` : '';
+    return `${everyText}${endText}`;
+  }, [formatDateLabelLocalized, t.dayPlural, t.daySingle, t.monthPlural, t.monthSingle, t.noRepeat, t.repeatEvery, t.until, t.weekPlural, t.weekSingle]);
+
+  const dateLabel = useMemo(() => formatDateLabelLocalized(startDate), [formatDateLabelLocalized, startDate]);
   const repeatConfig = useMemo(
     () => ({
       enabled: isRepeatEnabled,
@@ -1315,8 +1364,8 @@ export default function AddHabitSheet({
     ]
   );
   const repeatLabel = useMemo(
-    () => getRepeatLabel(repeatConfig, startDate),
-    [repeatConfig, startDate]
+    () => getRepeatLabelLocalized(repeatConfig, startDate),
+    [getRepeatLabelLocalized, repeatConfig, startDate]
   );
   const normalizedPointTime = useMemo(() => normalizeTimeValue(pointTime), [pointTime]);
   const normalizedPeriodTime = useMemo(
@@ -1345,8 +1394,8 @@ export default function AddHabitSheet({
     () =>
       REMINDER_OPTIONS.map((option) => ({
         ...option,
-        label: option.key === 'none' ? t.noReminder : option.label,
-        hint: getReminderHint(option, hasSpecifiedTime, timeMode, pointTime, periodTime),
+        label: option.key === 'none' ? t.noReminder : option.key === 'at_time' ? t.reminderAtTimeOfEvent : option.key === '5m' ? t.reminder5m : option.key === '15m' ? t.reminder15m : option.key === '30m' ? t.reminder30m : option.key === '1h' ? t.reminder1h : option.label,
+        hint: getReminderHint(option, hasSpecifiedTime, timeMode, pointTime, periodTime).replace('No time set', t.noTimeSet),
       })),
     [hasSpecifiedTime, periodTime, pointTime, t.noReminder, timeMode]
   );
@@ -1355,8 +1404,8 @@ export default function AddHabitSheet({
     if (!match || match.key === 'none') {
       return t.noReminder;
     }
-    return match.hint ?? 'No time set';
-  }, [reminderOption, reminderOptions, t.noReminder]);
+    return match.hint ?? t.noTimeSet;
+  }, [reminderOption, reminderOptions, t.noReminder, t.noTimeSet]);
   const tagLabel = useMemo(() => {
     const match = tagOptions.find((option) => option.key === selectedTag);
     return match?.label ?? t.noTag;
@@ -1376,14 +1425,14 @@ export default function AddHabitSheet({
 
   const pendingTimeTitle = useMemo(() => {
     if (!pendingHasSpecifiedTime) {
-      return 'Do it any time of the day';
+      return t.doItAnyTime;
     }
     if (pendingTimeMode === 'period') {
       const startLabel = formatTime(normalizedPendingPeriodTime.start);
       const endLabel = formatTime(normalizedPendingPeriodTime.end);
-      return `Do it from ${startLabel} to ${endLabel} of the day`;
+      return t.doItFromTo.replace('{start}', startLabel).replace('{end}', endLabel);
     }
-    return `Do it at ${formatTime(normalizedPendingPointTime)} of the day`;
+    return t.doItAt.replace('{time}', formatTime(normalizedPendingPointTime));
   }, [
     normalizedPendingPeriodTime,
     normalizedPendingPointTime,
@@ -1810,9 +1859,10 @@ export default function AddHabitSheet({
             {activePanel === 'date' && (
               <OptionOverlay
                 title={t.startingFrom}
-                subtitle={formatDateLabel(pendingDate)}
+                subtitle={formatDateLabelLocalized(pendingDate)}
                 onClose={closePanel}
                 onApply={handleApplyDate}
+                applyLabel={common.apply}
               >
                 <DatePanel
                   month={calendarMonth}
@@ -1820,14 +1870,16 @@ export default function AddHabitSheet({
                   onSelectDate={setPendingDate}
                   onChangeMonth={setCalendarMonthState}
                   repeatConfig={repeatConfig}
+                  labels={t}
                 />
               </OptionOverlay>
             )}
             {activePanel === 'repeat' && (
               <OptionOverlay
-                title="Set task repeat"
+                title={t.setTaskRepeat}
                 onClose={closePanel}
                 onApply={handleApplyRepeat}
+                applyLabel={common.apply}
               >
                 <RepeatPanel
                   isEnabled={pendingIsRepeatEnabled}
@@ -1865,6 +1917,7 @@ export default function AddHabitSheet({
                   onToggleHasEndDate={setPendingHasEndDate}
                   onChangeEndDate={setPendingEndDate}
                   startDate={startDate}
+                  labels={t}
                 />
               </OptionOverlay>
             )}
@@ -1873,6 +1926,7 @@ export default function AddHabitSheet({
                 title={pendingTimeTitle}
                 onClose={closePanel}
                 onApply={handleApplyTime}
+                applyLabel={common.apply}
               >
                 <TimePanel
                   specified={pendingHasSpecifiedTime}
@@ -1883,14 +1937,16 @@ export default function AddHabitSheet({
                   onPointTimeChange={handlePendingPointTimeChange}
                   periodTime={pendingPeriodTime}
                   onPeriodTimeChange={handlePendingPeriodTimeChange}
+                  labels={t}
                 />
               </OptionOverlay>
             )}
             {activePanel === 'reminder' && (
               <OptionOverlay
-                title="Reminder"
+                title={t.reminder}
                 onClose={closePanel}
                 onApply={handleApplyReminder}
+                applyLabel={common.apply}
               >
                 <OptionList
                   options={reminderOptions}
@@ -1909,6 +1965,7 @@ export default function AddHabitSheet({
                   title={t.tag}
                 onClose={closePanel}
                 onApply={handleApplyTag}
+                applyLabel={common.apply}
               >
                 <TagPanel
                   options={tagOptions}
@@ -1924,6 +1981,7 @@ export default function AddHabitSheet({
                 title={t.type}
                 onClose={closePanel}
                 onApply={handleApplyType}
+                applyLabel={common.apply}
               >
                 <OptionList
                   options={typeOptions}
@@ -1952,7 +2010,7 @@ export default function AddHabitSheet({
                                 isSelected && styles.quantumModeButtonTextSelected,
                               ]}
                             >
-                              {option.label}
+                              {option.key === 'timer' ? t.timer : t.count}
                             </Text>
                           </Pressable>
                         );
@@ -2205,7 +2263,7 @@ function TagPanel({ options, selectedKey, onSelect, onCreateTag, labels }) {
           accessibilityState={{ disabled: isDisabled }}
         >
           <Text style={[styles.tagAddButtonText, isDisabled && styles.tagAddButtonTextDisabled]}>
-            Add
+            {labels.add}
           </Text>
         </Pressable>
       </View>
@@ -2254,7 +2312,7 @@ function QuantumPanel({
         {isTimer ? (
           <View style={styles.quantumTimerRow}>
             <View style={styles.quantumField}>
-              <Text style={styles.quantumFieldLabel}>Hour</Text>
+              <Text style={styles.quantumFieldLabel}>{labels.hour}</Text>
               <TextInput
                 style={styles.quantumFieldInput}
                 value={timerMinutes}
@@ -2267,7 +2325,7 @@ function QuantumPanel({
               />
             </View>
             <View style={styles.quantumField}>
-              <Text style={styles.quantumFieldLabel}>Min</Text>
+              <Text style={styles.quantumFieldLabel}>{labels.min}</Text>
               <TextInput
                 style={styles.quantumFieldInput}
                 value={timerSeconds}
@@ -2296,13 +2354,13 @@ function QuantumPanel({
               />
             </View>
             <View style={styles.quantumField}>
-              <Text style={styles.quantumFieldLabel}>Unit</Text>
+              <Text style={styles.quantumFieldLabel}>{labels.unit}</Text>
               <TextInput
                 style={styles.quantumFieldInput}
                 value={countUnit}
                 onChangeText={onChangeCountUnit}
                 maxLength={12}
-                placeholder="Unit"
+                placeholder={labels.unit}
                 placeholderTextColor="#9AA5B5"
                 accessibilityLabel="Count unit"
               />
@@ -2310,7 +2368,7 @@ function QuantumPanel({
           </View>
         )}
         <View style={styles.quantumAnimationSection}>
-          <Text style={styles.quantumFieldLabel}>Animation</Text>
+          <Text style={styles.quantumFieldLabel}>{labels.animation}</Text>
           <View style={styles.quantumAnimationRow}>
             {QUANTUM_ANIMATIONS.map((option) => {
               const isSelected = animation === option.key;
@@ -2341,8 +2399,8 @@ function QuantumPanel({
       </View>
       <Text style={styles.subtasksPanelHint}>
         {isTimer
-          ? 'Set the timer duration in hours and minutes.'
-          : 'Set the count and the unit for this habit.'}
+          ? `${labels.timer}: ${labels.hour}/${labels.min}`
+          : `${labels.count}: ${labels.unit}`}
       </Text>
     </View>
   );
@@ -2406,18 +2464,18 @@ function SubtasksPanel({ value, onChange, labels }) {
         <View style={[styles.subtaskComposer, hasSubtasks && styles.subtaskComposerWithDivider]}>
           <TextInput
             style={styles.subtaskComposerInput}
-            placeholder="Add subtask"
+            placeholder={labels.addSubtask}
             placeholderTextColor="#9AA5B5"
             value={draft}
             onChangeText={setDraft}
             onSubmitEditing={handleSubmitEditing}
             returnKeyType="done"
-            accessibilityLabel="Add subtask"
+            accessibilityLabel={labels.addSubtask}
           />
           <Pressable
             onPress={handleAdd}
             accessibilityRole="button"
-            accessibilityLabel="Add subtask"
+            accessibilityLabel={labels.addSubtask}
             style={[styles.subtaskComposerAdd, trimmedDraft.length === 0 && styles.subtaskComposerAddDisabled]}
             disabled={trimmedDraft.length === 0}
           >
@@ -2429,12 +2487,12 @@ function SubtasksPanel({ value, onChange, labels }) {
           </Pressable>
         </View>
       </View>
-      <Text style={styles.subtasksPanelHint}>Subtasks can be set as your daily routine or checklist</Text>
+      <Text style={styles.subtasksPanelHint}>{labels.subtasksHint}</Text>
     </View>
   );
 }
 
-function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatConfig }) {
+function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatConfig, labels }) {
   const today = useMemo(() => normalizeDate(new Date()), []);
   const [visibleMonth, setVisibleMonth] = useState(() => normalizeDate(month));
 
@@ -2448,7 +2506,7 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatCon
   const monthInfo = useMemo(() => getMonthMetadata(visibleMonth), [visibleMonth]);
   const monthLabel = useMemo(
     () =>
-      visibleMonth.toLocaleDateString(undefined, {
+      visibleMonth.toLocaleDateString(labels.quickToday === 'Hoje' ? 'pt-BR' : 'en-US', {
         month: 'long',
         year: 'numeric',
       }),
@@ -2541,17 +2599,17 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatCon
     <View>
       <View style={styles.quickSelectRow}>
         <QuickSelectButton
-          label="Today"
+          label={labels.quickToday}
           active={isSameDay(selectedDate, today)}
           onPress={() => handleSelectQuick(today)}
         />
         <QuickSelectButton
-          label="Tomorrow"
+          label={labels.quickTomorrow}
           active={isSameDay(selectedDate, tomorrow)}
           onPress={() => handleSelectQuick(tomorrow)}
         />
         <QuickSelectButton
-          label="Next Monday"
+          label={labels.quickNextMonday}
           active={isSameDay(selectedDate, nextMonday)}
           onPress={() => handleSelectQuick(nextMonday)}
         />
@@ -2570,7 +2628,7 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatCon
         </Pressable>
       </View>
       <View style={styles.weekdayHeader}>
-        {WEEKDAYS.map((weekday) => (
+        {(labels.quickToday === 'Hoje' ? WEEKDAYS_PT : WEEKDAYS_EN).map((weekday) => (
           <Text key={weekday.key} style={styles.weekdayLabel}>
             {weekday.label}
           </Text>
@@ -2636,6 +2694,7 @@ function RepeatPanel({
   onToggleHasEndDate,
   onChangeEndDate,
   startDate,
+  labels,
 }) {
   const [showIntervalPicker, setShowIntervalPicker] = useState(false);
   const [endDateMonth, setEndDateMonth] = useState(() => normalizeDate(endDate || startDate || new Date()));
@@ -2649,10 +2708,10 @@ function RepeatPanel({
     }
   }, [endDate]);
 
-  const intervalUnit = useMemo(() => FREQUENCY_LABELS[frequency] || FREQUENCY_LABELS.daily, [frequency]);
+  const intervalUnit = useMemo(() => ({ singular: frequency === 'daily' ? labels.daySingle : frequency === 'weekly' ? labels.weekSingle : labels.monthSingle, plural: frequency === 'daily' ? labels.dayPlural : frequency === 'weekly' ? labels.weekPlural : labels.monthPlural }), [frequency, labels.dayPlural, labels.daySingle, labels.monthPlural, labels.monthSingle, labels.weekPlural, labels.weekSingle]);
   const intervalSummary = useMemo(
-    () => `Every ${interval} ${interval === 1 ? intervalUnit.singular : intervalUnit.plural}`,
-    [interval, intervalUnit]
+    () => `${labels.repeatEvery} ${interval} ${interval === 1 ? intervalUnit.singular : intervalUnit.plural}`,
+    [interval, intervalUnit, labels.repeatEvery]
   );
 
   const handleSelectFrequency = useCallback(
@@ -2694,8 +2753,8 @@ function RepeatPanel({
             <Ionicons name="repeat-outline" size={22} color="#1F2742" />
           </View>
           <View>
-            <Text style={styles.specifiedTitle}>Repeat</Text>
-            <Text style={styles.specifiedSubtitle}>Customize recurrence</Text>
+            <Text style={styles.specifiedTitle}>{labels.repeat}</Text>
+            <Text style={styles.specifiedSubtitle}>{labels.setTaskRepeat}</Text>
           </View>
         </View>
         <Switch
@@ -2710,17 +2769,17 @@ function RepeatPanel({
         <View style={styles.repeatContent}>
           <View style={styles.segmentedControl}>
             <SegmentedControlButton
-              label="Daily"
+              label={labels.daily}
               active={frequency === 'daily'}
               onPress={() => handleSelectFrequency('daily')}
             />
             <SegmentedControlButton
-              label="Weekly"
+              label={labels.weekly}
               active={frequency === 'weekly'}
               onPress={() => handleSelectFrequency('weekly')}
             />
             <SegmentedControlButton
-              label="Monthly"
+              label={labels.monthly}
               active={frequency === 'monthly'}
               onPress={() => handleSelectFrequency('monthly')}
             />
@@ -2787,8 +2846,8 @@ function RepeatPanel({
             {showIntervalPicker && (
               <View style={styles.wheelGroup}>
                 <View style={styles.wheelLabelsRow}>
-                  <Text style={styles.wheelLabel}>Every</Text>
-                  <Text style={styles.wheelLabel}>Unit</Text>
+                  <Text style={styles.wheelLabel}>{labels.repeatEvery}</Text>
+                  <Text style={styles.wheelLabel}>{labels.unit}</Text>
                 </View>
                 <View style={styles.wheelArea}>
                   <View pointerEvents="none" style={styles.wheelHighlight} />
@@ -2846,6 +2905,7 @@ function TimePanel({
   onPointTimeChange,
   periodTime,
   onPeriodTimeChange,
+  labels,
 }) {
   const hourIndex = Math.max(0, HOUR_VALUES.indexOf(pointTime.hour));
   const minuteIndex = Math.max(0, MINUTE_VALUES.indexOf(pointTime.minute));
@@ -2866,8 +2926,8 @@ function TimePanel({
             <Ionicons name="time-outline" size={22} color="#1F2742" />
           </View>
           <View>
-            <Text style={styles.specifiedTitle}>Specified time</Text>
-            <Text style={styles.specifiedSubtitle}>Set a specific time to do it</Text>
+            <Text style={styles.specifiedTitle}>{labels.specifiedTime}</Text>
+            <Text style={styles.specifiedSubtitle}>{labels.setSpecificTime}</Text>
           </View>
         </View>
         <Switch
@@ -2881,12 +2941,12 @@ function TimePanel({
         <>
           <View style={styles.segmentedControl}>
             <SegmentedControlButton
-              label="Point time"
+              label={labels.pointTime}
               active={mode === 'point'}
               onPress={() => onModeChange('point')}
             />
             <SegmentedControlButton
-              label="Time period"
+              label={labels.timePeriod}
               active={mode === 'period'}
               onPress={() => onModeChange('period')}
             />
@@ -2894,8 +2954,8 @@ function TimePanel({
           {mode === 'point' ? (
             <View style={styles.wheelGroup}>
               <View style={styles.wheelLabelsRow}>
-                <Text style={styles.wheelLabel}>Hour</Text>
-                <Text style={styles.wheelLabel}>Min</Text>
+                <Text style={styles.wheelLabel}>{labels.hour}</Text>
+                <Text style={styles.wheelLabel}>{labels.min}</Text>
                 <Text style={styles.wheelLabel}>AM/PM</Text>
               </View>
               <View style={styles.wheelArea}>
@@ -2926,11 +2986,11 @@ function TimePanel({
             </View>
           ) : (
             <View style={styles.periodSection}>
-              <Text style={styles.periodLabel}>FROM</Text>
+              <Text style={styles.periodLabel}>{labels.from}</Text>
               <View style={styles.wheelGroup}>
                 <View style={styles.wheelLabelsRow}>
-                  <Text style={styles.wheelLabel}>Hour</Text>
-                  <Text style={styles.wheelLabel}>Min</Text>
+                  <Text style={styles.wheelLabel}>{labels.hour}</Text>
+                  <Text style={styles.wheelLabel}>{labels.min}</Text>
                   <Text style={styles.wheelLabel}>AM/PM</Text>
                 </View>
                 <View style={styles.wheelArea}>
@@ -2971,11 +3031,11 @@ function TimePanel({
                   </View>
                 </View>
               </View>
-              <Text style={[styles.periodLabel, styles.periodLabelSpacer]}>TO</Text>
+              <Text style={[styles.periodLabel, styles.periodLabelSpacer]}>{labels.to}</Text>
               <View style={styles.wheelGroup}>
                 <View style={styles.wheelLabelsRow}>
-                  <Text style={styles.wheelLabel}>Hour</Text>
-                  <Text style={styles.wheelLabel}>Min</Text>
+                  <Text style={styles.wheelLabel}>{labels.hour}</Text>
+                  <Text style={styles.wheelLabel}>{labels.min}</Text>
                   <Text style={styles.wheelLabel}>AM/PM</Text>
                 </View>
                 <View style={styles.wheelArea}>

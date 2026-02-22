@@ -734,6 +734,7 @@ function ScheduleApp() {
   const [habitSheetInitialTask, setHabitSheetInitialTask] = useState(null);
   const [isCustomizeCalendarOpen, setCustomizeCalendarOpen] = useState(false);
   const [isProfileTasksOpen, setProfileTasksOpen] = useState(false);
+  const [isLanguageMenuOpen, setLanguageMenuOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -2396,8 +2397,8 @@ function ScheduleApp() {
                     ]}
                   >
                     {allTasksCompletedForSelectedDay
-                      ? 'All tasks completed'
-                      : `${completedTaskCount}/${scorableTasksForSelectedDate.length} completed`}
+                      ? (language === 'pt' ? 'Todas as tarefas concluídas' : 'All tasks completed')
+                      : `${completedTaskCount}/${scorableTasksForSelectedDate.length} ${language === 'pt' ? 'concluídas' : 'completed'}`}
                   </Text>
                 )}
               </View>
@@ -2461,7 +2462,7 @@ function ScheduleApp() {
                         }
                       }}
                       accessibilityRole="button"
-                      accessibilityLabel="Show all tags"
+                      accessibilityLabel={language === 'pt' ? 'Mostrar todos os rótulos' : 'Show all tags'}
                       accessibilityState={{ selected: selectedTagFilter === 'all' }}
                     >
                       <Text
@@ -2470,7 +2471,7 @@ function ScheduleApp() {
                           selectedTagFilter === 'all' && styles.tagPillTextSelected,
                         ]}
                       >
-                        All
+                        {t.common.all}
                       </Text>
                     </Pressable>
                     {tagOptions.map((option) => {
@@ -2661,6 +2662,26 @@ function ScheduleApp() {
                   <Ionicons name="list-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
                   <Text style={styles.profileTasksButtonText}>{t.profile.openTasks}</Text>
                 </TouchableOpacity>
+                <View style={styles.languageSection}>
+                  <TouchableOpacity
+                    style={styles.languageDisclosure}
+                    activeOpacity={0.85}
+                    onPress={() => setLanguageMenuOpen((prev) => !prev)}
+                  >
+                    <Text style={styles.languageTitle}>{t.profile.language}</Text>
+                    <Ionicons name={isLanguageMenuOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#1a1a2e" />
+                  </TouchableOpacity>
+                  {isLanguageMenuOpen ? (
+                    <View style={styles.languageRow}>
+                      <TouchableOpacity style={[styles.languageButton, language === 'en' && styles.languageButtonActive]} onPress={() => updateUserSettings({ language: 'en' })}>
+                        <Text style={[styles.languageButtonText, language === 'en' && styles.languageButtonTextActive]}>{t.profile.english}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.languageButton, language === 'pt' && styles.languageButtonActive]} onPress={() => updateUserSettings({ language: 'pt' })}>
+                        <Text style={[styles.languageButtonText, language === 'pt' && styles.languageButtonTextActive]}>{t.profile.portuguese}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
+                </View>
              </View>
           ) : (
             <View style={styles.placeholderContainer}>
@@ -2939,6 +2960,7 @@ function ScheduleApp() {
         )}
       </View>
       <TaskDetailModal
+        language={language}
         visible={Boolean(activeTaskForSelectedDate)}
         task={activeTaskForSelectedDate}
         dateKey={selectedDateKey}
@@ -3014,6 +3036,7 @@ function ScheduleApp() {
         onDeleteSelected={handleDeleteProfileTasks}
       />
       <ProfileTaskDetailModal
+        language={language}
         visible={isProfileTasksOpen && !!activeProfileTaskId}
         task={activeProfileTask}
         onClose={() => setActiveProfileTaskId(null)}
@@ -3838,20 +3861,22 @@ function ProfileTasksModal({
   );
 }
 
-function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock }) {
+function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock, language = 'en' }) {
   const [hasImageError, setHasImageError] = useState(false);
 
   useEffect(() => {
     setHasImageError(false);
   }, [task?.customImage, visible]);
 
+  const t = translations[language] ?? translations.en;
+
   if (!visible || !task) {
     return null;
   }
 
   const normalizedDate = normalizeDateValue(task.date ?? task.dateKey);
-  const dateLabel = normalizedDate ? format(normalizedDate, 'PPP', { locale: getDateLocale('en') }) : 'Not set';
-  const tagLabel = getTaskTagDisplayLabel(task) ?? 'No tag';
+  const dateLabel = normalizedDate ? format(normalizedDate, 'PPP', { locale: getDateLocale(language) }) : t.common.notSet;
+  const tagLabel = getTaskTagDisplayLabel(task) ?? t.sheet.noTag;
   const typeLabel = task.typeLabel ?? task.type ?? 'Standard';
   const isQuantum = task.type === 'quantum';
   const repeatConfig = normalizeRepeatConfig(task.repeat);
@@ -3930,7 +3955,7 @@ function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock }) {
             {isQuantum ? (
               <View style={styles.profileDetailRow}>
                 <Text style={styles.profileDetailLabel}>{quantumModeLabel}</Text>
-                <Text style={styles.profileDetailValue}>{quantumLabel ?? 'Not set'}</Text>
+                <Text style={styles.profileDetailValue}>{quantumLabel ?? t.common.notSet}</Text>
               </View>
             ) : (
               <View style={styles.profileDetailRow}>
@@ -3969,6 +3994,7 @@ function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock }) {
 }
 
 function TaskDetailModal({
+  language = 'en',
   visible,
   task,
   dateKey,
@@ -3982,6 +4008,8 @@ function TaskDetailModal({
   useEffect(() => {
     setHasImageError(false);
   }, [task?.customImage, visible]);
+
+  const t = translations[language] ?? translations.en;
 
   if (!visible || !task) {
     return null;
@@ -4054,7 +4082,7 @@ function TaskDetailModal({
             </View>
             <ScrollView style={styles.detailSubtasksContainer}>
               {totalSubtasks === 0 ? (
-                <Text style={styles.detailEmptySubtasks}>No subtasks added yet.</Text>
+                <Text style={styles.detailEmptySubtasks}>{t.taskModal.noSubtasks}</Text>
               ) : (
                 task.subtasks.map((subtask) => (
                   <Pressable
@@ -4101,7 +4129,7 @@ function TaskDetailModal({
             >
               <View style={styles.detailEditContent}>
                 <Ionicons name="create-outline" size={18} color="#3c2ba7" />
-                <Text style={styles.detailEditButtonText}>Edit Task</Text>
+                <Text style={styles.detailEditButtonText}>{t.taskModal.editTask}</Text>
               </View>
             </Pressable>
           </View>
@@ -4214,6 +4242,8 @@ function QuantumAdjustModal({
   const disableActions = isTimer
     ? (Number.parseInt(minutesValue, 10) || 0) * 60 + (Number.parseInt(secondsValue, 10) || 0) <= 0
     : (Number.parseInt(countValue, 10) || 0) <= 0;
+
+  const t = translations[language] ?? translations.en;
 
   if (!visible || !task) {
     return null;
@@ -5062,7 +5092,7 @@ const styles = StyleSheet.create({
   },
   quantumModalPresetButton: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
@@ -5094,7 +5124,7 @@ const styles = StyleSheet.create({
   quantumModalInput: {
     backgroundColor: '#F4F6FB',
     borderRadius: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 12,
     textAlign: 'center',
     fontSize: 16,
@@ -5224,7 +5254,7 @@ const styles = StyleSheet.create({
   detailSubtaskRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderColor: '#d9dcea',
   },
@@ -5344,7 +5374,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#ffffff',
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     width: '100%',
     shadowColor: '#000',
@@ -5742,18 +5772,25 @@ const styles = StyleSheet.create({
   languageTitle: {
     color: '#1a1a2e',
     fontWeight: '700',
+  },
+  languageDisclosure: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
     marginBottom: 8,
   },
   languageRow: {
     flexDirection: 'row',
     gap: 8,
+    width: '100%',
   },
   languageButton: {
     flex: 1,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#d4dcf0',
-    paddingVertical: 10,
+    paddingVertical: 12,
     alignItems: 'center',
     backgroundColor: '#fff',
   },
@@ -5833,7 +5870,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f4f6fb',
     borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   profileTasksSearchInput: {
     flex: 1,
