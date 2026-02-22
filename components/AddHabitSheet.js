@@ -28,6 +28,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { formatTaskTime, toTimerSeconds } from '../utils/timeUtils';
 import { getQuantumProgressLabel, getQuantumProgressPercent } from '../utils/taskUtils';
 import { buildWavePath } from '../utils/waveUtils';
+import { translations } from '../constants/i18n';
 
 const SHEET_OPEN_DURATION = 300;
 const SHEET_CLOSE_DURATION = 220;
@@ -73,7 +74,7 @@ const EMOJIS = [
 ];
 const DEFAULT_EMOJI = EMOJIS[0];
 
-const WEEKDAYS = [
+const WEEKDAYS_EN = [
   { key: 'sun', label: 'S' },
   { key: 'mon', label: 'M' },
   { key: 'tue', label: 'T' },
@@ -82,6 +83,17 @@ const WEEKDAYS = [
   { key: 'fri', label: 'F' },
   { key: 'sat', label: 'S' },
 ];
+
+const WEEKDAYS_PT = [
+  { key: 'sun', label: 'D' },
+  { key: 'mon', label: 'S' },
+  { key: 'tue', label: 'T' },
+  { key: 'wed', label: 'Q' },
+  { key: 'thu', label: 'Q' },
+  { key: 'fri', label: 'S' },
+  { key: 'sat', label: 'S' },
+];
+const WEEKDAYS = WEEKDAYS_EN;
 const WEEKDAY_KEYS = WEEKDAYS.map((weekday) => weekday.key);
 const WEEKDAY_SHORT_NAMES = {
   sun: 'Sun',
@@ -446,8 +458,10 @@ export default function AddHabitSheet({
   mode = 'create',
   initialHabit,
   availableTagOptions = [],
+  language = 'en',
 }) {
   const { height } = useWindowDimensions();
+  const t = (translations[language] ?? translations.en).sheet;
   const insets = useSafeAreaInsets();
   const sheetHeight = useMemo(() => {
     const usableHeight = height - insets.top;
@@ -489,6 +503,8 @@ export default function AddHabitSheet({
   const [quantumCountValue, setQuantumCountValue] = useState('1');
   const [quantumCountUnit, setQuantumCountUnit] = useState('');
   const [subtasks, setSubtasks] = useState([]);
+  const [activeInfoKey, setActiveInfoKey] = useState(null);
+  const infoTimeoutRef = useRef(null);
 
   const [calendarMonth, setCalendarMonthState] = useState(
     () => new Date(startDate.getFullYear(), startDate.getMonth(), 1)
@@ -567,6 +583,20 @@ export default function AddHabitSheet({
         }
       );
     });
+  }, []);
+
+  useEffect(() => () => {
+    if (infoTimeoutRef.current) {
+      clearTimeout(infoTimeoutRef.current);
+    }
+  }, []);
+
+  const showInfo = useCallback((key) => {
+    setActiveInfoKey(key);
+    if (infoTimeoutRef.current) {
+      clearTimeout(infoTimeoutRef.current);
+    }
+    infoTimeoutRef.current = setTimeout(() => setActiveInfoKey(null), 5000);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -1304,34 +1334,40 @@ export default function AddHabitSheet({
 
   const timeValue = useMemo(() => {
     if (!hasSpecifiedTime) {
-      return 'Anytime';
+      return t.anytime;
     }
     if (timeMode === 'point') {
       return formatTime(normalizedPointTime);
     }
     return formatPeriod(normalizedPeriodTime);
-  }, [hasSpecifiedTime, normalizedPeriodTime, normalizedPointTime, timeMode]);
+  }, [hasSpecifiedTime, normalizedPeriodTime, normalizedPointTime, t.anytime, timeMode]);
   const reminderOptions = useMemo(
     () =>
       REMINDER_OPTIONS.map((option) => ({
         ...option,
+        label: option.key === 'none' ? t.noReminder : option.label,
         hint: getReminderHint(option, hasSpecifiedTime, timeMode, pointTime, periodTime),
       })),
-    [hasSpecifiedTime, periodTime, pointTime, timeMode]
+    [hasSpecifiedTime, periodTime, pointTime, t.noReminder, timeMode]
   );
   const reminderLabel = useMemo(() => {
     const match = reminderOptions.find((option) => option.key === reminderOption);
     if (!match || match.key === 'none') {
-      return 'No reminder';
+      return t.noReminder;
     }
     return match.hint ?? 'No time set';
-  }, [reminderOption, reminderOptions]);
+  }, [reminderOption, reminderOptions, t.noReminder]);
   const tagLabel = useMemo(() => {
     const match = tagOptions.find((option) => option.key === selectedTag);
-    return match?.label ?? 'No tag';
-  }, [selectedTag, tagOptions]);
+    return match?.label ?? t.noTag;
+  }, [selectedTag, t.noTag, tagOptions]);
 
-  const typeOptions = DEFAULT_TYPE_OPTIONS;
+  const typeOptions = useMemo(() => ([
+    { key: 'default', label: t.defaultType },
+    { key: 'quantum', label: t.measurementType },
+    { key: 'list', label: t.listType },
+    { key: 'reminder', label: t.reminderType },
+  ]), [t.defaultType, t.listType, t.measurementType, t.reminderType]);
 
   const typeLabel = useMemo(() => {
     const match = typeOptions.find((option) => option.key === selectedType);
@@ -1646,10 +1682,10 @@ export default function AddHabitSheet({
                 ref={titleInputRef}
                 value={title}
                 onChangeText={(text) => setTitle(text.slice(0, 50))}
-                placeholder="New Task"
+                placeholder={t.newTask}
                 placeholderTextColor="#7f8a9a"
                 style={styles.titleInput}
-                accessibilityLabel="New Task"
+                accessibilityLabel={t.newTask}
                 maxLength={50}
                 returnKeyType="done"
               />
@@ -1678,9 +1714,12 @@ export default function AddHabitSheet({
                       <Ionicons name="calendar-clear-outline" size={22} color="#61708A" />
                     </View>
                   )}
-                  label="Starting from"
+                  label={t.startingFrom}
                   value={dateLabel}
                   onPress={() => handleOpenPanel('date')}
+                  infoText={t.info.startingFrom}
+                  onPressInfo={() => showInfo('startingFrom')}
+                  isInfoVisible={activeInfoKey === 'startingFrom'}
                 />
                 <SheetRow
                   icon={(
@@ -1688,9 +1727,12 @@ export default function AddHabitSheet({
                       <Ionicons name="repeat-outline" size={22} color="#61708A" />
                     </View>
                   )}
-                  label="Repeat"
+                  label={t.repeat}
                   value={repeatLabel}
                   onPress={() => handleOpenPanel('repeat')}
+                  infoText={t.info.repeat}
+                  onPressInfo={() => showInfo('repeat')}
+                  isInfoVisible={activeInfoKey === 'repeat'}
                 />
                 <SheetRow
                   icon={(
@@ -1698,9 +1740,12 @@ export default function AddHabitSheet({
                       <Ionicons name="time-outline" size={22} color="#61708A" />
                     </View>
                   )}
-                  label="Time"
+                  label={t.time}
                   value={timeValue}
                   onPress={() => handleOpenPanel('time')}
+                  infoText={t.info.time}
+                  onPressInfo={() => showInfo('time')}
+                  isInfoVisible={activeInfoKey === 'time'}
                 />
                 <SheetRow
                   icon={(
@@ -1708,9 +1753,12 @@ export default function AddHabitSheet({
                       <Ionicons name="notifications-outline" size={22} color="#61708A" />
                     </View>
                   )}
-                  label="Reminder"
+                  label={t.reminder}
                   value={reminderLabel}
                   onPress={() => handleOpenPanel('reminder')}
+                  infoText={t.info.reminder}
+                  onPressInfo={() => showInfo('reminder')}
+                  isInfoVisible={activeInfoKey === 'reminder'}
                 />
                 <SheetRow
                   icon={(
@@ -1718,9 +1766,12 @@ export default function AddHabitSheet({
                       <Ionicons name="pricetag-outline" size={22} color="#61708A" />
                     </View>
                   )}
-                  label="Tag"
+                  label={t.tag}
                   value={tagLabel}
                   onPress={() => handleOpenPanel('tag')}
+                  infoText={t.info.tag}
+                  onPressInfo={() => showInfo('tag')}
+                  isInfoVisible={activeInfoKey === 'tag'}
                 />
                 <SheetRow
                   icon={(
@@ -1728,9 +1779,12 @@ export default function AddHabitSheet({
                       <Ionicons name="layers-outline" size={22} color="#61708A" />
                     </View>
                   )}
-                  label="Type"
+                  label={t.type}
                   value={typeLabel}
                   onPress={() => handleOpenPanel('type')}
+                  infoText={t.info.type}
+                  onPressInfo={() => showInfo('type')}
+                  isInfoVisible={activeInfoKey === 'type'}
                   isLast
                 />
               </View>
@@ -1747,14 +1801,15 @@ export default function AddHabitSheet({
                   onChangeTimerSeconds={setQuantumTimerSeconds}
                   onChangeCountValue={setQuantumCountValue}
                   onChangeCountUnit={setQuantumCountUnit}
+                  labels={t}
                 />
               ) : (
-                <SubtasksPanel value={subtasks} onChange={setSubtasks} />
+                <SubtasksPanel value={subtasks} onChange={setSubtasks} labels={t} />
               )}
             </ScrollView>
             {activePanel === 'date' && (
               <OptionOverlay
-                title="Starting from"
+                title={t.startingFrom}
                 subtitle={formatDateLabel(pendingDate)}
                 onClose={closePanel}
                 onApply={handleApplyDate}
@@ -1851,7 +1906,7 @@ export default function AddHabitSheet({
             )}
             {activePanel === 'tag' && (
                 <OptionOverlay
-                  title="Tag"
+                  title={t.tag}
                 onClose={closePanel}
                 onApply={handleApplyTag}
               >
@@ -1860,12 +1915,13 @@ export default function AddHabitSheet({
                   selectedKey={pendingTag}
                   onSelect={setPendingTag}
                   onCreateTag={handleCreateCustomTag}
+                  labels={t}
                 />
               </OptionOverlay>
             )}
             {activePanel === 'type' && (
               <OptionOverlay
-                title="Type"
+                title={t.type}
                 onClose={closePanel}
                 onApply={handleApplyType}
               >
@@ -1915,11 +1971,12 @@ export default function AddHabitSheet({
                       onChangeCountValue={setPendingQuantumCountValue}
                       onChangeCountUnit={setPendingQuantumCountUnit}
                       showTitle={false}
+                      labels={t}
                     />
                   </>
                 )}
                 <View style={styles.typePreviewSection}>
-                  <Text style={styles.typePreviewLabel}>Preview</Text>
+                  <View style={styles.infoLabelRow}><Text style={styles.typePreviewLabel}>{t.preview}</Text><Pressable onPress={() => showInfo('preview')} style={styles.infoIconButton}><Ionicons name="help-circle-outline" size={14} color="#6f7a86" /></Pressable></View>{activeInfoKey === 'preview' ? <View style={styles.inlineInfoBubble}><Text style={styles.inlineInfoText}>{pendingType === 'default' ? t.info.previewDefault : pendingType === 'quantum' ? t.info.previewQuantum : pendingType === 'list' ? t.info.previewList : t.info.previewReminder}</Text></View> : null}
                   <View
                     style={[
                       styles.typePreviewCard,
@@ -1991,6 +2048,9 @@ function SheetRow({
   showChevron = true,
   isLast = false,
   disabled = false,
+  infoText,
+  onPressInfo,
+  isInfoVisible = false,
 }) {
   return (
     <Pressable
@@ -2002,7 +2062,7 @@ function SheetRow({
     >
       <View style={styles.rowLeft}>
         {icon}
-        <Text style={styles.rowLabel}>{label}</Text>
+        <View style={styles.infoLabelRow}><Text style={styles.rowLabel}>{label}</Text>{infoText ? <Pressable onPress={onPressInfo} style={styles.infoIconButton}><Ionicons name="help-circle-outline" size={14} color="#6f7a86" /></Pressable> : null}</View>{isInfoVisible ? <View style={styles.inlineInfoBubble}><Text style={styles.inlineInfoText}>{infoText}</Text></View> : null}
       </View>
 
       <View style={styles.rowRight}>
@@ -2107,7 +2167,7 @@ function OptionList({ options, selectedKey, onSelect }) {
   );
 }
 
-function TagPanel({ options, selectedKey, onSelect, onCreateTag }) {
+function TagPanel({ options, selectedKey, onSelect, onCreateTag, labels }) {
   const [newTagName, setNewTagName] = useState('');
   const trimmed = newTagName.trim();
   const isDisabled = trimmed.length === 0;
@@ -2128,14 +2188,14 @@ function TagPanel({ options, selectedKey, onSelect, onCreateTag }) {
       <View style={styles.tagCreator}>
         <TextInput
           style={styles.tagInput}
-          placeholder="Create new tag"
+          placeholder={labels.createNewTag}
           placeholderTextColor="#7F8A9A"
           value={newTagName}
           onChangeText={setNewTagName}
           onSubmitEditing={handleAddTag}
           returnKeyType="done"
           maxLength={30}
-          accessibilityLabel="Create new tag"
+          accessibilityLabel={labels.createNewTag}
         />
         <Pressable
           style={[styles.tagAddButton, isDisabled && styles.tagAddButtonDisabled]}
@@ -2181,13 +2241,14 @@ function QuantumPanel({
   onChangeCountValue,
   onChangeCountUnit,
   showTitle = true,
+  labels,
 }) {
   const isTimer = mode === 'timer';
 
   return (
     <View style={styles.subtasksPanel}>
       {showTitle ? (
-        <Text style={styles.subtasksTitle}>{isTimer ? 'Timer' : 'Count'}</Text>
+        <Text style={styles.subtasksTitle}>{isTimer ? labels.timer : labels.count}</Text>
       ) : null}
       <View style={styles.subtasksCard}>
         {isTimer ? (
@@ -2222,7 +2283,7 @@ function QuantumPanel({
         ) : (
           <View style={styles.quantumCountRow}>
             <View style={styles.quantumField}>
-              <Text style={styles.quantumFieldLabel}>Count</Text>
+              <Text style={styles.quantumFieldLabel}>{labels.count}</Text>
               <TextInput
                 style={styles.quantumFieldInput}
                 value={countValue}
@@ -2287,7 +2348,7 @@ function QuantumPanel({
   );
 }
 
-function SubtasksPanel({ value, onChange }) {
+function SubtasksPanel({ value, onChange, labels }) {
   const [draft, setDraft] = useState('');
   const trimmedDraft = draft.trim();
   const list = Array.isArray(value) ? value : [];
@@ -2318,7 +2379,7 @@ function SubtasksPanel({ value, onChange }) {
 
   return (
     <View style={styles.subtasksPanel}>
-      <Text style={styles.subtasksTitle}>Subtasks</Text>
+      <Text style={styles.subtasksTitle}>{labels.subtasks}</Text>
       <View style={styles.subtasksCard}>
         {hasSubtasks && (
           <View style={styles.subtasksList}>
@@ -4030,5 +4091,26 @@ const styles = StyleSheet.create({
   },
   periodLabelSpacer: {
     marginTop: 2,
+  },
+
+  infoLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  infoIconButton: {
+    padding: 2,
+  },
+  inlineInfoBubble: {
+    marginTop: 6,
+    backgroundColor: '#eef3ff',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  inlineInfoText: {
+    color: '#425071',
+    fontSize: 12,
+    lineHeight: 16,
   },
 });
