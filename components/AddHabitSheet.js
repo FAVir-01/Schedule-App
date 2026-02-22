@@ -1392,12 +1392,15 @@ export default function AddHabitSheet({
   }, [hasSpecifiedTime, normalizedPeriodTime, normalizedPointTime, t.anytime, timeMode]);
   const reminderOptions = useMemo(
     () =>
-      REMINDER_OPTIONS.map((option) => ({
-        ...option,
-        label: option.key === 'none' ? t.noReminder : option.key === 'at_time' ? t.reminderAtTimeOfEvent : option.key === '5m' ? t.reminder5m : option.key === '15m' ? t.reminder15m : option.key === '30m' ? t.reminder30m : option.key === '1h' ? t.reminder1h : option.label,
-        hint: getReminderHint(option, hasSpecifiedTime, timeMode, pointTime, periodTime).replace('No time set', t.noTimeSet),
-      })),
-    [hasSpecifiedTime, periodTime, pointTime, t.noReminder, timeMode]
+      REMINDER_OPTIONS.map((option) => {
+        const rawHint = getReminderHint(option, hasSpecifiedTime, timeMode, pointTime, periodTime);
+        return {
+          ...option,
+          label: option.key === 'none' ? t.noReminder : option.key === 'at_time' ? t.reminderAtTimeOfEvent : option.key === '5m' ? t.reminder5m : option.key === '15m' ? t.reminder15m : option.key === '30m' ? t.reminder30m : option.key === '1h' ? t.reminder1h : option.label,
+          hint: typeof rawHint === 'string' ? rawHint.replace('No time set', t.noTimeSet) : rawHint,
+        };
+      }),
+    [hasSpecifiedTime, periodTime, pointTime, t.noReminder, t.noTimeSet, timeMode]
   );
   const reminderLabel = useMemo(() => {
     const match = reminderOptions.find((option) => option.key === reminderOption);
