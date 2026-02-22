@@ -1400,7 +1400,19 @@ export default function AddHabitSheet({
           hint: typeof rawHint === 'string' ? rawHint.replace('No time set', t.noTimeSet) : rawHint,
         };
       }),
-    [hasSpecifiedTime, periodTime, pointTime, t.noReminder, t.noTimeSet, timeMode]
+    [
+      hasSpecifiedTime,
+      periodTime,
+      pointTime,
+      t.noReminder,
+      t.noTimeSet,
+      t.reminderAtTimeOfEvent,
+      t.reminder5m,
+      t.reminder15m,
+      t.reminder30m,
+      t.reminder1h,
+      timeMode,
+    ]
   );
   const reminderLabel = useMemo(() => {
     const match = reminderOptions.find((option) => option.key === reminderOption);
@@ -1441,6 +1453,9 @@ export default function AddHabitSheet({
     normalizedPendingPointTime,
     pendingHasSpecifiedTime,
     pendingTimeMode,
+    t.doItAnyTime,
+    t.doItAt,
+    t.doItFromTo,
   ]);
   const previewTitle = useMemo(
     () => (title.trim() ? title.trim() : 'Untitled task'),
@@ -2513,7 +2528,7 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatCon
         month: 'long',
         year: 'numeric',
       }),
-    [visibleMonth]
+    [labels.quickToday, visibleMonth]
   );
   const previousMonth = useMemo(() => addMonths(visibleMonth, -1), [visibleMonth]);
   const nextMonth = useMemo(() => addMonths(visibleMonth, 1), [visibleMonth]);

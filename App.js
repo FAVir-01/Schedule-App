@@ -752,7 +752,6 @@ function ScheduleApp() {
     DEFAULT_USER_SETTINGS.selectedTagFilter
   );
   const language = userSettings.language ?? DEFAULT_USER_SETTINGS.language;
-  const t = translations[language] ?? translations.en;
   const [history, setHistory] = useState([]);
   const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
@@ -3008,6 +3007,7 @@ function ScheduleApp() {
         language={language}
       />
       <QuantumAdjustModal
+        language={language}
         task={tasks.find((task) => task.id === quantumAdjustTaskId) ?? null}
         visible={!!quantumAdjustTaskId}
         minutesValue={quantumAdjustMinutes}
@@ -3868,7 +3868,6 @@ function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock, language
     setHasImageError(false);
   }, [task?.customImage, visible]);
 
-  const t = translations[language] ?? translations.en;
 
   if (!visible || !task) {
     return null;
@@ -4009,7 +4008,6 @@ function TaskDetailModal({
     setHasImageError(false);
   }, [task?.customImage, visible]);
 
-  const t = translations[language] ?? translations.en;
 
   if (!visible || !task) {
     return null;
@@ -4140,6 +4138,7 @@ function TaskDetailModal({
 }
 
 function QuantumAdjustModal({
+  language = 'en',
   task,
   visible,
   minutesValue,
@@ -4243,7 +4242,6 @@ function QuantumAdjustModal({
     ? (Number.parseInt(minutesValue, 10) || 0) * 60 + (Number.parseInt(secondsValue, 10) || 0) <= 0
     : (Number.parseInt(countValue, 10) || 0) <= 0;
 
-  const t = translations[language] ?? translations.en;
 
   if (!visible || !task) {
     return null;
@@ -5208,16 +5206,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: '#1F2742',
-  },
-  wheelHighlight: {
-    position: 'absolute',
-    top: WHEEL_ITEM_HEIGHT,
-    left: 0,
-    right: 0,
-    height: WHEEL_ITEM_HEIGHT,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#D5DBE8',
   },
   quantumModalActions: {
     flexDirection: 'row',
