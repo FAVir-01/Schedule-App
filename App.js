@@ -55,7 +55,7 @@ import {
   saveUserSettings,
 } from './storage';
 import AddHabitSheet from './components/AddHabitSheet';
-import { MONTH_NAMES, getMonthImageSource } from './constants/months';
+import { getMonthImageSource } from './constants/months';
 import { DEFAULT_USER_SETTINGS } from './constants/userSettings';
 import { getNavigationBarThemeForTab } from './constants/navigation';
 import { interpolateHexColor, lightenColor } from './utils/colorUtils';
@@ -408,7 +408,7 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress, customImages, langu
 };
 
 // --- COMPONENTE CUSTOMIZE CALENDAR MODAL ---
-function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage }) {
+function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage, language = 'en' }) {
   if (!visible) return null;
 
   const handlePickImage = async (index) => {
@@ -445,18 +445,25 @@ function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage 
     }
   };
 
+  const t = translations[language] ?? translations.en;
+
+  const monthLabels = Array.from({ length: 12 }, (_, index) => {
+    const monthDate = new Date(2026, index, 1);
+    return format(monthDate, 'MMMM', { locale: getDateLocale(language) }).toUpperCase();
+  });
+
   return (
     <Modal animationType="slide" transparent={false} visible={visible} onRequestClose={onClose}>
       <SafeAreaView style={styles.customizeModalContainer}>
         <View style={styles.customizeHeader}>
-          <Text style={styles.customizeTitle}>Customize Calendar</Text>
+          <Text style={styles.customizeTitle}>{t.profile.customizeCalendarModalTitle}</Text>
           <Pressable onPress={onClose} hitSlop={12}>
             <Ionicons name="close" size={28} color="#1a1a2e" />
           </Pressable>
         </View>
 
         <ScrollView contentContainerStyle={styles.customizeScrollContent} showsVerticalScrollIndicator={false}>
-          {MONTH_NAMES.map((name, index) => {
+          {monthLabels.map((name, index) => {
             const source = getMonthImageSource(index, customImages);
 
             return (
@@ -487,7 +494,7 @@ function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage 
 }
 
 
-function DayReportModal({ visible, date, tasks, onClose, customImages }) {
+function DayReportModal({ visible, date, tasks, onClose, customImages, language = 'en' }) {
   const { height } = useWindowDimensions();
 
   // 1. Configuração da Animação
@@ -503,6 +510,7 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
   const dateKey = date ? getDateKey(date) : null;
   const completedTasks = scoredTasks.filter((t) => t.completed).length;
   const targetSuccessRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const t = translations[language] ?? translations.en;
   const [imageErrors, setImageErrors] = useState({});
 
   useEffect(() => {
@@ -541,11 +549,14 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
   if (!visible || !date) return null;
 
   const getSummaryText = () => {
-    if (totalTasks === 0) return 'No habits scheduled for this day.';
-    if (targetSuccessRate === 100) return 'Incredible! You crushed all your habits!';
+    if (totalTasks === 0) return t.report.noHabits;
+    if (targetSuccessRate === 100) return t.report.perfect;
     if (targetSuccessRate === 0)
-      return `You had ${totalTasks} habit(s) and completed none. Let's see what they were 👀`;
-    return `You completed ${completedTasks} out of ${totalTasks} habit(s). Keep going!`;
+      return t.report.noneCompleted
+      .replace('{total}', String(totalTasks));
+    return t.report.partialCompleted
+      .replace('{completed}', String(completedTasks))
+      .replace('{total}', String(totalTasks));
   };
 
   return (
@@ -574,7 +585,7 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
           <ScrollView contentContainerStyle={styles.reportScrollContent}>
             <Text style={styles.reportSummaryText}>{getSummaryText()}</Text>
 
-            <Text style={styles.reportSectionTitle}>Daily stats</Text>
+            <Text style={styles.reportSectionTitle}>{t.report.dailyStats}</Text>
 
             <View style={styles.statsCard}>
               <View style={styles.gaugeContainer}>
@@ -618,21 +629,21 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
                     }}
                   >
                     <Text style={styles.gaugePercentage}>{displayRate}</Text>
-                    <Text style={styles.gaugeLabel}>Success rate</Text>
+                    <Text style={styles.gaugeLabel}>{t.report.successRate}</Text>
                   </View>
                 </View>
               </View>
 
               <View style={styles.statsRow}>
                 <View style={styles.statBox}>
-                  <Text style={styles.statLabel}>Committed</Text>
+                  <Text style={styles.statLabel}>{t.report.committed}</Text>
                   <View style={styles.statValueRow}>
                     <Text style={styles.statNumber}>{totalTasks}</Text>
                     <Text style={{ fontSize: 20 }}>✍️</Text>
                   </View>
                 </View>
                 <View style={styles.statBox}>
-                  <Text style={styles.statLabel}>Completed</Text>
+                  <Text style={styles.statLabel}>{t.report.completed}</Text>
                   <View style={styles.statValueRow}>
                     <Text style={styles.statNumber}>{completedTasks}</Text>
                     <Ionicons name="checkbox" size={24} color="#3dd598" />
@@ -643,7 +654,7 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
 
             {totalTasks > 0 && (
               <>
-                <Text style={styles.reportSectionTitle}>Habits</Text>
+                <Text style={styles.reportSectionTitle}>{t.report.habits}</Text>
                 <View style={styles.reportTaskList}>
                   {tasks.map((task, index) => {
                     const baseColor = task.color || '#3c2ba7';
@@ -2397,8 +2408,10 @@ function ScheduleApp() {
                     ]}
                   >
                     {allTasksCompletedForSelectedDay
-                      ? (language === 'pt' ? 'Todas as tarefas concluídas' : 'All tasks completed')
-                      : `${completedTaskCount}/${scorableTasksForSelectedDate.length} ${language === 'pt' ? 'concluídas' : 'completed'}`}
+                      ? t.today.allTasksCompleted
+                      : t.today.completedProgress
+                          .replace('{completed}', String(completedTaskCount))
+                          .replace('{total}', String(scorableTasksForSelectedDate.length))}
                   </Text>
                 )}
               </View>
@@ -2553,6 +2566,7 @@ function ScheduleApp() {
                             }
                             setTasks((previous) => previous.filter((current) => current.id !== task.id));
                           }}
+                          language={language}
                           onEdit={() => {
                             const editable = {
                               ...task,
@@ -2643,17 +2657,6 @@ function ScheduleApp() {
                    <Ionicons name="images-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
                    <Text style={styles.customizeButtonText}>{t.profile.customizeCalendar}</Text>
                 </TouchableOpacity>
-                <View style={styles.languageSection}>
-                  <Text style={styles.languageTitle}>{t.profile.language}</Text>
-                  <View style={styles.languageRow}>
-                    <TouchableOpacity style={[styles.languageButton, language === 'en' && styles.languageButtonActive]} onPress={() => updateUserSettings({ language: 'en' })}>
-                      <Text style={[styles.languageButtonText, language === 'en' && styles.languageButtonTextActive]}>{t.profile.english}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.languageButton, language === 'pt' && styles.languageButtonActive]} onPress={() => updateUserSettings({ language: 'pt' })}>
-                      <Text style={[styles.languageButtonText, language === 'pt' && styles.languageButtonTextActive]}>{t.profile.portuguese}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
                 <TouchableOpacity
                   style={styles.profileTasksButton}
                   onPress={handleOpenProfileTasks}
@@ -2664,12 +2667,18 @@ function ScheduleApp() {
                 </TouchableOpacity>
                 <View style={styles.languageSection}>
                   <TouchableOpacity
-                    style={styles.languageDisclosure}
+                    style={[styles.profileTasksButton, styles.languageActionButton]}
                     activeOpacity={0.85}
                     onPress={() => setLanguageMenuOpen((prev) => !prev)}
                   >
-                    <Text style={styles.languageTitle}>{t.profile.language}</Text>
-                    <Ionicons name={isLanguageMenuOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#1a1a2e" />
+                    <Ionicons name="language-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.profileTasksButtonText}>{t.profile.language}</Text>
+                    <Ionicons
+                      name={isLanguageMenuOpen ? 'chevron-up' : 'chevron-down'}
+                      size={18}
+                      color="#fff"
+                      style={styles.languageActionChevron}
+                    />
                   </TouchableOpacity>
                   {isLanguageMenuOpen ? (
                     <View style={styles.languageRow}>
@@ -2704,7 +2713,7 @@ function ScheduleApp() {
               <Text style={[styles.description, dynamicStyles.description, styles.placeholderDescription]}>
                 {activeTab === 'discover'
                   ? t.discover.description
-                  : 'View and personalize your profile, preferences, and progress.'}
+                  : t.placeholders.profileDescription}
               </Text>
             </View>
           )}
@@ -2743,7 +2752,7 @@ function ScheduleApp() {
             ]}
             onPress={handleToggleFab}
             accessibilityRole="button"
-            accessibilityLabel={isFabOpen ? 'Close add menu' : 'Open add menu'}
+            accessibilityLabel={isFabOpen ? t.common.closeAddMenu : t.common.openAddMenu}
             activeOpacity={0.85}
           >
             {isFabOpen && (
@@ -2789,7 +2798,7 @@ function ScheduleApp() {
             style={[styles.overlay, { opacity: overlayOpacity }]}
             onPress={closeFabMenu}
             accessibilityRole="button"
-            accessibilityLabel="Close add menu"
+            accessibilityLabel={t.common.closeAddMenu}
             pointerEvents="auto"
             accessibilityHint="Tap to dismiss the add options"
           >
@@ -2857,7 +2866,7 @@ function ScheduleApp() {
                       ]}
                       resizeMode="contain"
                       accessible
-                      accessibilityLabel="Illustration of adding a habit"
+                      accessibilityLabel={t.fab.addHabit}
                     />
                     <Text
                       style={[
@@ -3027,6 +3036,7 @@ function ScheduleApp() {
         onClose={() => setCustomizeCalendarOpen(false)}
         customImages={customMonthImages}
         onUpdateImage={handleUpdateMonthImage}
+        language={language}
       />
       <ProfileTasksModal
         visible={isProfileTasksOpen}
@@ -3035,6 +3045,7 @@ function ScheduleApp() {
         onSelectTask={(taskId) => setActiveProfileTaskId(taskId)}
         onDeleteTask={handleDeleteProfileTask}
         onDeleteSelected={handleDeleteProfileTasks}
+        language={language}
       />
       <ProfileTaskDetailModal
         language={language}
@@ -3060,6 +3071,7 @@ function SwipeableTaskCard({
   onCopy,
   onDelete,
   onEdit,
+  language = 'en',
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const wavePhaseAnim = useRef(new Animated.Value(0)).current;
@@ -3380,7 +3392,7 @@ function SwipeableTaskCard({
               >
                 {task.title}
               </Text>
-              <Text style={styles.taskTime}>{formatTaskTime(task.time)}</Text>
+              <Text style={styles.taskTime}>{formatTaskTime(task.time, { language, anytimeLabel: translations[language]?.sheet?.anytime })}</Text>
               {totalLabel && (
                 <View style={styles.taskSubtaskSummary}>
                   <Text style={styles.taskSubtaskSummaryText}>{totalLabel}</Text>
@@ -3429,6 +3441,7 @@ function ProfileSwipeTaskCard({
   onToggleSelect,
   isSelected,
   selectionMode,
+  language = 'en',
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const actionWidth = 92;
@@ -3583,7 +3596,7 @@ function ProfileSwipeTaskCard({
               ) : null}
             </View>
             <View style={styles.profileTaskMetaRow}>
-              <Text style={styles.profileTaskTime}>{formatTaskTime(task.time)}</Text>
+              <Text style={styles.profileTaskTime}>{formatTaskTime(task.time, { language, anytimeLabel: translations[language]?.sheet?.anytime })}</Text>
               {tagLabel ? (
                 <View style={styles.profileTaskTag}>
                   <Text style={styles.profileTaskTagText}>{tagLabel}</Text>
@@ -3604,6 +3617,7 @@ function ProfileTasksModal({
   onSelectTask,
   onDeleteTask,
   onDeleteSelected,
+  language = 'en',
 }) {
   const [searchValue, setSearchValue] = useState('');
   const [selectedTag, setSelectedTag] = useState('all');
@@ -3835,6 +3849,7 @@ function ProfileTasksModal({
                 onToggleSelect={toggleSelectedTask}
                 isSelected={selectedTaskIds.includes(item.id)}
                 selectionMode={selectionMode}
+                language={language}
               />
             )}
             showsVerticalScrollIndicator={false}
@@ -3864,6 +3879,7 @@ function ProfileTasksModal({
 
 function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock, language = 'en' }) {
   const [hasImageError, setHasImageError] = useState(false);
+  const t = translations[language] ?? translations.en;
 
   useEffect(() => {
     setHasImageError(false);
@@ -3923,7 +3939,7 @@ function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock, language
               )}
               <View style={styles.profileDetailTitleBlock}>
                 <Text style={styles.profileDetailTitle}>{task.title}</Text>
-                <Text style={styles.profileDetailTime}>{formatTaskTime(task.time)}</Text>
+                <Text style={styles.profileDetailTime}>{formatTaskTime(task.time, { language, anytimeLabel: t.sheet.anytime })}</Text>
               </View>
             </View>
             <Pressable
@@ -4004,6 +4020,7 @@ function TaskDetailModal({
   onEdit,
 }) {
   const [hasImageError, setHasImageError] = useState(false);
+  const t = translations[language] ?? translations.en;
 
   useEffect(() => {
     setHasImageError(false);
@@ -4053,7 +4070,7 @@ function TaskDetailModal({
                     style={styles.detailTitleLock}
                   />
                 </View>
-                <Text style={styles.detailTime}>{formatTaskTime(task.time)}</Text>
+                <Text style={styles.detailTime}>{formatTaskTime(task.time, { language, anytimeLabel: t.sheet.anytime })}</Text>
                 {quantumLabel ? (
                   <Text style={styles.detailSubtaskSummaryLabel}>{quantumLabel}</Text>
                 ) : totalSubtasks > 0 ? (
@@ -5757,17 +5774,14 @@ const styles = StyleSheet.create({
     width: '100%',
     marginTop: 14,
     marginBottom: 2,
-  },
-  languageTitle: {
-    color: '#1a1a2e',
-    fontWeight: '700',
-  },
-  languageDisclosure: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
+  },
+  languageActionButton: {
+    marginTop: 0,
     marginBottom: 8,
+  },
+  languageActionChevron: {
+    marginLeft: 12,
   },
   languageRow: {
     flexDirection: 'row',

@@ -148,6 +148,8 @@ const QUANTUM_ANIMATIONS = [
 
 const createTagKey = (label, existingKeys) => {
   const sanitized = label
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, '_')
@@ -1468,8 +1470,8 @@ export default function AddHabitSheet({
         mode: timeMode,
         point: normalizedPointTime,
         period: normalizedPeriodTime,
-      }),
-    [hasSpecifiedTime, normalizedPeriodTime, normalizedPointTime, timeMode]
+      }, { anytimeLabel: t.anytime }),
+    [hasSpecifiedTime, normalizedPeriodTime, normalizedPointTime, t.anytime, timeMode]
   );
   const previewQuantum = useMemo(() => {
     const minutes = Number.parseInt(pendingQuantumTimerMinutes, 10) || 0;
