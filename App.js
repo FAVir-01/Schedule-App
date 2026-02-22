@@ -752,6 +752,7 @@ function ScheduleApp() {
     DEFAULT_USER_SETTINGS.selectedTagFilter
   );
   const language = userSettings.language ?? DEFAULT_USER_SETTINGS.language;
+  const t = translations[language] ?? translations.en;
   const [history, setHistory] = useState([]);
   const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
@@ -847,7 +848,7 @@ function ScheduleApp() {
     const locale = language === 'pt' ? 'pt-BR' : 'en-US';
     const weekday = selectedDate.toLocaleDateString(locale, { weekday: 'long' });
     return `${weekday}, ${selectedDate.getDate()}`;
-  }, [isSelectedToday, language, selectedDate, t.tabs.today]);
+  }, [isSelectedToday, language, selectedDate]);
   useEffect(() => {
     const monthStart = getMonthStart(selectedDate);
     setCalendarMonths((previous) => {
