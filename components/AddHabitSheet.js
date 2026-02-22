@@ -1787,7 +1787,7 @@ export default function AddHabitSheet({
                   );
                 })}
               </View>
-              <View style={styles.listContainer}>
+              <View style={[styles.listContainer, activeInfoKey && styles.listContainerInfoActive]}>
                 <SheetRow
                   icon={(
                     <View style={styles.rowIconContainer}>
@@ -2201,7 +2201,7 @@ function SheetRow({
     >
       <View style={styles.rowLeft}>
         {icon}
-        <View style={styles.rowLabelWithInfo}>
+        <View style={[styles.rowLabelWithInfo, isInfoVisible && styles.rowLabelWithInfoVisible]}>
           <View style={styles.infoLabelRow}>
             <Text style={styles.rowLabel}>{label}</Text>
             {infoText ? (
@@ -3332,7 +3332,7 @@ function WheelColumn({
 const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 100,
+    zIndex: 300,
     elevation: 30,
   },
   backdrop: {
@@ -3496,6 +3496,10 @@ const styles = StyleSheet.create({
     elevation: 6,
     overflow: 'visible',
   },
+  listContainerInfoActive: {
+    zIndex: 80,
+    elevation: 80,
+  },
   subtasksPanel: {
     marginTop: 4,
     gap: 12,
@@ -3598,8 +3602,8 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   rowInfoVisible: {
-    zIndex: 30,
-    elevation: 30,
+    zIndex: 120,
+    elevation: 120,
   },
   rowLeft: {
     flexDirection: 'row',
@@ -3610,6 +3614,10 @@ const styles = StyleSheet.create({
     flex: 1,
     position: 'relative',
     overflow: 'visible',
+  },
+  rowLabelWithInfoVisible: {
+    zIndex: 130,
+    elevation: 130,
   },
   rowIconContainer: {
     width: 34,
@@ -4315,19 +4323,20 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 28,
     left: 0,
-    right: -48,
+    width: 300,
+    maxWidth: 320,
     backgroundColor: '#eef3ff',
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderWidth: 1,
     borderColor: '#d5dff5',
-    zIndex: 100,
+    zIndex: 300,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
     shadowRadius: 10,
-    elevation: 18,
+    elevation: 40,
   },
   previewFloatingInfoBubble: {
     left: 0,
@@ -4335,7 +4344,8 @@ const styles = StyleSheet.create({
   },
   sectionFloatingInfoBubble: {
     left: 6,
-    right: -220,
+    width: 300,
+    maxWidth: 320,
   },
   inlineInfoText: {
     color: '#425071',
