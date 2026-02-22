@@ -2193,7 +2193,7 @@ function SheetRow({
 }) {
   return (
     <Pressable
-      style={[styles.row, isLast && styles.rowLast, disabled && styles.rowDisabled]}
+      style={[styles.row, isLast && styles.rowLast, disabled && styles.rowDisabled, isInfoVisible && styles.rowInfoVisible]}
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
@@ -3494,7 +3494,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 12,
     elevation: 6,
-    overflow: 'hidden',
+    overflow: 'visible',
   },
   subtasksPanel: {
     marginTop: 4,
@@ -3597,6 +3597,10 @@ const styles = StyleSheet.create({
   rowDisabled: {
     opacity: 0.5,
   },
+  rowInfoVisible: {
+    zIndex: 30,
+    elevation: 30,
+  },
   rowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3648,7 +3652,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 16,
     elevation: 10,
-    overflow: 'hidden',
+    overflow: 'visible',
   },
   overlayHeader: {
     flexDirection: 'row',
@@ -4318,12 +4322,12 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderWidth: 1,
     borderColor: '#d5dff5',
-    zIndex: 8,
+    zIndex: 100,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
     shadowRadius: 10,
-    elevation: 8,
+    elevation: 18,
   },
   previewFloatingInfoBubble: {
     left: 0,
