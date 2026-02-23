@@ -757,7 +757,7 @@ function DayReportModal({ visible, date, tasks, onClose, customImages, language 
                             <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
                               {quantumLabel}
                             </Text>
-                          ) : task.totalSubtasks > 0 ? (
+                          ) : task.type !== 'reminder' && task.totalSubtasks > 0 ? (
                             <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
                               {task.completedSubtasks}/{task.totalSubtasks} subtasks
                             </Text>
@@ -3301,7 +3301,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     if (quantumLabel) {
       return quantumLabel;
     }
-    if (!totalSubtasks) {
+    if (task.type === 'reminder' || !totalSubtasks) {
       return null;
     }
     return `${completedSubtasks}/${totalSubtasks}`;
@@ -4163,6 +4163,7 @@ function TaskDetailModal({
     ? task.subtasks.filter((item) => getSubtaskCompletionStatus(item, dateKey)).length
     : 0;
   const quantumLabel = getQuantumProgressLabel(task, dateKey);
+  const isReminder = task.type === 'reminder';
   const cardBackground = lightenColor(task.color, 0.85);
 
   return (
@@ -4200,7 +4201,7 @@ function TaskDetailModal({
                 <Text style={styles.detailTime}>{formatTaskTime(task.time, { language, anytimeLabel: t.sheet.anytime })}</Text>
                 {quantumLabel ? (
                   <Text style={styles.detailSubtaskSummaryLabel}>{quantumLabel}</Text>
-                ) : totalSubtasks > 0 ? (
+                ) : !isReminder && totalSubtasks > 0 ? (
                     <Text style={styles.detailSubtaskSummaryLabel}>
                       {completedSubtasks}/{totalSubtasks} subtasks completed
                     </Text>
@@ -4225,7 +4226,15 @@ function TaskDetailModal({
             </View>
             <ScrollView style={styles.detailSubtasksContainer}>
               {totalSubtasks === 0 ? (
-                <Text style={styles.detailEmptySubtasks}>{t.taskModal.noSubtasks}</Text>
+                <Text style={styles.detailEmptySubtasks}>
+                  {isReminder ? t.taskModal.noReminders : t.taskModal.noSubtasks}
+                </Text>
+              ) : isReminder ? (
+                task.subtasks.map((subtask) => (
+                  <View key={subtask.id} style={styles.detailSubtaskRow}>
+                    <Text style={styles.detailSubtaskText}>{subtask.title}</Text>
+                  </View>
+                ))
               ) : (
                 task.subtasks.map((subtask) => (
                   <Pressable
