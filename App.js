@@ -29,7 +29,6 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as Haptics from 'expo-haptics';
-import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Notifications from 'expo-notifications';
@@ -200,6 +199,18 @@ const triggerSelection = () => {
   }
 };
 
+let expoAvModulePromise = null;
+
+const loadExpoAvAudio = async () => {
+  if (Platform.OS === 'web') {
+    return null;
+  }
+  if (!expoAvModulePromise) {
+    expoAvModulePromise = import('expo-av');
+  }
+  return expoAvModulePromise;
+};
+
 const triggerSuccessFeedback = async () => {
   if (HAPTICS_SUPPORTED) {
     try {
@@ -209,7 +220,17 @@ const triggerSuccessFeedback = async () => {
     }
   }
 
+  if (Platform.OS === 'web') {
+    return;
+  }
+
   try {
+    const avModule = await loadExpoAvAudio();
+    const Audio = avModule?.Audio;
+    if (!Audio?.Sound?.createAsync) {
+      return;
+    }
+
     const { sound } = await Audio.Sound.createAsync(
       { uri: 'https://www.soundjay.com/buttons/sounds/button-30.mp3' },
       { shouldPlay: true, volume: 0.25 }
@@ -271,7 +292,7 @@ const ConfettiOverlay = React.memo(({ visible, onComplete }) => {
         duration: piece.duration,
         delay: piece.delay,
         easing: Easing.bezier(0.25, 0.1, 0.25, 1),
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       })
     );
     const swayLoops = pieces.map((piece) =>
@@ -281,13 +302,13 @@ const ConfettiOverlay = React.memo(({ visible, onComplete }) => {
             toValue: piece.swayAmplitude,
             duration: piece.swayDuration,
             easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
+            useNativeDriver: USE_NATIVE_DRIVER,
           }),
           Animated.timing(piece.swayAnim, {
             toValue: -piece.swayAmplitude,
             duration: piece.swayDuration,
             easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
+            useNativeDriver: USE_NATIVE_DRIVER,
           }),
         ])
       )
@@ -1164,7 +1185,7 @@ function ScheduleApp() {
         toValue: 0,
         duration: 280,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       }).start();
     },
     [getTaskTranslateY]

@@ -2566,6 +2566,12 @@ function SubtasksPanel({ value, onChange, infoText, onPressInfo, isInfoVisible =
 }
 
 function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatConfig, labels = {} }) {
+  const resolvedLabels = useMemo(() => ({
+    quickToday: 'Today',
+    quickTomorrow: 'Tomorrow',
+    quickNextMonday: 'Next Monday',
+    ...((labels && typeof labels === 'object') ? labels : {}),
+  }), [labels]);
   const today = useMemo(() => normalizeDate(new Date()), []);
   const [visibleMonth, setVisibleMonth] = useState(() => normalizeDate(month));
 
@@ -2579,11 +2585,11 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatCon
   const monthInfo = useMemo(() => getMonthMetadata(visibleMonth), [visibleMonth]);
   const monthLabel = useMemo(
     () =>
-      visibleMonth.toLocaleDateString(labels.quickToday === 'Hoje' ? 'pt-BR' : 'en-US', {
+      visibleMonth.toLocaleDateString(resolvedLabels.quickToday === 'Hoje' ? 'pt-BR' : 'en-US', {
         month: 'long',
         year: 'numeric',
       }),
-    [labels.quickToday, visibleMonth]
+    [resolvedLabels.quickToday, visibleMonth]
   );
   const previousMonth = useMemo(() => addMonths(visibleMonth, -1), [visibleMonth]);
   const nextMonth = useMemo(() => addMonths(visibleMonth, 1), [visibleMonth]);
@@ -2672,17 +2678,17 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatCon
     <View>
       <View style={styles.quickSelectRow}>
         <QuickSelectButton
-          label={labels.quickToday}
+          label={resolvedLabels.quickToday}
           active={isSameDay(selectedDate, today)}
           onPress={() => handleSelectQuick(today)}
         />
         <QuickSelectButton
-          label={labels.quickTomorrow}
+          label={resolvedLabels.quickTomorrow}
           active={isSameDay(selectedDate, tomorrow)}
           onPress={() => handleSelectQuick(tomorrow)}
         />
         <QuickSelectButton
-          label={labels.quickNextMonday}
+          label={resolvedLabels.quickNextMonday}
           active={isSameDay(selectedDate, nextMonday)}
           onPress={() => handleSelectQuick(nextMonday)}
         />
@@ -2701,7 +2707,7 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatCon
         </Pressable>
       </View>
       <View style={styles.weekdayHeader}>
-        {(labels.quickToday === 'Hoje' ? WEEKDAYS_PT : WEEKDAYS_EN).map((weekday) => (
+        {(resolvedLabels.quickToday === 'Hoje' ? WEEKDAYS_PT : WEEKDAYS_EN).map((weekday) => (
           <Text key={weekday.key} style={styles.weekdayLabel}>
             {weekday.label}
           </Text>
