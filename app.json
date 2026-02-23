@@ -1,34 +1,34 @@
 {
-    "expo": {
-      "name": "Favit",
-      "slug": "favit-schedule",
-      "scheme": "favit",
-      "version": "1.0.0",
-      "orientation": "portrait",
-      "userInterfaceStyle": "automatic",
-      "icon": "./assets/icon.png",
-      "splash": {
-        "image": "./assets/icon.png",
-        "resizeMode": "contain",
+  "expo": {
+    "name": "Favit",
+    "slug": "schedule-app",
+    "scheme": "favit",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": "1.0.0",
+    "android": {
+      "package": "com.favit.schedule",
+      "versionCode": 2,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      },
-      "assetBundlePatterns": ["**/*"],
-      "updates": {
-        "fallbackToCacheTimeout": 0
-      },
-      "runtimeVersion": "1.0.0",
-      "android": {
-        "package": "com.favit.schedule",
-        "versionCode": 1,
-        "adaptiveIcon": {
-          "foregroundImage": "./assets/icon.png",
-          "backgroundColor": "#ffffff"
-        }
-      },
-      "ios": {
-        "bundleIdentifier": "com.favit.schedule",
-        "buildNumber": "1",
-        "supportsTablet": true
       }
+    },
+    "ios": {
+      "bundleIdentifier": "com.favit.schedule",
+      "buildNumber": "2",
+      "supportsTablet": true
     }
   }
+}
