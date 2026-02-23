@@ -89,6 +89,13 @@ const getQuantumProgressLabel = (task, dateKey) => {
   return null;
 };
 
+const normalizeTagToken = (value) => value
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '_')
+  .replace(/^_|_$/g, '');
+
 const getQuantumProgressPercent = (task, dateKey) => {
   if (!task || task.type !== 'quantum' || !task.quantum) {
     return 0;
@@ -131,10 +138,7 @@ const normalizeTaskTagKey = (task) => {
     if (!label || label.toLowerCase() === 'no tag') {
       return null;
     }
-    return label
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_|_$/g, '');
+    return normalizeTagToken(label);
   }
   return null;
 };

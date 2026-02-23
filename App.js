@@ -44,7 +44,6 @@ import {
   startOfMonth,
   startOfWeek,
 } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import {
   loadHistory,
   loadMonthImages,
@@ -56,9 +55,9 @@ import {
   saveUserSettings,
 } from './storage';
 import AddHabitSheet from './components/AddHabitSheet';
-import { MONTH_NAMES, getMonthImageSource } from './constants/months';
+import { getMonthImageSource } from './constants/months';
 import { DEFAULT_USER_SETTINGS } from './constants/userSettings';
-import { LEFT_TABS, RIGHT_TABS, getNavigationBarThemeForTab } from './constants/navigation';
+import { getNavigationBarThemeForTab } from './constants/navigation';
 import { interpolateHexColor, lightenColor } from './utils/colorUtils';
 import {
   getDateKey,
@@ -78,9 +77,10 @@ import {
 } from './utils/taskUtils';
 import { formatTaskTime, getTimerTotalSeconds, toMinutes, toTimerSeconds } from './utils/timeUtils';
 import { buildWavePath } from './utils/waveUtils';
+import { getDateLocale, getWeekdayInitials, translations } from './constants/i18n';
 
 // --- COMPONENTE DA FAIXA DO TOPO ---
-const StickyMonthHeader = ({ date, customImages }) => {
+const StickyMonthHeader = ({ date, customImages, language }) => {
   if (!date) return null;
 
   const monthIndex = date.getMonth();
@@ -94,7 +94,7 @@ const StickyMonthHeader = ({ date, customImages }) => {
     >
       {/* Overlay removido aqui */}
       <Text style={styles.stickyHeaderText}>
-        {format(date, 'MMMM', { locale: ptBR })}
+        {format(date, 'MMMM', { locale: getDateLocale(language) })}
       </Text>
     </ImageBackground>
   );
@@ -360,7 +360,7 @@ const CalendarDayCell = ({ date, isCurrentMonth, status, onPress, isToday }) => 
 };
 
 // --- ITEM DO MÊS ATUALIZADO ---
-const CalendarMonthItem = ({ item, getDayStatus, onDayPress, customImages }) => {
+const CalendarMonthItem = ({ item, getDayStatus, onDayPress, customImages, language }) => {
   const monthStart = startOfMonth(item.date);
   const monthEnd = endOfMonth(item.date);
   const imageSource = getMonthImageSource(item.date.getMonth(), customImages);
@@ -388,7 +388,7 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress, customImages }) => 
         imageStyle={{ resizeMode: 'cover' }}
       >
         {/* Overlay removido aqui */}
-        <Text style={styles.calendarMonthTitle}>{format(item.date, 'MMMM yyyy', { locale: ptBR })}</Text>
+        <Text style={styles.calendarMonthTitle}>{format(item.date, 'MMMM yyyy', { locale: getDateLocale(language) })}</Text>
       </ImageBackground>
 
       <View style={styles.calendarDaysGrid}>
@@ -408,7 +408,7 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress, customImages }) => 
 };
 
 // --- COMPONENTE CUSTOMIZE CALENDAR MODAL ---
-function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage }) {
+function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage, language = 'en' }) {
   if (!visible) return null;
 
   const handlePickImage = async (index) => {
@@ -445,18 +445,25 @@ function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage 
     }
   };
 
+  const t = translations[language] ?? translations.en;
+
+  const monthLabels = Array.from({ length: 12 }, (_, index) => {
+    const monthDate = new Date(2026, index, 1);
+    return format(monthDate, 'MMMM', { locale: getDateLocale(language) }).toUpperCase();
+  });
+
   return (
     <Modal animationType="slide" transparent={false} visible={visible} onRequestClose={onClose}>
       <SafeAreaView style={styles.customizeModalContainer}>
         <View style={styles.customizeHeader}>
-          <Text style={styles.customizeTitle}>Customize Calendar</Text>
+          <Text style={styles.customizeTitle}>{t.profile.customizeCalendarModalTitle}</Text>
           <Pressable onPress={onClose} hitSlop={12}>
             <Ionicons name="close" size={28} color="#1a1a2e" />
           </Pressable>
         </View>
 
         <ScrollView contentContainerStyle={styles.customizeScrollContent} showsVerticalScrollIndicator={false}>
-          {MONTH_NAMES.map((name, index) => {
+          {monthLabels.map((name, index) => {
             const source = getMonthImageSource(index, customImages);
 
             return (
@@ -487,7 +494,7 @@ function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage 
 }
 
 
-function DayReportModal({ visible, date, tasks, onClose, customImages }) {
+function DayReportModal({ visible, date, tasks, onClose, customImages, language = 'en' }) {
   const { height } = useWindowDimensions();
 
   // 1. Configuração da Animação
@@ -503,6 +510,7 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
   const dateKey = date ? getDateKey(date) : null;
   const completedTasks = scoredTasks.filter((t) => t.completed).length;
   const targetSuccessRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const t = translations[language] ?? translations.en;
   const [imageErrors, setImageErrors] = useState({});
 
   useEffect(() => {
@@ -541,11 +549,14 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
   if (!visible || !date) return null;
 
   const getSummaryText = () => {
-    if (totalTasks === 0) return 'No habits scheduled for this day.';
-    if (targetSuccessRate === 100) return 'Incredible! You crushed all your habits!';
+    if (totalTasks === 0) return t.report.noHabits;
+    if (targetSuccessRate === 100) return t.report.perfect;
     if (targetSuccessRate === 0)
-      return `You had ${totalTasks} habit(s) and completed none. Let's see what they were 👀`;
-    return `You completed ${completedTasks} out of ${totalTasks} habit(s). Keep going!`;
+      return t.report.noneCompleted
+      .replace('{total}', String(totalTasks));
+    return t.report.partialCompleted
+      .replace('{completed}', String(completedTasks))
+      .replace('{total}', String(totalTasks));
   };
 
   return (
@@ -574,7 +585,7 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
           <ScrollView contentContainerStyle={styles.reportScrollContent}>
             <Text style={styles.reportSummaryText}>{getSummaryText()}</Text>
 
-            <Text style={styles.reportSectionTitle}>Daily stats</Text>
+            <Text style={styles.reportSectionTitle}>{t.report.dailyStats}</Text>
 
             <View style={styles.statsCard}>
               <View style={styles.gaugeContainer}>
@@ -618,21 +629,21 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
                     }}
                   >
                     <Text style={styles.gaugePercentage}>{displayRate}</Text>
-                    <Text style={styles.gaugeLabel}>Success rate</Text>
+                    <Text style={styles.gaugeLabel}>{t.report.successRate}</Text>
                   </View>
                 </View>
               </View>
 
               <View style={styles.statsRow}>
                 <View style={styles.statBox}>
-                  <Text style={styles.statLabel}>Committed</Text>
+                  <Text style={styles.statLabel}>{t.report.committed}</Text>
                   <View style={styles.statValueRow}>
                     <Text style={styles.statNumber}>{totalTasks}</Text>
                     <Text style={{ fontSize: 20 }}>✍️</Text>
                   </View>
                 </View>
                 <View style={styles.statBox}>
-                  <Text style={styles.statLabel}>Completed</Text>
+                  <Text style={styles.statLabel}>{t.report.completed}</Text>
                   <View style={styles.statValueRow}>
                     <Text style={styles.statNumber}>{completedTasks}</Text>
                     <Ionicons name="checkbox" size={24} color="#3dd598" />
@@ -643,7 +654,7 @@ function DayReportModal({ visible, date, tasks, onClose, customImages }) {
 
             {totalTasks > 0 && (
               <>
-                <Text style={styles.reportSectionTitle}>Habits</Text>
+                <Text style={styles.reportSectionTitle}>{t.report.habits}</Text>
                 <View style={styles.reportTaskList}>
                   {tasks.map((task, index) => {
                     const baseColor = task.color || '#3c2ba7';
@@ -734,6 +745,7 @@ function ScheduleApp() {
   const [habitSheetInitialTask, setHabitSheetInitialTask] = useState(null);
   const [isCustomizeCalendarOpen, setCustomizeCalendarOpen] = useState(false);
   const [isProfileTasksOpen, setProfileTasksOpen] = useState(false);
+  const [isLanguageMenuOpen, setLanguageMenuOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -750,6 +762,8 @@ function ScheduleApp() {
   const [selectedTagFilter, setSelectedTagFilter] = useState(
     DEFAULT_USER_SETTINGS.selectedTagFilter
   );
+  const language = userSettings.language ?? DEFAULT_USER_SETTINGS.language;
+  const t = translations[language] ?? translations.en;
   const [history, setHistory] = useState([]);
   const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
@@ -840,11 +854,12 @@ function ScheduleApp() {
   const isSelectedToday = selectedDateKey === todayKey;
   const selectedDateLabel = useMemo(() => {
     if (isSelectedToday) {
-      return 'Today';
+      return t.tabs.today;
     }
-    const weekday = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
+    const locale = language === 'pt' ? 'pt-BR' : 'en-US';
+    const weekday = selectedDate.toLocaleDateString(locale, { weekday: 'long' });
     return `${weekday}, ${selectedDate.getDate()}`;
-  }, [isSelectedToday, selectedDate]);
+  }, [isSelectedToday, language, selectedDate]);
   useEffect(() => {
     const monthStart = getMonthStart(selectedDate);
     setCalendarMonths((previous) => {
@@ -872,12 +887,12 @@ function ScheduleApp() {
       return {
         date,
         key,
-        label: date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase(),
+        label: getWeekdayInitials(language)[date.getDay()],
         dayNumber: date.getDate(),
         allCompleted,
       };
     });
-  }, [tasks, today]);
+  }, [language, tasks, today]);
   const getDayStatusForCalendar = useCallback(
     (day) => {
       const dateKey = getDateKey(day);
@@ -975,9 +990,10 @@ function ScheduleApp() {
         getDayStatus={getDayStatusForCalendar}
         onDayPress={handleOpenReport}
         customImages={customMonthImages}
+        language={language}
       />
     ),
-    [customMonthImages, getDayStatusForCalendar, handleOpenReport]
+    [customMonthImages, getDayStatusForCalendar, handleOpenReport, language]
   );
   const tasksForSelectedDate = useMemo(() => {
     const filtered = tasks.filter((task) => shouldTaskAppearOnDate(task, selectedDate));
@@ -1232,10 +1248,10 @@ function ScheduleApp() {
       bestStreak,
     };
   }, [history, tasks, today]);
-  const totalDaysUnit = profileStats.totalDays === 1 ? 'day' : 'days';
-  const habitsUnit = profileStats.committedHabits === 1 ? 'habit' : 'habits';
-  const currentStreakUnit = profileStats.currentStreak === 1 ? 'day' : 'days';
-  const bestStreakUnit = profileStats.bestStreak === 1 ? 'day' : 'days';
+  const totalDaysUnit = profileStats.totalDays === 1 ? t.profile.day : t.profile.days;
+  const habitsUnit = t.profile.habits;
+  const currentStreakUnit = profileStats.currentStreak === 1 ? t.profile.day : t.profile.days;
+  const bestStreakUnit = profileStats.bestStreak === 1 ? t.profile.day : t.profile.days;
   const activeTaskForSelectedDate = useMemo(
     () =>
       activeTask
@@ -2392,8 +2408,10 @@ function ScheduleApp() {
                     ]}
                   >
                     {allTasksCompletedForSelectedDay
-                      ? 'All tasks completed'
-                      : `${completedTaskCount}/${scorableTasksForSelectedDate.length} completed`}
+                      ? t.today.allTasksCompleted
+                      : t.today.completedProgress
+                          .replace('{completed}', String(completedTaskCount))
+                          .replace('{total}', String(scorableTasksForSelectedDate.length))}
                   </Text>
                 )}
               </View>
@@ -2457,7 +2475,7 @@ function ScheduleApp() {
                         }
                       }}
                       accessibilityRole="button"
-                      accessibilityLabel="Show all tags"
+                      accessibilityLabel={language === 'pt' ? 'Mostrar todos os rótulos' : 'Show all tags'}
                       accessibilityState={{ selected: selectedTagFilter === 'all' }}
                     >
                       <Text
@@ -2466,7 +2484,7 @@ function ScheduleApp() {
                           selectedTagFilter === 'all' && styles.tagPillTextSelected,
                         ]}
                       >
-                        All
+                        {t.common.all}
                       </Text>
                     </Pressable>
                     {tagOptions.map((option) => {
@@ -2548,6 +2566,7 @@ function ScheduleApp() {
                             }
                             setTasks((previous) => previous.filter((current) => current.id !== task.id));
                           }}
+                          language={language}
                           onEdit={() => {
                             const editable = {
                               ...task,
@@ -2565,7 +2584,7 @@ function ScheduleApp() {
             </ScrollView>
           ) : activeTab === 'calendar' ? (
             <View style={{ flex: 1 }}>
-              <StickyMonthHeader date={visibleCalendarDate} customImages={customMonthImages} />
+              <StickyMonthHeader date={visibleCalendarDate} customImages={customMonthImages} language={language} />
 
               <FlatList
                 data={calendarMonths}
@@ -2597,31 +2616,31 @@ function ScheduleApp() {
           ) : activeTab === 'profile' ? (
              <View style={styles.profileContainer}>
                 <View style={styles.profileStatsSection}>
-                  <Text style={styles.profileStatsTitle}>Stats</Text>
+                  <Text style={styles.profileStatsTitle}>{t.profile.stats}</Text>
                   <View style={styles.profileStatsGrid}>
                     <View style={styles.profileStatCard}>
-                      <Text style={styles.profileStatLabel}>Total days</Text>
+                      <Text style={styles.profileStatLabel}>{t.profile.totalDays}</Text>
                       <View style={styles.profileStatValueRow}>
                         <Text style={styles.profileStatValue}>{profileStats.totalDays}</Text>
                         <Text style={styles.profileStatUnit}>{totalDaysUnit}</Text>
                       </View>
                     </View>
                     <View style={styles.profileStatCard}>
-                      <Text style={styles.profileStatLabel}>Committed habits</Text>
+                      <Text style={styles.profileStatLabel}>{t.profile.committedHabits}</Text>
                       <View style={styles.profileStatValueRow}>
                         <Text style={styles.profileStatValue}>{profileStats.committedHabits}</Text>
                         <Text style={styles.profileStatUnit}>{habitsUnit}</Text>
                       </View>
                     </View>
                     <View style={styles.profileStatCard}>
-                      <Text style={styles.profileStatLabel}>Current streak</Text>
+                      <Text style={styles.profileStatLabel}>{t.profile.currentStreak}</Text>
                       <View style={styles.profileStatValueRow}>
                         <Text style={styles.profileStatValue}>{profileStats.currentStreak}</Text>
                         <Text style={styles.profileStatUnit}>{currentStreakUnit}</Text>
                       </View>
                     </View>
                     <View style={styles.profileStatCard}>
-                      <Text style={styles.profileStatLabel}>Best streak</Text>
+                      <Text style={styles.profileStatLabel}>{t.profile.bestStreak}</Text>
                       <View style={styles.profileStatValueRow}>
                         <Text style={styles.profileStatValue}>{profileStats.bestStreak}</Text>
                         <Text style={styles.profileStatUnit}>{bestStreakUnit}</Text>
@@ -2636,7 +2655,7 @@ function ScheduleApp() {
                   activeOpacity={0.8}
                 >
                    <Ionicons name="images-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
-                   <Text style={styles.customizeButtonText}>Customize Calendar</Text>
+                   <Text style={styles.customizeButtonText}>{t.profile.customizeCalendar}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.profileTasksButton}
@@ -2644,8 +2663,34 @@ function ScheduleApp() {
                   activeOpacity={0.85}
                 >
                   <Ionicons name="list-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.profileTasksButtonText}>Open tasks</Text>
+                  <Text style={styles.profileTasksButtonText}>{t.profile.openTasks}</Text>
                 </TouchableOpacity>
+                <View style={styles.languageSection}>
+                  <TouchableOpacity
+                    style={[styles.profileTasksButton, styles.languageActionButton]}
+                    activeOpacity={0.85}
+                    onPress={() => setLanguageMenuOpen((prev) => !prev)}
+                  >
+                    <Ionicons name="language-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.profileTasksButtonText}>{t.profile.language}</Text>
+                    <Ionicons
+                      name={isLanguageMenuOpen ? 'chevron-up' : 'chevron-down'}
+                      size={18}
+                      color="#fff"
+                      style={styles.languageActionChevron}
+                    />
+                  </TouchableOpacity>
+                  {isLanguageMenuOpen ? (
+                    <View style={styles.languageRow}>
+                      <TouchableOpacity style={[styles.languageButton, language === 'en' && styles.languageButtonActive]} onPress={() => updateUserSettings({ language: 'en' })}>
+                        <Text style={[styles.languageButtonText, language === 'en' && styles.languageButtonTextActive]}>{t.profile.english}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.languageButton, language === 'pt' && styles.languageButtonActive]} onPress={() => updateUserSettings({ language: 'pt' })}>
+                        <Text style={[styles.languageButtonText, language === 'pt' && styles.languageButtonTextActive]}>{t.profile.portuguese}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
+                </View>
              </View>
           ) : (
             <View style={styles.placeholderContainer}>
@@ -2662,13 +2707,13 @@ function ScheduleApp() {
               </View>
               <Text style={styles.heading}>
                 {activeTab === 'discover'
-                  ? 'Discover'
-                  : 'Profile'}
+                  ? t.discover.title
+                  : t.tabs.profile}
               </Text>
               <Text style={[styles.description, dynamicStyles.description, styles.placeholderDescription]}>
                 {activeTab === 'discover'
-                  ? 'Explore new routines, templates, and ideas to add to your day.'
-                  : 'View and personalize your profile, preferences, and progress.'}
+                  ? t.discover.description
+                  : t.placeholders.profileDescription}
               </Text>
             </View>
           )}
@@ -2686,10 +2731,16 @@ function ScheduleApp() {
             ]}
           >
             <View style={[styles.tabGroup, dynamicStyles.tabGroupLeft]}>
-              {LEFT_TABS.map(renderTabButton)}
+              {[
+                { key: 'today', label: t.tabs.today, icon: 'time-outline' },
+                { key: 'calendar', label: t.tabs.calendar, icon: 'calendar-clear-outline' },
+              ].map(renderTabButton)}
             </View>
             <View style={[styles.tabGroup, dynamicStyles.tabGroupRight]}>
-              {RIGHT_TABS.map(renderTabButton)}
+              {[
+                { key: 'discover', label: t.tabs.discover, icon: 'compass-outline' },
+                { key: 'profile', label: t.tabs.profile, icon: 'person-outline' },
+              ].map(renderTabButton)}
             </View>
           </View>
 
@@ -2701,7 +2752,7 @@ function ScheduleApp() {
             ]}
             onPress={handleToggleFab}
             accessibilityRole="button"
-            accessibilityLabel={isFabOpen ? 'Close add menu' : 'Open add menu'}
+            accessibilityLabel={isFabOpen ? t.common.closeAddMenu : t.common.openAddMenu}
             activeOpacity={0.85}
           >
             {isFabOpen && (
@@ -2747,7 +2798,7 @@ function ScheduleApp() {
             style={[styles.overlay, { opacity: overlayOpacity }]}
             onPress={closeFabMenu}
             accessibilityRole="button"
-            accessibilityLabel="Close add menu"
+            accessibilityLabel={t.common.closeAddMenu}
             pointerEvents="auto"
             accessibilityHint="Tap to dismiss the add options"
           >
@@ -2786,7 +2837,7 @@ function ScheduleApp() {
                 ]}
                 onPress={handleAddHabit}
                 accessibilityRole="button"
-                accessibilityLabel="Add habit"
+                accessibilityLabel={t.fab.addHabit}
                 activeOpacity={0.9}
               >
                 <LinearGradient
@@ -2815,7 +2866,7 @@ function ScheduleApp() {
                       ]}
                       resizeMode="contain"
                       accessible
-                      accessibilityLabel="Illustration of adding a habit"
+                      accessibilityLabel={t.fab.addHabit}
                     />
                     <Text
                       style={[
@@ -2826,7 +2877,7 @@ function ScheduleApp() {
                         },
                       ]}
                     >
-                      Add habit
+                      {t.fab.addHabit}
                     </Text>
                     <Text
                       style={[
@@ -2837,7 +2888,7 @@ function ScheduleApp() {
                         },
                       ]}
                     >
-                      {`Add a new routine\nto your life`}
+                      {t.fab.addHabitDescription}
                     </Text>
                   </View>
                 </LinearGradient>
@@ -2857,7 +2908,7 @@ function ScheduleApp() {
                 ]}
                 onPress={handleAddReflection}
                 accessibilityRole="button"
-                accessibilityLabel="Add reflection"
+                accessibilityLabel={t.fab.addReflection}
                 activeOpacity={0.9}
               >
                 <LinearGradient
@@ -2897,7 +2948,7 @@ function ScheduleApp() {
                         },
                       ]}
                     >
-                      Add reflection
+                      {t.fab.addReflection}
                     </Text>
                     <Text
                       style={[
@@ -2908,7 +2959,7 @@ function ScheduleApp() {
                         },
                       ]}
                     >
-                      {`Reflect on your day\nwith your mood and feelings`}
+                      {t.fab.addReflectionDescription}
                     </Text>
                   </View>
                 </LinearGradient>
@@ -2918,6 +2969,7 @@ function ScheduleApp() {
         )}
       </View>
       <TaskDetailModal
+        language={language}
         visible={Boolean(activeTaskForSelectedDate)}
         task={activeTaskForSelectedDate}
         dateKey={selectedDateKey}
@@ -2944,6 +2996,7 @@ function ScheduleApp() {
         tasks={reportTasks}
         onClose={() => setReportDate(null)}
         customImages={customMonthImages}
+        language={language}
       />
       <AddHabitSheet
         visible={isHabitSheetOpen}
@@ -2961,8 +3014,10 @@ function ScheduleApp() {
         mode={habitSheetMode}
         initialHabit={habitSheetInitialTask}
         availableTagOptions={availableTagOptions}
+        language={language}
       />
       <QuantumAdjustModal
+        language={language}
         task={tasks.find((task) => task.id === quantumAdjustTaskId) ?? null}
         visible={!!quantumAdjustTaskId}
         minutesValue={quantumAdjustMinutes}
@@ -2981,6 +3036,7 @@ function ScheduleApp() {
         onClose={() => setCustomizeCalendarOpen(false)}
         customImages={customMonthImages}
         onUpdateImage={handleUpdateMonthImage}
+        language={language}
       />
       <ProfileTasksModal
         visible={isProfileTasksOpen}
@@ -2989,8 +3045,10 @@ function ScheduleApp() {
         onSelectTask={(taskId) => setActiveProfileTaskId(taskId)}
         onDeleteTask={handleDeleteProfileTask}
         onDeleteSelected={handleDeleteProfileTasks}
+        language={language}
       />
       <ProfileTaskDetailModal
+        language={language}
         visible={isProfileTasksOpen && !!activeProfileTaskId}
         task={activeProfileTask}
         onClose={() => setActiveProfileTaskId(null)}
@@ -3013,6 +3071,7 @@ function SwipeableTaskCard({
   onCopy,
   onDelete,
   onEdit,
+  language = 'en',
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const wavePhaseAnim = useRef(new Animated.Value(0)).current;
@@ -3333,7 +3392,7 @@ function SwipeableTaskCard({
               >
                 {task.title}
               </Text>
-              <Text style={styles.taskTime}>{formatTaskTime(task.time)}</Text>
+              <Text style={styles.taskTime}>{formatTaskTime(task.time, { language, anytimeLabel: translations[language]?.sheet?.anytime })}</Text>
               {totalLabel && (
                 <View style={styles.taskSubtaskSummary}>
                   <Text style={styles.taskSubtaskSummaryText}>{totalLabel}</Text>
@@ -3382,6 +3441,7 @@ function ProfileSwipeTaskCard({
   onToggleSelect,
   isSelected,
   selectionMode,
+  language = 'en',
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const actionWidth = 92;
@@ -3536,7 +3596,7 @@ function ProfileSwipeTaskCard({
               ) : null}
             </View>
             <View style={styles.profileTaskMetaRow}>
-              <Text style={styles.profileTaskTime}>{formatTaskTime(task.time)}</Text>
+              <Text style={styles.profileTaskTime}>{formatTaskTime(task.time, { language, anytimeLabel: translations[language]?.sheet?.anytime })}</Text>
               {tagLabel ? (
                 <View style={styles.profileTaskTag}>
                   <Text style={styles.profileTaskTagText}>{tagLabel}</Text>
@@ -3557,6 +3617,7 @@ function ProfileTasksModal({
   onSelectTask,
   onDeleteTask,
   onDeleteSelected,
+  language = 'en',
 }) {
   const [searchValue, setSearchValue] = useState('');
   const [selectedTag, setSelectedTag] = useState('all');
@@ -3788,6 +3849,7 @@ function ProfileTasksModal({
                 onToggleSelect={toggleSelectedTask}
                 isSelected={selectedTaskIds.includes(item.id)}
                 selectionMode={selectionMode}
+                language={language}
               />
             )}
             showsVerticalScrollIndicator={false}
@@ -3815,20 +3877,22 @@ function ProfileTasksModal({
   );
 }
 
-function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock }) {
+function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock, language = 'en' }) {
   const [hasImageError, setHasImageError] = useState(false);
+  const t = translations[language] ?? translations.en;
 
   useEffect(() => {
     setHasImageError(false);
   }, [task?.customImage, visible]);
+
 
   if (!visible || !task) {
     return null;
   }
 
   const normalizedDate = normalizeDateValue(task.date ?? task.dateKey);
-  const dateLabel = normalizedDate ? format(normalizedDate, 'PPP', { locale: ptBR }) : 'Not set';
-  const tagLabel = getTaskTagDisplayLabel(task) ?? 'No tag';
+  const dateLabel = normalizedDate ? format(normalizedDate, 'PPP', { locale: getDateLocale(language) }) : t.common.notSet;
+  const tagLabel = getTaskTagDisplayLabel(task) ?? t.sheet.noTag;
   const typeLabel = task.typeLabel ?? task.type ?? 'Standard';
   const isQuantum = task.type === 'quantum';
   const repeatConfig = normalizeRepeatConfig(task.repeat);
@@ -3875,7 +3939,7 @@ function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock }) {
               )}
               <View style={styles.profileDetailTitleBlock}>
                 <Text style={styles.profileDetailTitle}>{task.title}</Text>
-                <Text style={styles.profileDetailTime}>{formatTaskTime(task.time)}</Text>
+                <Text style={styles.profileDetailTime}>{formatTaskTime(task.time, { language, anytimeLabel: t.sheet.anytime })}</Text>
               </View>
             </View>
             <Pressable
@@ -3907,7 +3971,7 @@ function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock }) {
             {isQuantum ? (
               <View style={styles.profileDetailRow}>
                 <Text style={styles.profileDetailLabel}>{quantumModeLabel}</Text>
-                <Text style={styles.profileDetailValue}>{quantumLabel ?? 'Not set'}</Text>
+                <Text style={styles.profileDetailValue}>{quantumLabel ?? t.common.notSet}</Text>
               </View>
             ) : (
               <View style={styles.profileDetailRow}>
@@ -3946,6 +4010,7 @@ function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock }) {
 }
 
 function TaskDetailModal({
+  language = 'en',
   visible,
   task,
   dateKey,
@@ -3955,10 +4020,12 @@ function TaskDetailModal({
   onEdit,
 }) {
   const [hasImageError, setHasImageError] = useState(false);
+  const t = translations[language] ?? translations.en;
 
   useEffect(() => {
     setHasImageError(false);
   }, [task?.customImage, visible]);
+
 
   if (!visible || !task) {
     return null;
@@ -4003,7 +4070,7 @@ function TaskDetailModal({
                     style={styles.detailTitleLock}
                   />
                 </View>
-                <Text style={styles.detailTime}>{formatTaskTime(task.time)}</Text>
+                <Text style={styles.detailTime}>{formatTaskTime(task.time, { language, anytimeLabel: t.sheet.anytime })}</Text>
                 {quantumLabel ? (
                   <Text style={styles.detailSubtaskSummaryLabel}>{quantumLabel}</Text>
                 ) : totalSubtasks > 0 ? (
@@ -4031,7 +4098,7 @@ function TaskDetailModal({
             </View>
             <ScrollView style={styles.detailSubtasksContainer}>
               {totalSubtasks === 0 ? (
-                <Text style={styles.detailEmptySubtasks}>No subtasks added yet.</Text>
+                <Text style={styles.detailEmptySubtasks}>{t.taskModal.noSubtasks}</Text>
               ) : (
                 task.subtasks.map((subtask) => (
                   <Pressable
@@ -4078,7 +4145,7 @@ function TaskDetailModal({
             >
               <View style={styles.detailEditContent}>
                 <Ionicons name="create-outline" size={18} color="#3c2ba7" />
-                <Text style={styles.detailEditButtonText}>Edit Task</Text>
+                <Text style={styles.detailEditButtonText}>{t.taskModal.editTask}</Text>
               </View>
             </Pressable>
           </View>
@@ -4089,6 +4156,7 @@ function TaskDetailModal({
 }
 
 function QuantumAdjustModal({
+  language = 'en',
   task,
   visible,
   minutesValue,
@@ -4191,6 +4259,7 @@ function QuantumAdjustModal({
   const disableActions = isTimer
     ? (Number.parseInt(minutesValue, 10) || 0) * 60 + (Number.parseInt(secondsValue, 10) || 0) <= 0
     : (Number.parseInt(countValue, 10) || 0) <= 0;
+
 
   if (!visible || !task) {
     return null;
@@ -5039,7 +5108,7 @@ const styles = StyleSheet.create({
   },
   quantumModalPresetButton: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
@@ -5071,7 +5140,7 @@ const styles = StyleSheet.create({
   quantumModalInput: {
     backgroundColor: '#F4F6FB',
     borderRadius: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 12,
     textAlign: 'center',
     fontSize: 16,
@@ -5156,16 +5225,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1F2742',
   },
-  wheelHighlight: {
-    position: 'absolute',
-    top: WHEEL_ITEM_HEIGHT,
-    left: 0,
-    right: 0,
-    height: WHEEL_ITEM_HEIGHT,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#D5DBE8',
-  },
   quantumModalActions: {
     flexDirection: 'row',
     gap: 12,
@@ -5201,7 +5260,7 @@ const styles = StyleSheet.create({
   detailSubtaskRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderColor: '#d9dcea',
   },
@@ -5321,7 +5380,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#ffffff',
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     width: '100%',
     shadowColor: '#000',
@@ -5710,6 +5769,45 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+
+  languageSection: {
+    width: '100%',
+    marginTop: 14,
+    marginBottom: 2,
+    alignItems: 'center',
+  },
+  languageActionButton: {
+    marginTop: 0,
+    marginBottom: 8,
+  },
+  languageActionChevron: {
+    marginLeft: 12,
+  },
+  languageRow: {
+    flexDirection: 'row',
+    gap: 8,
+    width: '100%',
+  },
+  languageButton: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d4dcf0',
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  languageButtonActive: {
+    backgroundColor: '#3c2ba7',
+    borderColor: '#3c2ba7',
+  },
+  languageButtonText: {
+    color: '#3c2ba7',
+    fontWeight: '600',
+  },
+  languageButtonTextActive: {
+    color: '#fff',
+  },
   profileTasksButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -5775,7 +5873,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f4f6fb',
     borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   profileTasksSearchInput: {
     flex: 1,
