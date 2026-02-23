@@ -12,7 +12,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "updates": {
       "fallbackToCacheTimeout": 0
     },
@@ -29,6 +31,11 @@
       "bundleIdentifier": "com.favit.schedule",
       "buildNumber": "2",
       "supportsTablet": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "8d7f7173-553d-4356-92a3-4550a203428a"
+      }
     }
   }
 }
