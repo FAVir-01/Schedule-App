@@ -329,7 +329,7 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 const CALENDAR_DAY_SIZE = Math.floor(SCREEN_WIDTH / 7);
 
 // --- CÉLULA DO DIA ATUALIZADA (COM DESTAQUE PARA HOJE) ---
-const CalendarDayCell = ({ date, isCurrentMonth, status, onPress, isToday }) => {
+const CalendarDayCell = React.memo(({ date, isCurrentMonth, status, onPress, isToday }) => {
   if (!isCurrentMonth) {
     return <View style={{ width: CALENDAR_DAY_SIZE, height: CALENDAR_DAY_SIZE }} />;
   }
@@ -357,10 +357,18 @@ const CalendarDayCell = ({ date, isCurrentMonth, status, onPress, isToday }) => 
       )}
     </Pressable>
   );
-};
+});
 
 // --- ITEM DO MÊS ATUALIZADO ---
-const CalendarMonthItem = ({ item, getDayStatus, onDayPress, customImages, language }) => {
+const CalendarMonthItem = React.memo(({
+  item,
+  dayStatusByKey,
+  monthStatusSignature,
+  onDayPress,
+  customImages,
+  language,
+  todayKey,
+}) => {
   const monthStart = startOfMonth(item.date);
   const monthEnd = endOfMonth(item.date);
   const imageSource = getMonthImageSource(item.date.getMonth(), customImages);
@@ -369,16 +377,6 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress, customImages, langu
     start: startOfWeek(monthStart),
     end: endOfWeek(monthEnd),
   });
-
-  // Função simples para checar se é hoje
-  const checkIsToday = (date) => {
-    const now = new Date();
-    return (
-      date.getDate() === now.getDate() &&
-      date.getMonth() === now.getMonth() &&
-      date.getFullYear() === now.getFullYear()
-    );
-  };
 
   return (
     <View style={styles.calendarMonthContainer}>
@@ -392,20 +390,45 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress, customImages, langu
       </ImageBackground>
 
       <View style={styles.calendarDaysGrid}>
-        {days.map((day) => (
-          <CalendarDayCell
-            key={day.toISOString()}
-            date={day}
-            isCurrentMonth={day.getMonth() === item.date.getMonth()}
-            status={getDayStatus ? getDayStatus(day) : 'pending'}
-            onPress={onDayPress}
-            isToday={checkIsToday(day)}
-          />
-        ))}
+        {days.map((day) => {
+          const dayKey = getDateKey(day);
+          return (
+            <CalendarDayCell
+              key={day.toISOString()}
+              date={day}
+              isCurrentMonth={day.getMonth() === item.date.getMonth()}
+              status={dayStatusByKey[dayKey] ?? 'pending'}
+              onPress={onDayPress}
+              isToday={dayKey === todayKey}
+            />
+          );
+        })}
       </View>
     </View>
   );
-};
+}, (prevProps, nextProps) => {
+  const prevMonthDate = prevProps.item.date;
+  const nextMonthDate = nextProps.item.date;
+
+  if (prevMonthDate.getTime() !== nextMonthDate.getTime()) {
+    return false;
+  }
+
+  if (prevProps.language !== nextProps.language || prevProps.todayKey !== nextProps.todayKey) {
+    return false;
+  }
+
+  if (prevProps.onDayPress !== nextProps.onDayPress) {
+    return false;
+  }
+
+  if (prevProps.monthStatusSignature !== nextProps.monthStatusSignature) {
+    return false;
+  }
+
+  const monthIndex = nextMonthDate.getMonth();
+  return prevProps.customImages?.[monthIndex] === nextProps.customImages?.[monthIndex];
+});
 
 // --- COMPONENTE CUSTOMIZE CALENDAR MODAL ---
 function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage, language = 'en' }) {
@@ -768,13 +791,15 @@ function ScheduleApp() {
   const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
   const saveTimeoutRef = useRef(null);
+  const settingsSaveTimeoutRef = useRef(null);
+  const historySaveTimeoutRef = useRef(null);
   const taskPositionsRef = useRef(new Map());
   const taskAnimationsRef = useRef(new Map());
   const [calendarMonths, setCalendarMonths] = useState(() => {
     const today = new Date();
     const months = [];
 
-    for (let i = -60; i <= 24; i++) {
+    for (let i = -12; i <= 12; i++) {
       const date = getMonthStart(addMonthsDateFns(today, i));
       months.push({ id: i, date: date });
     }
@@ -893,18 +918,48 @@ function ScheduleApp() {
       };
     });
   }, [language, tasks, today]);
-  const getDayStatusForCalendar = useCallback(
-    (day) => {
+  const { calendarDayStatusByKey, calendarMonthStatusSignatureById } = useMemo(() => {
+    const dayStatusByKey = {};
+    const monthStatusSignatureById = {};
+    const dayStatusCache = new Map();
+
+    const resolveDayStatus = (day) => {
       const dateKey = getDateKey(day);
+      if (dayStatusCache.has(dateKey)) {
+        return dayStatusCache.get(dateKey);
+      }
       const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, day));
       const scoredTasks = dayTasks.filter(shouldCountTaskTowardsCompletion);
       const allCompleted =
         scoredTasks.length > 0 &&
         scoredTasks.every((task) => getTaskCompletionStatus(task, dateKey));
-      return allCompleted ? 'success' : 'pending';
-    },
-    [tasks]
-  );
+      const status = allCompleted ? 'success' : 'pending';
+      dayStatusCache.set(dateKey, status);
+      dayStatusByKey[dateKey] = status;
+      return status;
+    };
+
+    calendarMonths.forEach((month) => {
+      const monthStart = startOfMonth(month.date);
+      const monthEnd = endOfMonth(month.date);
+      const monthDays = eachDayOfInterval({
+        start: startOfWeek(monthStart),
+        end: endOfWeek(monthEnd),
+      });
+      const signature = monthDays
+        .map((day) => {
+          const status = resolveDayStatus(day);
+          return `${getDateKey(day)}:${status}`;
+        })
+        .join('|');
+      monthStatusSignatureById[getMonthId(month.date)] = signature;
+    });
+
+    return {
+      calendarDayStatusByKey: dayStatusByKey,
+      calendarMonthStatusSignatureById: monthStatusSignatureById,
+    };
+  }, [calendarMonths, tasks]);
 
   const reportTasks = useMemo(() => {
     if (!reportDate) return [];
@@ -987,13 +1042,15 @@ function ScheduleApp() {
     ({ item }) => (
       <CalendarMonthItem
         item={item}
-        getDayStatus={getDayStatusForCalendar}
+        dayStatusByKey={calendarDayStatusByKey}
         onDayPress={handleOpenReport}
         customImages={customMonthImages}
         language={language}
+        monthStatusSignature={calendarMonthStatusSignatureById[getMonthId(item.date)]}
+        todayKey={todayKey}
       />
     ),
-    [customMonthImages, getDayStatusForCalendar, handleOpenReport, language]
+    [calendarDayStatusByKey, calendarMonthStatusSignatureById, customMonthImages, handleOpenReport, language, todayKey]
   );
   const tasksForSelectedDate = useMemo(() => {
     const filtered = tasks.filter((task) => shouldTaskAppearOnDate(task, selectedDate));
@@ -1591,8 +1648,6 @@ function ScheduleApp() {
         repeat: normalizeRepeatConfig(task.repeat),
       }));
       void saveTasks(normalizedTasks);
-      void saveUserSettings(userSettings);
-      void saveHistory(history);
     }, 500);
 
     saveTimeoutRef.current = timeoutId;
@@ -1600,7 +1655,47 @@ function ScheduleApp() {
     return () => {
       clearTimeout(timeoutId);
     };
-  }, [history, isHydrated, tasks, userSettings]);
+  }, [isHydrated, tasks]);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return undefined;
+    }
+
+    if (settingsSaveTimeoutRef.current) {
+      clearTimeout(settingsSaveTimeoutRef.current);
+    }
+
+    const timeoutId = setTimeout(() => {
+      void saveUserSettings(userSettings);
+    }, 500);
+
+    settingsSaveTimeoutRef.current = timeoutId;
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [isHydrated, userSettings]);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return undefined;
+    }
+
+    if (historySaveTimeoutRef.current) {
+      clearTimeout(historySaveTimeoutRef.current);
+    }
+
+    const timeoutId = setTimeout(() => {
+      void saveHistory(history);
+    }, 500);
+
+    historySaveTimeoutRef.current = timeoutId;
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [history, isHydrated]);
 
   const handleUpdateMonthImage = useCallback(
     async (monthIndex, uri) => {
@@ -2567,6 +2662,7 @@ function ScheduleApp() {
                             setTasks((previous) => previous.filter((current) => current.id !== task.id));
                           }}
                           language={language}
+                          isVisible={activeTab === 'today'}
                           onEdit={() => {
                             const editable = {
                               ...task,
@@ -2591,7 +2687,10 @@ function ScheduleApp() {
                 renderItem={renderCalendarMonth}
                 keyExtractor={(item) => item.id.toString()}
                 showsVerticalScrollIndicator={false}
-                initialScrollIndex={initialCalendarIndex !== -1 ? initialCalendarIndex : 60}
+                removeClippedSubviews={Platform.OS === 'android'}
+                maxToRenderPerBatch={3}
+                windowSize={5}
+                initialScrollIndex={initialCalendarIndex !== -1 ? initialCalendarIndex : 12}
                 onViewableItemsChanged={onViewableItemsChanged}
                 viewabilityConfig={viewabilityConfig}
                 getItemLayout={getItemLayout}
@@ -3058,7 +3157,7 @@ function ScheduleApp() {
   );
 }
 
-function SwipeableTaskCard({
+const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
   task,
   backgroundColor,
   borderColor,
@@ -3072,6 +3171,7 @@ function SwipeableTaskCard({
   onDelete,
   onEdit,
   language = 'en',
+  isVisible = true,
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const wavePhaseAnim = useRef(new Animated.Value(0)).current;
@@ -3222,7 +3322,7 @@ function SwipeableTaskCard({
   }, [cardSize.height, waterLevelAnim]);
 
   useEffect(() => {
-    if (!isQuantum || !isWaterAnimation) {
+    if (!isQuantum || !isWaterAnimation || !isVisible) {
       wavePhaseAnim.stopAnimation();
       wavePhaseAnim.setValue(0);
       return undefined;
@@ -3242,7 +3342,7 @@ function SwipeableTaskCard({
       animationLoop.stop();
       wavePhaseAnim.setValue(0);
     };
-  }, [isQuantum, isWaterAnimation, wavePhaseAnim]);
+  }, [isQuantum, isVisible, isWaterAnimation, wavePhaseAnim]);
 
   useEffect(() => {
     const id = wavePhaseAnim.addListener(({ value }) => {
@@ -3432,7 +3532,7 @@ function SwipeableTaskCard({
       </Animated.View>
     </View>
   );
-}
+});
 
 function ProfileSwipeTaskCard({
   task,
