@@ -462,7 +462,7 @@ export default function AddHabitSheet({
   availableTagOptions = [],
   language = 'en',
 }) {
-  const { height } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
   const localePack = translations[language] ?? translations.en;
   const t = localePack.sheet;
   const common = localePack.common;
@@ -471,6 +471,7 @@ export default function AddHabitSheet({
     const usableHeight = height - insets.top;
     return usableHeight;
   }, [height, insets.top]);
+  const infoBubbleMaxWidth = useMemo(() => Math.max(220, width - 84), [width]);
   const [title, setTitle] = useState('');
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
   const [selectedEmoji, setSelectedEmoji] = useState(DEFAULT_EMOJI);
@@ -1803,6 +1804,7 @@ export default function AddHabitSheet({
                   infoText={t.info.startingFrom}
                   onPressInfo={() => showInfo('startingFrom')}
                   isInfoVisible={activeInfoKey === 'startingFrom'}
+                  bubbleMaxWidth={infoBubbleMaxWidth}
                 />
                 <SheetRow
                   icon={(
@@ -1819,6 +1821,7 @@ export default function AddHabitSheet({
                   infoText={t.info.repeat}
                   onPressInfo={() => showInfo('repeat')}
                   isInfoVisible={activeInfoKey === 'repeat'}
+                  bubbleMaxWidth={infoBubbleMaxWidth}
                 />
                 <SheetRow
                   icon={(
@@ -1835,6 +1838,7 @@ export default function AddHabitSheet({
                   infoText={t.info.time}
                   onPressInfo={() => showInfo('time')}
                   isInfoVisible={activeInfoKey === 'time'}
+                  bubbleMaxWidth={infoBubbleMaxWidth}
                 />
                 <SheetRow
                   icon={(
@@ -1851,6 +1855,7 @@ export default function AddHabitSheet({
                   infoText={t.info.reminder}
                   onPressInfo={() => showInfo('reminder')}
                   isInfoVisible={activeInfoKey === 'reminder'}
+                  bubbleMaxWidth={infoBubbleMaxWidth}
                 />
                 <SheetRow
                   icon={(
@@ -1867,6 +1872,7 @@ export default function AddHabitSheet({
                   infoText={t.info.tag}
                   onPressInfo={() => showInfo('tag')}
                   isInfoVisible={activeInfoKey === 'tag'}
+                  bubbleMaxWidth={infoBubbleMaxWidth}
                 />
                 <SheetRow
                   icon={(
@@ -1883,6 +1889,7 @@ export default function AddHabitSheet({
                   infoText={t.info.type}
                   onPressInfo={() => showInfo('type')}
                   isInfoVisible={activeInfoKey === 'type'}
+                  bubbleMaxWidth={infoBubbleMaxWidth}
                   isLast
                 />
               </View>
@@ -2190,6 +2197,7 @@ function SheetRow({
   infoText,
   onPressInfo,
   isInfoVisible = false,
+  bubbleMaxWidth,
 }) {
   return (
     <Pressable
@@ -2211,7 +2219,7 @@ function SheetRow({
             ) : null}
           </View>
           {isInfoVisible ? (
-            <View style={styles.floatingInfoBubble}>
+            <View style={[styles.floatingInfoBubble, styles.rowFloatingInfoBubble, bubbleMaxWidth ? { maxWidth: bubbleMaxWidth } : null]}>
               <Text style={styles.inlineInfoText}>{infoText}</Text>
             </View>
           ) : null}
@@ -4323,8 +4331,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 28,
     left: 0,
-    width: 300,
-    maxWidth: 320,
     backgroundColor: '#eef3ff',
     borderRadius: 10,
     paddingHorizontal: 10,
@@ -4338,14 +4344,17 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 40,
   },
+  rowFloatingInfoBubble: {
+    left: -28,
+    right: -16,
+  },
   previewFloatingInfoBubble: {
     left: 0,
     right: 0,
   },
   sectionFloatingInfoBubble: {
     left: 6,
-    width: 300,
-    maxWidth: 320,
+    right: -220,
   },
   inlineInfoText: {
     color: '#425071',
