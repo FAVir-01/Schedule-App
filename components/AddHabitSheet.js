@@ -1514,7 +1514,7 @@ export default function AddHabitSheet({
   }, [previewCardSize.width, previewWaveHeight]);
 
   useEffect(() => {
-    if (!isPreviewWater) {
+    if (!visible || !isPreviewWater) {
       previewWavePhaseAnim.stopAnimation();
       previewWavePhaseAnim.setValue(0);
       return undefined;
@@ -1532,7 +1532,7 @@ export default function AddHabitSheet({
       animationLoop.stop();
       previewWavePhaseAnim.setValue(0);
     };
-  }, [isPreviewWater, previewWavePhaseAnim]);
+  }, [isPreviewWater, previewWavePhaseAnim, visible]);
 
   useEffect(() => {
     const id = previewWavePhaseAnim.addListener(({ value }) => {
