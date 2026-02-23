@@ -329,7 +329,7 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 const CALENDAR_DAY_SIZE = Math.floor(SCREEN_WIDTH / 7);
 
 // --- CÉLULA DO DIA ATUALIZADA (COM DESTAQUE PARA HOJE) ---
-const CalendarDayCell = ({ date, isCurrentMonth, status, onPress, isToday }) => {
+const CalendarDayCell = React.memo(({ date, isCurrentMonth, status, onPress, isToday }) => {
   if (!isCurrentMonth) {
     return <View style={{ width: CALENDAR_DAY_SIZE, height: CALENDAR_DAY_SIZE }} />;
   }
@@ -357,10 +357,17 @@ const CalendarDayCell = ({ date, isCurrentMonth, status, onPress, isToday }) => 
       )}
     </Pressable>
   );
-};
+});
 
 // --- ITEM DO MÊS ATUALIZADO ---
-const CalendarMonthItem = ({ item, getDayStatus, onDayPress, customImages, language }) => {
+const CalendarMonthItem = React.memo(({
+  item,
+  getDayStatus,
+  onDayPress,
+  customImages,
+  language,
+  todayKey,
+}) => {
   const monthStart = startOfMonth(item.date);
   const monthEnd = endOfMonth(item.date);
   const imageSource = getMonthImageSource(item.date.getMonth(), customImages);
@@ -369,16 +376,6 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress, customImages, langu
     start: startOfWeek(monthStart),
     end: endOfWeek(monthEnd),
   });
-
-  // Função simples para checar se é hoje
-  const checkIsToday = (date) => {
-    const now = new Date();
-    return (
-      date.getDate() === now.getDate() &&
-      date.getMonth() === now.getMonth() &&
-      date.getFullYear() === now.getFullYear()
-    );
-  };
 
   return (
     <View style={styles.calendarMonthContainer}>
@@ -399,13 +396,13 @@ const CalendarMonthItem = ({ item, getDayStatus, onDayPress, customImages, langu
             isCurrentMonth={day.getMonth() === item.date.getMonth()}
             status={getDayStatus ? getDayStatus(day) : 'pending'}
             onPress={onDayPress}
-            isToday={checkIsToday(day)}
+            isToday={getDateKey(day) === todayKey}
           />
         ))}
       </View>
     </View>
   );
-};
+});
 
 // --- COMPONENTE CUSTOMIZE CALENDAR MODAL ---
 function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage, language = 'en' }) {
@@ -768,13 +765,15 @@ function ScheduleApp() {
   const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
   const saveTimeoutRef = useRef(null);
+  const settingsSaveTimeoutRef = useRef(null);
+  const historySaveTimeoutRef = useRef(null);
   const taskPositionsRef = useRef(new Map());
   const taskAnimationsRef = useRef(new Map());
   const [calendarMonths, setCalendarMonths] = useState(() => {
     const today = new Date();
     const months = [];
 
-    for (let i = -60; i <= 24; i++) {
+    for (let i = -12; i <= 12; i++) {
       const date = getMonthStart(addMonthsDateFns(today, i));
       months.push({ id: i, date: date });
     }
@@ -991,9 +990,10 @@ function ScheduleApp() {
         onDayPress={handleOpenReport}
         customImages={customMonthImages}
         language={language}
+        todayKey={todayKey}
       />
     ),
-    [customMonthImages, getDayStatusForCalendar, handleOpenReport, language]
+    [customMonthImages, getDayStatusForCalendar, handleOpenReport, language, todayKey]
   );
   const tasksForSelectedDate = useMemo(() => {
     const filtered = tasks.filter((task) => shouldTaskAppearOnDate(task, selectedDate));
@@ -1591,8 +1591,6 @@ function ScheduleApp() {
         repeat: normalizeRepeatConfig(task.repeat),
       }));
       void saveTasks(normalizedTasks);
-      void saveUserSettings(userSettings);
-      void saveHistory(history);
     }, 500);
 
     saveTimeoutRef.current = timeoutId;
@@ -1600,7 +1598,47 @@ function ScheduleApp() {
     return () => {
       clearTimeout(timeoutId);
     };
-  }, [history, isHydrated, tasks, userSettings]);
+  }, [isHydrated, tasks]);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return undefined;
+    }
+
+    if (settingsSaveTimeoutRef.current) {
+      clearTimeout(settingsSaveTimeoutRef.current);
+    }
+
+    const timeoutId = setTimeout(() => {
+      void saveUserSettings(userSettings);
+    }, 500);
+
+    settingsSaveTimeoutRef.current = timeoutId;
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [isHydrated, userSettings]);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return undefined;
+    }
+
+    if (historySaveTimeoutRef.current) {
+      clearTimeout(historySaveTimeoutRef.current);
+    }
+
+    const timeoutId = setTimeout(() => {
+      void saveHistory(history);
+    }, 500);
+
+    historySaveTimeoutRef.current = timeoutId;
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [history, isHydrated]);
 
   const handleUpdateMonthImage = useCallback(
     async (monthIndex, uri) => {
@@ -2591,7 +2629,7 @@ function ScheduleApp() {
                 renderItem={renderCalendarMonth}
                 keyExtractor={(item) => item.id.toString()}
                 showsVerticalScrollIndicator={false}
-                initialScrollIndex={initialCalendarIndex !== -1 ? initialCalendarIndex : 60}
+                initialScrollIndex={initialCalendarIndex !== -1 ? initialCalendarIndex : 12}
                 onViewableItemsChanged={onViewableItemsChanged}
                 viewabilityConfig={viewabilityConfig}
                 getItemLayout={getItemLayout}
@@ -3058,7 +3096,7 @@ function ScheduleApp() {
   );
 }
 
-function SwipeableTaskCard({
+const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
   task,
   backgroundColor,
   borderColor,
@@ -3432,7 +3470,7 @@ function SwipeableTaskCard({
       </Animated.View>
     </View>
   );
-}
+});
 
 function ProfileSwipeTaskCard({
   task,
