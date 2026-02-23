@@ -462,7 +462,7 @@ export default function AddHabitSheet({
   availableTagOptions = [],
   language = 'en',
 }) {
-  const { height } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
   const localePack = translations[language] ?? translations.en;
   const t = localePack.sheet;
   const common = localePack.common;
@@ -471,6 +471,7 @@ export default function AddHabitSheet({
     const usableHeight = height - insets.top;
     return usableHeight;
   }, [height, insets.top]);
+  const infoBubbleMaxWidth = useMemo(() => Math.max(220, width - 84), [width]);
   const [title, setTitle] = useState('');
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
   const [selectedEmoji, setSelectedEmoji] = useState(DEFAULT_EMOJI);
@@ -606,11 +607,18 @@ export default function AddHabitSheet({
   }, []);
 
   const showInfo = useCallback((key) => {
-    setActiveInfoKey(key);
+    setActiveInfoKey((prev) => (prev === key ? null : key));
     if (infoTimeoutRef.current) {
       clearTimeout(infoTimeoutRef.current);
     }
     infoTimeoutRef.current = setTimeout(() => setActiveInfoKey(null), 5000);
+  }, []);
+
+  const hideInfo = useCallback(() => {
+    setActiveInfoKey(null);
+    if (infoTimeoutRef.current) {
+      clearTimeout(infoTimeoutRef.current);
+    }
   }, []);
 
   const handleClose = useCallback(() => {
@@ -1652,7 +1660,11 @@ export default function AddHabitSheet({
                 backgroundColor: sheetBackgroundColor,
               },
             ]}
+            onTouchStart={activeInfoKey ? hideInfo : undefined}
           >
+            {activeInfoKey ? (
+              <Pressable style={styles.infoBackdropDismiss} onPress={hideInfo} />
+            ) : null}
             <View style={styles.header}>
               <Pressable
                 accessibilityRole="button"
@@ -1776,7 +1788,7 @@ export default function AddHabitSheet({
                   );
                 })}
               </View>
-              <View style={styles.listContainer}>
+              <View style={[styles.listContainer, activeInfoKey && styles.listContainerInfoActive]}>
                 <SheetRow
                   icon={(
                     <View style={styles.rowIconContainer}>
@@ -1785,10 +1797,14 @@ export default function AddHabitSheet({
                   )}
                   label={t.startingFrom}
                   value={dateLabel}
-                  onPress={() => handleOpenPanel('date')}
+                  onPress={() => {
+                    hideInfo();
+                    handleOpenPanel('date');
+                  }}
                   infoText={t.info.startingFrom}
                   onPressInfo={() => showInfo('startingFrom')}
                   isInfoVisible={activeInfoKey === 'startingFrom'}
+                  bubbleMaxWidth={infoBubbleMaxWidth}
                 />
                 <SheetRow
                   icon={(
@@ -1798,10 +1814,14 @@ export default function AddHabitSheet({
                   )}
                   label={t.repeat}
                   value={repeatLabel}
-                  onPress={() => handleOpenPanel('repeat')}
+                  onPress={() => {
+                    hideInfo();
+                    handleOpenPanel('repeat');
+                  }}
                   infoText={t.info.repeat}
                   onPressInfo={() => showInfo('repeat')}
                   isInfoVisible={activeInfoKey === 'repeat'}
+                  bubbleMaxWidth={infoBubbleMaxWidth}
                 />
                 <SheetRow
                   icon={(
@@ -1811,10 +1831,14 @@ export default function AddHabitSheet({
                   )}
                   label={t.time}
                   value={timeValue}
-                  onPress={() => handleOpenPanel('time')}
+                  onPress={() => {
+                    hideInfo();
+                    handleOpenPanel('time');
+                  }}
                   infoText={t.info.time}
                   onPressInfo={() => showInfo('time')}
                   isInfoVisible={activeInfoKey === 'time'}
+                  bubbleMaxWidth={infoBubbleMaxWidth}
                 />
                 <SheetRow
                   icon={(
@@ -1824,10 +1848,14 @@ export default function AddHabitSheet({
                   )}
                   label={t.reminder}
                   value={reminderLabel}
-                  onPress={() => handleOpenPanel('reminder')}
+                  onPress={() => {
+                    hideInfo();
+                    handleOpenPanel('reminder');
+                  }}
                   infoText={t.info.reminder}
                   onPressInfo={() => showInfo('reminder')}
                   isInfoVisible={activeInfoKey === 'reminder'}
+                  bubbleMaxWidth={infoBubbleMaxWidth}
                 />
                 <SheetRow
                   icon={(
@@ -1837,10 +1865,14 @@ export default function AddHabitSheet({
                   )}
                   label={t.tag}
                   value={tagLabel}
-                  onPress={() => handleOpenPanel('tag')}
+                  onPress={() => {
+                    hideInfo();
+                    handleOpenPanel('tag');
+                  }}
                   infoText={t.info.tag}
                   onPressInfo={() => showInfo('tag')}
                   isInfoVisible={activeInfoKey === 'tag'}
+                  bubbleMaxWidth={infoBubbleMaxWidth}
                 />
                 <SheetRow
                   icon={(
@@ -1850,10 +1882,14 @@ export default function AddHabitSheet({
                   )}
                   label={t.type}
                   value={typeLabel}
-                  onPress={() => handleOpenPanel('type')}
+                  onPress={() => {
+                    hideInfo();
+                    handleOpenPanel('type');
+                  }}
                   infoText={t.info.type}
                   onPressInfo={() => showInfo('type')}
                   isInfoVisible={activeInfoKey === 'type'}
+                  bubbleMaxWidth={infoBubbleMaxWidth}
                   isLast
                 />
               </View>
@@ -1870,10 +1906,20 @@ export default function AddHabitSheet({
                   onChangeTimerSeconds={setQuantumTimerSeconds}
                   onChangeCountValue={setQuantumCountValue}
                   onChangeCountUnit={setQuantumCountUnit}
+                  infoText={quantumMode === 'timer' ? t.info.timer : t.info.count}
+                  onPressInfo={() => showInfo(quantumMode === 'timer' ? 'timer' : 'count')}
+                  isInfoVisible={activeInfoKey === (quantumMode === 'timer' ? 'timer' : 'count')}
                   labels={t}
                 />
               ) : (
-                <SubtasksPanel value={subtasks} onChange={setSubtasks} labels={t} />
+                <SubtasksPanel
+                  value={subtasks}
+                  onChange={setSubtasks}
+                  infoText={t.info.subtasks}
+                  onPressInfo={() => showInfo('subtasks')}
+                  isInfoVisible={activeInfoKey === 'subtasks'}
+                  labels={t}
+                />
               )}
             </ScrollView>
             {activePanel === 'date' && (
@@ -2054,7 +2100,29 @@ export default function AddHabitSheet({
                   </>
                 )}
                 <View style={styles.typePreviewSection}>
-                  <View style={styles.infoLabelRow}><Text style={styles.typePreviewLabel}>{t.preview}</Text><Pressable onPress={() => showInfo('preview')} style={styles.infoIconButton}><Ionicons name="help-circle-outline" size={14} color="#6f7a86" /></Pressable></View>{activeInfoKey === 'preview' ? <View style={styles.inlineInfoBubble}><Text style={styles.inlineInfoText}>{pendingType === 'default' ? t.info.previewDefault : pendingType === 'quantum' ? t.info.previewQuantum : pendingType === 'list' ? t.info.previewList : t.info.previewReminder}</Text></View> : null}
+                  <View style={styles.infoLabelRow}>
+                    <Text style={styles.typePreviewLabel}>{t.preview}</Text>
+                    <Pressable
+                      onPress={() => showInfo('preview')}
+                      style={styles.infoIconButton}
+                      hitSlop={8}
+                    >
+                      <Ionicons name="help-circle-outline" size={14} color="#6f7a86" />
+                    </Pressable>
+                  </View>
+                  {activeInfoKey === 'preview' ? (
+                    <View style={[styles.floatingInfoBubble, styles.previewFloatingInfoBubble]}>
+                      <Text style={styles.inlineInfoText}>
+                        {pendingType === 'default'
+                          ? t.info.previewDefault
+                          : pendingType === 'quantum'
+                          ? t.info.previewQuantum
+                          : pendingType === 'list'
+                          ? t.info.previewList
+                          : t.info.previewReminder}
+                      </Text>
+                    </View>
+                  ) : null}
                   <View
                     style={[
                       styles.typePreviewCard,
@@ -2129,10 +2197,11 @@ function SheetRow({
   infoText,
   onPressInfo,
   isInfoVisible = false,
+  bubbleMaxWidth,
 }) {
   return (
     <Pressable
-      style={[styles.row, isLast && styles.rowLast, disabled && styles.rowDisabled]}
+      style={[styles.row, isLast && styles.rowLast, disabled && styles.rowDisabled, isInfoVisible && styles.rowInfoVisible]}
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
@@ -2140,7 +2209,21 @@ function SheetRow({
     >
       <View style={styles.rowLeft}>
         {icon}
-        <View style={styles.infoLabelRow}><Text style={styles.rowLabel}>{label}</Text>{infoText ? <Pressable onPress={onPressInfo} style={styles.infoIconButton}><Ionicons name="help-circle-outline" size={14} color="#6f7a86" /></Pressable> : null}</View>{isInfoVisible ? <View style={styles.inlineInfoBubble}><Text style={styles.inlineInfoText}>{infoText}</Text></View> : null}
+        <View style={[styles.rowLabelWithInfo, isInfoVisible && styles.rowLabelWithInfoVisible]}>
+          <View style={styles.infoLabelRow}>
+            <Text style={styles.rowLabel}>{label}</Text>
+            {infoText ? (
+              <Pressable onPress={onPressInfo} style={styles.infoIconButton} hitSlop={8}>
+                <Ionicons name="help-circle-outline" size={14} color="#6f7a86" />
+              </Pressable>
+            ) : null}
+          </View>
+          {isInfoVisible ? (
+            <View style={[styles.floatingInfoBubble, styles.rowFloatingInfoBubble, bubbleMaxWidth ? { maxWidth: bubbleMaxWidth } : null]}>
+              <Text style={styles.inlineInfoText}>{infoText}</Text>
+            </View>
+          ) : null}
+        </View>
       </View>
 
       <View style={styles.rowRight}>
@@ -2319,6 +2402,9 @@ function QuantumPanel({
   onChangeCountValue,
   onChangeCountUnit,
   showTitle = true,
+  infoText,
+  onPressInfo,
+  isInfoVisible = false,
   labels,
 }) {
   const isTimer = mode === 'timer';
@@ -2326,7 +2412,19 @@ function QuantumPanel({
   return (
     <View style={styles.subtasksPanel}>
       {showTitle ? (
-        <Text style={styles.subtasksTitle}>{isTimer ? labels.timer : labels.count}</Text>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.subtasksTitle}>{isTimer ? labels.timer : labels.count}</Text>
+          {infoText ? (
+            <Pressable onPress={onPressInfo} style={styles.infoIconButton} hitSlop={8}>
+              <Ionicons name="help-circle-outline" size={14} color="#6f7a86" />
+            </Pressable>
+          ) : null}
+          {isInfoVisible ? (
+            <View style={[styles.floatingInfoBubble, styles.sectionFloatingInfoBubble]}>
+              <Text style={styles.inlineInfoText}>{infoText}</Text>
+            </View>
+          ) : null}
+        </View>
       ) : null}
       <View style={styles.subtasksCard}>
         {isTimer ? (
@@ -2426,7 +2524,7 @@ function QuantumPanel({
   );
 }
 
-function SubtasksPanel({ value, onChange, labels }) {
+function SubtasksPanel({ value, onChange, infoText, onPressInfo, isInfoVisible = false, labels }) {
   const [draft, setDraft] = useState('');
   const trimmedDraft = draft.trim();
   const list = Array.isArray(value) ? value : [];
@@ -2457,7 +2555,19 @@ function SubtasksPanel({ value, onChange, labels }) {
 
   return (
     <View style={styles.subtasksPanel}>
-      <Text style={styles.subtasksTitle}>{labels.subtasks}</Text>
+      <View style={styles.sectionTitleRow}>
+        <Text style={styles.subtasksTitle}>{labels.subtasks}</Text>
+        {infoText ? (
+          <Pressable onPress={onPressInfo} style={styles.infoIconButton} hitSlop={8}>
+            <Ionicons name="help-circle-outline" size={14} color="#6f7a86" />
+          </Pressable>
+        ) : null}
+        {isInfoVisible ? (
+          <View style={[styles.floatingInfoBubble, styles.sectionFloatingInfoBubble]}>
+            <Text style={styles.inlineInfoText}>{infoText}</Text>
+          </View>
+        ) : null}
+      </View>
       <View style={styles.subtasksCard}>
         {hasSubtasks && (
           <View style={styles.subtasksList}>
@@ -3230,7 +3340,7 @@ function WheelColumn({
 const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 100,
+    zIndex: 300,
     elevation: 30,
   },
   backdrop: {
@@ -3259,6 +3369,10 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 24,
     paddingTop: 12,
+  },
+  infoBackdropDismiss: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 4,
   },
   header: {
     flexDirection: 'row',
@@ -3388,7 +3502,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 12,
     elevation: 6,
-    overflow: 'hidden',
+    overflow: 'visible',
+  },
+  listContainerInfoActive: {
+    zIndex: 80,
+    elevation: 80,
   },
   subtasksPanel: {
     marginTop: 4,
@@ -3399,6 +3517,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1F2742',
     marginLeft: 6,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    position: 'relative',
   },
   subtasksCard: {
     backgroundColor: '#FFFFFF',
@@ -3485,9 +3609,23 @@ const styles = StyleSheet.create({
   rowDisabled: {
     opacity: 0.5,
   },
+  rowInfoVisible: {
+    zIndex: 120,
+    elevation: 120,
+  },
   rowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+  },
+  rowLabelWithInfo: {
+    flex: 1,
+    position: 'relative',
+    overflow: 'visible',
+  },
+  rowLabelWithInfoVisible: {
+    zIndex: 130,
+    elevation: 130,
   },
   rowIconContainer: {
     width: 34,
@@ -3507,6 +3645,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginLeft: 12,
   },
   rowValue: {
     color: '#7F8A9A',
@@ -3529,7 +3668,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 16,
     elevation: 10,
-    overflow: 'hidden',
+    overflow: 'visible',
   },
   overlayHeader: {
     flexDirection: 'row',
@@ -4187,6 +4326,35 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
+  },
+  floatingInfoBubble: {
+    position: 'absolute',
+    top: 28,
+    left: 0,
+    backgroundColor: '#eef3ff',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#d5dff5',
+    zIndex: 300,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 40,
+  },
+  rowFloatingInfoBubble: {
+    left: -28,
+    right: -16,
+  },
+  previewFloatingInfoBubble: {
+    left: 0,
+    right: 0,
+  },
+  sectionFloatingInfoBubble: {
+    left: 6,
+    right: -220,
   },
   inlineInfoText: {
     color: '#425071',
