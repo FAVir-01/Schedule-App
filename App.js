@@ -130,6 +130,24 @@ const REMINDER_OFFSETS = {
   '1h': -60,
 };
 
+const buildCalendarMonthItem = (id, baseDate) => {
+  const date = getMonthStart(baseDate);
+  const monthStart = startOfMonth(date);
+  const monthEnd = endOfMonth(date);
+  const days = eachDayOfInterval({
+    start: startOfWeek(monthStart),
+    end: endOfWeek(monthEnd),
+  });
+
+  return {
+    id,
+    date,
+    monthId: getMonthId(date),
+    monthIndex: date.getMonth(),
+    days,
+  };
+};
+
 if (NOTIFICATIONS_SUPPORTED) {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -350,10 +368,10 @@ const CalendarDayCell = React.memo(({ date, isCurrentMonth, status, onPress, isT
         </View>
       ) : isToday ? (
         <View style={styles.calendarTodayCircle}>
-          <Text style={styles.calendarTodayText}>{format(date, 'd')}</Text>
+          <Text style={styles.calendarTodayText}>{date.getDate()}</Text>
         </View>
       ) : (
-        <Text style={styles.calendarDayText}>{format(date, 'd')}</Text>
+        <Text style={styles.calendarDayText}>{date.getDate()}</Text>
       )}
     </Pressable>
   );
@@ -369,14 +387,7 @@ const CalendarMonthItem = React.memo(({
   language,
   todayKey,
 }) => {
-  const monthStart = startOfMonth(item.date);
-  const monthEnd = endOfMonth(item.date);
-  const imageSource = getMonthImageSource(item.date.getMonth(), customImages);
-
-  const days = eachDayOfInterval({
-    start: startOfWeek(monthStart),
-    end: endOfWeek(monthEnd),
-  });
+  const imageSource = getMonthImageSource(item.monthIndex, customImages);
 
   return (
     <View style={styles.calendarMonthContainer}>
@@ -390,11 +401,11 @@ const CalendarMonthItem = React.memo(({
       </ImageBackground>
 
       <View style={styles.calendarDaysGrid}>
-        {days.map((day) => {
+        {item.days.map((day) => {
           const dayKey = getDateKey(day);
           return (
             <CalendarDayCell
-              key={day.toISOString()}
+              key={dayKey}
               date={day}
               isCurrentMonth={day.getMonth() === item.date.getMonth()}
               status={dayStatusByKey[dayKey] ?? 'pending'}
@@ -426,7 +437,7 @@ const CalendarMonthItem = React.memo(({
     return false;
   }
 
-  const monthIndex = nextMonthDate.getMonth();
+  const monthIndex = nextProps.item.monthIndex;
   return prevProps.customImages?.[monthIndex] === nextProps.customImages?.[monthIndex];
 });
 
@@ -800,8 +811,7 @@ function ScheduleApp() {
     const months = [];
 
     for (let i = -12; i <= 12; i++) {
-      const date = getMonthStart(addMonthsDateFns(today, i));
-      months.push({ id: i, date: date });
+      months.push(buildCalendarMonthItem(i, addMonthsDateFns(today, i)));
     }
 
     return months;
@@ -893,7 +903,7 @@ function ScheduleApp() {
         return previous;
       }
       const nextId = previous.reduce((max, month) => Math.max(max, month.id), -1) + 1;
-      const updated = [...previous, { id: nextId, date: monthStart }];
+      const updated = [...previous, buildCalendarMonthItem(nextId, monthStart)];
       return updated.sort((a, b) => a.date.getTime() - b.date.getTime());
     });
   }, [selectedDate]);
@@ -940,19 +950,13 @@ function ScheduleApp() {
     };
 
     calendarMonths.forEach((month) => {
-      const monthStart = startOfMonth(month.date);
-      const monthEnd = endOfMonth(month.date);
-      const monthDays = eachDayOfInterval({
-        start: startOfWeek(monthStart),
-        end: endOfWeek(monthEnd),
-      });
-      const signature = monthDays
+      const signature = month.days
         .map((day) => {
           const status = resolveDayStatus(day);
           return `${getDateKey(day)}:${status}`;
         })
         .join('|');
-      monthStatusSignatureById[getMonthId(month.date)] = signature;
+      monthStatusSignatureById[month.monthId] = signature;
     });
 
     return {
@@ -1034,7 +1038,7 @@ function ScheduleApp() {
       if (exists) {
         return previous;
       }
-      return [...previous, { id: nextId, date: nextMonthDate }];
+      return [...previous, buildCalendarMonthItem(nextId, nextMonthDate)];
     });
   }, []);
 
@@ -1046,7 +1050,7 @@ function ScheduleApp() {
         onDayPress={handleOpenReport}
         customImages={customMonthImages}
         language={language}
-        monthStatusSignature={calendarMonthStatusSignatureById[getMonthId(item.date)]}
+        monthStatusSignature={calendarMonthStatusSignatureById[item.monthId]}
         todayKey={todayKey}
       />
     ),
@@ -2691,6 +2695,8 @@ function ScheduleApp() {
                 maxToRenderPerBatch={3}
                 windowSize={5}
                 initialScrollIndex={initialCalendarIndex !== -1 ? initialCalendarIndex : 12}
+                initialNumToRender={2}
+                updateCellsBatchingPeriod={16}
                 onViewableItemsChanged={onViewableItemsChanged}
                 viewabilityConfig={viewabilityConfig}
                 getItemLayout={getItemLayout}
