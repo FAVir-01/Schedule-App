@@ -2565,7 +2565,7 @@ function SubtasksPanel({ value, onChange, infoText, onPressInfo, isInfoVisible =
   );
 }
 
-function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatConfig, labels }) {
+function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatConfig, labels = {} }) {
   const today = useMemo(() => normalizeDate(new Date()), []);
   const [visibleMonth, setVisibleMonth] = useState(() => normalizeDate(month));
 
@@ -2959,6 +2959,7 @@ function RepeatPanel({
                   onSelectDate={onChangeEndDate}
                   onChangeMonth={setEndDateMonth}
                   repeatConfig={{ enabled: false }}
+                  labels={labels}
                 />
               </View>
             )}
