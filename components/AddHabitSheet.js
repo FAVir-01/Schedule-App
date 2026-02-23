@@ -1459,7 +1459,7 @@ export default function AddHabitSheet({
     if (pendingType === 'quantum') {
       return getQuantumProgressLabel({ type: 'quantum', quantum: previewQuantum });
     }
-    if (!subtasks.length) {
+    if (pendingType === 'reminder' || !subtasks.length) {
       return null;
     }
     return `0/${subtasks.length}`;
@@ -1858,10 +1858,14 @@ export default function AddHabitSheet({
                 <SubtasksPanel
                   value={subtasks}
                   onChange={setSubtasks}
-                  infoText={t.info.subtasks}
+                  infoText={selectedType === 'reminder' ? t.info.reminders : t.info.subtasks}
                   onPressInfo={() => showInfo('subtasks')}
                   isInfoVisible={activeInfoKey === 'subtasks'}
                   labels={t}
+                  titleLabel={selectedType === 'reminder' ? t.reminders : t.subtasks}
+                  addLabel={selectedType === 'reminder' ? t.addReminder : t.addSubtask}
+                  hintLabel={selectedType === 'reminder' ? t.remindersHint : t.subtasksHint}
+                  removeAccessibilityPrefix={selectedType === 'reminder' ? 'Remove reminder' : 'Remove subtask'}
                 />
               )}
             </ScrollView>
@@ -2467,7 +2471,18 @@ function QuantumPanel({
   );
 }
 
-function SubtasksPanel({ value, onChange, infoText, onPressInfo, isInfoVisible = false, labels }) {
+function SubtasksPanel({
+  value,
+  onChange,
+  infoText,
+  onPressInfo,
+  isInfoVisible = false,
+  labels,
+  titleLabel,
+  addLabel,
+  hintLabel,
+  removeAccessibilityPrefix,
+}) {
   const [draft, setDraft] = useState('');
   const trimmedDraft = draft.trim();
   const list = Array.isArray(value) ? value : [];
@@ -2499,7 +2514,7 @@ function SubtasksPanel({ value, onChange, infoText, onPressInfo, isInfoVisible =
   return (
     <View style={styles.subtasksPanel}>
       <View style={styles.sectionTitleRow}>
-        <Text style={styles.subtasksTitle}>{labels.subtasks}</Text>
+        <Text style={styles.subtasksTitle}>{titleLabel ?? labels.subtasks}</Text>
         {infoText ? (
           <Pressable onPress={onPressInfo} style={styles.infoIconButton} hitSlop={8}>
             <Ionicons name="help-circle-outline" size={14} color="#6f7a86" />
@@ -2523,7 +2538,7 @@ function SubtasksPanel({ value, onChange, infoText, onPressInfo, isInfoVisible =
                 <Text style={styles.subtaskText}>{item}</Text>
                 <Pressable
                   onPress={() => handleRemove(index)}
-                  accessibilityLabel={`Remove subtask ${item}`}
+                  accessibilityLabel={`${removeAccessibilityPrefix ?? 'Remove subtask'} ${item}`}
                   accessibilityRole="button"
                   hitSlop={8}
                   style={styles.subtaskRemoveButton}
@@ -2537,18 +2552,18 @@ function SubtasksPanel({ value, onChange, infoText, onPressInfo, isInfoVisible =
         <View style={[styles.subtaskComposer, hasSubtasks && styles.subtaskComposerWithDivider]}>
           <TextInput
             style={styles.subtaskComposerInput}
-            placeholder={labels.addSubtask}
+            placeholder={addLabel ?? labels.addSubtask}
             placeholderTextColor="#9AA5B5"
             value={draft}
             onChangeText={setDraft}
             onSubmitEditing={handleSubmitEditing}
             returnKeyType="done"
-            accessibilityLabel={labels.addSubtask}
+            accessibilityLabel={addLabel ?? labels.addSubtask}
           />
           <Pressable
             onPress={handleAdd}
             accessibilityRole="button"
-            accessibilityLabel={labels.addSubtask}
+            accessibilityLabel={addLabel ?? labels.addSubtask}
             style={[styles.subtaskComposerAdd, trimmedDraft.length === 0 && styles.subtaskComposerAddDisabled]}
             disabled={trimmedDraft.length === 0}
           >
@@ -2560,7 +2575,7 @@ function SubtasksPanel({ value, onChange, infoText, onPressInfo, isInfoVisible =
           </Pressable>
         </View>
       </View>
-      <Text style={styles.subtasksPanelHint}>{labels.subtasksHint}</Text>
+      <Text style={styles.subtasksPanelHint}>{hintLabel ?? labels.subtasksHint}</Text>
     </View>
   );
 }
