@@ -6,7 +6,6 @@ import {
   Easing,
   Image,
   KeyboardAvoidingView,
-  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -557,7 +556,6 @@ export default function AddHabitSheet({
   const isEditMode = mode === 'edit';
   const isCopyMode = mode === 'copy';
   const submitLabel = isEditMode ? common.save : common.create;
-  const isDragCloseEnabled = false;
   const accessibilityAnnouncement = isEditMode
     ? 'Edit habit'
     : isCopyMode
@@ -1260,60 +1258,6 @@ export default function AddHabitSheet({
     typeOptions,
   ]);
 
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) =>
-          isDragCloseEnabled &&
-          visible &&
-          !activePanel &&
-          gestureState.dy > 14 &&
-          Math.abs(gestureState.dx) < 8,
-        onPanResponderMove: (_, gestureState) => {
-          if (!isDragCloseEnabled || !visible) {
-            return;
-          }
-          const offset = Math.max(0, gestureState.dy);
-          translateY.setValue(offset);
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          if (!isDragCloseEnabled || !visible) {
-            return;
-          }
-          const shouldClose = gestureState.vy > 1.2 || gestureState.dy > sheetHeight * 0.25;
-          if (shouldClose) {
-            handleClose();
-          } else {
-            Animated.spring(translateY, {
-              toValue: 0,
-              damping: 18,
-              stiffness: 220,
-              mass: 0.9,
-              useNativeDriver: USE_NATIVE_DRIVER,
-            }).start();
-          }
-        },
-        onPanResponderTerminate: (_, gestureState) => {
-          if (!isDragCloseEnabled || !visible) {
-            return;
-          }
-          const shouldClose = gestureState.vy > 1.2 || gestureState.dy > sheetHeight * 0.25;
-          if (shouldClose) {
-            handleClose();
-          } else {
-            Animated.spring(translateY, {
-              toValue: 0,
-              damping: 18,
-              stiffness: 220,
-              mass: 0.9,
-              useNativeDriver: USE_NATIVE_DRIVER,
-            }).start();
-          }
-        },
-      }),
-    [activePanel, handleClose, isDragCloseEnabled, sheetHeight, translateY, visible]
-  );
-
   const isSubmitDisabled = !title.trim();
 
   const formatDateLabelLocalized = useCallback((date) => {
@@ -1644,7 +1588,6 @@ export default function AddHabitSheet({
         ]}
         accessibilityViewIsModal
         importantForAccessibility="yes"
-        {...(!activePanel && isDragCloseEnabled ? panResponder.panHandlers : {})}
       >
         <KeyboardAvoidingView
           style={styles.keyboardAvoiding}
