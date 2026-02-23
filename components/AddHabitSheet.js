@@ -4263,13 +4263,6 @@ const styles = StyleSheet.create({
   infoIconButton: {
     padding: 2,
   },
-  inlineInfoBubble: {
-    marginTop: 6,
-    backgroundColor: '#eef3ff',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
   floatingInfoBubble: {
     position: 'absolute',
     top: 28,
