@@ -1858,7 +1858,7 @@ export default function AddHabitSheet({
                 <SubtasksPanel
                   value={subtasks}
                   onChange={setSubtasks}
-                  infoText={t.info.subtasks}
+                  infoText={selectedType === 'reminder' ? t.info.reminders : t.info.subtasks}
                   onPressInfo={() => showInfo('subtasks')}
                   isInfoVisible={activeInfoKey === 'subtasks'}
                   labels={t}
