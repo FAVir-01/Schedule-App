@@ -3473,6 +3473,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
     position: 'relative',
+    zIndex: 20,
+    elevation: 20,
   },
   subtasksCard: {
     backgroundColor: '#FFFFFF',
@@ -3486,6 +3488,7 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
     overflow: 'hidden',
+    zIndex: 1,
   },
   quantumModeRow: {
     flexDirection: 'row',
