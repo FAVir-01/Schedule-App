@@ -1459,7 +1459,7 @@ export default function AddHabitSheet({
     if (pendingType === 'quantum') {
       return getQuantumProgressLabel({ type: 'quantum', quantum: previewQuantum });
     }
-    if (!subtasks.length) {
+    if (pendingType === 'reminder' || !subtasks.length) {
       return null;
     }
     return `0/${subtasks.length}`;
@@ -1858,10 +1858,14 @@ export default function AddHabitSheet({
                 <SubtasksPanel
                   value={subtasks}
                   onChange={setSubtasks}
-                  infoText={t.info.subtasks}
-                  onPressInfo={() => showInfo('subtasks')}
-                  isInfoVisible={activeInfoKey === 'subtasks'}
+                  infoText={(selectedType === 'reminder' ? t.info.reminders : t.info.subtasks) ?? t.info.subtasks}
+                  onPressInfo={() => showInfo(selectedType === 'reminder' ? 'reminders' : 'subtasks')}
+                  isInfoVisible={activeInfoKey === (selectedType === 'reminder' ? 'reminders' : 'subtasks')}
                   labels={t}
+                  titleLabel={selectedType === 'reminder' ? t.reminders : t.subtasks}
+                  addLabel={selectedType === 'reminder' ? t.addReminder : t.addSubtask}
+                  hintLabel={selectedType === 'reminder' ? t.remindersHint : t.subtasksHint}
+                  removeAccessibilityPrefix={selectedType === 'reminder' ? 'Remove reminder' : 'Remove subtask'}
                 />
               )}
             </ScrollView>
@@ -2467,7 +2471,18 @@ function QuantumPanel({
   );
 }
 
-function SubtasksPanel({ value, onChange, infoText, onPressInfo, isInfoVisible = false, labels }) {
+function SubtasksPanel({
+  value,
+  onChange,
+  infoText,
+  onPressInfo,
+  isInfoVisible = false,
+  labels,
+  titleLabel,
+  addLabel,
+  hintLabel,
+  removeAccessibilityPrefix,
+}) {
   const [draft, setDraft] = useState('');
   const trimmedDraft = draft.trim();
   const list = Array.isArray(value) ? value : [];
@@ -2499,8 +2514,8 @@ function SubtasksPanel({ value, onChange, infoText, onPressInfo, isInfoVisible =
   return (
     <View style={styles.subtasksPanel}>
       <View style={styles.sectionTitleRow}>
-        <Text style={styles.subtasksTitle}>{labels.subtasks}</Text>
-        {infoText ? (
+        <Text style={styles.subtasksTitle}>{titleLabel ?? labels.subtasks}</Text>
+        {onPressInfo ? (
           <Pressable onPress={onPressInfo} style={styles.infoIconButton} hitSlop={8}>
             <Ionicons name="help-circle-outline" size={14} color="#6f7a86" />
           </Pressable>
@@ -2523,7 +2538,7 @@ function SubtasksPanel({ value, onChange, infoText, onPressInfo, isInfoVisible =
                 <Text style={styles.subtaskText}>{item}</Text>
                 <Pressable
                   onPress={() => handleRemove(index)}
-                  accessibilityLabel={`Remove subtask ${item}`}
+                  accessibilityLabel={`${removeAccessibilityPrefix ?? 'Remove subtask'} ${item}`}
                   accessibilityRole="button"
                   hitSlop={8}
                   style={styles.subtaskRemoveButton}
@@ -2537,18 +2552,18 @@ function SubtasksPanel({ value, onChange, infoText, onPressInfo, isInfoVisible =
         <View style={[styles.subtaskComposer, hasSubtasks && styles.subtaskComposerWithDivider]}>
           <TextInput
             style={styles.subtaskComposerInput}
-            placeholder={labels.addSubtask}
+            placeholder={addLabel ?? labels.addSubtask}
             placeholderTextColor="#9AA5B5"
             value={draft}
             onChangeText={setDraft}
             onSubmitEditing={handleSubmitEditing}
             returnKeyType="done"
-            accessibilityLabel={labels.addSubtask}
+            accessibilityLabel={addLabel ?? labels.addSubtask}
           />
           <Pressable
             onPress={handleAdd}
             accessibilityRole="button"
-            accessibilityLabel={labels.addSubtask}
+            accessibilityLabel={addLabel ?? labels.addSubtask}
             style={[styles.subtaskComposerAdd, trimmedDraft.length === 0 && styles.subtaskComposerAddDisabled]}
             disabled={trimmedDraft.length === 0}
           >
@@ -2560,12 +2575,18 @@ function SubtasksPanel({ value, onChange, infoText, onPressInfo, isInfoVisible =
           </Pressable>
         </View>
       </View>
-      <Text style={styles.subtasksPanelHint}>{labels.subtasksHint}</Text>
+      <Text style={styles.subtasksPanelHint}>{hintLabel ?? labels.subtasksHint}</Text>
     </View>
   );
 }
 
-function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatConfig, labels }) {
+function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatConfig, labels = {} }) {
+  const resolvedLabels = useMemo(() => ({
+    quickToday: 'Today',
+    quickTomorrow: 'Tomorrow',
+    quickNextMonday: 'Next Monday',
+    ...((labels && typeof labels === 'object') ? labels : {}),
+  }), [labels]);
   const today = useMemo(() => normalizeDate(new Date()), []);
   const [visibleMonth, setVisibleMonth] = useState(() => normalizeDate(month));
 
@@ -2579,11 +2600,11 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatCon
   const monthInfo = useMemo(() => getMonthMetadata(visibleMonth), [visibleMonth]);
   const monthLabel = useMemo(
     () =>
-      visibleMonth.toLocaleDateString(labels.quickToday === 'Hoje' ? 'pt-BR' : 'en-US', {
+      visibleMonth.toLocaleDateString(resolvedLabels.quickToday === 'Hoje' ? 'pt-BR' : 'en-US', {
         month: 'long',
         year: 'numeric',
       }),
-    [labels.quickToday, visibleMonth]
+    [resolvedLabels.quickToday, visibleMonth]
   );
   const previousMonth = useMemo(() => addMonths(visibleMonth, -1), [visibleMonth]);
   const nextMonth = useMemo(() => addMonths(visibleMonth, 1), [visibleMonth]);
@@ -2672,17 +2693,17 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatCon
     <View>
       <View style={styles.quickSelectRow}>
         <QuickSelectButton
-          label={labels.quickToday}
+          label={resolvedLabels.quickToday}
           active={isSameDay(selectedDate, today)}
           onPress={() => handleSelectQuick(today)}
         />
         <QuickSelectButton
-          label={labels.quickTomorrow}
+          label={resolvedLabels.quickTomorrow}
           active={isSameDay(selectedDate, tomorrow)}
           onPress={() => handleSelectQuick(tomorrow)}
         />
         <QuickSelectButton
-          label={labels.quickNextMonday}
+          label={resolvedLabels.quickNextMonday}
           active={isSameDay(selectedDate, nextMonday)}
           onPress={() => handleSelectQuick(nextMonday)}
         />
@@ -2701,7 +2722,7 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatCon
         </Pressable>
       </View>
       <View style={styles.weekdayHeader}>
-        {(labels.quickToday === 'Hoje' ? WEEKDAYS_PT : WEEKDAYS_EN).map((weekday) => (
+        {(resolvedLabels.quickToday === 'Hoje' ? WEEKDAYS_PT : WEEKDAYS_EN).map((weekday) => (
           <Text key={weekday.key} style={styles.weekdayLabel}>
             {weekday.label}
           </Text>
@@ -2959,6 +2980,7 @@ function RepeatPanel({
                   onSelectDate={onChangeEndDate}
                   onChangeMonth={setEndDateMonth}
                   repeatConfig={{ enabled: false }}
+                  labels={labels}
                 />
               </View>
             )}
@@ -3466,6 +3488,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
     position: 'relative',
+    zIndex: 20,
+    elevation: 20,
   },
   subtasksCard: {
     backgroundColor: '#FFFFFF',
@@ -3479,6 +3503,7 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
     overflow: 'hidden',
+    zIndex: 1,
   },
   quantumModeRow: {
     flexDirection: 'row',

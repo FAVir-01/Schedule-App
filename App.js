@@ -29,7 +29,6 @@ import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as Haptics from 'expo-haptics';
-import { Audio } from 'expo-av';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Notifications from 'expo-notifications';
@@ -107,6 +106,42 @@ const isPassiveTaskType = (task) => {
 };
 
 const shouldCountTaskTowardsCompletion = (task) => !isPassiveTaskType(task);
+
+const isReminderExpiredForDate = (task, targetDate, now = new Date()) => {
+  if (!task || task.type !== 'reminder') {
+    return false;
+  }
+
+  const normalizedTargetDate = normalizeDateValue(targetDate);
+  const normalizedNowDate = normalizeDateValue(now);
+
+  if (!normalizedTargetDate || !normalizedNowDate) {
+    return false;
+  }
+
+  if (normalizedTargetDate.getTime() < normalizedNowDate.getTime()) {
+    return true;
+  }
+
+  if (normalizedTargetDate.getTime() > normalizedNowDate.getTime()) {
+    return false;
+  }
+
+  if (!task.time?.specified) {
+    return false;
+  }
+
+  const nowSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  if (task.time.mode === 'period' && task.time.period?.end) {
+    return nowSeconds > toMinutes(task.time.period.end) * 60;
+  }
+
+  if (task.time.point) {
+    return nowSeconds > toMinutes(task.time.point) * 60;
+  }
+
+  return false;
+};
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
@@ -200,6 +235,18 @@ const triggerSelection = () => {
   }
 };
 
+let expoAvModulePromise = null;
+
+const loadExpoAvAudio = async () => {
+  if (Platform.OS === 'web') {
+    return null;
+  }
+  if (!expoAvModulePromise) {
+    expoAvModulePromise = import('expo-av');
+  }
+  return expoAvModulePromise;
+};
+
 const triggerSuccessFeedback = async () => {
   if (HAPTICS_SUPPORTED) {
     try {
@@ -209,7 +256,17 @@ const triggerSuccessFeedback = async () => {
     }
   }
 
+  if (Platform.OS === 'web') {
+    return;
+  }
+
   try {
+    const avModule = await loadExpoAvAudio();
+    const Audio = avModule?.Audio;
+    if (!Audio?.Sound?.createAsync) {
+      return;
+    }
+
     const { sound } = await Audio.Sound.createAsync(
       { uri: 'https://www.soundjay.com/buttons/sounds/button-30.mp3' },
       { shouldPlay: true, volume: 0.25 }
@@ -271,7 +328,7 @@ const ConfettiOverlay = React.memo(({ visible, onComplete }) => {
         duration: piece.duration,
         delay: piece.delay,
         easing: Easing.bezier(0.25, 0.1, 0.25, 1),
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       })
     );
     const swayLoops = pieces.map((piece) =>
@@ -281,13 +338,13 @@ const ConfettiOverlay = React.memo(({ visible, onComplete }) => {
             toValue: piece.swayAmplitude,
             duration: piece.swayDuration,
             easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
+            useNativeDriver: USE_NATIVE_DRIVER,
           }),
           Animated.timing(piece.swayAnim, {
             toValue: -piece.swayAmplitude,
             duration: piece.swayDuration,
             easing: Easing.inOut(Easing.sin),
-            useNativeDriver: true,
+            useNativeDriver: USE_NATIVE_DRIVER,
           }),
         ])
       )
@@ -736,7 +793,7 @@ function DayReportModal({ visible, date, tasks, onClose, customImages, language 
                             <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
                               {quantumLabel}
                             </Text>
-                          ) : task.totalSubtasks > 0 ? (
+                          ) : task.type !== 'reminder' && task.totalSubtasks > 0 ? (
                             <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
                               {task.completedSubtasks}/{task.totalSubtasks} subtasks
                             </Text>
@@ -801,6 +858,7 @@ function ScheduleApp() {
   const [history, setHistory] = useState([]);
   const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
+  const [currentTime, setCurrentTime] = useState(() => new Date());
   const saveTimeoutRef = useRef(null);
   const settingsSaveTimeoutRef = useRef(null);
   const historySaveTimeoutRef = useRef(null);
@@ -886,6 +944,15 @@ function ScheduleApp() {
   }, []);
   const todayKey = useMemo(() => getDateKey(today), [today]);
   const selectedDateKey = useMemo(() => getDateKey(selectedDate), [selectedDate]);
+
+  useEffect(() => {
+    const timerId = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    return () => clearInterval(timerId);
+  }, []);
+
   const isSelectedToday = selectedDateKey === todayKey;
   const selectedDateLabel = useMemo(() => {
     if (isSelectedToday) {
@@ -1122,9 +1189,11 @@ function ScheduleApp() {
     () =>
       visibleTasks.map((task) => ({
         ...task,
-        completed: getTaskCompletionStatus(task, selectedDateKey),
+        completed:
+          getTaskCompletionStatus(task, selectedDateKey) ||
+          isReminderExpiredForDate(task, selectedDate, currentTime),
       })),
-    [selectedDateKey, visibleTasks]
+    [currentTime, selectedDate, selectedDateKey, visibleTasks]
   );
   const sortedVisibleTasksForSelectedDay = useMemo(() => {
     const incomplete = [];
@@ -1164,7 +1233,7 @@ function ScheduleApp() {
         toValue: 0,
         duration: 280,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       }).start();
     },
     [getTaskTranslateY]
@@ -3280,7 +3349,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     if (quantumLabel) {
       return quantumLabel;
     }
-    if (!totalSubtasks) {
+    if (task.type === 'reminder' || !totalSubtasks) {
       return null;
     }
     return `${completedSubtasks}/${totalSubtasks}`;
@@ -4142,6 +4211,7 @@ function TaskDetailModal({
     ? task.subtasks.filter((item) => getSubtaskCompletionStatus(item, dateKey)).length
     : 0;
   const quantumLabel = getQuantumProgressLabel(task, dateKey);
+  const isReminder = task.type === 'reminder';
   const cardBackground = lightenColor(task.color, 0.85);
 
   return (
@@ -4167,19 +4237,19 @@ function TaskDetailModal({
                 <Text style={styles.detailEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
               )}
               <View style={styles.detailTitleContainer}>
-                <View style={styles.detailTitleRow}>
-                  <Text style={styles.detailTitle}>{task.title}</Text>
+                <Text style={styles.detailTitle}>
+                  {task.title}{' '}
                   <Ionicons
                     name={task.profileLocked ? 'lock-closed' : 'lock-open-outline'}
                     size={14}
                     color="#9aa5b5"
                     style={styles.detailTitleLock}
                   />
-                </View>
+                </Text>
                 <Text style={styles.detailTime}>{formatTaskTime(task.time, { language, anytimeLabel: t.sheet.anytime })}</Text>
                 {quantumLabel ? (
                   <Text style={styles.detailSubtaskSummaryLabel}>{quantumLabel}</Text>
-                ) : totalSubtasks > 0 ? (
+                ) : !isReminder && totalSubtasks > 0 ? (
                     <Text style={styles.detailSubtaskSummaryLabel}>
                       {completedSubtasks}/{totalSubtasks} subtasks completed
                     </Text>
@@ -4204,7 +4274,15 @@ function TaskDetailModal({
             </View>
             <ScrollView style={styles.detailSubtasksContainer}>
               {totalSubtasks === 0 ? (
-                <Text style={styles.detailEmptySubtasks}>{t.taskModal.noSubtasks}</Text>
+                <Text style={styles.detailEmptySubtasks}>
+                  {isReminder ? t.taskModal.noReminders : t.taskModal.noSubtasks}
+                </Text>
+              ) : isReminder ? (
+                task.subtasks.map((subtask) => (
+                  <View key={subtask.id} style={styles.detailSubtaskRow}>
+                    <Text style={styles.detailSubtaskText}>{subtask.title}</Text>
+                  </View>
+                ))
               ) : (
                 task.subtasks.map((subtask) => (
                   <Pressable
@@ -5116,11 +5194,6 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     flex: 1,
   },
-  detailTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
   detailTitle: {
     fontSize: 20,
     fontWeight: '700',
@@ -5128,6 +5201,7 @@ const styles = StyleSheet.create({
   },
   detailTitleLock: {
     opacity: 0.7,
+    lineHeight: 20,
   },
   detailTime: {
     marginTop: 4,
