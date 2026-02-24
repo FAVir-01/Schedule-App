@@ -1858,9 +1858,9 @@ export default function AddHabitSheet({
                 <SubtasksPanel
                   value={subtasks}
                   onChange={setSubtasks}
-                  infoText={selectedType === 'reminder' ? t.info.reminders : t.info.subtasks}
-                  onPressInfo={() => showInfo('subtasks')}
-                  isInfoVisible={activeInfoKey === 'subtasks'}
+                  infoText={(selectedType === 'reminder' ? t.info.reminders : t.info.subtasks) ?? t.info.subtasks}
+                  onPressInfo={() => showInfo(selectedType === 'reminder' ? 'reminders' : 'subtasks')}
+                  isInfoVisible={activeInfoKey === (selectedType === 'reminder' ? 'reminders' : 'subtasks')}
                   labels={t}
                   titleLabel={selectedType === 'reminder' ? t.reminders : t.subtasks}
                   addLabel={selectedType === 'reminder' ? t.addReminder : t.addSubtask}
@@ -2515,7 +2515,7 @@ function SubtasksPanel({
     <View style={styles.subtasksPanel}>
       <View style={styles.sectionTitleRow}>
         <Text style={styles.subtasksTitle}>{titleLabel ?? labels.subtasks}</Text>
-        {infoText ? (
+        {onPressInfo ? (
           <Pressable onPress={onPressInfo} style={styles.infoIconButton} hitSlop={8}>
             <Ionicons name="help-circle-outline" size={14} color="#6f7a86" />
           </Pressable>
