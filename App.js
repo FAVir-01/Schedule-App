@@ -4237,15 +4237,15 @@ function TaskDetailModal({
                 <Text style={styles.detailEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
               )}
               <View style={styles.detailTitleContainer}>
-                <View style={styles.detailTitleRow}>
-                  <Text style={styles.detailTitle}>{task.title}</Text>
+                <Text style={styles.detailTitle}>
+                  {task.title}{' '}
                   <Ionicons
                     name={task.profileLocked ? 'lock-closed' : 'lock-open-outline'}
                     size={14}
                     color="#9aa5b5"
                     style={styles.detailTitleLock}
                   />
-                </View>
+                </Text>
                 <Text style={styles.detailTime}>{formatTaskTime(task.time, { language, anytimeLabel: t.sheet.anytime })}</Text>
                 {quantumLabel ? (
                   <Text style={styles.detailSubtaskSummaryLabel}>{quantumLabel}</Text>
@@ -5194,11 +5194,6 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     flex: 1,
   },
-  detailTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
   detailTitle: {
     fontSize: 20,
     fontWeight: '700',
@@ -5206,6 +5201,7 @@ const styles = StyleSheet.create({
   },
   detailTitleLock: {
     opacity: 0.7,
+    lineHeight: 20,
   },
   detailTime: {
     marginTop: 4,
