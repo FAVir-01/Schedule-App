@@ -107,6 +107,42 @@ const isPassiveTaskType = (task) => {
 
 const shouldCountTaskTowardsCompletion = (task) => !isPassiveTaskType(task);
 
+const isReminderExpiredForDate = (task, targetDate, now = new Date()) => {
+  if (!task || task.type !== 'reminder') {
+    return false;
+  }
+
+  const normalizedTargetDate = normalizeDateValue(targetDate);
+  const normalizedNowDate = normalizeDateValue(now);
+
+  if (!normalizedTargetDate || !normalizedNowDate) {
+    return false;
+  }
+
+  if (normalizedTargetDate.getTime() < normalizedNowDate.getTime()) {
+    return true;
+  }
+
+  if (normalizedTargetDate.getTime() > normalizedNowDate.getTime()) {
+    return false;
+  }
+
+  if (!task.time?.specified) {
+    return false;
+  }
+
+  const nowSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  if (task.time.mode === 'period' && task.time.period?.end) {
+    return nowSeconds > toMinutes(task.time.period.end) * 60;
+  }
+
+  if (task.time.point) {
+    return nowSeconds > toMinutes(task.time.point) * 60;
+  }
+
+  return false;
+};
+
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
@@ -822,6 +858,7 @@ function ScheduleApp() {
   const [history, setHistory] = useState([]);
   const [customMonthImages, setCustomMonthImages] = useState({});
   const [isHydrated, setIsHydrated] = useState(false);
+  const [currentTime, setCurrentTime] = useState(() => new Date());
   const saveTimeoutRef = useRef(null);
   const settingsSaveTimeoutRef = useRef(null);
   const historySaveTimeoutRef = useRef(null);
@@ -907,6 +944,15 @@ function ScheduleApp() {
   }, []);
   const todayKey = useMemo(() => getDateKey(today), [today]);
   const selectedDateKey = useMemo(() => getDateKey(selectedDate), [selectedDate]);
+
+  useEffect(() => {
+    const timerId = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    return () => clearInterval(timerId);
+  }, []);
+
   const isSelectedToday = selectedDateKey === todayKey;
   const selectedDateLabel = useMemo(() => {
     if (isSelectedToday) {
@@ -1143,9 +1189,11 @@ function ScheduleApp() {
     () =>
       visibleTasks.map((task) => ({
         ...task,
-        completed: getTaskCompletionStatus(task, selectedDateKey),
+        completed:
+          getTaskCompletionStatus(task, selectedDateKey) ||
+          isReminderExpiredForDate(task, selectedDate, currentTime),
       })),
-    [selectedDateKey, visibleTasks]
+    [currentTime, selectedDate, selectedDateKey, visibleTasks]
   );
   const sortedVisibleTasksForSelectedDay = useMemo(() => {
     const incomplete = [];
