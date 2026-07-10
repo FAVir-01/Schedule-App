@@ -1,5 +1,5 @@
 import { DEFAULT_REPEAT_CONFIG } from '../constants/app';
-import { getDateKey, normalizeDateValue } from './dateUtils';
+import { getDateKey, normalizeDateValue, shouldTaskAppearOnDate } from './dateUtils';
 import { clamp01 } from './mathUtils';
 import { formatDuration, getTimerTotalSeconds, toMinutes } from './timeUtils';
 
@@ -219,6 +219,39 @@ export const isReminderExpiredForDate = (task, targetDate, now = new Date()) => 
   }
 
   return false;
+};
+
+// Sequência de ocorrências consecutivas concluídas, respeitando a repetição:
+// dias em que a tarefa não está agendada não quebram a sequência, e o dia de
+// hoje ainda incompleto também não zera.
+const STREAK_LOOKBACK_LIMIT_DAYS = 730;
+
+export const getTaskStreak = (task, today = new Date()) => {
+  if (!task || isPassiveTaskType(task)) {
+    return 0;
+  }
+
+  const startDate = normalizeDateValue(task.dateKey ?? task.date);
+  const cursor = normalizeDateValue(today);
+  if (!startDate || !cursor) {
+    return 0;
+  }
+
+  let streak = 0;
+  for (let i = 0; i < STREAK_LOOKBACK_LIMIT_DAYS; i += 1) {
+    if (cursor.getTime() < startDate.getTime()) {
+      break;
+    }
+    if (shouldTaskAppearOnDate(task, cursor)) {
+      if (getTaskCompletionStatus(task, getDateKey(cursor))) {
+        streak += 1;
+      } else if (i > 0) {
+        break;
+      }
+    }
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
 };
 
 export const normalizeRepeatConfig = (repeatConfig) => {

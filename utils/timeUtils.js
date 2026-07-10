@@ -1,7 +1,12 @@
 const formatNumber = (value) => value.toString().padStart(2, '0');
 
-const formatTimeValue = ({ hour, minute, meridiem }) =>
-  `${formatNumber(hour)}:${formatNumber(minute)} ${meridiem}`;
+const formatTimeValue = ({ hour, minute, meridiem }, use24Hour = false) => {
+  if (use24Hour) {
+    const hour24 = meridiem === 'PM' ? (hour % 12) + 12 : hour % 12;
+    return `${formatNumber(hour24)}:${formatNumber(minute)}`;
+  }
+  return `${formatNumber(hour)}:${formatNumber(minute)} ${meridiem}`;
+};
 
 const toMinutes = ({ hour, minute, meridiem }) => {
   const normalizedHour = meridiem === 'PM' ? (hour % 12) + 12 : hour % 12;
@@ -23,6 +28,8 @@ const resolveAnytimeLabel = (options = {}) => {
 
 const formatTaskTime = (time, options = {}) => {
   const anytimeLabel = resolveAnytimeLabel(options);
+  // Português usa relógio de 24h; inglês mantém AM/PM.
+  const use24Hour = options.language === 'pt';
 
   if (!time || !time.specified) {
     return anytimeLabel;
@@ -30,11 +37,11 @@ const formatTaskTime = (time, options = {}) => {
 
   if (time.mode === 'period' && time.period) {
     const { start, end } = time.period;
-    return `${formatTimeValue(start)} - ${formatTimeValue(end)}`;
+    return `${formatTimeValue(start, use24Hour)} - ${formatTimeValue(end, use24Hour)}`;
   }
 
   if (time.point) {
-    return formatTimeValue(time.point);
+    return formatTimeValue(time.point, use24Hour);
   }
 
   return anytimeLabel;

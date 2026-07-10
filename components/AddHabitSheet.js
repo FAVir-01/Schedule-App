@@ -170,21 +170,6 @@ const WEEKDAYS_PT = [
 ];
 const WEEKDAYS = WEEKDAYS_EN;
 const WEEKDAY_KEYS = WEEKDAYS.map((weekday) => weekday.key);
-const WEEKDAY_SHORT_NAMES = {
-  sun: 'Sun',
-  mon: 'Mon',
-  tue: 'Tue',
-  wed: 'Wed',
-  thu: 'Thu',
-  fri: 'Fri',
-  sat: 'Sat',
-};
-const FREQUENCY_LABELS = {
-  daily: { singular: 'day', plural: 'days' },
-  weekly: { singular: 'week', plural: 'weeks' },
-  monthly: { singular: 'month', plural: 'months' },
-};
-
 const REMINDER_OPTIONS = [
   { key: 'none', label: 'No reminder' },
   { key: 'at_time', label: 'At time of event', offsetMinutes: 0 },
@@ -256,8 +241,10 @@ const mergeTagOptions = (primaryOptions = [], secondaryOptions = []) => {
 };
 
 const HOUR_VALUES = Array.from({ length: 12 }, (_, i) => i + 1);
+const HOUR_VALUES_24 = Array.from({ length: 24 }, (_, i) => i);
 const MINUTE_VALUES = Array.from({ length: 60 }, (_, i) => i);
 const MERIDIEM_VALUES = ['AM', 'PM'];
+const to24Hour = ({ hour, meridiem }) => (meridiem === 'PM' ? (hour % 12) + 12 : hour % 12);
 const INTERVAL_VALUES = Array.from({ length: 99 }, (_, i) => i + 1);
 
 const formatNumber = (value) => value.toString().padStart(2, '0');
@@ -279,52 +266,17 @@ const lightenColor = (hex, amount = 0.6) => {
   return `#${mixed.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
 };
 
-const formatOrdinal = (day) => {
-  const remainder = day % 10;
-  const tens = Math.floor(day / 10) % 10;
-  if (tens === 1) {
-    return `${day}th`;
-  }
-  if (remainder === 1) {
-    return `${day}st`;
-  }
-  if (remainder === 2) {
-    return `${day}nd`;
-  }
-  if (remainder === 3) {
-    return `${day}rd`;
-  }
-  return `${day}th`;
-};
-
 const getWeekdayKeyFromDate = (date) => WEEKDAY_KEYS[date.getDay()];
 
-function formatTime({ hour, minute, meridiem }) {
+function formatTime({ hour, minute, meridiem }, use24Hour = false) {
+  if (use24Hour) {
+    return `${formatNumber(to24Hour({ hour, meridiem }))}:${formatNumber(minute)}`;
+  }
   return `${formatNumber(hour)}:${formatNumber(minute)} ${meridiem}`;
 }
 
-function formatPeriod({ start, end }) {
-  return `${formatTime(start)} - ${formatTime(end)}`;
-}
-
-function formatDateLabel(date) {
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-
-  if (date.toDateString() === today.toDateString()) {
-    return 'Today';
-  }
-
-  if (date.toDateString() === tomorrow.toDateString()) {
-    return 'Tomorrow';
-  }
-
-  return date.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    weekday: 'short',
-  });
+function formatPeriod({ start, end }, use24Hour = false) {
+  return `${formatTime(start, use24Hour)} - ${formatTime(end, use24Hour)}`;
 }
 
 function daysBetween(start, end) {
@@ -336,47 +288,6 @@ function monthsBetween(start, end) {
     (end.getFullYear() - start.getFullYear()) * 12 +
     (end.getMonth() - start.getMonth())
   );
-}
-
-function getRepeatLabel(repeatConfig, startDate) {
-  if (!repeatConfig?.enabled) {
-    return 'No repeat';
-  }
-
-  const { frequency, interval, weekdays, monthDays, endDate } = repeatConfig;
-  const unitLabels = FREQUENCY_LABELS[frequency] || FREQUENCY_LABELS.daily;
-  const everyText = `Every ${interval} ${interval === 1 ? unitLabels.singular : unitLabels.plural}`;
-  const endText = endDate ? ` until ${formatDateLabel(endDate)}` : '';
-
-  const maybeTruncate = (label) => {
-    const words = label.split(' ');
-    if (words.length > 5) {
-      return `${words.slice(0, 4).join(' ')} ...`;
-    }
-    return label;
-  };
-
-  if (frequency === 'weekly') {
-    const selectedWeekdays = (weekdays && weekdays.size ? weekdays : null) ||
-      new Set([startDate ? getWeekdayKeyFromDate(startDate) : 'mon']);
-    const labels = WEEKDAYS.filter(({ key }) => selectedWeekdays.has(key)).map(
-      (weekday) => WEEKDAY_SHORT_NAMES[weekday.key] || weekday.label
-    );
-    const daysText = labels.length ? ` on ${labels.join(', ')}` : '';
-    return maybeTruncate(`${everyText}${daysText}${endText}`);
-  }
-
-  if (frequency === 'monthly') {
-    const selectedDays = (monthDays && monthDays.size ? monthDays : null) ||
-      new Set([startDate ? startDate.getDate() : 1]);
-    const dayText = Array.from(selectedDays)
-      .sort((a, b) => a - b)
-      .map((day) => formatOrdinal(day))
-      .join(', ');
-    return maybeTruncate(`${everyText}${dayText ? ` on ${dayText}` : ''}${endText}`);
-  }
-
-  return maybeTruncate(`${everyText}${endText}`);
 }
 
 function doesDateRepeat(date, start, repeatConfig) {
@@ -513,7 +424,7 @@ function getReminderReferenceTime(hasSpecifiedTime, timeMode, pointTime, periodT
   return pointTime;
 }
 
-function getReminderHint(option, hasSpecifiedTime, timeMode, pointTime, periodTime) {
+function getReminderHint(option, hasSpecifiedTime, timeMode, pointTime, periodTime, use24Hour = false) {
   if (option.key === 'none') {
     return null;
   }
@@ -524,7 +435,7 @@ function getReminderHint(option, hasSpecifiedTime, timeMode, pointTime, periodTi
   const baseMinutes = timeToMinutes(reference);
   const reminderMinutes = baseMinutes + option.offsetMinutes;
   const reminderTime = minutesToTime(reminderMinutes);
-  return formatTime(reminderTime);
+  return formatTime(reminderTime, use24Hour);
 }
 
 export default function AddHabitSheet({
@@ -541,6 +452,8 @@ export default function AddHabitSheet({
   const localePack = translations[language] ?? translations.en;
   const t = localePack.sheet;
   const common = localePack.common;
+  // Português usa relógio de 24h; inglês mantém AM/PM.
+  const use24Hour = language === 'pt';
   const insets = useSafeAreaInsets();
   const sheetHeight = useMemo(() => {
     const usableHeight = height - insets.top;
@@ -1417,14 +1330,14 @@ export default function AddHabitSheet({
       return t.anytime;
     }
     if (timeMode === 'point') {
-      return formatTime(normalizedPointTime);
+      return formatTime(normalizedPointTime, use24Hour);
     }
-    return formatPeriod(normalizedPeriodTime);
-  }, [hasSpecifiedTime, normalizedPeriodTime, normalizedPointTime, t.anytime, timeMode]);
+    return formatPeriod(normalizedPeriodTime, use24Hour);
+  }, [hasSpecifiedTime, normalizedPeriodTime, normalizedPointTime, t.anytime, timeMode, use24Hour]);
   const reminderOptions = useMemo(
     () =>
       REMINDER_OPTIONS.map((option) => {
-        const rawHint = getReminderHint(option, hasSpecifiedTime, timeMode, pointTime, periodTime);
+        const rawHint = getReminderHint(option, hasSpecifiedTime, timeMode, pointTime, periodTime, use24Hour);
         return {
           ...option,
           label: option.key === 'none' ? t.noReminder : option.key === 'at_time' ? t.reminderAtTimeOfEvent : option.key === '5m' ? t.reminder5m : option.key === '15m' ? t.reminder15m : option.key === '30m' ? t.reminder30m : option.key === '1h' ? t.reminder1h : option.label,
@@ -1443,6 +1356,7 @@ export default function AddHabitSheet({
       t.reminder30m,
       t.reminder1h,
       timeMode,
+      use24Hour,
     ]
   );
   const reminderLabel = useMemo(() => {
@@ -1474,11 +1388,11 @@ export default function AddHabitSheet({
       return t.doItAnyTime;
     }
     if (pendingTimeMode === 'period') {
-      const startLabel = formatTime(normalizedPendingPeriodTime.start);
-      const endLabel = formatTime(normalizedPendingPeriodTime.end);
+      const startLabel = formatTime(normalizedPendingPeriodTime.start, use24Hour);
+      const endLabel = formatTime(normalizedPendingPeriodTime.end, use24Hour);
       return t.doItFromTo.replace('{start}', startLabel).replace('{end}', endLabel);
     }
-    return t.doItAt.replace('{time}', formatTime(normalizedPendingPointTime));
+    return t.doItAt.replace('{time}', formatTime(normalizedPendingPointTime, use24Hour));
   }, [
     normalizedPendingPeriodTime,
     normalizedPendingPointTime,
@@ -1487,10 +1401,11 @@ export default function AddHabitSheet({
     t.doItAnyTime,
     t.doItAt,
     t.doItFromTo,
+    use24Hour,
   ]);
   const previewTitle = useMemo(
-    () => (title.trim() ? title.trim() : 'Untitled task'),
-    [title]
+    () => (title.trim() ? title.trim() : common.untitledTask),
+    [common.untitledTask, title]
   );
   const previewTimeLabel = useMemo(
     () =>
@@ -1499,8 +1414,8 @@ export default function AddHabitSheet({
         mode: timeMode,
         point: normalizedPointTime,
         period: normalizedPeriodTime,
-      }, { anytimeLabel: t.anytime }),
-    [hasSpecifiedTime, normalizedPeriodTime, normalizedPointTime, t.anytime, timeMode]
+      }, { anytimeLabel: t.anytime, language }),
+    [hasSpecifiedTime, language, normalizedPeriodTime, normalizedPointTime, t.anytime, timeMode]
   );
   const previewQuantum = useMemo(() => {
     const minutes = Number.parseInt(pendingQuantumTimerMinutes, 10) || 0;
@@ -1998,6 +1913,7 @@ export default function AddHabitSheet({
                   periodTime={pendingPeriodTime}
                   onPeriodTimeChange={handlePendingPeriodTimeChange}
                   labels={t}
+                  use24Hour={use24Hour}
                 />
               </OptionOverlay>
             )}
@@ -3048,15 +2964,26 @@ function TimePanel({
   periodTime,
   onPeriodTimeChange,
   labels,
+  use24Hour = false,
 }) {
-  const hourIndex = Math.max(0, HOUR_VALUES.indexOf(pointTime.hour));
+  // No modo 24h a roda de horas vai de 0-23 e a coluna AM/PM some;
+  // os dados continuam salvos como hour 1-12 + meridiem.
+  const hourValues = use24Hour ? HOUR_VALUES_24 : HOUR_VALUES;
+  const getHourIndex = (time) =>
+    use24Hour ? to24Hour(time) : Math.max(0, HOUR_VALUES.indexOf(time.hour));
+  const hourPatch = (value) =>
+    use24Hour
+      ? { hour: value % 12 || 12, meridiem: value >= 12 ? 'PM' : 'AM' }
+      : { hour: value };
+
+  const hourIndex = getHourIndex(pointTime);
   const minuteIndex = Math.max(0, MINUTE_VALUES.indexOf(pointTime.minute));
   const meridiemIndex = Math.max(0, MERIDIEM_VALUES.indexOf(pointTime.meridiem));
 
-  const startHourIndex = Math.max(0, HOUR_VALUES.indexOf(periodTime.start.hour));
+  const startHourIndex = getHourIndex(periodTime.start);
   const startMinuteIndex = Math.max(0, MINUTE_VALUES.indexOf(periodTime.start.minute));
   const startMeridiemIndex = Math.max(0, MERIDIEM_VALUES.indexOf(periodTime.start.meridiem));
-  const endHourIndex = Math.max(0, HOUR_VALUES.indexOf(periodTime.end.hour));
+  const endHourIndex = getHourIndex(periodTime.end);
   const endMinuteIndex = Math.max(0, MINUTE_VALUES.indexOf(periodTime.end.minute));
   const endMeridiemIndex = Math.max(0, MERIDIEM_VALUES.indexOf(periodTime.end.meridiem));
 
@@ -3098,15 +3025,15 @@ function TimePanel({
               <View style={styles.wheelLabelsRow}>
                 <Text style={styles.wheelLabel}>{labels.hour}</Text>
                 <Text style={styles.wheelLabel}>{labels.min}</Text>
-                <Text style={styles.wheelLabel}>AM/PM</Text>
+                {!use24Hour && <Text style={styles.wheelLabel}>AM/PM</Text>}
               </View>
               <View style={styles.wheelArea}>
                 <View pointerEvents="none" style={styles.wheelHighlight} />
                 <View style={styles.wheelRow}>
                   <WheelColumn
-                    values={HOUR_VALUES}
+                    values={hourValues}
                     selectedIndex={hourIndex}
-                    onSelect={(value) => onPointTimeChange({ ...pointTime, hour: value })}
+                    onSelect={(value) => onPointTimeChange({ ...pointTime, ...hourPatch(value) })}
                     formatter={(value) => formatNumber(value)}
                   />
                   <Text pointerEvents="none" style={styles.wheelDivider}>
@@ -3118,11 +3045,13 @@ function TimePanel({
                     onSelect={(value) => onPointTimeChange({ ...pointTime, minute: value })}
                     formatter={(value) => formatNumber(value)}
                   />
-                  <WheelColumn
-                    values={MERIDIEM_VALUES}
-                    selectedIndex={meridiemIndex}
-                    onSelect={(value) => onPointTimeChange({ ...pointTime, meridiem: value })}
-                  />
+                  {!use24Hour && (
+                    <WheelColumn
+                      values={MERIDIEM_VALUES}
+                      selectedIndex={meridiemIndex}
+                      onSelect={(value) => onPointTimeChange({ ...pointTime, meridiem: value })}
+                    />
+                  )}
                 </View>
               </View>
             </View>
@@ -3133,17 +3062,17 @@ function TimePanel({
                 <View style={styles.wheelLabelsRow}>
                   <Text style={styles.wheelLabel}>{labels.hour}</Text>
                   <Text style={styles.wheelLabel}>{labels.min}</Text>
-                  <Text style={styles.wheelLabel}>AM/PM</Text>
+                  {!use24Hour && <Text style={styles.wheelLabel}>AM/PM</Text>}
                 </View>
                 <View style={styles.wheelArea}>
                   <View pointerEvents="none" style={styles.wheelHighlight} />
                   <View style={styles.wheelRow}>
                     <WheelColumn
-                      values={HOUR_VALUES}
+                      values={hourValues}
                       selectedIndex={startHourIndex}
                       onSelect={(value) =>
                         onPeriodTimeChange((prev) => ({
-                          start: { ...prev.start, hour: value },
+                          start: { ...prev.start, ...hourPatch(value) },
                         }))
                       }
                       formatter={(value) => formatNumber(value)}
@@ -3161,15 +3090,17 @@ function TimePanel({
                       }
                       formatter={(value) => formatNumber(value)}
                     />
-                    <WheelColumn
-                      values={MERIDIEM_VALUES}
-                      selectedIndex={startMeridiemIndex}
-                      onSelect={(value) =>
-                        onPeriodTimeChange((prev) => ({
-                          start: { ...prev.start, meridiem: value },
-                        }))
-                      }
-                    />
+                    {!use24Hour && (
+                      <WheelColumn
+                        values={MERIDIEM_VALUES}
+                        selectedIndex={startMeridiemIndex}
+                        onSelect={(value) =>
+                          onPeriodTimeChange((prev) => ({
+                            start: { ...prev.start, meridiem: value },
+                          }))
+                        }
+                      />
+                    )}
                   </View>
                 </View>
               </View>
@@ -3178,17 +3109,17 @@ function TimePanel({
                 <View style={styles.wheelLabelsRow}>
                   <Text style={styles.wheelLabel}>{labels.hour}</Text>
                   <Text style={styles.wheelLabel}>{labels.min}</Text>
-                  <Text style={styles.wheelLabel}>AM/PM</Text>
+                  {!use24Hour && <Text style={styles.wheelLabel}>AM/PM</Text>}
                 </View>
                 <View style={styles.wheelArea}>
                   <View pointerEvents="none" style={styles.wheelHighlight} />
                   <View style={styles.wheelRow}>
                     <WheelColumn
-                      values={HOUR_VALUES}
+                      values={hourValues}
                       selectedIndex={endHourIndex}
                       onSelect={(value) =>
                         onPeriodTimeChange((prev) => ({
-                          end: { ...prev.end, hour: value },
+                          end: { ...prev.end, ...hourPatch(value) },
                         }))
                       }
                       formatter={(value) => formatNumber(value)}
@@ -3206,15 +3137,17 @@ function TimePanel({
                       }
                       formatter={(value) => formatNumber(value)}
                     />
-                    <WheelColumn
-                      values={MERIDIEM_VALUES}
-                      selectedIndex={endMeridiemIndex}
-                      onSelect={(value) =>
-                        onPeriodTimeChange((prev) => ({
-                          end: { ...prev.end, meridiem: value },
-                        }))
-                      }
-                    />
+                    {!use24Hour && (
+                      <WheelColumn
+                        values={MERIDIEM_VALUES}
+                        selectedIndex={endMeridiemIndex}
+                        onSelect={(value) =>
+                          onPeriodTimeChange((prev) => ({
+                            end: { ...prev.end, meridiem: value },
+                          }))
+                        }
+                      />
+                    )}
                   </View>
                 </View>
               </View>
