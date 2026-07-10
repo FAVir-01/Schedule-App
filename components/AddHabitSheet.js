@@ -73,6 +73,82 @@ const EMOJIS = [...new Set([
 ])];
 const DEFAULT_EMOJI = EMOJIS[0];
 
+// Célula memoizada: só re-renderiza quando a seleção dela muda
+const EmojiCell = React.memo(function EmojiCell({ emoji, isSelected, onSelect }) {
+  return (
+    <Pressable
+      style={[styles.emojiOption, isSelected && styles.emojiOptionSelected]}
+      onPress={() => onSelect(emoji)}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isSelected }}
+      accessibilityLabel={`Select emoji ${emoji}`}
+    >
+      <Text style={styles.emojiOptionText}>{emoji}</Text>
+    </Pressable>
+  );
+});
+
+// Grid com montagem progressiva: as primeiras células aparecem na hora e o
+// resto monta em lotes nos frames seguintes. Componente isolado para os lotes
+// não re-renderizarem o sheet inteiro (e sem FlatList aninhada em ScrollView).
+const EMOJI_INITIAL_BATCH = 60;
+const EMOJI_BATCH_SIZE = 100;
+
+const EmojiGrid = React.memo(function EmojiGrid({
+  selectedEmoji,
+  onSelect,
+  customImage,
+  onPickImage,
+  onRemoveImage,
+  isLoadingImage,
+}) {
+  const [visibleCount, setVisibleCount] = useState(EMOJI_INITIAL_BATCH);
+
+  useEffect(() => {
+    if (visibleCount >= EMOJIS.length) {
+      return undefined;
+    }
+    const id = setTimeout(() => {
+      setVisibleCount((count) => Math.min(EMOJIS.length, count + EMOJI_BATCH_SIZE));
+    }, 16);
+    return () => clearTimeout(id);
+  }, [visibleCount]);
+
+  return (
+    <View style={styles.emojiPicker}>
+      <Pressable
+        style={[styles.emojiOption, styles.emojiUploadOption]}
+        onPress={onPickImage}
+        accessibilityRole="button"
+        accessibilityLabel="Upload custom image"
+        accessibilityHint="Opens your gallery to choose an image"
+        disabled={isLoadingImage}
+      >
+        <Ionicons name="image-outline" size={24} color="#1F2742" />
+      </Pressable>
+      {customImage && (
+        <Pressable
+          style={[styles.emojiOption, styles.emojiOptionSelected]}
+          onPress={onRemoveImage}
+          accessibilityRole="button"
+          accessibilityLabel="Remove custom image"
+          accessibilityHint="Revert to emoji icon"
+        >
+          <Ionicons name="close" size={20} color="#1F2742" />
+        </Pressable>
+      )}
+      {EMOJIS.slice(0, visibleCount).map((emoji) => (
+        <EmojiCell
+          key={emoji}
+          emoji={emoji}
+          isSelected={emoji === selectedEmoji}
+          onSelect={onSelect}
+        />
+      ))}
+    </View>
+  );
+});
+
 const WEEKDAYS_EN = [
   { key: 'sun', label: 'S' },
   { key: 'mon', label: 'M' },
@@ -681,6 +757,7 @@ export default function AddHabitSheet({
   const handleRemoveCustomImage = useCallback(() => {
     setCustomImage(null);
   }, []);
+
 
   const requestNotificationPermission = useCallback(async () => {
     if (!NOTIFICATIONS_SUPPORTED || requestedNotificationPermissionRef.current) {
@@ -1663,44 +1740,14 @@ export default function AddHabitSheet({
                 />
               </Pressable>
               {isEmojiPickerVisible && (
-                <View style={styles.emojiPicker}>
-                  <Pressable
-                    style={[styles.emojiOption, styles.emojiUploadOption]}
-                    onPress={handlePickImage}
-                    accessibilityRole="button"
-                    accessibilityLabel="Upload custom image"
-                    accessibilityHint="Opens your gallery to choose an image"
-                    disabled={isLoadingImage}
-                  >
-                    <Ionicons name="image-outline" size={24} color="#1F2742" />
-                  </Pressable>
-                  {customImage && (
-                    <Pressable
-                      style={[styles.emojiOption, styles.emojiOptionSelected]}
-                      onPress={handleRemoveCustomImage}
-                      accessibilityRole="button"
-                      accessibilityLabel="Remove custom image"
-                      accessibilityHint="Revert to emoji icon"
-                    >
-                      <Ionicons name="close" size={20} color="#1F2742" />
-                    </Pressable>
-                  )}
-                  {EMOJIS.map((emoji) => {
-                    const isSelected = selectedEmoji === emoji;
-                    return (
-                      <Pressable
-                        key={emoji}
-                        style={[styles.emojiOption, isSelected && styles.emojiOptionSelected]}
-                        onPress={() => handleSelectEmoji(emoji)}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: isSelected }}
-                        accessibilityLabel={`Select emoji ${emoji}`}
-                      >
-                        <Text style={styles.emojiOptionText}>{emoji}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
+                <EmojiGrid
+                  selectedEmoji={selectedEmoji}
+                  onSelect={handleSelectEmoji}
+                  customImage={customImage}
+                  onPickImage={handlePickImage}
+                  onRemoveImage={handleRemoveCustomImage}
+                  isLoadingImage={isLoadingImage}
+                />
               )}
               <TextInput
                 ref={titleInputRef}
