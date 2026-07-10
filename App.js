@@ -404,15 +404,36 @@ function ScheduleApp() {
       };
     });
   }, [language, tasks, today]);
+  // Cache persistente do status dos dias do calendário. Antes, qualquer
+  // mudança em tasks (ou mês novo no scroll) recalculava TODOS os meses ×
+  // dias × tarefas, mesmo fora da aba calendário — era a fonte das travadas.
+  // Agora: fora da aba devolve o último resultado sem calcular nada; dentro
+  // da aba, dias já calculados vêm do cache (só o mês novo é computado).
+  const calendarStatusStoreRef = useRef({
+    tasksRef: null,
+    dayStatusCache: new Map(),
+    lastResult: { calendarDayStatusByKey: {}, calendarMonthStatusSignatureById: {} },
+  });
+  const isCalendarTabActive = activeTab === 'calendar';
   const { calendarDayStatusByKey, calendarMonthStatusSignatureById } = useMemo(() => {
+    const store = calendarStatusStoreRef.current;
+    if (store.tasksRef !== tasks) {
+      store.tasksRef = tasks;
+      store.dayStatusCache.clear();
+    }
+    if (!isCalendarTabActive) {
+      return store.lastResult;
+    }
+
     const dayStatusByKey = {};
     const monthStatusSignatureById = {};
-    const dayStatusCache = new Map();
 
     const resolveDayStatus = (day) => {
       const dateKey = getDateKey(day);
-      if (dayStatusCache.has(dateKey)) {
-        return dayStatusCache.get(dateKey);
+      const cached = store.dayStatusCache.get(dateKey);
+      if (cached !== undefined) {
+        dayStatusByKey[dateKey] = cached;
+        return cached;
       }
       const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, day));
       const scoredTasks = dayTasks.filter(shouldCountTaskTowardsCompletion);
@@ -420,7 +441,7 @@ function ScheduleApp() {
         scoredTasks.length > 0 &&
         scoredTasks.every((task) => getTaskCompletionStatus(task, dateKey));
       const status = allCompleted ? 'success' : 'pending';
-      dayStatusCache.set(dateKey, status);
+      store.dayStatusCache.set(dateKey, status);
       dayStatusByKey[dateKey] = status;
       return status;
     };
@@ -435,11 +456,13 @@ function ScheduleApp() {
       monthStatusSignatureById[month.monthId] = signature;
     });
 
-    return {
+    const result = {
       calendarDayStatusByKey: dayStatusByKey,
       calendarMonthStatusSignatureById: monthStatusSignatureById,
     };
-  }, [calendarMonths, tasks]);
+    store.lastResult = result;
+    return result;
+  }, [calendarMonths, isCalendarTabActive, tasks]);
 
   const reportTasks = useMemo(() => {
     if (!reportDate) return [];

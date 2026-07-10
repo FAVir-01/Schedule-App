@@ -57,6 +57,7 @@ const CalendarMonthItem = React.memo(({
         source={imageSource}
         style={styles.calendarMonthHeader}
         imageStyle={{ resizeMode: 'cover' }}
+        resizeMethod="resize"
       >
         {/* Overlay removido aqui */}
         <Text style={styles.calendarMonthTitle}>{format(item.date, 'MMMM yyyy', { locale: getDateLocale(language) })}</Text>
