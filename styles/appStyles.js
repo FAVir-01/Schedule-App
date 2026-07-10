@@ -50,7 +50,7 @@ export const styles = StyleSheet.create({
     paddingBottom: 48,
   },
   todayHeader: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   todayTitle: {
     fontSize: 28,
@@ -68,11 +68,46 @@ export const styles = StyleSheet.create({
   todaySubtitleInProgress: {
     color: '#6f7a86',
   },
+  todayDateEyebrow: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 1.2,
+    color: '#8a8fa3',
+    marginBottom: 4,
+  },
+  todayProgressRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  todayProgressPct: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  todayProgressPctInProgress: {
+    color: '#3c2ba7',
+  },
+  todayProgressTrack: {
+    marginTop: 12,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#e9e7f4',
+    overflow: 'hidden',
+  },
+  todayProgressFill: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: '#3c2ba7',
+  },
+  todayProgressFillComplete: {
+    backgroundColor: '#2f9e44',
+  },
   daySelector: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   tagFilterContainer: {
     marginBottom: 16,
@@ -114,6 +149,7 @@ export const styles = StyleSheet.create({
   },
   dayLabelSelected: {
     color: '#3c2ba7',
+    fontWeight: '800',
   },
   dayNumber: {
     width: 44,
@@ -121,14 +157,18 @@ export const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#e7f6e6',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#ecebf5',
     position: 'relative',
   },
   dayNumberSelected: {
-    backgroundColor: '#f0faee',
+    backgroundColor: '#3c2ba7',
+    borderColor: '#3c2ba7',
   },
   dayNumberCompleted: {
-    backgroundColor: '#3dd598',
+    backgroundColor: '#d9f2e5',
+    borderColor: '#d9f2e5',
   },
   dayNumberText: {
     fontSize: 16,
@@ -136,10 +176,10 @@ export const styles = StyleSheet.create({
     color: '#1a1a2e',
   },
   dayNumberTextSelected: {
-    color: '#2f2a6f',
+    color: '#ffffff',
   },
   dayNumberTextCompleted: {
-    color: '#ffffff',
+    color: '#1f9d6d',
   },
   todayIndicator: {
     position: 'absolute',
@@ -149,7 +189,7 @@ export const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: '#3c2ba7',
   },
-  todayIndicatorOnCompleted: {
+  todayIndicatorOnSelected: {
     backgroundColor: '#ffffff',
   },
   tasksSection: {
@@ -179,9 +219,6 @@ export const styles = StyleSheet.create({
     borderColor: '#d7dbeb',
   },
   taskCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     borderRadius: 18,
     paddingVertical: 14,
     paddingHorizontal: 16,
@@ -205,11 +242,70 @@ export const styles = StyleSheet.create({
     width: '100%',
     position: 'relative',
   },
-  waterWaveSvg: {
+  waterCrest: {
     position: 'absolute',
     top: -18,
     left: 0,
     right: 0,
+    height: 18,
+  },
+  waterCrestLayer: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    height: 18,
+  },
+  taskCardMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  quantumStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(26, 26, 46, 0.15)',
+  },
+  quantumStepperButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(26, 26, 46, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quantumStepperButtonAdd: {
+    backgroundColor: '#3c2ba7',
+    borderColor: '#3c2ba7',
+  },
+  quantumStepperPresets: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  quantumStepperPreset: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+  },
+  quantumStepperPresetSelected: {
+    backgroundColor: '#3c2ba7',
+  },
+  quantumStepperPresetText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#4a4466',
+  },
+  quantumStepperPresetTextSelected: {
+    color: '#ffffff',
   },
   swipeableWrapper: {
     marginBottom: 14,
@@ -796,11 +892,10 @@ export const styles = StyleSheet.create({
   },
   tabLabel: {
     letterSpacing: 0.2,
-    textTransform: 'uppercase',
     fontWeight: '600',
   },
   activeColor: {
-    color: '#1a1a2e',
+    color: '#3c2ba7',
   },
   inactiveColor: {
     color: '#6f7a86',
@@ -812,10 +907,10 @@ export const styles = StyleSheet.create({
     backgroundColor: '#3c2ba7',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
+    shadowColor: '#3c2ba7',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.22,
-    shadowRadius: 14,
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
     elevation: 12,
     zIndex: 12,
     overflow: 'visible',

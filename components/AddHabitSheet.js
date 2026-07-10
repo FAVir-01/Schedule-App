@@ -190,9 +190,8 @@ const DEFAULT_TAG_OPTIONS = [
 ];
 
 const DEFAULT_TYPE_OPTIONS = [
-  { key: 'default', label: 'Defaut' },
-  { key: 'quantum', label: 'Quantum' },
-  { key: 'list', label: 'List' },
+  { key: 'default', label: 'Habit' },
+  { key: 'quantum', label: 'Goal' },
   { key: 'reminder', label: 'Reminder' },
 ];
 
@@ -1374,9 +1373,8 @@ export default function AddHabitSheet({
   const typeOptions = useMemo(() => ([
     { key: 'default', label: t.defaultType },
     { key: 'quantum', label: t.measurementType },
-    { key: 'list', label: t.listType },
     { key: 'reminder', label: t.reminderType },
-  ]), [t.defaultType, t.listType, t.measurementType, t.reminderType]);
+  ]), [t.defaultType, t.measurementType, t.reminderType]);
 
   const typeLabel = useMemo(() => {
     const match = typeOptions.find((option) => option.key === selectedType);
@@ -2027,8 +2025,6 @@ export default function AddHabitSheet({
                           ? t.info.previewDefault
                           : pendingType === 'quantum'
                           ? t.info.previewQuantum
-                          : pendingType === 'list'
-                          ? t.info.previewList
                           : t.info.previewReminder}
                       </Text>
                     </View>
