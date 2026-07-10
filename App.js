@@ -87,6 +87,7 @@ import DayReportModal from './components/DayReportModal';
 import QuantumAdjustModal from './components/QuantumAdjustModal';
 import TaskDetailModal from './components/TaskDetailModal';
 import ProfileTaskDetailModal from './components/ProfileTaskDetailModal';
+import ActivityTimelineModal from './components/ActivityTimelineModal';
 import ProfileTasksModal from './components/ProfileTasksModal';
 import SwipeableTaskCard from './components/SwipeableTaskCard';
 import { CALENDAR_DAY_SIZE } from './constants/layout';
@@ -169,6 +170,42 @@ const migrateCachedImages = async (storedTasks, storedImages) => {
   return { tasks, images };
 };
 
+// Apaga imagens nossas (custom_habit_icon_*/custom_month_*) que nenhuma tarefa
+// ou mês referencia mais — ex.: tarefa deletada, imagem trocada ou criação
+// cancelada. Só roda quando tasks E images carregaram com sucesso.
+const cleanupOrphanImageFiles = async (storedTasks, storedImages) => {
+  try {
+    const dir = FileSystem.documentDirectory;
+    if (!dir) {
+      return;
+    }
+    const referenced = new Set();
+    (storedTasks ?? []).forEach((task) => {
+      if (typeof task?.customImage === 'string') {
+        referenced.add(task.customImage.split('/').pop());
+      }
+    });
+    Object.values(storedImages ?? {}).forEach((uri) => {
+      if (typeof uri === 'string') {
+        referenced.add(uri.split('/').pop());
+      }
+    });
+    const fileNames = await FileSystem.readDirectoryAsync(dir);
+    const orphans = fileNames.filter(
+      (name) =>
+        (name.startsWith('custom_habit_icon_') || name.startsWith('custom_month_')) &&
+        !referenced.has(name)
+    );
+    await Promise.all(
+      orphans.map((name) =>
+        FileSystem.deleteAsync(`${dir}${name}`, { idempotent: true }).catch(() => {})
+      )
+    );
+  } catch (error) {
+    console.warn('Failed to clean up orphan images', error);
+  }
+};
+
 if (NOTIFICATIONS_SUPPORTED) {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -192,6 +229,7 @@ function ScheduleApp() {
   const [habitSheetInitialTask, setHabitSheetInitialTask] = useState(null);
   const [isCustomizeCalendarOpen, setCustomizeCalendarOpen] = useState(false);
   const [isProfileTasksOpen, setProfileTasksOpen] = useState(false);
+  const [isActivityOpen, setActivityOpen] = useState(false);
   const [isLanguageMenuOpen, setLanguageMenuOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => {
     const now = new Date();
@@ -425,6 +463,16 @@ function ScheduleApp() {
       });
   }, [reportDate, tasks]);
 
+  const appendHistoryEntry = useCallback((type, details = {}) => {
+    const entry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type,
+      timestamp: new Date().toISOString(),
+      details,
+    };
+    setHistory((previous) => [entry, ...previous].slice(0, 200));
+  }, []);
+
   const handleOpenReport = useCallback((date) => {
     setReportDate(date);
   }, []);
@@ -440,13 +488,16 @@ function ScheduleApp() {
       const tasksToDelete = tasks.filter((task) => taskIds.includes(task.id));
       tasksToDelete.forEach((task) => {
         void cancelTaskReminder(task.notificationId);
+        if (!task.profileLocked) {
+          appendHistoryEntry('task_deleted', { taskId: task.id, title: task.title });
+        }
       });
       setTasks((previous) =>
         previous.filter((task) => task.profileLocked || !taskIds.includes(task.id))
       );
       setActiveProfileTaskId((current) => (taskIds.includes(current) ? null : current));
     },
-    [cancelTaskReminder, tasks]
+    [appendHistoryEntry, cancelTaskReminder, tasks]
   );
   const handleDeleteProfileTask = useCallback(
     (taskId) => {
@@ -558,12 +609,16 @@ function ScheduleApp() {
   }, [selectedTagFilter, tasksForSelectedDate]);
   const visibleTasksForSelectedDay = useMemo(
     () =>
-      visibleTasks.map((task) => ({
-        ...task,
-        completed:
-          getTaskCompletionStatus(task, selectedDateKey) ||
-          isReminderExpiredForDate(task, selectedDate, currentTime),
-      })),
+      visibleTasks.map((task) => {
+        // Lembrete expirado conta como "resolvido" para ordenação/progresso,
+        // mas ganha a flag `missed` para o card mostrar o visual de perdido.
+        const missed = isReminderExpiredForDate(task, selectedDate, currentTime);
+        return {
+          ...task,
+          completed: getTaskCompletionStatus(task, selectedDateKey) || missed,
+          missed,
+        };
+      }),
     [currentTime, selectedDate, selectedDateKey, visibleTasks]
   );
   const sortedVisibleTasksForSelectedDay = useMemo(() => {
@@ -737,7 +792,8 @@ function ScheduleApp() {
       if (isComplete) {
         currentStreak += 1;
         bestStreak = Math.max(bestStreak, currentStreak);
-      } else {
+      } else if (date.getTime() !== today.getTime()) {
+        // Hoje ainda em andamento não zera a sequência; só um dia passado falhado.
         currentStreak = 0;
       }
     });
@@ -1032,6 +1088,10 @@ function ScheduleApp() {
           const migrated = await migrateCachedImages(loadedTasks, loadedImages);
           storedTasks = migrated.tasks;
           storedImages = migrated.images;
+
+          if (Array.isArray(storedTasks) && storedImages !== undefined) {
+            void cleanupOrphanImageFiles(storedTasks, storedImages);
+          }
         }
 
         if (!isMounted) {
@@ -1220,16 +1280,6 @@ function ScheduleApp() {
     },
     [customMonthImages]
   );
-
-  const appendHistoryEntry = useCallback((type, details = {}) => {
-    const entry = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      type,
-      timestamp: new Date().toISOString(),
-      details,
-    };
-    setHistory((previous) => [entry, ...previous].slice(0, 200));
-  }, []);
 
   const updateUserSettings = useCallback((updates) => {
     setUserSettings((previous) => ({
@@ -1491,7 +1541,7 @@ function ScheduleApp() {
 
   const getUniqueTitle = useCallback(
     (requestedTitle, excludeTaskId) => {
-      const baseTitle = (requestedTitle || 'Untitled task').trim() || 'Untitled task';
+      const baseTitle = (requestedTitle || t.common.untitledTask).trim() || t.common.untitledTask;
       const normalizedBase = baseTitle.toLowerCase();
 
       const existingTitles = new Set(
@@ -1512,7 +1562,7 @@ function ScheduleApp() {
       }
       return candidate;
     },
-    [tasks]
+    [t.common.untitledTask, tasks]
   );
 
   const getReminderBaseTime = useCallback((time) => {
@@ -1714,7 +1764,7 @@ function ScheduleApp() {
       }
       const nextTitle = habit?.title
         ? getUniqueTitle(habit.title, taskId)
-        : existingTask?.title ?? 'Untitled task';
+        : existingTask?.title ?? t.common.untitledTask;
       const existingNotificationId = existingTask?.notificationId ?? null;
       const nextDate = normalizedDate ? new Date(normalizedDate) : new Date(existingTask.date);
       nextDate.setHours(0, 0, 0, 0);
@@ -1739,7 +1789,9 @@ function ScheduleApp() {
             title: nextTitle,
             color: habit?.color ?? task.color,
             emoji: habit?.emoji ?? task.emoji,
-            customImage: habit?.customImage ?? task.customImage ?? null,
+            // O sheet sempre envia customImage (null = usuário removeu a imagem);
+            // não usar o valor antigo como fallback, senão remover não funciona.
+            customImage: habit?.customImage ?? null,
             time: habit?.time,
             subtasks: convertSubtasks(habit?.subtasks ?? [], task.subtasks ?? []),
             repeat: normalizeRepeatConfig(habit?.repeat ?? task.repeat),
@@ -1762,7 +1814,7 @@ function ScheduleApp() {
           title: nextTitle,
           color: habit?.color ?? existingTask.color,
           emoji: habit?.emoji ?? existingTask.emoji,
-          customImage: habit?.customImage ?? existingTask.customImage ?? null,
+          customImage: habit?.customImage ?? null,
           time: habit?.time,
           subtasks: convertSubtasks(habit?.subtasks ?? [], existingTask.subtasks ?? []),
           repeat: normalizeRepeatConfig(habit?.repeat ?? existingTask.repeat),
@@ -1789,7 +1841,7 @@ function ScheduleApp() {
         dateKey: normalizedDate ? getDateKey(normalizedDate) : undefined,
       });
     },
-    [appendHistoryEntry, convertSubtasks, getUniqueTitle, refreshTaskReminder, tasks]
+    [appendHistoryEntry, convertSubtasks, getUniqueTitle, refreshTaskReminder, t.common.untitledTask, tasks]
   );
 
   const handleToggleSubtask = useCallback(
@@ -2106,7 +2158,7 @@ function ScheduleApp() {
                             }
                           }}
                           accessibilityRole="button"
-                          accessibilityLabel={`Show tasks tagged ${option.label}`}
+                          accessibilityLabel={t.today.showTasksTagged.replace('{tag}', option.label)}
                           accessibilityState={{ selected: isSelected }}
                         >
                           <Text
@@ -2129,14 +2181,12 @@ function ScheduleApp() {
                       style={[styles.emptyStateIllustration, dynamicStyles.emptyStateIllustration]}
                       accessible
                       accessibilityRole="image"
-                      accessibilityLabel="Illustration showing an empty schedule"
+                      accessibilityLabel={t.today.emptyIllustration}
                     >
                       <Ionicons name="calendar-clear-outline" size={emptyStateIconSize} color="#3c2ba7" />
                     </View>
                     <Text style={styles.emptyState}>
-                      {selectedTagFilter === 'all'
-                        ? 'No tasks for this day yet. Use the add button to create one.'
-                        : 'No tasks with this tag for this day yet.'}
+                      {selectedTagFilter === 'all' ? t.today.emptyDay : t.today.emptyDayTag}
                     </Text>
                   </View>
                 ) : (
@@ -2171,6 +2221,7 @@ function ScheduleApp() {
                               return;
                             }
                             setTasks((previous) => previous.filter((current) => current.id !== task.id));
+                            appendHistoryEntry('task_deleted', { taskId: task.id, title: task.title });
                           }}
                           language={language}
                           isVisible={activeTab === 'today'}
@@ -2276,6 +2327,14 @@ function ScheduleApp() {
                 >
                   <Ionicons name="list-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
                   <Text style={styles.profileTasksButtonText}>{t.profile.openTasks}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.profileTasksButton}
+                  onPress={() => setActivityOpen(true)}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="time-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.profileTasksButtonText}>{t.profile.activity}</Text>
                 </TouchableOpacity>
                 <View style={styles.languageSection}>
                   <TouchableOpacity
@@ -2657,6 +2716,13 @@ function ScheduleApp() {
         onSelectTask={(taskId) => setActiveProfileTaskId(taskId)}
         onDeleteTask={handleDeleteProfileTask}
         onDeleteSelected={handleDeleteProfileTasks}
+        language={language}
+      />
+      <ActivityTimelineModal
+        visible={isActivityOpen}
+        history={history}
+        tasks={tasks}
+        onClose={() => setActivityOpen(false)}
         language={language}
       />
       <ProfileTaskDetailModal

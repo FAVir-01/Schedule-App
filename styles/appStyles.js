@@ -329,6 +329,24 @@ export const styles = StyleSheet.create({
     backgroundColor: '#3dd598',
     borderColor: '#3dd598',
   },
+  taskCardMissed: {
+    opacity: 0.55,
+  },
+  missedBadge: {
+    backgroundColor: '#f3f4f8',
+    borderWidth: 1,
+    borderColor: '#d6dae6',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  missedBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6f7a86',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
   detailOverlay: {
     flex: 1,
     backgroundColor: 'rgba(10, 11, 30, 0.45)',
@@ -388,6 +406,17 @@ export const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: '#4b4b63',
+  },
+  detailStreakRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  detailStreakText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#f2732e',
   },
   detailSubtaskSummaryLabel: {
     marginTop: 6,
@@ -1221,6 +1250,39 @@ export const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6f7a86',
     textAlign: 'center',
+  },
+  activityDayHeader: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#3c2ba7',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginTop: 18,
+    marginBottom: 6,
+  },
+  activityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e4e8f2',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  activityRowIcon: {
+    marginRight: 10,
+  },
+  activityRowLabel: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1F2742',
+  },
+  activityRowTime: {
+    marginLeft: 8,
+    fontSize: 12,
+    color: '#9aa5b5',
   },
   profileTasksFilters: {
     gap: 12,
