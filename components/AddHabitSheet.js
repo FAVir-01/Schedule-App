@@ -38,7 +38,7 @@ const NOTIFICATIONS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'androi
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
 const COLORS = ['#FFCF70', '#F7A6A1', '#B39DD6', '#79C3FF', '#A8E6CF', '#FDE2A6'];
-const EMOJIS = [
+const EMOJIS = [...new Set([
   // carinhas & emoções
   '😀','😁','😂','🤣','😊','🙂','🙃','😉','😍','🥰','😘','😗','😙','😚','🤗','🤩','🤔','🤨','😐','😑','😶',
   '😏','😣','😥','😮','🤐','😯','😪','😫','🥱','😴','😌','😛','😜','😝','🤤','😒','🙄','😓','😔','😕','☹️','🙁',
@@ -70,7 +70,7 @@ const EMOJIS = [
   '💰','💸','💳','💵','💶','💷','💴','💹',
   '💊','💉','🩹','🩺','🧼','🪥','🧴','🛌','🧘','🫁','🫀','🧬',
   '🌟','🔥','💪','🧘','📚','🥗','🛏️','🚰','🎯','📝'
-];
+])];
 const DEFAULT_EMOJI = EMOJIS[0];
 
 const WEEKDAYS_EN = [

@@ -1,1 +1,16 @@
 node_modules/
+.expo/
+.idea/
+*.iml
+
+# Android/Gradle local artifacts
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+
+# Expo / React Native logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

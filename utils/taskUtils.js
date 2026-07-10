@@ -1,6 +1,7 @@
-import { getDateKey } from './dateUtils';
+import { DEFAULT_REPEAT_CONFIG } from '../constants/app';
+import { getDateKey, normalizeDateValue } from './dateUtils';
 import { clamp01 } from './mathUtils';
-import { formatDuration, getTimerTotalSeconds } from './timeUtils';
+import { formatDuration, getTimerTotalSeconds, toMinutes } from './timeUtils';
 
 const getTaskCompletionStatus = (task, date) => {
   if (!task || !date) {
@@ -175,4 +176,67 @@ export {
   getTaskCompletionStatus,
   getTaskTagDisplayLabel,
   normalizeTaskTagKey,
+};
+
+export const isPassiveTaskType = (task) => {
+  const type = task?.type;
+  return type === 'reminder';
+};
+
+export const shouldCountTaskTowardsCompletion = (task) => !isPassiveTaskType(task);
+
+export const isReminderExpiredForDate = (task, targetDate, now = new Date()) => {
+  if (!task || task.type !== 'reminder') {
+    return false;
+  }
+
+  const normalizedTargetDate = normalizeDateValue(targetDate);
+  const normalizedNowDate = normalizeDateValue(now);
+
+  if (!normalizedTargetDate || !normalizedNowDate) {
+    return false;
+  }
+
+  if (normalizedTargetDate.getTime() < normalizedNowDate.getTime()) {
+    return true;
+  }
+
+  if (normalizedTargetDate.getTime() > normalizedNowDate.getTime()) {
+    return false;
+  }
+
+  if (!task.time?.specified) {
+    return false;
+  }
+
+  const nowSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  if (task.time.mode === 'period' && task.time.period?.end) {
+    return nowSeconds > toMinutes(task.time.period.end) * 60;
+  }
+
+  if (task.time.point) {
+    return nowSeconds > toMinutes(task.time.point) * 60;
+  }
+
+  return false;
+};
+
+export const normalizeRepeatConfig = (repeatConfig) => {
+  if (!repeatConfig) {
+    return DEFAULT_REPEAT_CONFIG;
+  }
+  const { option, frequency, interval, enabled, ...rest } = repeatConfig;
+  const resolvedFrequency = frequency ?? option ?? DEFAULT_REPEAT_CONFIG.frequency;
+  const parsedInterval = Number.parseInt(interval, 10);
+  const resolvedInterval = Number.isFinite(parsedInterval) && parsedInterval > 0
+    ? parsedInterval
+    : DEFAULT_REPEAT_CONFIG.interval;
+  const resolvedEnabled = enabled === undefined ? true : Boolean(enabled);
+
+  return {
+    ...rest,
+    enabled: resolvedEnabled,
+    frequency: resolvedFrequency,
+    interval: resolvedInterval,
+  };
 };
