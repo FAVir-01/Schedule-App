@@ -7,25 +7,30 @@ const STORAGE_KEYS = {
   MONTH_IMAGES: '@schedule_app/month_images',
 };
 
-const parseStoredJson = (value, fallback) => {
-  if (!value) {
+// Se o JSON estiver corrompido, guarda o dado bruto numa chave de backup
+// antes de cair no fallback, para nunca destruir dados irrecuperáveis.
+const parseStoredJson = (key, value, fallback) => {
+  if (value == null) {
     return fallback;
   }
   try {
     return JSON.parse(value);
   } catch (error) {
     console.warn('Failed to parse stored data', error);
+    AsyncStorage.setItem(`${key}_corrupt_backup`, value).catch(() => {});
     return fallback;
   }
 };
 
+// Nas funções load*, `undefined` significa "falha de leitura" — o chamador
+// NÃO deve salvar por cima do dado existente nesse caso.
 export async function loadTasks() {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.TASKS);
-    return parseStoredJson(raw, []);
+    return parseStoredJson(STORAGE_KEYS.TASKS, raw, []);
   } catch (error) {
     console.warn('Failed to load tasks', error);
-    return [];
+    return undefined;
   }
 }
 
@@ -40,10 +45,10 @@ export async function saveTasks(tasks) {
 export async function loadUserSettings() {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.SETTINGS);
-    return parseStoredJson(raw, null);
+    return parseStoredJson(STORAGE_KEYS.SETTINGS, raw, null);
   } catch (error) {
     console.warn('Failed to load settings', error);
-    return null;
+    return undefined;
   }
 }
 
@@ -58,10 +63,10 @@ export async function saveUserSettings(settings) {
 export async function loadHistory() {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.HISTORY);
-    return parseStoredJson(raw, []);
+    return parseStoredJson(STORAGE_KEYS.HISTORY, raw, []);
   } catch (error) {
     console.warn('Failed to load history', error);
-    return [];
+    return undefined;
   }
 }
 
@@ -76,10 +81,10 @@ export async function saveHistory(history) {
 export async function loadMonthImages() {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.MONTH_IMAGES);
-    return parseStoredJson(raw, {});
+    return parseStoredJson(STORAGE_KEYS.MONTH_IMAGES, raw, {});
   } catch (error) {
     console.warn('Failed to load month images', error);
-    return {};
+    return undefined;
   }
 }
 

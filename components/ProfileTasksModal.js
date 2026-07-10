@@ -1,0 +1,285 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  FlatList,
+  Modal,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  getTaskTagDisplayLabel,
+  normalizeRepeatConfig,
+  normalizeTaskTagKey,
+} from '../utils/taskUtils';
+import ProfileSwipeTaskCard from './ProfileSwipeTaskCard';
+import { styles } from '../styles/appStyles';
+
+export default function ProfileTasksModal({
+  visible,
+  tasks,
+  onClose,
+  onSelectTask,
+  onDeleteTask,
+  onDeleteSelected,
+  language = 'en',
+}) {
+  const [searchValue, setSearchValue] = useState('');
+  const [selectedTag, setSelectedTag] = useState('all');
+  const [selectedRepeat, setSelectedRepeat] = useState('all');
+  const [selectedTaskIds, setSelectedTaskIds] = useState([]);
+
+  useEffect(() => {
+    if (!visible) {
+      setSearchValue('');
+      setSelectedTag('all');
+      setSelectedRepeat('all');
+      setSelectedTaskIds([]);
+    }
+  }, [visible]);
+
+  const tagOptions = useMemo(() => {
+    const seen = new Map();
+    tasks.forEach((task) => {
+      const key = normalizeTaskTagKey(task);
+      if (!key || seen.has(key)) {
+        return;
+      }
+      seen.set(key, getTaskTagDisplayLabel(task) ?? 'Tag');
+    });
+    return Array.from(seen.entries()).map(([key, label]) => ({ key, label }));
+  }, [tasks]);
+
+  const repeatOptions = useMemo(() => {
+    const seen = new Set();
+    tasks.forEach((task) => {
+      const repeatConfig = normalizeRepeatConfig(task.repeat);
+      if (!repeatConfig.enabled) {
+        seen.add('one-time');
+        return;
+      }
+      const frequency = repeatConfig.frequency ?? repeatConfig.option ?? 'daily';
+      seen.add(frequency);
+    });
+    return Array.from(seen);
+  }, [tasks]);
+
+  const repeatLabels = useMemo(
+    () => ({
+      daily: 'Daily',
+      weekly: 'Weekly',
+      monthly: 'Monthly',
+      weekend: 'Weekend',
+      weekdays: 'Weekdays',
+      'one-time': 'One-time',
+    }),
+    []
+  );
+
+  const filteredTasks = useMemo(() => {
+    const normalizedSearch = searchValue.trim().toLowerCase();
+    return tasks.filter((task) => {
+      if (
+        normalizedSearch &&
+        !(task.title || '').toLowerCase().includes(normalizedSearch)
+      ) {
+        return false;
+      }
+      if (selectedTag !== 'all' && normalizeTaskTagKey(task) !== selectedTag) {
+        return false;
+      }
+      if (selectedRepeat !== 'all') {
+        const repeatConfig = normalizeRepeatConfig(task.repeat);
+        if (!repeatConfig.enabled) {
+          return selectedRepeat === 'one-time';
+        }
+        const frequency = repeatConfig.frequency ?? repeatConfig.option ?? 'daily';
+        if (frequency !== selectedRepeat) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [searchValue, selectedTag, selectedRepeat, tasks]);
+
+  const toggleSelectedTask = useCallback((taskId) => {
+    setSelectedTaskIds((previous) =>
+      previous.includes(taskId)
+        ? previous.filter((id) => id !== taskId)
+        : [...previous, taskId]
+    );
+  }, []);
+
+  const selectionMode = selectedTaskIds.length > 0;
+  const handleBulkDelete = useCallback(() => {
+    if (selectedTaskIds.length === 0) {
+      return;
+    }
+    onDeleteSelected?.(selectedTaskIds);
+    setSelectedTaskIds([]);
+  }, [onDeleteSelected, selectedTaskIds]);
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={styles.profileTasksContainer}>
+        <View style={styles.profileTasksHeader}>
+          <View>
+            <Text style={styles.profileTasksTitle}>Your tasks</Text>
+            <Text style={styles.profileTasksSubtitle}>
+              Minimal view to keep your profile organized.
+            </Text>
+          </View>
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close profile tasks"
+            hitSlop={8}
+          >
+            <Ionicons name="close" size={20} color="#1F2742" />
+          </Pressable>
+        </View>
+        <View style={styles.profileTasksFilters}>
+          <View style={styles.profileTasksSearchRow}>
+            <Ionicons name="search-outline" size={18} color="#9aa5b5" />
+            <TextInput
+              style={styles.profileTasksSearchInput}
+              value={searchValue}
+              onChangeText={setSearchValue}
+              placeholder="Search by name"
+              placeholderTextColor="#9aa5b5"
+            />
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.profileTasksFilterRow}
+          >
+            <Pressable
+              style={[
+                styles.profileTasksFilterPill,
+                selectedTag === 'all' && styles.profileTasksFilterPillActive,
+              ]}
+              onPress={() => setSelectedTag('all')}
+            >
+              <Text
+                style={[
+                  styles.profileTasksFilterText,
+                  selectedTag === 'all' && styles.profileTasksFilterTextActive,
+                ]}
+              >
+                All tags
+              </Text>
+            </Pressable>
+            {tagOptions.map((option) => (
+              <Pressable
+                key={option.key}
+                style={[
+                  styles.profileTasksFilterPill,
+                  selectedTag === option.key && styles.profileTasksFilterPillActive,
+                ]}
+                onPress={() => setSelectedTag(option.key)}
+              >
+                <Text
+                  style={[
+                    styles.profileTasksFilterText,
+                    selectedTag === option.key && styles.profileTasksFilterTextActive,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.profileTasksFilterRow}
+          >
+            <Pressable
+              style={[
+                styles.profileTasksFilterPill,
+                selectedRepeat === 'all' && styles.profileTasksFilterPillActive,
+              ]}
+              onPress={() => setSelectedRepeat('all')}
+            >
+              <Text
+                style={[
+                  styles.profileTasksFilterText,
+                  selectedRepeat === 'all' && styles.profileTasksFilterTextActive,
+                ]}
+              >
+                All repeats
+              </Text>
+            </Pressable>
+            {repeatOptions.map((option) => (
+              <Pressable
+                key={option}
+                style={[
+                  styles.profileTasksFilterPill,
+                  selectedRepeat === option && styles.profileTasksFilterPillActive,
+                ]}
+                onPress={() => setSelectedRepeat(option)}
+              >
+                <Text
+                  style={[
+                    styles.profileTasksFilterText,
+                    selectedRepeat === option && styles.profileTasksFilterTextActive,
+                  ]}
+                >
+                  {repeatLabels[option] ?? option}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+        {filteredTasks.length === 0 ? (
+          <View style={styles.profileTasksEmpty}>
+            <Text style={styles.profileTasksEmptyText}>
+              No tasks match the current filters.
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredTasks}
+            keyExtractor={(task) => task.id}
+            renderItem={({ item }) => (
+              <ProfileSwipeTaskCard
+                task={item}
+                onPress={() => onSelectTask?.(item.id)}
+                onDelete={onDeleteTask}
+                onToggleSelect={toggleSelectedTask}
+                isSelected={selectedTaskIds.includes(item.id)}
+                selectionMode={selectionMode}
+                language={language}
+              />
+            )}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.profileTasksList}
+          />
+        )}
+        {selectionMode ? (
+          <View style={styles.profileTasksBulkBar}>
+            <Text style={styles.profileTasksBulkText}>
+              {selectedTaskIds.length} selected
+            </Text>
+            <Pressable
+              style={styles.profileTasksBulkDelete}
+              onPress={handleBulkDelete}
+              accessibilityRole="button"
+              accessibilityLabel="Delete selected tasks"
+            >
+              <Ionicons name="trash-outline" size={18} color="#fff" />
+              <Text style={styles.profileTasksBulkDeleteText}>Delete selected</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+    </Modal>
+  );
+}
