@@ -65,7 +65,7 @@ import {
   shouldCountTaskTowardsCompletion,
   normalizeRepeatConfig,
 } from './utils/taskUtils';
-import { getTimerTotalSeconds, toMinutes, toTimerSeconds } from './utils/timeUtils';
+import { getTimerTotalSeconds, toMinutes } from './utils/timeUtils';
 import { getWeekdayInitials, translations } from './constants/i18n';
 import { styles } from './styles/appStyles';
 import {
@@ -84,7 +84,6 @@ import StickyMonthHeader from './components/StickyMonthHeader';
 import CalendarMonthItem from './components/CalendarMonthItem';
 import CustomizeCalendarModal from './components/CustomizeCalendarModal';
 import DayReportModal from './components/DayReportModal';
-import QuantumAdjustModal from './components/QuantumAdjustModal';
 import TaskDetailModal from './components/TaskDetailModal';
 import ProfileTaskDetailModal from './components/ProfileTaskDetailModal';
 import ActivityTimelineModal from './components/ActivityTimelineModal';
@@ -240,10 +239,6 @@ function ScheduleApp() {
   const [reportDate, setReportDate] = useState(null);
   const [activeTaskId, setActiveTaskId] = useState(null);
   const [activeProfileTaskId, setActiveProfileTaskId] = useState(null);
-  const [quantumAdjustTaskId, setQuantumAdjustTaskId] = useState(null);
-  const [quantumAdjustMinutes, setQuantumAdjustMinutes] = useState('0');
-  const [quantumAdjustSeconds, setQuantumAdjustSeconds] = useState('0');
-  const [quantumAdjustCount, setQuantumAdjustCount] = useState('1');
   const [selectedTagFilter, setSelectedTagFilter] = useState(
     DEFAULT_USER_SETTINGS.selectedTagFilter
   );
@@ -369,8 +364,14 @@ function ScheduleApp() {
     }
     const locale = language === 'pt' ? 'pt-BR' : 'en-US';
     const weekday = selectedDate.toLocaleDateString(locale, { weekday: 'long' });
-    return `${weekday}, ${selectedDate.getDate()}`;
+    return weekday.charAt(0).toUpperCase() + weekday.slice(1);
   }, [isSelectedToday, language, selectedDate, t.tabs.today]);
+  const selectedDateEyebrow = useMemo(() => {
+    const locale = language === 'pt' ? 'pt-BR' : 'en-US';
+    return selectedDate
+      .toLocaleDateString(locale, { day: 'numeric', month: 'long' })
+      .toUpperCase();
+  }, [language, selectedDate]);
   useEffect(() => {
     const monthStart = getMonthStart(selectedDate);
     setCalendarMonths((previous) => {
@@ -687,21 +688,30 @@ function ScheduleApp() {
     },
     [getTaskTranslateY]
   );
+  // Cache de identidade: tasks não alteradas devolvem o MESMO objeto de stats
+  // entre renders, permitindo que o React.memo dos cards pule o re-render.
+  const taskStatsCacheRef = useRef(new WeakMap());
   const visibleTasksWithStats = useMemo(
     () =>
       sortedVisibleTasksForSelectedDay.map((task) => {
+        const cached = taskStatsCacheRef.current.get(task);
+        if (cached && cached.dateKey === selectedDateKey) {
+          return cached.value;
+        }
         const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
         const completedSubtasks = Array.isArray(task.subtasks)
           ? task.subtasks.filter((item) => getSubtaskCompletionStatus(item, selectedDateKey)).length
           : 0;
 
-        return {
+        const value = {
           ...task,
           totalSubtasks,
           completedSubtasks,
           backgroundColor: lightenColor(task.color, 0.75),
           borderColor: task.color,
         };
+        taskStatsCacheRef.current.set(task, { dateKey: selectedDateKey, value });
+        return value;
       }),
     [selectedDateKey, sortedVisibleTasksForSelectedDay]
   );
@@ -747,12 +757,18 @@ function ScheduleApp() {
   }, []);
 
   useEffect(() => {
-    if (allTasksCompletedForSelectedDay && !previousCompletionRef.current) {
+    previousCompletionRef.current = allTasksCompletedForSelectedDay;
+    if (!allTasksCompletedForSelectedDay) {
+      return undefined;
+    }
+    // Adia a montagem do confete p/ depois do frame da conclusão (re-render da
+    // lista + animação do card); montar tudo junto causava uma travada leve.
+    void triggerSuccessFeedback();
+    const timeoutId = setTimeout(() => {
       setConfettiKey((previous) => previous + 1);
       setShowConfetti(true);
-      void triggerSuccessFeedback();
-    }
-    previousCompletionRef.current = allTasksCompletedForSelectedDay;
+    }, 150);
+    return () => clearTimeout(timeoutId);
   }, [allTasksCompletedForSelectedDay]);
 
   useEffect(() => {
@@ -849,54 +865,23 @@ function ScheduleApp() {
     [activeTask, selectedDateKey]
   );
 
-  const openQuantumAdjust = useCallback((task) => {
-    if (!task || task.type !== 'quantum') {
-      return;
-    }
-    setQuantumAdjustTaskId(task.id);
-    if (task.quantum?.mode === 'timer') {
-      const limitSeconds = getTimerTotalSeconds(task.quantum?.timer);
-      const lastAdjustSeconds = task.quantum?.lastAdjustTimerSeconds ?? 0;
-      const clampedSeconds = limitSeconds
-        ? Math.min(Math.max(lastAdjustSeconds, 0), limitSeconds)
-        : Math.max(lastAdjustSeconds, 0);
-      const lastHours = Math.floor(clampedSeconds / 3600);
-      const lastMinutes = Math.floor((clampedSeconds % 3600) / 60);
-      setQuantumAdjustMinutes(String(lastHours));
-      setQuantumAdjustSeconds(String(lastMinutes));
-    } else {
-      const lastAdjust = task.quantum?.lastAdjustCount;
-      setQuantumAdjustCount(String(lastAdjust ?? 1));
-    }
-  }, []);
-
-  const closeQuantumAdjust = useCallback(() => {
-    setQuantumAdjustTaskId(null);
-  }, []);
-
-  const handleQuantumAdjustment = useCallback(
-    (direction) => {
-      if (!quantumAdjustTaskId) {
+  // Ajuste direto do progresso quantum: amount é segundos (timer) ou unidades
+  // (count). Chamado pelo stepper inline do card — sem modal, a água/contador
+  // reage na hora.
+  const applyQuantumDelta = useCallback(
+    (taskId, direction, amount) => {
+      const deltaAmount = Math.round(amount);
+      if (!taskId || !deltaAmount || deltaAmount <= 0) {
         return;
       }
-      const targetTask = tasks.find((task) => task.id === quantumAdjustTaskId);
-      if (!targetTask) {
-        return;
-      }
-      const mode = targetTask.quantum?.mode;
       const dateKey = selectedDateKey;
       setTasks((previous) =>
         previous.map((task) => {
-          if (task.id !== quantumAdjustTaskId) {
+          if (task.id !== taskId) {
             return task;
           }
-          if (mode === 'timer') {
-            const minutes = Number.parseInt(quantumAdjustMinutes, 10) || 0;
-            const seconds = Number.parseInt(quantumAdjustSeconds, 10) || 0;
-            const deltaSeconds = toTimerSeconds(minutes, seconds);
-            if (!deltaSeconds) {
-              return task;
-            }
+          if (task.quantum?.mode === 'timer') {
+            const deltaSeconds = deltaAmount;
             const limitSeconds = getTimerTotalSeconds(task.quantum?.timer);
             if (!limitSeconds) {
               return task;
@@ -942,10 +927,7 @@ function ScheduleApp() {
               },
             };
           }
-          const deltaCount = Number.parseInt(quantumAdjustCount, 10) || 0;
-          if (!deltaCount) {
-            return task;
-          }
+          const deltaCount = deltaAmount;
           const limitCount = task.quantum?.count?.value ?? 0;
           if (!limitCount) {
             return task;
@@ -993,14 +975,7 @@ function ScheduleApp() {
         })
       );
     },
-    [
-      quantumAdjustCount,
-      quantumAdjustMinutes,
-      quantumAdjustSeconds,
-      quantumAdjustTaskId,
-      selectedDateKey,
-      tasks,
-    ]
+    [selectedDateKey]
   );
   const lastToggleRef = useRef(0);
   const overlayOpacity = useRef(new Animated.Value(0)).current;
@@ -1115,6 +1090,13 @@ function ScheduleApp() {
           if (Array.isArray(storedTasks) && storedImages !== undefined) {
             void cleanupOrphanImageFiles(storedTasks, storedImages);
           }
+        }
+
+        // Migração: o tipo 'list' foi removido (era idêntico ao default).
+        if (Array.isArray(storedTasks)) {
+          storedTasks = storedTasks.map((task) =>
+            task?.type === 'list' ? { ...task, type: 'default' } : task
+          );
         }
 
         if (!isMounted) {
@@ -1333,7 +1315,7 @@ function ScheduleApp() {
     () => ({
       content: {
         paddingHorizontal: horizontalPadding,
-        paddingTop: isCompact ? 32 : 48,
+        paddingTop: isCompact ? 10 : 14,
       },
       calendarListContent: {
         paddingHorizontal: horizontalPadding,
@@ -1352,7 +1334,7 @@ function ScheduleApp() {
       bottomBarContainer: {
         paddingHorizontal: 0,
         paddingBottom: insets.bottom,
-        backgroundColor: '#000000',
+        backgroundColor: '#ffffff',
       },
       bottomBar: {
         paddingHorizontal: bottomBarPadding,
@@ -1497,7 +1479,7 @@ function ScheduleApp() {
   const handleToggleTaskCompletion = useCallback(
     (taskId, dateKey = selectedDateKey) => {
       const initialDateKey = dateKey ?? selectedDateKey;
-      const targetTask = tasks.find((task) => task.id === taskId);
+      const targetTask = tasksRef.current.find((task) => task.id === taskId);
       if (isPassiveTaskType(targetTask)) {
         return;
       }
@@ -1539,7 +1521,7 @@ function ScheduleApp() {
         completed: !wasCompleted,
       });
     },
-    [appendHistoryEntry, selectedDateKey, tasks]
+    [appendHistoryEntry, selectedDateKey]
   );
 
   const convertSubtasks = useCallback((subtasks, existing = []) => {
@@ -1921,6 +1903,50 @@ function ScheduleApp() {
     setIsHabitSheetOpen(true);
   }, []);
 
+  // Handlers estáveis dos cards (recebem a task de volta como argumento):
+  // referências fixas + cache de identidade das tasks = React.memo efetivo,
+  // só o card tocado re-renderiza ao completar/ajustar.
+  const handleCardPress = useCallback((task) => setActiveTaskId(task.id), []);
+  const handleCardToggle = useCallback(
+    (task) => handleToggleTaskCompletion(task.id, selectedDateKey),
+    [handleToggleTaskCompletion, selectedDateKey]
+  );
+  const handleCardQuantumDelta = useCallback(
+    (task, direction, amount) => applyQuantumDelta(task.id, direction, amount),
+    [applyQuantumDelta]
+  );
+  const handleCardCopy = useCallback(
+    (task) => {
+      openHabitSheet('copy', {
+        ...task,
+        title: `${task.title} 1`,
+        subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+        startDate: task.date,
+      });
+    },
+    [openHabitSheet]
+  );
+  const handleCardDelete = useCallback(
+    (task) => {
+      if (task.profileLocked) {
+        return;
+      }
+      setTasks((previous) => previous.filter((current) => current.id !== task.id));
+      appendHistoryEntry('task_deleted', { taskId: task.id, title: task.title });
+    },
+    [appendHistoryEntry]
+  );
+  const handleCardEdit = useCallback(
+    (task) => {
+      openHabitSheet('edit', {
+        ...task,
+        startDate: task.date,
+        subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+      });
+    },
+    [openHabitSheet]
+  );
+
   const closeTaskDetail = useCallback(() => {
     setActiveTaskId(null);
   }, []);
@@ -2022,7 +2048,7 @@ function ScheduleApp() {
         disabled={isFabOpen}
       >
         <Ionicons
-          name={icon}
+          name={isActive ? icon.replace('-outline', '') : icon}
           size={iconSize}
           color={isActive ? styles.activeColor.color : styles.inactiveColor.color}
         />
@@ -2038,6 +2064,11 @@ function ScheduleApp() {
       </TouchableOpacity>
     );
   };
+
+  const selectedDayProgressPercent =
+    scorableTasksForSelectedDate.length > 0
+      ? Math.round((completedTaskCount / scorableTasksForSelectedDate.length) * 100)
+      : 0;
 
   return (
     <View
@@ -2078,22 +2109,46 @@ function ScheduleApp() {
               showsVerticalScrollIndicator={false}
             >
               <View style={styles.todayHeader}>
+                <Text style={styles.todayDateEyebrow}>{selectedDateEyebrow}</Text>
                 <Text style={styles.todayTitle}>{selectedDateLabel}</Text>
                 {scorableTasksForSelectedDate.length > 0 && (
-                  <Text
-                    style={[
-                      styles.todaySubtitle,
-                      allTasksCompletedForSelectedDay
-                        ? styles.todaySubtitleSuccess
-                        : styles.todaySubtitleInProgress,
-                    ]}
-                  >
-                    {allTasksCompletedForSelectedDay
-                      ? t.today.allTasksCompleted
-                      : t.today.completedProgress
-                          .replace('{completed}', String(completedTaskCount))
-                          .replace('{total}', String(scorableTasksForSelectedDate.length))}
-                  </Text>
+                  <>
+                    <View style={styles.todayProgressRow}>
+                      <Text
+                        style={[
+                          styles.todaySubtitle,
+                          allTasksCompletedForSelectedDay
+                            ? styles.todaySubtitleSuccess
+                            : styles.todaySubtitleInProgress,
+                        ]}
+                      >
+                        {allTasksCompletedForSelectedDay
+                          ? t.today.allTasksCompleted
+                          : t.today.completedProgress
+                              .replace('{completed}', String(completedTaskCount))
+                              .replace('{total}', String(scorableTasksForSelectedDate.length))}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.todayProgressPct,
+                          allTasksCompletedForSelectedDay
+                            ? styles.todaySubtitleSuccess
+                            : styles.todayProgressPctInProgress,
+                        ]}
+                      >
+                        {selectedDayProgressPercent}%
+                      </Text>
+                    </View>
+                    <View style={styles.todayProgressTrack}>
+                      <View
+                        style={[
+                          styles.todayProgressFill,
+                          allTasksCompletedForSelectedDay && styles.todayProgressFillComplete,
+                          { width: `${selectedDayProgressPercent}%` },
+                        ]}
+                      />
+                    </View>
+                  </>
                 )}
               </View>
 
@@ -2103,17 +2158,17 @@ function ScheduleApp() {
                   const isToday = day.key === todayKey;
                   const dayContainerStyles = [styles.dayNumber];
                   const dayTextStyles = [styles.dayNumberText];
-                  if (isSelected) {
-                    dayContainerStyles.push(styles.dayNumberSelected);
-                    dayTextStyles.push(styles.dayNumberTextSelected);
-                  }
                   if (day.allCompleted) {
                     dayContainerStyles.push(styles.dayNumberCompleted);
                     dayTextStyles.push(styles.dayNumberTextCompleted);
                   }
+                  if (isSelected) {
+                    dayContainerStyles.push(styles.dayNumberSelected);
+                    dayTextStyles.push(styles.dayNumberTextSelected);
+                  }
                   const indicatorStyles = [styles.todayIndicator];
-                  if (day.allCompleted) {
-                    indicatorStyles.push(styles.todayIndicatorOnCompleted);
+                  if (isSelected) {
+                    indicatorStyles.push(styles.todayIndicatorOnSelected);
                   }
                   return (
                     <Pressable
@@ -2227,35 +2282,14 @@ function ScheduleApp() {
                           dateKey={selectedDateKey}
                           totalSubtasks={task.totalSubtasks}
                           completedSubtasks={task.completedSubtasks}
-                          onPress={() => setActiveTaskId(task.id)}
-                          onToggleCompletion={() => handleToggleTaskCompletion(task.id, selectedDateKey)}
-                          onAdjustQuantum={() => openQuantumAdjust(task)}
-                          onCopy={() => {
-                            const duplicated = {
-                              ...task,
-                              title: `${task.title} 1`,
-                              subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
-                              startDate: task.date,
-                            };
-                            openHabitSheet('copy', duplicated);
-                          }}
-                          onDelete={() => {
-                            if (task.profileLocked) {
-                              return;
-                            }
-                            setTasks((previous) => previous.filter((current) => current.id !== task.id));
-                            appendHistoryEntry('task_deleted', { taskId: task.id, title: task.title });
-                          }}
+                          onPress={handleCardPress}
+                          onToggleCompletion={handleCardToggle}
+                          onQuantumDelta={handleCardQuantumDelta}
+                          onCopy={handleCardCopy}
+                          onDelete={handleCardDelete}
                           language={language}
                           isVisible={activeTab === 'today'}
-                          onEdit={() => {
-                            const editable = {
-                              ...task,
-                              startDate: task.date,
-                              subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
-                            };
-                            openHabitSheet('edit', editable);
-                          }}
+                          onEdit={handleCardEdit}
                         />
                       </Animated.View>
                     ))}
@@ -2709,21 +2743,6 @@ function ScheduleApp() {
         initialHabit={habitSheetInitialTask}
         availableTagOptions={availableTagOptions}
         language={language}
-      />
-      <QuantumAdjustModal
-        language={language}
-        task={tasks.find((task) => task.id === quantumAdjustTaskId) ?? null}
-        visible={!!quantumAdjustTaskId}
-        minutesValue={quantumAdjustMinutes}
-        secondsValue={quantumAdjustSeconds}
-        countValue={quantumAdjustCount}
-        dateKey={selectedDateKey}
-        onChangeMinutes={setQuantumAdjustMinutes}
-        onChangeSeconds={setQuantumAdjustSeconds}
-        onChangeCount={setQuantumAdjustCount}
-        onAdd={() => handleQuantumAdjustment(1)}
-        onSubtract={() => handleQuantumAdjustment(-1)}
-        onClose={closeQuantumAdjust}
       />
       <CustomizeCalendarModal
         visible={isCustomizeCalendarOpen}

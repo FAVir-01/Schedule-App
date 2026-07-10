@@ -3,30 +3,31 @@ import { Animated, Easing, View, useWindowDimensions } from 'react-native';
 import { USE_NATIVE_DRIVER } from '../constants/app';
 import { styles } from '../styles/appStyles';
 
-const CONFETTI_COLORS = ['#ff6b6b', '#ffd93d', '#6bcB77', '#4d96ff', '#845ec2'];
-const CONFETTI_COUNT = 32;
-export const CONFETTI_DURATION_MS = 2400;
+const CONFETTI_COLORS = ['#ff6b6b', '#ffd93d', '#3dd598', '#4d96ff', '#845ec2', '#ff8fab'];
+const CONFETTI_COUNT = 30;
+export const CONFETTI_DURATION_MS = 2200;
 
+// Chuva de confete: peças caem do topo com balanço lateral, giro no eixo Z e
+// "flip" 3D no eixo X, desaparecendo perto da base. Transforms nativos.
 const ConfettiOverlay = React.memo(({ visible, onComplete }) => {
   const { width, height } = useWindowDimensions();
   const hasStartedRef = useRef(false);
   const pieces = useMemo(
     () =>
       Array.from({ length: CONFETTI_COUNT }, (_, index) => ({
-        id: `${Date.now()}-${index}`,
-        baseX: new Animated.Value(Math.random() * width),
-        size: 6 + Math.random() * 6,
-        delay: Math.random() * 400,
-        rotate: Math.random() * 120,
-        heightRatio: Math.random() > 0.5 ? 1.5 : 0.8,
-        rotationTurns: 360 * (Math.random() * 4 + 1),
-        swayAmplitude: 12 + Math.random() * 18,
-        swayDuration: 800 + Math.random() * 900,
-        color: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
-        anim: new Animated.Value(-20 - Math.random() * 120),
+        id: index,
+        fall: new Animated.Value(-40 - Math.random() * 200),
         swayAnim: new Animated.Value(0),
-        scaleAnim: new Animated.Value(Math.random() * 0.5 + 0.5),
-        duration: CONFETTI_DURATION_MS + Math.random() * 1000,
+        x: Math.random() * width,
+        swayAmplitude: 10 + Math.random() * 18,
+        swayDuration: 700 + Math.random() * 800,
+        width: 5 + Math.random() * 5,
+        height: 10 + Math.random() * 8,
+        color: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
+        zTurns: (Math.random() * 2 + 1) * (Math.random() > 0.5 ? 360 : -360),
+        xTurns: (Math.random() * 3 + 2) * 180,
+        delay: Math.random() * 450,
+        duration: 1900 + Math.random() * 900,
       })),
     [width]
   );
@@ -41,9 +42,9 @@ const ConfettiOverlay = React.memo(({ visible, onComplete }) => {
     }
     hasStartedRef.current = true;
 
-    const animations = pieces.map((piece) =>
-      Animated.timing(piece.anim, {
-        toValue: height + 100,
+    const fallAnimations = pieces.map((piece) =>
+      Animated.timing(piece.fall, {
+        toValue: height + 60,
         duration: piece.duration,
         delay: piece.delay,
         easing: Easing.bezier(0.25, 0.1, 0.25, 1),
@@ -69,13 +70,13 @@ const ConfettiOverlay = React.memo(({ visible, onComplete }) => {
       )
     );
 
-    const animation = Animated.stagger(40, animations);
+    const animation = Animated.parallel(fallAnimations);
     animation.start();
     swayLoops.forEach((loop) => loop.start());
 
     const timeoutId = setTimeout(() => {
       onComplete?.();
-    }, CONFETTI_DURATION_MS + 1500);
+    }, CONFETTI_DURATION_MS + 1300);
 
     return () => {
       animation.stop();
@@ -96,20 +97,29 @@ const ConfettiOverlay = React.memo(({ visible, onComplete }) => {
           style={[
             styles.confettiPiece,
             {
-              width: piece.size,
-              height: piece.size * piece.heightRatio,
+              left: piece.x,
+              width: piece.width,
+              height: piece.height,
               backgroundColor: piece.color,
-              opacity: 0.8,
+              opacity: piece.fall.interpolate({
+                inputRange: [-240, height * 0.8, height + 60],
+                outputRange: [1, 1, 0],
+              }),
               transform: [
-                { translateX: Animated.add(piece.baseX, piece.swayAnim) },
-                { translateY: piece.anim },
+                { translateX: piece.swayAnim },
+                { translateY: piece.fall },
                 {
-                  rotate: piece.anim.interpolate({
-                    inputRange: [0, height],
-                    outputRange: ['0deg', `${piece.rotationTurns}deg`],
+                  rotate: piece.fall.interpolate({
+                    inputRange: [-240, height + 60],
+                    outputRange: ['0deg', `${piece.zTurns}deg`],
                   }),
                 },
-                { scale: piece.scaleAnim },
+                {
+                  rotateX: piece.fall.interpolate({
+                    inputRange: [-240, height + 60],
+                    outputRange: ['0deg', `${piece.xTurns}deg`],
+                  }),
+                },
               ],
             },
           ]}
