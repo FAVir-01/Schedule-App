@@ -95,6 +95,7 @@ import ActivityTimelineModal from './components/ActivityTimelineModal';
 import ProfileTasksModal from './components/ProfileTasksModal';
 import SwipeableTaskCard from './components/SwipeableTaskCard';
 import ReflectionSheet from './components/ReflectionSheet';
+import SettingsSheet from './components/SettingsSheet';
 import PerformanceChart from './components/PerformanceChart';
 import { CALENDAR_DAY_SIZE } from './constants/layout';
 
@@ -261,7 +262,6 @@ function ScheduleApp() {
   const [isCustomizeCalendarOpen, setCustomizeCalendarOpen] = useState(false);
   const [isProfileTasksOpen, setProfileTasksOpen] = useState(false);
   const [isActivityOpen, setActivityOpen] = useState(false);
-  const [isLanguageMenuOpen, setLanguageMenuOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -283,6 +283,9 @@ function ScheduleApp() {
   // Expressões personalizadas (imagens) disponíveis na folha de reflexão.
   const [moodAppearance, setMoodAppearance] = useState({});
   const [reflectionDateKey, setReflectionDateKey] = useState(null);
+  // Filtro do Profile: null = visão geral; id de hábito = gráfico/stats dele.
+  const [profileFilterId, setProfileFilterId] = useState(null);
+  const [isSettingsOpen, setSettingsOpen] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const saveTimeoutRef = useRef(null);
@@ -840,20 +843,29 @@ function ScheduleApp() {
     () => tasks.find((task) => task.id === activeProfileTaskId) ?? null,
     [activeProfileTaskId, tasks]
   );
+  const profileFilterTask = useMemo(
+    () => tasks.find((task) => task.id === profileFilterId) ?? null,
+    [profileFilterId, tasks]
+  );
+  // Com um hábito filtrado, as stats passam a ser dele: dias desde a criação,
+  // total de conclusões e sequências do próprio hábito.
   const profileStats = useMemo(() => {
+    const statsTasks = profileFilterTask ? [profileFilterTask] : tasks;
     const committedHabits = tasks.length;
     const dateCandidates = [];
 
-    history.forEach((entry) => {
-      if (entry?.timestamp) {
-        const normalized = normalizeDateValue(entry.timestamp);
-        if (normalized) {
-          dateCandidates.push(normalized);
+    if (!profileFilterTask) {
+      history.forEach((entry) => {
+        if (entry?.timestamp) {
+          const normalized = normalizeDateValue(entry.timestamp);
+          if (normalized) {
+            dateCandidates.push(normalized);
+          }
         }
-      }
-    });
+      });
+    }
 
-    tasks.forEach((task) => {
+    statsTasks.forEach((task) => {
       const normalized = normalizeDateValue(task.date ?? task.dateKey);
       if (normalized) {
         dateCandidates.push(normalized);
@@ -866,10 +878,15 @@ function ScheduleApp() {
     const startDate = minDate > today ? today : minDate;
     const totalDays = Math.max(0, differenceInCalendarDays(today, startDate) + 1);
 
-    if (!tasks.length) {
+    const completions = profileFilterTask
+      ? profileFilterTask.completedDates?.length ?? 0
+      : 0;
+
+    if (!statsTasks.length) {
       return {
         totalDays,
         committedHabits,
+        completions,
         currentStreak: 0,
         bestStreak: 0,
       };
@@ -880,7 +897,7 @@ function ScheduleApp() {
     let bestStreak = 0;
 
     dateRange.forEach((date) => {
-      const scheduledTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, date));
+      const scheduledTasks = statsTasks.filter((task) => shouldTaskAppearOnDate(task, date));
       const scoredTasks = scheduledTasks.filter(shouldCountTaskTowardsCompletion);
       if (scoredTasks.length === 0) {
         return;
@@ -898,10 +915,11 @@ function ScheduleApp() {
     return {
       totalDays,
       committedHabits,
+      completions,
       currentStreak,
       bestStreak,
     };
-  }, [history, tasks, today]);
+  }, [history, profileFilterTask, tasks, today]);
   // Faixa de humor dos últimos 7 dias exibida no Profile.
   const weekMoodDays = useMemo(() => {
     const initials = getWeekdayInitials(language);
@@ -2502,7 +2520,87 @@ function ScheduleApp() {
                contentContainerStyle={styles.profileScrollContent}
                showsVerticalScrollIndicator={false}
              >
-                <PerformanceChart tasks={tasks} language={language} />
+                {/* Cabeçalho compacto: título + data e atalho pras configurações */}
+                <View style={styles.profileHeaderRow}>
+                  <View>
+                    <Text style={styles.todayDateEyebrow}>
+                      {today
+                        .toLocaleDateString(language === 'pt' ? 'pt-BR' : 'en-US', {
+                          day: 'numeric',
+                          month: 'long',
+                        })
+                        .toUpperCase()}
+                    </Text>
+                    <Text style={styles.profileHeaderTitle}>{t.tabs.profile}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.profileSettingsButton}
+                    onPress={() => setSettingsOpen(true)}
+                    hitSlop={8}
+                    activeOpacity={0.75}
+                    accessibilityLabel={t.profile.settings}
+                  >
+                    <Ionicons name="settings-outline" size={20} color="#1a1a2e" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Filtro: geral ou um hábito específico — alimenta gráfico e stats */}
+                {tasks.length > 0 ? (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.profileChipsScroll}
+                    contentContainerStyle={styles.profileChipsContent}
+                  >
+                    <TouchableOpacity
+                      style={[
+                        styles.profileFilterChip,
+                        !profileFilterTask && styles.profileFilterChipSelected,
+                      ]}
+                      onPress={() => setProfileFilterId(null)}
+                      activeOpacity={0.75}
+                    >
+                      <Text
+                        style={[
+                          styles.profileFilterChipText,
+                          !profileFilterTask && styles.profileFilterChipTextSelected,
+                        ]}
+                      >
+                        {t.profile.overallSeries}
+                      </Text>
+                    </TouchableOpacity>
+                    {tasks.map((task) => {
+                      const isSelected = task.id === profileFilterId;
+                      return (
+                        <TouchableOpacity
+                          key={task.id}
+                          style={[
+                            styles.profileFilterChip,
+                            isSelected && styles.profileFilterChipSelected,
+                          ]}
+                          onPress={() => setProfileFilterId(isSelected ? null : task.id)}
+                          activeOpacity={0.75}
+                        >
+                          <Text
+                            style={[
+                              styles.profileFilterChipText,
+                              isSelected && styles.profileFilterChipTextSelected,
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {`${task.emoji ? `${task.emoji} ` : ''}${task.title}`}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                ) : null}
+
+                <PerformanceChart
+                  tasks={tasks}
+                  language={language}
+                  selectedTask={profileFilterTask}
+                />
 
                 <View style={styles.profileStatsSection}>
                   <Text style={styles.profileStatsTitle}>{t.profile.stats}</Text>
@@ -2519,12 +2617,22 @@ function ScheduleApp() {
                     </View>
                     <View style={styles.profileStatCard}>
                       <View style={styles.profileStatHeaderRow}>
-                        <Text style={styles.profileStatLabel}>{t.profile.committedHabits}</Text>
-                        <Ionicons name="list-outline" size={14} color="#8a86a8" />
+                        <Text style={styles.profileStatLabel}>
+                          {profileFilterTask ? t.profile.completions : t.profile.committedHabits}
+                        </Text>
+                        <Ionicons
+                          name={profileFilterTask ? 'checkmark-done-outline' : 'list-outline'}
+                          size={14}
+                          color="#8a86a8"
+                        />
                       </View>
                       <View style={styles.profileStatValueRow}>
-                        <Text style={styles.profileStatValue}>{profileStats.committedHabits}</Text>
-                        <Text style={styles.profileStatUnit}>{habitsUnit}</Text>
+                        <Text style={styles.profileStatValue}>
+                          {profileFilterTask ? profileStats.completions : profileStats.committedHabits}
+                        </Text>
+                        {!profileFilterTask ? (
+                          <Text style={styles.profileStatUnit}>{habitsUnit}</Text>
+                        ) : null}
                       </View>
                     </View>
                     <View style={styles.profileStatCard}>
@@ -2583,55 +2691,24 @@ function ScheduleApp() {
                   </View>
                 </View>
 
-                <TouchableOpacity
-                  style={styles.customizeButton}
-                  onPress={() => setCustomizeCalendarOpen(true)}
-                  activeOpacity={0.8}
-                >
-                   <Ionicons name="images-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
-                   <Text style={styles.customizeButtonText}>{t.profile.customizeCalendar}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.profileTasksButton}
-                  onPress={handleOpenProfileTasks}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="list-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.profileTasksButtonText}>{t.profile.openTasks}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.profileTasksButton}
-                  onPress={() => setActivityOpen(true)}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="time-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.profileTasksButtonText}>{t.profile.activity}</Text>
-                </TouchableOpacity>
-                <View style={styles.languageSection}>
+                {/* Ações rápidas: cards leves em vez de botões roxos empilhados */}
+                <View style={styles.profileActionsRow}>
                   <TouchableOpacity
-                    style={[styles.profileTasksButton, styles.languageActionButton]}
-                    activeOpacity={0.85}
-                    onPress={() => setLanguageMenuOpen((prev) => !prev)}
+                    style={styles.profileActionCard}
+                    onPress={handleOpenProfileTasks}
+                    activeOpacity={0.75}
                   >
-                    <Ionicons name="language-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={styles.profileTasksButtonText}>{t.profile.language}</Text>
-                    <Ionicons
-                      name={isLanguageMenuOpen ? 'chevron-up' : 'chevron-down'}
-                      size={18}
-                      color="#fff"
-                      style={styles.languageActionChevron}
-                    />
+                    <Ionicons name="list-outline" size={20} color="#3c2ba7" />
+                    <Text style={styles.profileActionText}>{t.profile.openTasks}</Text>
                   </TouchableOpacity>
-                  {isLanguageMenuOpen ? (
-                    <View style={styles.languageRow}>
-                      <TouchableOpacity style={[styles.languageButton, language === 'en' && styles.languageButtonActive]} onPress={() => updateUserSettings({ language: 'en' })}>
-                        <Text style={[styles.languageButtonText, language === 'en' && styles.languageButtonTextActive]}>{t.profile.english}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.languageButton, language === 'pt' && styles.languageButtonActive]} onPress={() => updateUserSettings({ language: 'pt' })}>
-                        <Text style={[styles.languageButtonText, language === 'pt' && styles.languageButtonTextActive]}>{t.profile.portuguese}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : null}
+                  <TouchableOpacity
+                    style={styles.profileActionCard}
+                    onPress={() => setActivityOpen(true)}
+                    activeOpacity={0.75}
+                  >
+                    <Ionicons name="time-outline" size={20} color="#3c2ba7" />
+                    <Text style={styles.profileActionText}>{t.profile.activity}</Text>
+                  </TouchableOpacity>
                 </View>
              </ScrollView>
           ) : (
@@ -2970,6 +3047,13 @@ function ScheduleApp() {
         initialHabit={habitSheetInitialTask}
         availableTagOptions={availableTagOptions}
         language={language}
+      />
+      <SettingsSheet
+        visible={isSettingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        language={language}
+        onChangeLanguage={(key) => updateUserSettings({ language: key })}
+        onCustomizeCalendar={() => setCustomizeCalendarOpen(true)}
       />
       <CustomizeCalendarModal
         visible={isCustomizeCalendarOpen}

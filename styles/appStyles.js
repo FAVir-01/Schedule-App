@@ -1579,20 +1579,6 @@ export const styles = StyleSheet.create({
     color: '#3c2ba7',
     fontWeight: '800',
   },
-  perfIconToggle: {
-    flexDirection: 'row',
-    backgroundColor: '#f1f1f5',
-    borderRadius: 10,
-    padding: 3,
-  },
-  perfIconButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  perfIconButtonActive: {
-    backgroundColor: '#3c2ba7',
-  },
   perfDeltaChip: {
     borderRadius: 10,
     paddingHorizontal: 8,
@@ -1692,70 +1678,6 @@ export const styles = StyleSheet.create({
     color: '#ffffff',
     textTransform: 'capitalize',
   },
-  perfLegend: {
-    marginTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(26, 26, 46, 0.06)',
-    paddingTop: 10,
-    gap: 8,
-  },
-  perfLegendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  perfLegendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  perfLegendLabel: {
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1a1a2e',
-  },
-  perfLegendValue: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#1a1a2e',
-  },
-  perfLegendRemove: {
-    marginLeft: 2,
-  },
-  perfAddComparisonButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 4,
-  },
-  perfAddComparisonText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#3c2ba7',
-  },
-  perfPickerList: {
-    maxHeight: 180,
-    backgroundColor: '#f6f6fb',
-    borderRadius: 14,
-  },
-  perfPickerItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-  },
-  perfPickerEmoji: {
-    fontSize: 17,
-  },
-  perfPickerTitle: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1a1a2e',
-  },
-
   // --- STYLES FOR PROFILE & CUSTOMIZE CALENDAR ---
   profileScrollContent: {
     alignItems: 'center',
@@ -1865,81 +1787,127 @@ export const styles = StyleSheet.create({
     color: '#6f7a86',
     fontWeight: '600',
   },
-  customizeButton: {
+  profileHeaderRow: {
+    alignSelf: 'stretch',
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#3c2ba7',
-    paddingVertical: 14,
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  profileHeaderTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#1a1a2e',
+  },
+  profileSettingsButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  profileChipsScroll: {
+    alignSelf: 'stretch',
+    marginBottom: 16,
+    marginHorizontal: -24,
+  },
+  profileChipsContent: {
     paddingHorizontal: 24,
-    borderRadius: 30,
-    shadowColor: '#3c2ba7',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  customizeButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-
-  languageSection: {
-    width: '100%',
-    marginTop: 14,
-    marginBottom: 2,
-    alignItems: 'center',
-  },
-  languageActionButton: {
-    marginTop: 0,
-    marginBottom: 8,
-  },
-  languageActionChevron: {
-    marginLeft: 12,
-  },
-  languageRow: {
-    flexDirection: 'row',
     gap: 8,
-    width: '100%',
   },
-  languageButton: {
-    flex: 1,
-    borderRadius: 12,
+  profileFilterChip: {
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#d4dcf0',
-    paddingVertical: 12,
-    alignItems: 'center',
-    backgroundColor: '#fff',
+    borderColor: '#e4e8f2',
+    backgroundColor: '#ffffff',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    maxWidth: 180,
   },
-  languageButtonActive: {
+  profileFilterChipSelected: {
     backgroundColor: '#3c2ba7',
     borderColor: '#3c2ba7',
   },
-  languageButtonText: {
-    color: '#3c2ba7',
+  profileFilterChipText: {
+    fontSize: 13,
     fontWeight: '600',
+    color: '#1a1a2e',
   },
-  languageButtonTextActive: {
-    color: '#fff',
+  profileFilterChipTextSelected: {
+    color: '#ffffff',
   },
-  profileTasksButton: {
+  profileActionsRow: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  profileActionCard: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 14,
-    backgroundColor: '#3c2ba7',
-    paddingVertical: 12,
-    paddingHorizontal: 22,
-    borderRadius: 26,
-    shadowColor: '#3c2ba7',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: 4,
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    paddingVertical: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  profileTasksButtonText: {
-    color: '#ffffff',
+  profileActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a1a2e',
+  },
+  settingsContent: {
+    gap: 10,
+  },
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#f6f6fb',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+  },
+  settingsRowLabel: {
+    flex: 1,
     fontSize: 15,
     fontWeight: '600',
+    color: '#1a1a2e',
+  },
+  settingsLanguageGroup: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  settingsLanguageButton: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d4dcf0',
+    backgroundColor: '#ffffff',
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+  },
+  settingsLanguageButtonActive: {
+    backgroundColor: '#3c2ba7',
+    borderColor: '#3c2ba7',
+  },
+  settingsLanguageText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#3c2ba7',
+  },
+  settingsLanguageTextActive: {
+    color: '#ffffff',
   },
   profileTasksContainer: {
     flex: 1,

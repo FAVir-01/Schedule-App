@@ -44,7 +44,8 @@ const translations = {
       moodWeek: 'Mood of the week',
       noChartData: 'Complete habits to see your performance here.',
       overallSeries: 'Overall',
-      addComparison: 'Add comparison',
+      settings: 'Settings',
+      completions: 'COMPLETIONS',
     },
     fab: {
       addHabit: 'Add habit',
@@ -249,7 +250,8 @@ const translations = {
       moodWeek: 'Humor da semana',
       noChartData: 'Complete hábitos para ver seu desempenho aqui.',
       overallSeries: 'Geral',
-      addComparison: 'Adicionar comparação',
+      settings: 'Configurações',
+      completions: 'CONCLUSÕES',
     },
     fab: {
       addHabit: 'Adicionar hábito',
