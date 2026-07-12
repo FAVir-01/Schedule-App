@@ -5,6 +5,10 @@ const STORAGE_KEYS = {
   SETTINGS: '@schedule_app/settings',
   HISTORY: '@schedule_app/history',
   MONTH_IMAGES: '@schedule_app/month_images',
+  DAY_MOODS: '@schedule_app/day_moods',
+  // Chave legada (lista de expressões); mantida só pro resetStorage limpar.
+  CUSTOM_MOOD_IMAGES: '@schedule_app/custom_mood_images',
+  MOOD_APPEARANCE: '@schedule_app/mood_appearance',
 };
 
 // Se o JSON estiver corrompido, guarda o dado bruto numa chave de backup
@@ -93,6 +97,48 @@ export async function saveMonthImages(imagesMap) {
     await AsyncStorage.setItem(STORAGE_KEYS.MONTH_IMAGES, JSON.stringify(imagesMap));
   } catch (error) {
     console.warn('Failed to save month images', error);
+  }
+}
+
+// Reflexões diárias: { [dateKey]: { level, tags, note, photo, updatedAt } }
+// (registros antigos podem ter { emoji, image, note } no lugar do nível)
+export async function loadDayMoods() {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.DAY_MOODS);
+    return parseStoredJson(STORAGE_KEYS.DAY_MOODS, raw, {});
+  } catch (error) {
+    console.warn('Failed to load day moods', error);
+    return undefined;
+  }
+}
+
+export async function saveDayMoods(moodsMap) {
+  try {
+    await AsyncStorage.setItem(STORAGE_KEYS.DAY_MOODS, JSON.stringify(moodsMap));
+  } catch (error) {
+    console.warn('Failed to save day moods', error);
+  }
+}
+
+// Aparência dos 5 níveis de humor: { [level]: uri de imagem/GIF }.
+export async function loadMoodAppearance() {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.MOOD_APPEARANCE);
+    return parseStoredJson(STORAGE_KEYS.MOOD_APPEARANCE, raw, {});
+  } catch (error) {
+    console.warn('Failed to load mood appearance', error);
+    return undefined;
+  }
+}
+
+export async function saveMoodAppearance(appearanceMap) {
+  try {
+    await AsyncStorage.setItem(
+      STORAGE_KEYS.MOOD_APPEARANCE,
+      JSON.stringify(appearanceMap)
+    );
+  } catch (error) {
+    console.warn('Failed to save mood appearance', error);
   }
 }
 

@@ -34,10 +34,14 @@ import {
   startOfWeek,
 } from 'date-fns';
 import {
+  loadDayMoods,
   loadHistory,
   loadMonthImages,
+  loadMoodAppearance,
   loadTasks,
   loadUserSettings,
+  saveDayMoods,
+  saveMoodAppearance,
   saveHistory,
   saveMonthImages,
   saveTasks,
@@ -47,6 +51,7 @@ import AddHabitSheet from './components/AddHabitSheet';
 import { DEFAULT_USER_SETTINGS } from './constants/userSettings';
 import { getNavigationBarThemeForTab } from './constants/navigation';
 import { lightenColor } from './utils/colorUtils';
+import { getMoodMarker } from './utils/moodUtils';
 import {
   getDateKey,
   getMonthId,
@@ -89,6 +94,8 @@ import ProfileTaskDetailModal from './components/ProfileTaskDetailModal';
 import ActivityTimelineModal from './components/ActivityTimelineModal';
 import ProfileTasksModal from './components/ProfileTasksModal';
 import SwipeableTaskCard from './components/SwipeableTaskCard';
+import ReflectionSheet from './components/ReflectionSheet';
+import PerformanceChart from './components/PerformanceChart';
 import { CALENDAR_DAY_SIZE } from './constants/layout';
 
 
@@ -169,10 +176,15 @@ const migrateCachedImages = async (storedTasks, storedImages) => {
   return { tasks, images };
 };
 
-// Apaga imagens nossas (custom_habit_icon_*/custom_month_*) que nenhuma tarefa
-// ou mês referencia mais — ex.: tarefa deletada, imagem trocada ou criação
-// cancelada. Só roda quando tasks E images carregaram com sucesso.
-const cleanupOrphanImageFiles = async (storedTasks, storedImages) => {
+// Apaga imagens nossas (custom_habit_icon_*/custom_month_*/custom_mood_*) que
+// nada referencia mais — ex.: tarefa deletada, imagem trocada ou expressão
+// removida. Só considera cada prefixo quando os dados dele carregaram bem.
+const cleanupOrphanImageFiles = async (
+  storedTasks,
+  storedImages,
+  storedMoods,
+  storedAppearance
+) => {
   try {
     const dir = FileSystem.documentDirectory;
     if (!dir) {
@@ -189,10 +201,30 @@ const cleanupOrphanImageFiles = async (storedTasks, storedImages) => {
         referenced.add(uri.split('/').pop());
       }
     });
+    // Humores: referenciados pela aparência dos níveis ou por qualquer
+    // reflexão de dia (imagem legada ou foto do dia).
+    const moodsLoaded = storedMoods !== undefined && storedAppearance !== undefined;
+    if (moodsLoaded) {
+      Object.values(storedAppearance ?? {}).forEach((uri) => {
+        if (typeof uri === 'string') {
+          referenced.add(uri.split('/').pop());
+        }
+      });
+      Object.values(storedMoods ?? {}).forEach((mood) => {
+        if (typeof mood?.image === 'string') {
+          referenced.add(mood.image.split('/').pop());
+        }
+        if (typeof mood?.photo === 'string') {
+          referenced.add(mood.photo.split('/').pop());
+        }
+      });
+    }
     const fileNames = await FileSystem.readDirectoryAsync(dir);
     const orphans = fileNames.filter(
       (name) =>
-        (name.startsWith('custom_habit_icon_') || name.startsWith('custom_month_')) &&
+        (name.startsWith('custom_habit_icon_') ||
+          name.startsWith('custom_month_') ||
+          (moodsLoaded && name.startsWith('custom_mood_'))) &&
         !referenced.has(name)
     );
     await Promise.all(
@@ -246,17 +278,24 @@ function ScheduleApp() {
   const t = translations[language] ?? translations.en;
   const [history, setHistory] = useState([]);
   const [customMonthImages, setCustomMonthImages] = useState({});
+  // Reflexões diárias: { [dateKey]: { emoji, note, updatedAt } }
+  const [dayMoods, setDayMoods] = useState({});
+  // Expressões personalizadas (imagens) disponíveis na folha de reflexão.
+  const [moodAppearance, setMoodAppearance] = useState({});
+  const [reflectionDateKey, setReflectionDateKey] = useState(null);
   const [isHydrated, setIsHydrated] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const saveTimeoutRef = useRef(null);
   const settingsSaveTimeoutRef = useRef(null);
   const historySaveTimeoutRef = useRef(null);
+  const dayMoodsSaveTimeoutRef = useRef(null);
   // Marca quais stores falharam ao carregar, p/ não sobrescrever dado bom com estado vazio
   const loadFailuresRef = useRef({});
   // Espelhos do estado mais recente p/ flush imediato quando o app vai pra background
   const tasksRef = useRef(null);
   const userSettingsRef = useRef(null);
   const historyRef = useRef(null);
+  const dayMoodsRef = useRef(null);
   const isHydratedRef = useRef(false);
   const taskPositionsRef = useRef(new Map());
   const taskAnimationsRef = useRef(new Map());
@@ -555,6 +594,22 @@ function ScheduleApp() {
     });
   }, []);
 
+  // Assinatura dos humores por mês: só o mês cujo emoji mudou re-renderiza.
+  const calendarMonthMoodSignatureById = useMemo(() => {
+    const result = {};
+    calendarMonths.forEach((month) => {
+      result[month.monthId] = month.days
+        .map((day) => {
+          const marker = getMoodMarker(dayMoods[getDateKey(day)], moodAppearance);
+          const markerId = marker?.image ?? marker?.emoji;
+          return markerId ? `${getDateKey(day)}:${markerId}` : null;
+        })
+        .filter(Boolean)
+        .join('|');
+    });
+    return result;
+  }, [calendarMonths, dayMoods, moodAppearance]);
+
   const renderCalendarMonth = useCallback(
     ({ item }) => (
       <CalendarMonthItem
@@ -565,9 +620,12 @@ function ScheduleApp() {
         language={language}
         monthStatusSignature={calendarMonthStatusSignatureById[item.monthId]}
         todayKey={todayKey}
+        dayMoods={dayMoods}
+        moodAppearance={moodAppearance}
+        monthMoodSignature={calendarMonthMoodSignatureById[item.monthId]}
       />
     ),
-    [calendarDayStatusByKey, calendarMonthStatusSignatureById, customMonthImages, handleOpenReport, language, todayKey]
+    [calendarDayStatusByKey, calendarMonthStatusSignatureById, calendarMonthMoodSignatureById, customMonthImages, dayMoods, handleOpenReport, language, moodAppearance, todayKey]
   );
   const tasksForSelectedDate = useMemo(() => {
     const filtered = tasks.filter((task) => shouldTaskAppearOnDate(task, selectedDate));
@@ -844,6 +902,23 @@ function ScheduleApp() {
       bestStreak,
     };
   }, [history, tasks, today]);
+  // Faixa de humor dos últimos 7 dias exibida no Profile.
+  const weekMoodDays = useMemo(() => {
+    const initials = getWeekdayInitials(language);
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(today);
+      date.setDate(today.getDate() - (6 - index));
+      const key = getDateKey(date);
+      const marker = getMoodMarker(dayMoods[key], moodAppearance);
+      return {
+        key,
+        label: initials[date.getDay()],
+        emoji: marker?.emoji ?? null,
+        image: marker?.image ?? null,
+        isToday: key === todayKey,
+      };
+    });
+  }, [dayMoods, language, moodAppearance, today, todayKey]);
   const totalDaysUnit = profileStats.totalDays === 1 ? t.profile.day : t.profile.days;
   const habitsUnit = t.profile.habits;
   const currentStreakUnit = profileStats.currentStreak === 1 ? t.profile.day : t.profile.days;
@@ -1073,11 +1148,20 @@ function ScheduleApp() {
     let isMounted = true;
     const hydrateFromStorage = async () => {
       try {
-        const [loadedTasks, storedSettings, storedHistory, loadedImages] = await Promise.all([
+        const [
+          loadedTasks,
+          storedSettings,
+          storedHistory,
+          loadedImages,
+          storedMoods,
+          storedAppearance,
+        ] = await Promise.all([
           loadTasks(),
           loadUserSettings(),
           loadHistory(),
           loadMonthImages(),
+          loadDayMoods(),
+          loadMoodAppearance(),
         ]);
 
         let storedTasks = loadedTasks;
@@ -1088,7 +1172,12 @@ function ScheduleApp() {
           storedImages = migrated.images;
 
           if (Array.isArray(storedTasks) && storedImages !== undefined) {
-            void cleanupOrphanImageFiles(storedTasks, storedImages);
+            void cleanupOrphanImageFiles(
+              storedTasks,
+              storedImages,
+              storedMoods,
+              storedAppearance
+            );
           }
         }
 
@@ -1108,6 +1197,7 @@ function ScheduleApp() {
           settings: storedSettings === undefined,
           history: storedHistory === undefined,
           images: storedImages === undefined,
+          moods: storedMoods === undefined,
         };
 
         if (Array.isArray(storedTasks)) {
@@ -1129,6 +1219,14 @@ function ScheduleApp() {
 
         if (storedImages) {
           setCustomMonthImages(storedImages);
+        }
+
+        if (storedAppearance && typeof storedAppearance === 'object') {
+          setMoodAppearance(storedAppearance);
+        }
+
+        if (storedMoods && typeof storedMoods === 'object') {
+          setDayMoods(storedMoods);
         }
       } catch (error) {
         console.warn('Failed to load stored data', error);
@@ -1222,9 +1320,30 @@ function ScheduleApp() {
   }, [history, isHydrated]);
 
   useEffect(() => {
+    if (!isHydrated || loadFailuresRef.current.moods) {
+      return undefined;
+    }
+
+    if (dayMoodsSaveTimeoutRef.current) {
+      clearTimeout(dayMoodsSaveTimeoutRef.current);
+    }
+
+    const timeoutId = setTimeout(() => {
+      void saveDayMoods(dayMoods);
+    }, 500);
+
+    dayMoodsSaveTimeoutRef.current = timeoutId;
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [dayMoods, isHydrated]);
+
+  useEffect(() => {
     tasksRef.current = tasks;
     userSettingsRef.current = userSettings;
     historyRef.current = history;
+    dayMoodsRef.current = dayMoods;
     isHydratedRef.current = isHydrated;
   });
 
@@ -1263,6 +1382,13 @@ function ScheduleApp() {
           historySaveTimeoutRef.current = null;
         }
         void saveHistory(historyRef.current);
+      }
+      if (!failures.moods && dayMoodsRef.current) {
+        if (dayMoodsSaveTimeoutRef.current) {
+          clearTimeout(dayMoodsSaveTimeoutRef.current);
+          dayMoodsSaveTimeoutRef.current = null;
+        }
+        void saveDayMoods(dayMoodsRef.current);
       }
     });
 
@@ -1413,9 +1539,46 @@ function ScheduleApp() {
 
   const handleAddReflection = useCallback(() => {
     triggerImpact(Haptics.ImpactFeedbackStyle.Light);
-    console.log('Add reflection action triggered');
     closeFabMenu();
-  }, [closeFabMenu]);
+    setReflectionDateKey(selectedDateKey);
+  }, [closeFabMenu, selectedDateKey]);
+
+  const handleEditReflectionForDate = useCallback((dateKey) => {
+    setReflectionDateKey(dateKey);
+  }, []);
+
+  const handleCloseReflection = useCallback(() => {
+    setReflectionDateKey(null);
+  }, []);
+
+  const handleSaveDayMood = useCallback((dateKey, mood) => {
+    setDayMoods((previous) => {
+      const next = { ...previous };
+      if (mood) {
+        next[dateKey] = { ...mood, updatedAt: new Date().toISOString() };
+      } else {
+        delete next[dateKey];
+      }
+      return next;
+    });
+    setReflectionDateKey(null);
+    triggerSelection();
+  }, []);
+
+  // Aparência é pequena e muda raramente: salva na hora, sem debounce.
+  // Arquivo antigo substituído é apagado depois pela limpeza de órfãos.
+  const handleSetMoodAppearance = useCallback((level, uri) => {
+    setMoodAppearance((previous) => {
+      const next = { ...previous };
+      if (uri) {
+        next[level] = uri;
+      } else {
+        delete next[level];
+      }
+      void saveMoodAppearance(next);
+      return next;
+    });
+  }, []);
 
   const handleCloseCreateHabit = useCallback(() => {
     setIsHabitSheetOpen(false);
@@ -2334,38 +2497,89 @@ function ScheduleApp() {
               />
             </View>
           ) : activeTab === 'profile' ? (
-             <View style={styles.profileContainer}>
+             <ScrollView
+               style={{ flex: 1 }}
+               contentContainerStyle={styles.profileScrollContent}
+               showsVerticalScrollIndicator={false}
+             >
+                <PerformanceChart tasks={tasks} language={language} />
+
                 <View style={styles.profileStatsSection}>
                   <Text style={styles.profileStatsTitle}>{t.profile.stats}</Text>
                   <View style={styles.profileStatsGrid}>
                     <View style={styles.profileStatCard}>
-                      <Text style={styles.profileStatLabel}>{t.profile.totalDays}</Text>
+                      <View style={styles.profileStatHeaderRow}>
+                        <Text style={styles.profileStatLabel}>{t.profile.totalDays}</Text>
+                        <Ionicons name="calendar-outline" size={14} color="#8a86a8" />
+                      </View>
                       <View style={styles.profileStatValueRow}>
                         <Text style={styles.profileStatValue}>{profileStats.totalDays}</Text>
                         <Text style={styles.profileStatUnit}>{totalDaysUnit}</Text>
                       </View>
                     </View>
                     <View style={styles.profileStatCard}>
-                      <Text style={styles.profileStatLabel}>{t.profile.committedHabits}</Text>
+                      <View style={styles.profileStatHeaderRow}>
+                        <Text style={styles.profileStatLabel}>{t.profile.committedHabits}</Text>
+                        <Ionicons name="list-outline" size={14} color="#8a86a8" />
+                      </View>
                       <View style={styles.profileStatValueRow}>
                         <Text style={styles.profileStatValue}>{profileStats.committedHabits}</Text>
                         <Text style={styles.profileStatUnit}>{habitsUnit}</Text>
                       </View>
                     </View>
                     <View style={styles.profileStatCard}>
-                      <Text style={styles.profileStatLabel}>{t.profile.currentStreak}</Text>
+                      <View style={styles.profileStatHeaderRow}>
+                        <Text style={styles.profileStatLabel}>{t.profile.currentStreak}</Text>
+                        <Ionicons name="flame" size={14} color="#f59e0b" />
+                      </View>
                       <View style={styles.profileStatValueRow}>
                         <Text style={styles.profileStatValue}>{profileStats.currentStreak}</Text>
                         <Text style={styles.profileStatUnit}>{currentStreakUnit}</Text>
                       </View>
                     </View>
                     <View style={styles.profileStatCard}>
-                      <Text style={styles.profileStatLabel}>{t.profile.bestStreak}</Text>
+                      <View style={styles.profileStatHeaderRow}>
+                        <Text style={styles.profileStatLabel}>{t.profile.bestStreak}</Text>
+                        <Ionicons name="trophy-outline" size={14} color="#8a86a8" />
+                      </View>
                       <View style={styles.profileStatValueRow}>
                         <Text style={styles.profileStatValue}>{profileStats.bestStreak}</Text>
                         <Text style={styles.profileStatUnit}>{bestStreakUnit}</Text>
                       </View>
                     </View>
+                  </View>
+                </View>
+
+                <View style={styles.profileMoodSection}>
+                  <Text style={styles.profileStatsTitle}>{t.profile.moodWeek}</Text>
+                  <View style={styles.profileMoodRow}>
+                    {weekMoodDays.map((day) => (
+                      <TouchableOpacity
+                        key={day.key}
+                        style={styles.profileMoodCell}
+                        onPress={() => handleEditReflectionForDate(day.key)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.profileMoodDayLabel}>{day.label}</Text>
+                        <View
+                          style={[
+                            styles.profileMoodEmojiCircle,
+                            day.isToday && styles.profileMoodEmojiCircleToday,
+                          ]}
+                        >
+                          {day.image ? (
+                            <Image
+                              source={{ uri: day.image }}
+                              style={styles.profileMoodImage}
+                            />
+                          ) : day.emoji ? (
+                            <Text style={styles.profileMoodEmoji}>{day.emoji}</Text>
+                          ) : (
+                            <Ionicons name="add" size={16} color="#c1bdd8" />
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    ))}
                   </View>
                 </View>
 
@@ -2419,7 +2633,7 @@ function ScheduleApp() {
                     </View>
                   ) : null}
                 </View>
-             </View>
+             </ScrollView>
           ) : (
             <View style={styles.placeholderContainer}>
               <View style={styles.placeholderIconWrapper}>
@@ -2725,6 +2939,19 @@ function ScheduleApp() {
         onClose={() => setReportDate(null)}
         customImages={customMonthImages}
         language={language}
+        mood={reportDate ? dayMoods[getDateKey(reportDate)] ?? null : null}
+        moodAppearance={moodAppearance}
+        onEditReflection={handleEditReflectionForDate}
+      />
+      <ReflectionSheet
+        visible={Boolean(reflectionDateKey)}
+        dateKey={reflectionDateKey}
+        mood={reflectionDateKey ? dayMoods[reflectionDateKey] ?? null : null}
+        onSave={handleSaveDayMood}
+        onClose={handleCloseReflection}
+        language={language}
+        moodAppearance={moodAppearance}
+        onSetAppearance={handleSetMoodAppearance}
       />
       <AddHabitSheet
         visible={isHabitSheetOpen}

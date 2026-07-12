@@ -1,15 +1,16 @@
 import React from 'react';
-import { ImageBackground, Pressable, Text, View } from 'react-native';
+import { Image, ImageBackground, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { getMonthImageSource } from '../constants/months';
 import { getDateLocale } from '../constants/i18n';
 import { getDateKey } from '../utils/dateUtils';
+import { getMoodMarker } from '../utils/moodUtils';
 import { CALENDAR_DAY_SIZE } from '../constants/layout';
 import { styles } from '../styles/appStyles';
 
-// --- CÉLULA DO DIA ATUALIZADA (COM DESTAQUE PARA HOJE) ---
-const CalendarDayCell = React.memo(({ date, isCurrentMonth, status, onPress, isToday }) => {
+// --- CÉLULA DO DIA ATUALIZADA (COM DESTAQUE PARA HOJE E HUMOR) ---
+const CalendarDayCell = React.memo(({ date, isCurrentMonth, status, onPress, isToday, moodEmoji, moodImage }) => {
   if (!isCurrentMonth) {
     return <View style={{ width: CALENDAR_DAY_SIZE, height: CALENDAR_DAY_SIZE }} />;
   }
@@ -35,6 +36,15 @@ const CalendarDayCell = React.memo(({ date, isCurrentMonth, status, onPress, isT
       ) : (
         <Text style={styles.calendarDayText}>{date.getDate()}</Text>
       )}
+      {moodImage || moodEmoji ? (
+        <View style={styles.calendarMoodBadge} pointerEvents="none">
+          {moodImage ? (
+            <Image source={{ uri: moodImage }} style={styles.calendarMoodBadgeImage} />
+          ) : (
+            <Text style={styles.calendarMoodBadgeText}>{moodEmoji}</Text>
+          )}
+        </View>
+      ) : null}
     </Pressable>
   );
 });
@@ -48,6 +58,9 @@ const CalendarMonthItem = React.memo(({
   customImages,
   language,
   todayKey,
+  dayMoods,
+  moodAppearance,
+  monthMoodSignature,
 }) => {
   const imageSource = getMonthImageSource(item.monthIndex, customImages);
 
@@ -66,6 +79,7 @@ const CalendarMonthItem = React.memo(({
       <View style={styles.calendarDaysGrid}>
         {item.days.map((day) => {
           const dayKey = getDateKey(day);
+          const marker = getMoodMarker(dayMoods?.[dayKey], moodAppearance);
           return (
             <CalendarDayCell
               key={dayKey}
@@ -74,6 +88,8 @@ const CalendarMonthItem = React.memo(({
               status={dayStatusByKey[dayKey] ?? 'pending'}
               onPress={onDayPress}
               isToday={dayKey === todayKey}
+              moodEmoji={marker?.emoji ?? null}
+              moodImage={marker?.image ?? null}
             />
           );
         })}
@@ -97,6 +113,10 @@ const CalendarMonthItem = React.memo(({
   }
 
   if (prevProps.monthStatusSignature !== nextProps.monthStatusSignature) {
+    return false;
+  }
+
+  if (prevProps.monthMoodSignature !== nextProps.monthMoodSignature) {
     return false;
   }
 
