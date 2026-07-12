@@ -350,18 +350,58 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
     return `${Math.round(value * 10) / 10}`;
   };
 
-  const buildDelta = (serie) => {
-    if (!serie || serie.length < 2) {
-      return null;
+  // Resumo do período (header sem scrub): taxa/total REAL do período inteiro,
+  // idêntico nas duas visualizações. Variação = 2ª metade vs 1ª metade.
+  const periodSummary = useMemo(() => {
+    const serie = raw[0] ?? [];
+    if (!serie.length) {
+      return { value: null, delta: null };
     }
-    const raw = serie[focusedIndex] - serie[0];
-    const rounded = Math.round(raw * 10) / 10;
-    const label =
-      mode === 'percent' ? `${Math.round(Math.abs(raw))}%` : `${Math.abs(rounded)}`;
-    return { up: raw >= 0, label: `${raw >= 0 ? '▲' : '▼'} ${label}` };
-  };
+    const sumChunk = (chunk) =>
+      chunk.reduce(
+        (acc, item) => ({
+          completed: acc.completed + item.completed,
+          total: acc.total + item.total,
+        }),
+        { completed: 0, total: 0 }
+      );
+    const half = Math.floor(serie.length / 2);
+    const all = sumChunk(serie);
+    const firstHalf = sumChunk(serie.slice(0, half));
+    const secondHalf = sumChunk(serie.slice(half));
+    if (mode === 'percent') {
+      const rate = (part) => (part.total > 0 ? (part.completed / part.total) * 100 : null);
+      const firstRate = rate(firstHalf);
+      const secondRate = rate(secondHalf);
+      return {
+        value: rate(all) ?? 0,
+        delta: firstRate != null && secondRate != null ? secondRate - firstRate : null,
+      };
+    }
+    return { value: all.completed, delta: secondHalf.completed - firstHalf.completed };
+  }, [mode, raw]);
 
-  const overallDelta = buildDelta(displaySerie);
+  const overallDelta =
+    periodSummary.delta != null
+      ? {
+          up: periodSummary.delta >= 0,
+          label: `${periodSummary.delta >= 0 ? '▲' : '▼'} ${
+            mode === 'percent'
+              ? `${Math.round(Math.abs(periodSummary.delta))}%`
+              : `${Math.round(Math.abs(periodSummary.delta) * 10) / 10}`
+          }`,
+        }
+      : null;
+
+  const periodRangeLabel = dates.length
+    ? `${dates[0].toLocaleDateString(locale, {
+        day: 'numeric',
+        month: 'short',
+      })} – ${dates[dates.length - 1].toLocaleDateString(locale, {
+        day: 'numeric',
+        month: 'short',
+      })}`
+    : '';
   const focusedBucket = chartType === 'bars' ? barBuckets[focusedIndex] : null;
   const focusedDateLabel = focusedBucket
     ? getDateKey(focusedBucket.startDate) === getDateKey(focusedBucket.endDate)
@@ -436,7 +476,11 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
             {selectedTask ? seriesDescriptors[0].label : t.profile.performance}
           </Text>
           <View style={styles.perfValueRow}>
-            <Text style={styles.perfValue}>{formatValue(displaySerie[focusedIndex])}</Text>
+            <Text style={styles.perfValue}>
+              {formatValue(
+                activeIndex != null ? displaySerie[focusedIndex] : periodSummary.value
+              )}
+            </Text>
             {overallDelta ? (
               <View
                 style={[
@@ -455,7 +499,9 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
               </View>
             ) : null}
           </View>
-          <Text style={styles.perfDateLabel}>{focusedDateLabel}</Text>
+          <Text style={styles.perfDateLabel}>
+            {activeIndex != null ? focusedDateLabel : periodRangeLabel}
+          </Text>
         </View>
         <View style={styles.perfControlsRow}>
           <TouchableOpacity
