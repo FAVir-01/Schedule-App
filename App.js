@@ -2581,6 +2581,12 @@ function ScheduleApp() {
                           onPress={() => setProfileFilterId(isSelected ? null : task.id)}
                           activeOpacity={0.75}
                         >
+                          {task.customImage ? (
+                            <Image
+                              source={{ uri: task.customImage }}
+                              style={styles.profileFilterChipImage}
+                            />
+                          ) : null}
                           <Text
                             style={[
                               styles.profileFilterChipText,
@@ -2588,7 +2594,9 @@ function ScheduleApp() {
                             ]}
                             numberOfLines={1}
                           >
-                            {`${task.emoji ? `${task.emoji} ` : ''}${task.title}`}
+                            {task.customImage
+                              ? task.title
+                              : `${task.emoji ? `${task.emoji} ` : ''}${task.title}`}
                           </Text>
                         </TouchableOpacity>
                       );

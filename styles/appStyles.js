@@ -1822,6 +1822,9 @@ export const styles = StyleSheet.create({
     gap: 8,
   },
   profileFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: '#e4e8f2',
@@ -1829,6 +1832,11 @@ export const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 14,
     maxWidth: 180,
+  },
+  profileFilterChipImage: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
   },
   profileFilterChipSelected: {
     backgroundColor: '#3c2ba7',

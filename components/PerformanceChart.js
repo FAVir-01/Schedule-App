@@ -45,11 +45,14 @@ const Y_AXIS_WIDTH = 34;
 const OVERALL_COLOR = '#3c2ba7';
 const OVERALL_ID = '__overall__';
 
-// Path suave (Catmull-Rom -> Bézier cúbica).
-const buildSmoothPath = (points) => {
+// Path suave (Catmull-Rom -> Bézier cúbica). Os pontos de controle são
+// limitados à área útil pra curva não estourar o teto/chão nos picos
+// (o SVG cortava a crista reta).
+const buildSmoothPath = (points, minY = -Infinity, maxY = Infinity) => {
   if (points.length < 2) {
     return '';
   }
+  const clampY = (value) => Math.min(maxY, Math.max(minY, value));
   let d = `M ${points[0].x} ${points[0].y}`;
   for (let i = 0; i < points.length - 1; i += 1) {
     const p0 = points[i - 1] ?? points[i];
@@ -57,9 +60,9 @@ const buildSmoothPath = (points) => {
     const p2 = points[i + 1];
     const p3 = points[i + 2] ?? p2;
     const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp1y = clampY(p1.y + (p2.y - p0.y) / 6);
     const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    const cp2y = clampY(p2.y - (p3.y - p1.y) / 6);
     d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
   }
   return d;
@@ -94,11 +97,14 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
   const locale = language === 'pt' ? 'pt-BR' : 'en-US';
   const [periodKey, setPeriodKey] = useState('1M');
   const [mode, setMode] = useState('percent');
+  const [chartType, setChartType] = useState('line');
   const [isModeMenuOpen, setModeMenuOpen] = useState(false);
   const [chartWidth, setChartWidth] = useState(0);
   const [activeIndex, setActiveIndex] = useState(null);
   const chartWidthRef = useRef(0);
   const seriesLengthRef = useRef(0);
+  const chartTypeRef = useRef('line');
+  chartTypeRef.current = chartType;
 
   const periodDays = useMemo(() => {
     const period = PERIODS.find((option) => option.key === periodKey) ?? PERIODS[1];
@@ -119,15 +125,14 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
     return Math.max(14, Math.min(730, diff));
   }, [periodKey, tasks]);
 
-  // Dias/semanas discretos leem melhor em barras; tendência longa, em linha.
-  const chartType = periodDays <= 31 ? 'bars' : 'line';
-
   const seriesDescriptors = useMemo(
     () => [
       selectedTask
         ? {
             id: selectedTask.id,
-            label: `${selectedTask.emoji || FALLBACK_EMOJI} ${selectedTask.title}`,
+            label: selectedTask.customImage
+              ? selectedTask.title
+              : `${selectedTask.emoji || FALLBACK_EMOJI} ${selectedTask.title}`,
             color: OVERALL_COLOR,
             task: selectedTask,
           }
@@ -188,11 +193,13 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
     }
 
     let visibleDates = dates.slice(warmup);
+    let visibleRaw = rawBySeries.map((entries) => entries.slice(warmup));
 
     // Períodos longos: agrega por semana pra manter leve.
     if (visibleDates.length > 120) {
       const aggregatedDates = [];
       const aggregatedValues = values.map(() => []);
+      const aggregatedRaw = visibleRaw.map(() => []);
       for (let start = 0; start < visibleDates.length; start += 7) {
         const end = Math.min(start + 7, visibleDates.length);
         aggregatedDates.push(visibleDates[end - 1]);
@@ -208,17 +215,66 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
           }
           aggregatedValues[seriesIndex].push(value);
         });
+        visibleRaw.forEach((serie, seriesIndex) => {
+          const chunk = serie.slice(start, end);
+          aggregatedRaw[seriesIndex].push({
+            completed: chunk.reduce((sum, item) => sum + item.completed, 0),
+            total: chunk.reduce((sum, item) => sum + item.total, 0),
+          });
+        });
       }
       visibleDates = aggregatedDates;
       values = aggregatedValues;
+      visibleRaw = aggregatedRaw;
     }
 
     const hasData = rawBySeries[0].some((entry) => entry.total > 0);
-    return { dates: visibleDates, values, hasData };
+    return { dates: visibleDates, values, raw: visibleRaw, hasData };
   }, [mode, periodDays, seriesDescriptors, tasks]);
 
-  const { dates, values, hasData } = chartData;
-  seriesLengthRef.current = dates.length;
+  const { dates, values, raw, hasData } = chartData;
+
+  // Barras: agrupa a série em até 8 janelas.
+  const barBuckets = useMemo(() => {
+    if (chartType !== 'bars' || dates.length < 2) {
+      return [];
+    }
+    const bucketCount = Math.min(8, dates.length);
+    const size = Math.ceil(dates.length / bucketCount);
+    const buckets = [];
+    for (let start = 0; start < dates.length; start += size) {
+      const end = Math.min(start + size, dates.length);
+      buckets.push({
+        startDate: dates[start],
+        endDate: dates[end - 1],
+        values: values.map((serie, seriesIndex) => {
+          const chunk = serie.slice(start, end);
+          if (mode === 'values') {
+            return chunk.reduce((sum, item) => sum + item, 0);
+          }
+          if (mode === 'accum') {
+            return chunk[chunk.length - 1];
+          }
+          // %: taxa real do intervalo (concluídas ÷ agendadas), sem suavização.
+          const rawChunk = raw[seriesIndex].slice(start, end);
+          const total = rawChunk.reduce((sum, item) => sum + item.total, 0);
+          const completed = rawChunk.reduce((sum, item) => sum + item.completed, 0);
+          return total > 0 ? (completed / total) * 100 : 0;
+        }),
+      });
+    }
+    return buckets;
+  }, [chartType, dates, mode, raw, values]);
+
+  const barMaxValue = useMemo(() => {
+    if (chartType !== 'bars' || !barBuckets.length) {
+      return 1;
+    }
+    if (mode === 'percent') {
+      return 100;
+    }
+    return Math.max(1, ...barBuckets.flatMap((bucket) => bucket.values));
+  }, [barBuckets, chartType, mode]);
 
   const maxValue = useMemo(() => {
     if (mode === 'percent') {
@@ -263,12 +319,26 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
       return;
     }
     const ratio = (locationX - Y_AXIS_WIDTH) / width;
-    const index = Math.round(ratio * (count - 1));
+    // Barras ocupam células; linha tem pontos nas extremidades.
+    const index =
+      chartTypeRef.current === 'bars'
+        ? Math.floor(ratio * count)
+        : Math.round(ratio * (count - 1));
     setActiveIndex(Math.max(0, Math.min(count - 1, index)));
   };
 
-  const focusedIndex = activeIndex ?? dates.length - 1;
-  const focusedDate = dates[focusedIndex] ?? null;
+  // Série exibida no cabeçalho/scrub: buckets no modo barras, dias na linha.
+  const displaySerie =
+    chartType === 'bars' ? barBuckets.map((bucket) => bucket.values[0]) : values[0] ?? [];
+  const displayDates =
+    chartType === 'bars' ? barBuckets.map((bucket) => bucket.endDate) : dates;
+  seriesLengthRef.current = displaySerie.length;
+
+  const focusedIndex = Math.min(
+    activeIndex ?? displaySerie.length - 1,
+    displaySerie.length - 1
+  );
+  const focusedDate = displayDates[focusedIndex] ?? null;
 
   const formatValue = (value) => {
     if (value == null) {
@@ -291,8 +361,23 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
     return { up: raw >= 0, label: `${raw >= 0 ? '▲' : '▼'} ${label}` };
   };
 
-  const overallDelta = buildDelta(values[0]);
-  const focusedDateLabel = focusedDate
+  const overallDelta = buildDelta(displaySerie);
+  const focusedBucket = chartType === 'bars' ? barBuckets[focusedIndex] : null;
+  const focusedDateLabel = focusedBucket
+    ? getDateKey(focusedBucket.startDate) === getDateKey(focusedBucket.endDate)
+      ? focusedBucket.endDate.toLocaleDateString(locale, {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+        })
+      : `${focusedBucket.startDate.toLocaleDateString(locale, {
+          day: 'numeric',
+          month: 'short',
+        })} – ${focusedBucket.endDate.toLocaleDateString(locale, {
+          day: 'numeric',
+          month: 'short',
+        })}`
+    : focusedDate
     ? focusedDate.toLocaleDateString(locale, {
         weekday: 'short',
         day: 'numeric',
@@ -328,44 +413,6 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
     }));
   }, [dates, locale, periodDays]);
 
-  // Barras: agrupa a série em até 8 janelas com colunas lado a lado por série.
-  const barBuckets = useMemo(() => {
-    if (chartType !== 'bars' || dates.length < 2) {
-      return [];
-    }
-    const bucketCount = Math.min(8, dates.length);
-    const size = Math.ceil(dates.length / bucketCount);
-    const buckets = [];
-    for (let start = 0; start < dates.length; start += size) {
-      const end = Math.min(start + size, dates.length);
-      buckets.push({
-        startDate: dates[start],
-        endDate: dates[end - 1],
-        values: values.map((serie) => {
-          const chunk = serie.slice(start, end);
-          if (mode === 'values') {
-            return chunk.reduce((sum, item) => sum + item, 0);
-          }
-          if (mode === 'accum') {
-            return chunk[chunk.length - 1];
-          }
-          return chunk.reduce((sum, item) => sum + item, 0) / chunk.length;
-        }),
-      });
-    }
-    return buckets;
-  }, [chartType, dates, mode, values]);
-
-  const barMaxValue = useMemo(() => {
-    if (chartType !== 'bars' || !barBuckets.length) {
-      return 1;
-    }
-    if (mode === 'percent') {
-      return 100;
-    }
-    return Math.max(1, ...barBuckets.flatMap((bucket) => bucket.values));
-  }, [barBuckets, chartType, mode]);
-
   const modeOptions = [
     { key: 'percent', label: t.profile.percentMode },
     { key: 'values', label: t.profile.valuesMode },
@@ -373,8 +420,12 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
   ];
 
   const showChart = chartWidth > 0 && dates.length >= 2 && hasData;
-  const activePoint = seriesPoints[0]?.[focusedIndex] ?? null;
-  const scrubX = activePoint ? activePoint.x : null;
+  const scrubX =
+    chartType === 'bars'
+      ? barBuckets.length
+        ? Y_AXIS_WIDTH + ((focusedIndex + 0.5) * plotWidth) / barBuckets.length
+        : null
+      : seriesPoints[0]?.[focusedIndex]?.x ?? null;
 
   return (
     <View style={styles.perfCard}>
@@ -385,7 +436,7 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
             {selectedTask ? seriesDescriptors[0].label : t.profile.performance}
           </Text>
           <View style={styles.perfValueRow}>
-            <Text style={styles.perfValue}>{formatValue(values[0]?.[focusedIndex])}</Text>
+            <Text style={styles.perfValue}>{formatValue(displaySerie[focusedIndex])}</Text>
             {overallDelta ? (
               <View
                 style={[
@@ -407,6 +458,21 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
           <Text style={styles.perfDateLabel}>{focusedDateLabel}</Text>
         </View>
         <View style={styles.perfControlsRow}>
+          <TouchableOpacity
+            style={styles.perfMenuButton}
+            onPress={() => {
+              setChartType((previous) => (previous === 'line' ? 'bars' : 'line'));
+              setActiveIndex(null);
+            }}
+            activeOpacity={0.75}
+            hitSlop={6}
+          >
+            <Ionicons
+              name={chartType === 'line' ? 'bar-chart-outline' : 'analytics-outline'}
+              size={16}
+              color="#6f7a86"
+            />
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.perfMenuButton}
             onPress={() => setModeMenuOpen((previous) => !previous)}
@@ -463,7 +529,7 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
           chartWidthRef.current = width;
           setChartWidth(width);
         }}
-        {...(chartType === 'line' ? panResponder.panHandlers : {})}
+        {...panResponder.panHandlers}
       >
         {showChart ? (
           <Svg width={chartWidth} height={CHART_HEIGHT}>
@@ -503,7 +569,11 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
                 {/* Área em gradiente só pra série Geral */}
                 {seriesPoints[0] ? (
                   <Path
-                    d={`${buildSmoothPath(seriesPoints[0])} L ${
+                    d={`${buildSmoothPath(
+                      seriesPoints[0],
+                      PADDING_TOP,
+                      CHART_HEIGHT - PADDING_BOTTOM
+                    )} L ${
                       seriesPoints[0][seriesPoints[0].length - 1].x
                     } ${CHART_HEIGHT - PADDING_BOTTOM} L ${seriesPoints[0][0].x} ${
                       CHART_HEIGHT - PADDING_BOTTOM
@@ -514,7 +584,7 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
                 {seriesPoints.map((points, seriesIndex) => (
                   <Path
                     key={seriesDescriptors[seriesIndex].id}
-                    d={buildSmoothPath(points)}
+                    d={buildSmoothPath(points, PADDING_TOP, CHART_HEIGHT - PADDING_BOTTOM)}
                     stroke={seriesDescriptors[seriesIndex].color}
                     strokeWidth={seriesIndex === 0 ? 2.5 : 2}
                     fill="none"
@@ -569,7 +639,9 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
                       height={Math.max(1, height)}
                       rx={2.5}
                       fill={seriesDescriptors[seriesIndex].color}
-                      opacity={seriesIndex === 0 ? 1 : 0.9}
+                      opacity={
+                        activeIndex != null && bucketIndex !== focusedIndex ? 0.35 : 1
+                      }
                     />
                   );
                 });
@@ -593,7 +665,7 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
         ) : null}
 
         {/* Etiqueta de data presa ao eixo durante o scrub */}
-        {showChart && chartType === 'line' && activeIndex != null && scrubX != null ? (
+        {showChart && activeIndex != null && scrubX != null ? (
           <View
             style={[
               styles.perfScrubDateChip,
@@ -620,7 +692,10 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
               styles.perfPeriodButton,
               periodKey === option.key && styles.perfPeriodButtonActive,
             ]}
-            onPress={() => setPeriodKey(option.key)}
+            onPress={() => {
+              setPeriodKey(option.key);
+              setActiveIndex(null);
+            }}
             activeOpacity={0.75}
           >
             <Text
