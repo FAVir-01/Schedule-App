@@ -17,6 +17,7 @@ import { getMonthImageSource } from '../constants/months';
 import { translations } from '../constants/i18n';
 import { getDateKey } from '../utils/dateUtils';
 import { lightenColor } from '../utils/colorUtils';
+import { getMoodMarker } from '../utils/moodUtils';
 import {
   getQuantumProgressLabel,
   shouldCountTaskTowardsCompletion,
@@ -24,8 +25,19 @@ import {
 import { FALLBACK_EMOJI } from '../constants/app';
 import { styles } from '../styles/appStyles';
 
-function DayReportModal({ visible, date, tasks, onClose, customImages, language = 'en' }) {
+function DayReportModal({
+  visible,
+  date,
+  tasks,
+  onClose,
+  customImages,
+  language = 'en',
+  mood = null,
+  moodAppearance = {},
+  onEditReflection,
+}) {
   const { height } = useWindowDimensions();
+  const [isPhotoOpen, setIsPhotoOpen] = useState(false);
 
   // 1. Configuração da Animação
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -114,6 +126,78 @@ function DayReportModal({ visible, date, tasks, onClose, customImages, language 
 
           <ScrollView contentContainerStyle={styles.reportScrollContent}>
             <Text style={styles.reportSummaryText}>{getSummaryText()}</Text>
+
+            {mood ? (
+              <View style={styles.reportMoodCard}>
+                {/* Estilo "post de rede social": humor no lugar do avatar,
+                    nível como nome, tags como status, texto e foto grande.
+                    Editar é só pelo lápis; tocar na foto abre em tela cheia. */}
+                <View style={styles.reportMoodHeader}>
+                  <View style={styles.reportMoodAvatar}>
+                    {(() => {
+                      const marker = getMoodMarker(mood, moodAppearance);
+                      return marker?.image ? (
+                        <Image source={{ uri: marker.image }} style={styles.reportMoodImage} />
+                      ) : (
+                        <Text style={styles.reportMoodEmoji}>{marker?.emoji || '📝'}</Text>
+                      );
+                    })()}
+                  </View>
+                  <View style={styles.reportMoodTextWrapper}>
+                    <Text style={styles.reportMoodTitle}>
+                      {mood.level ? t.reflection.levels[mood.level] : t.reflection.title}
+                    </Text>
+                    {mood.tags?.length ? (
+                      <Text style={styles.reportMoodTags}>
+                        {mood.tags.map((tag) => t.reflection.tags[tag] ?? tag).join(' · ')}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Pressable
+                    onPress={() => onEditReflection?.(dateKey)}
+                    hitSlop={12}
+                    accessibilityLabel={t.reflection.editReflection}
+                  >
+                    <Ionicons name="pencil" size={18} color="#8a86a8" />
+                  </Pressable>
+                </View>
+                {mood.note ? (
+                  <Text style={styles.reportMoodNote}>{mood.note}</Text>
+                ) : null}
+                {mood.photo ? (
+                  <Pressable onPress={() => setIsPhotoOpen(true)}>
+                    <Image source={{ uri: mood.photo }} style={styles.reportMoodPhoto} />
+                  </Pressable>
+                ) : null}
+                {mood.photo ? (
+                  <Modal
+                    visible={isPhotoOpen}
+                    transparent
+                    animationType="fade"
+                    onRequestClose={() => setIsPhotoOpen(false)}
+                  >
+                    <Pressable
+                      style={styles.reportPhotoViewerOverlay}
+                      onPress={() => setIsPhotoOpen(false)}
+                    >
+                      <Image
+                        source={{ uri: mood.photo }}
+                        style={styles.reportPhotoViewerImage}
+                        resizeMode="contain"
+                      />
+                    </Pressable>
+                  </Modal>
+                ) : null}
+              </View>
+            ) : (
+              <Pressable
+                style={styles.reportAddMoodButton}
+                onPress={() => onEditReflection?.(dateKey)}
+              >
+                <Ionicons name="happy-outline" size={18} color="#3c2ba7" />
+                <Text style={styles.reportAddMoodText}>{t.reflection.addReflection}</Text>
+              </Pressable>
+            )}
 
             <Text style={styles.reportSectionTitle}>{t.report.dailyStats}</Text>
 
