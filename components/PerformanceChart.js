@@ -2,7 +2,6 @@ import React, { useMemo, useRef, useState } from 'react';
 import {
   PanResponder,
   Pressable,
-  ScrollView,
   Text,
   TouchableOpacity,
   View,
@@ -45,8 +44,6 @@ const PADDING_BOTTOM = 26;
 const Y_AXIS_WIDTH = 34;
 const OVERALL_COLOR = '#3c2ba7';
 const OVERALL_ID = '__overall__';
-const MAX_COMPARISONS = 4;
-const FALLBACK_COLORS = ['#f59e0b', '#0ea5e9', '#e11d48', '#10b981', '#14b8a6'];
 
 // Path suave (Catmull-Rom -> Bézier cúbica).
 const buildSmoothPath = (points) => {
@@ -89,16 +86,14 @@ const smoothPercentSeries = (entries) => {
   return output;
 };
 
-// Gráfico de desempenho estilo mercado: séries comparáveis por hábito,
-// linha ou barras, modos % / valores / acumulado, scrub com etiqueta de data.
-function PerformanceChart({ tasks, language = 'en' }) {
+// Gráfico de desempenho: série única (geral ou o hábito filtrado via
+// selectedTask), modos % / valores / acumulado, scrub com etiqueta de data.
+// Formato adapta ao período: barras pra recortes curtos, linha pros longos.
+function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
   const t = translations[language] ?? translations.en;
   const locale = language === 'pt' ? 'pt-BR' : 'en-US';
   const [periodKey, setPeriodKey] = useState('1M');
   const [mode, setMode] = useState('percent');
-  const [chartType, setChartType] = useState('line');
-  const [comparisonIds, setComparisonIds] = useState([]);
-  const [isPickerOpen, setPickerOpen] = useState(false);
   const [isModeMenuOpen, setModeMenuOpen] = useState(false);
   const [chartWidth, setChartWidth] = useState(0);
   const [activeIndex, setActiveIndex] = useState(null);
@@ -124,25 +119,21 @@ function PerformanceChart({ tasks, language = 'en' }) {
     return Math.max(14, Math.min(730, diff));
   }, [periodKey, tasks]);
 
-  const comparisonTasks = useMemo(
-    () =>
-      comparisonIds
-        .map((id) => tasks.find((task) => task.id === id))
-        .filter(Boolean),
-    [comparisonIds, tasks]
-  );
+  // Dias/semanas discretos leem melhor em barras; tendência longa, em linha.
+  const chartType = periodDays <= 31 ? 'bars' : 'line';
 
   const seriesDescriptors = useMemo(
     () => [
-      { id: OVERALL_ID, label: t.profile.overallSeries, color: OVERALL_COLOR, task: null },
-      ...comparisonTasks.map((task, index) => ({
-        id: task.id,
-        label: `${task.emoji || FALLBACK_EMOJI} ${task.title}`,
-        color: task.color || FALLBACK_COLORS[index % FALLBACK_COLORS.length],
-        task,
-      })),
+      selectedTask
+        ? {
+            id: selectedTask.id,
+            label: `${selectedTask.emoji || FALLBACK_EMOJI} ${selectedTask.title}`,
+            color: OVERALL_COLOR,
+            task: selectedTask,
+          }
+        : { id: OVERALL_ID, label: t.profile.overallSeries, color: OVERALL_COLOR, task: null },
     ],
-    [comparisonTasks, t.profile.overallSeries]
+    [selectedTask, t.profile.overallSeries]
   );
 
   // Dados diários por série (com 6 dias extras no início pra aquecer a média móvel).
@@ -375,24 +366,6 @@ function PerformanceChart({ tasks, language = 'en' }) {
     return Math.max(1, ...barBuckets.flatMap((bucket) => bucket.values));
   }, [barBuckets, chartType, mode]);
 
-  const availableTasks = useMemo(
-    () => tasks.filter((task) => !comparisonIds.includes(task.id)),
-    [comparisonIds, tasks]
-  );
-
-  const toggleComparison = (taskId) => {
-    setComparisonIds((previous) => {
-      if (previous.includes(taskId)) {
-        return previous.filter((id) => id !== taskId);
-      }
-      if (previous.length >= MAX_COMPARISONS) {
-        return previous;
-      }
-      return [...previous, taskId];
-    });
-    setPickerOpen(false);
-  };
-
   const modeOptions = [
     { key: 'percent', label: t.profile.percentMode },
     { key: 'values', label: t.profile.valuesMode },
@@ -408,7 +381,9 @@ function PerformanceChart({ tasks, language = 'en' }) {
       {/* Cabeçalho: valor em destaque + variação + contexto */}
       <View style={styles.perfHeaderRow}>
         <View style={styles.perfHeaderInfo}>
-          <Text style={styles.perfTitle}>{t.profile.performance}</Text>
+          <Text style={styles.perfTitle} numberOfLines={1}>
+            {selectedTask ? seriesDescriptors[0].label : t.profile.performance}
+          </Text>
           <View style={styles.perfValueRow}>
             <Text style={styles.perfValue}>{formatValue(values[0]?.[focusedIndex])}</Text>
             {overallDelta ? (
@@ -432,28 +407,6 @@ function PerformanceChart({ tasks, language = 'en' }) {
           <Text style={styles.perfDateLabel}>{focusedDateLabel}</Text>
         </View>
         <View style={styles.perfControlsRow}>
-          <View style={styles.perfIconToggle}>
-            {[
-              { key: 'line', icon: 'pulse' },
-              { key: 'bars', icon: 'bar-chart' },
-            ].map((option) => (
-              <TouchableOpacity
-                key={option.key}
-                style={[
-                  styles.perfIconButton,
-                  chartType === option.key && styles.perfIconButtonActive,
-                ]}
-                onPress={() => setChartType(option.key)}
-                activeOpacity={0.75}
-              >
-                <Ionicons
-                  name={option.icon}
-                  size={14}
-                  color={chartType === option.key ? '#ffffff' : '#6f7a86'}
-                />
-              </TouchableOpacity>
-            ))}
-          </View>
           <TouchableOpacity
             style={styles.perfMenuButton}
             onPress={() => setModeMenuOpen((previous) => !previous)}
@@ -629,7 +582,7 @@ function PerformanceChart({ tasks, language = 'en' }) {
           </View>
         )}
 
-        {showChart && chartType === 'line' ? (
+        {showChart ? (
           <View style={styles.perfXLabelsRow} pointerEvents="none">
             {xLabels.map((item) => (
               <Text key={item.index} style={styles.perfXLabel}>
@@ -682,84 +635,6 @@ function PerformanceChart({ tasks, language = 'en' }) {
         ))}
       </View>
 
-      {/* Legenda com valor e variação por série */}
-      <View style={styles.perfLegend}>
-        {seriesDescriptors.map((descriptor, seriesIndex) => {
-          const delta = buildDelta(values[seriesIndex]);
-          return (
-            <View key={descriptor.id} style={styles.perfLegendRow}>
-              <View
-                style={[styles.perfLegendDot, { backgroundColor: descriptor.color }]}
-              />
-              <Text style={styles.perfLegendLabel} numberOfLines={1}>
-                {descriptor.label}
-              </Text>
-              <Text style={styles.perfLegendValue}>
-                {formatValue(values[seriesIndex]?.[focusedIndex])}
-              </Text>
-              {delta ? (
-                <View
-                  style={[
-                    styles.perfDeltaChip,
-                    delta.up ? styles.perfDeltaChipUp : styles.perfDeltaChipDown,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.perfDeltaText,
-                      delta.up ? styles.perfDeltaTextUp : styles.perfDeltaTextDown,
-                    ]}
-                  >
-                    {delta.label}
-                  </Text>
-                </View>
-              ) : null}
-              {seriesIndex > 0 ? (
-                <TouchableOpacity
-                  onPress={() => toggleComparison(descriptor.id)}
-                  hitSlop={10}
-                  style={styles.perfLegendRemove}
-                >
-                  <Ionicons name="close" size={15} color="#9a96b8" />
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          );
-        })}
-
-        {availableTasks.length > 0 && comparisonIds.length < MAX_COMPARISONS ? (
-          <TouchableOpacity
-            style={styles.perfAddComparisonButton}
-            onPress={() => setPickerOpen((previous) => !previous)}
-            activeOpacity={0.75}
-          >
-            <Ionicons
-              name={isPickerOpen ? 'remove-circle-outline' : 'add-circle-outline'}
-              size={17}
-              color="#3c2ba7"
-            />
-            <Text style={styles.perfAddComparisonText}>{t.profile.addComparison}</Text>
-          </TouchableOpacity>
-        ) : null}
-
-        {isPickerOpen ? (
-          <ScrollView style={styles.perfPickerList} nestedScrollEnabled>
-            {availableTasks.map((task) => (
-              <TouchableOpacity
-                key={task.id}
-                style={styles.perfPickerItem}
-                onPress={() => toggleComparison(task.id)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.perfPickerEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
-                <Text style={styles.perfPickerTitle} numberOfLines={1}>
-                  {task.title}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        ) : null}
-      </View>
     </View>
   );
 }
