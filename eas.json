@@ -14,10 +14,15 @@
       "channel": "preview"
     },
     "production": {
+      "credentialsSource": "remote",
       "autoIncrement": true,
-      "channel": "production"
+      "channel": "production",
+      "android": {
+        "buildType": "app-bundle"
+      }
     },
     "production_apk": {
+      "credentialsSource": "remote",
       "distribution": "internal",
       "channel": "production",
       "android": {

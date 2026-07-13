@@ -78,3 +78,29 @@ Nesses casos, faça nova build com EAS ou rode nova instalação local no aparel
 
 - Mudou tela, estado, cálculo, texto, asset: tente `eas update`
 - Mudou algo nativo ou pacote nativo: gere nova build
+
+## Release Android
+
+A identidade Android canônica é `com.favit`. Builds de desenvolvimento locais usam
+`com.favit.dev` por causa do sufixo configurado no Gradle. O identificador iOS é
+independente e continua `com.favit.schedule`.
+
+Antes de iniciar uma build de produção:
+
+1. Execute `npm run check:android-config` para confirmar pacote, namespace, versão,
+   runtime e perfil EAS.
+2. Execute `eas credentials -p android` e confirme que as credenciais remotas pertencem
+   a `com.favit`. Se o app já existir no Google Play, reutilize obrigatoriamente a chave
+   de upload correspondente; nunca gere outra sem verificar a continuidade da assinatura.
+3. Confirme no EAS que o código remoto é maior que o último código publicado. Use
+   `eas build:version:set -p android` para inicializar/corrigir a origem remota quando
+   necessário.
+4. Gere o AAB com `eas build --platform android --profile production` e valide no
+   artefato final o pacote `com.favit`, o código de versão, a assinatura e o canal
+   `production` antes do envio à loja.
+
+O repositório não contém chave de produção. O EAS injeta a credencial remota no build;
+um `bundleRelease` local fica sem assinatura até que uma chave de upload seja configurada
+fora do Git. A instalação `com.favit` registrada no emulador foi gerada quando o release
+usava a chave de debug. Uma build assinada com a chave real não poderá atualizá-la por
+cima; preserve os dados e confirme a estratégia de migração antes de desinstalar.
