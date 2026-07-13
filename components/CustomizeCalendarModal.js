@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   ImageBackground,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -12,18 +13,27 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import { format } from 'date-fns';
 import { getMonthImageSource } from '../constants/months';
 import { getDateLocale, translations } from '../constants/i18n';
+import { persistPickedImage } from '../services/imagePersistenceService';
 import { styles } from '../styles/appStyles';
+import { IMAGE_LIMITS, getImageErrorMessage } from '../utils/imageUtils';
 
 // --- COMPONENTE CUSTOMIZE CALENDAR MODAL ---
 function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage, language = 'en' }) {
+  const [loadingMonthIndex, setLoadingMonthIndex] = useState(null);
+  const t = translations[language] ?? translations.en;
+
   if (!visible) return null;
 
   const handlePickImage = async (index) => {
+    if (loadingMonthIndex !== null) {
+      return;
+    }
+
     try {
+      setLoadingMonthIndex(index);
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: 'images',
         allowsEditing: false,
@@ -32,31 +42,22 @@ function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage,
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        const selectedUri = asset.uri;
-
-        if (Platform.OS === 'web') {
-          onUpdateImage(index, selectedUri);
-          return;
-        }
-
-        const extension = selectedUri.split('.').pop().split(/\#|\?/)[0] || 'jpg';
-        const fileName = `custom_month_${index}_${Date.now()}.${extension}`;
-        const newPath = FileSystem.documentDirectory + fileName;
-
-        await FileSystem.copyAsync({
-          from: selectedUri,
-          to: newPath,
+        const persistentUri = await persistPickedImage(asset, {
+          prefix: `custom_month_${index}`,
+          limits: IMAGE_LIMITS.calendarBackground,
         });
-
-        onUpdateImage(index, newPath);
+        await onUpdateImage?.(index, persistentUri);
       }
     } catch (error) {
-      console.log('Erro ao selecionar imagem:', error);
-      alert('Não foi possível carregar a imagem.');
+      console.warn('Failed to select or persist calendar image', error);
+      Alert.alert(
+        t.imageHandling.errorTitle,
+        getImageErrorMessage(t.imageHandling, error, IMAGE_LIMITS.calendarBackground)
+      );
+    } finally {
+      setLoadingMonthIndex(null);
     }
   };
-
-  const t = translations[language] ?? translations.en;
 
   const monthLabels = Array.from({ length: 12 }, (_, index) => {
     const monthDate = new Date(2026, index, 1);
@@ -92,8 +93,18 @@ function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage,
                   style={styles.customizeAddButton}
                   activeOpacity={0.7}
                   onPress={() => handlePickImage(index)}
+                  disabled={loadingMonthIndex !== null}
+                  accessibilityRole="button"
+                  accessibilityState={{
+                    busy: loadingMonthIndex === index,
+                    disabled: loadingMonthIndex !== null,
+                  }}
                 >
-                   <Ionicons name="add" size={24} color="#3c2ba7" />
+                  {loadingMonthIndex === index ? (
+                    <ActivityIndicator size="small" color="#3c2ba7" />
+                  ) : (
+                    <Ionicons name="add" size={24} color="#3c2ba7" />
+                  )}
                 </TouchableOpacity>
               </View>
             );

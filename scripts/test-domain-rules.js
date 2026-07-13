@@ -2,6 +2,7 @@
 // já acompanha o toolchain Expo e testa as mesmas funções usadas pelo app.
 const assert = require('assert/strict');
 const fs = require('fs');
+const Module = require('module');
 const path = require('path');
 const babel = require('@babel/core');
 
@@ -23,6 +24,17 @@ require.extensions['.js'] = (module, filename) => {
   module._compile(transformed.code, filename);
 };
 
+// As regras de tarefa compartilham constantes com o app, mas a suíte não
+// precisa carregar o bundle nativo (que contém sintaxe Flow). Um mock mínimo
+// mantém o teste em Node e deixa explícita a única informação usada aqui.
+const originalModuleLoader = Module._load;
+Module._load = function loadWithReactNativeMock(request, parent, isMain) {
+  if (request === 'react-native') {
+    return { Platform: { OS: 'test' } };
+  }
+  return originalModuleLoader.call(this, request, parent, isMain);
+};
+
 const {
   isValidDateRange,
   normalizeDateValue,
@@ -33,6 +45,14 @@ const {
   reconcileTaskProgressOnEdit,
   shouldResetTaskProgress,
 } = require('../utils/taskUtils');
+const {
+  IMAGE_ERROR_CODES,
+  IMAGE_LIMITS,
+  formatImageSizeLimit,
+  getImageErrorMessage,
+  getPickedImageExtension,
+  validatePickedImageAsset,
+} = require('../utils/imageUtils');
 
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
@@ -154,6 +174,82 @@ test('reinicia progresso quando meta, unidade, modo ou tipo muda', () => {
   assert.deepEqual(reconciled.completedDates, {});
   assert.equal(reconciled.quantum, null);
   assert.equal(reconciled.progressReset, true);
+});
+
+test('valida tamanho, dimensoes e tipo das imagens selecionadas', () => {
+  const limits = IMAGE_LIMITS.habitIcon;
+  assert.equal(
+    validatePickedImageAsset(
+      {
+        uri: 'file:///cache/icon.png',
+        type: 'image',
+        mimeType: 'image/png',
+        fileSize: limits.maxBytes,
+        width: limits.maxDimension,
+        height: limits.maxDimension,
+      },
+      limits
+    ).valid,
+    true
+  );
+  assert.equal(
+    validatePickedImageAsset(
+      { uri: 'file:///cache/icon.png', fileSize: limits.maxBytes + 1 },
+      limits
+    ).code,
+    IMAGE_ERROR_CODES.FILE_TOO_LARGE
+  );
+  assert.equal(
+    validatePickedImageAsset(
+      { uri: 'file:///cache/icon.png', width: limits.maxDimension + 1 },
+      limits
+    ).code,
+    IMAGE_ERROR_CODES.DIMENSIONS_TOO_LARGE
+  );
+  assert.equal(
+    validatePickedImageAsset(
+      { uri: 'file:///cache/file.pdf', mimeType: 'application/pdf' },
+      limits
+    ).code,
+    IMAGE_ERROR_CODES.UNSUPPORTED_TYPE
+  );
+});
+
+test('normaliza a extensao da imagem sem confiar apenas na URI', () => {
+  assert.equal(
+    getPickedImageExtension({ uri: 'content://gallery/12', fileName: 'photo.JPEG' }),
+    'jpg'
+  );
+  assert.equal(
+    getPickedImageExtension({ uri: 'content://gallery/13', mimeType: 'image/webp' }),
+    'webp'
+  );
+  assert.equal(getPickedImageExtension({ uri: 'content://gallery/14' }), 'jpg');
+});
+
+test('formata mensagens localizadas com os limites aplicados', () => {
+  const strings = {
+    genericError: 'erro',
+    fileTooLarge: 'maximo {maxSize}',
+    dimensionsTooLarge: 'maximo {maxDimension}',
+  };
+  assert.equal(formatImageSizeLimit(8 * 1024 * 1024), '8 MB');
+  assert.equal(
+    getImageErrorMessage(
+      strings,
+      { code: IMAGE_ERROR_CODES.FILE_TOO_LARGE },
+      IMAGE_LIMITS.habitIcon
+    ),
+    'maximo 8 MB'
+  );
+  assert.equal(
+    getImageErrorMessage(
+      strings,
+      { code: IMAGE_ERROR_CODES.DIMENSIONS_TOO_LARGE },
+      IMAGE_LIMITS.habitIcon
+    ),
+    'maximo 4096'
+  );
 });
 
 let failures = 0;
