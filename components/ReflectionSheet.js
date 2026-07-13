@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Keyboard,
@@ -16,23 +17,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import { translations } from '../constants/i18n';
+import { persistPickedImage } from '../services/imagePersistenceService';
 import { styles } from '../styles/appStyles';
+import { IMAGE_LIMITS, getImageErrorMessage } from '../utils/imageUtils';
 import { DEFAULT_MOOD_EMOJIS, MOOD_LEVELS, MOOD_TAG_KEYS } from '../utils/moodUtils';
-
-// Copia uma imagem escolhida na galeria pro armazenamento do app (o cache do
-// ImagePicker é limpo pelo Android). Prefixo custom_mood_ entra na limpeza de
-// órfãos do App.js quando nada mais referencia o arquivo.
-const persistPickedImage = async (uri, tag) => {
-  if (Platform.OS === 'web') {
-    return uri;
-  }
-  const extension = uri.split('.').pop().split(/[#?]/)[0] || 'jpg';
-  const target = `${FileSystem.documentDirectory}custom_mood_${tag}_${Date.now()}.${extension}`;
-  await FileSystem.copyAsync({ from: uri, to: target });
-  return target;
-};
 
 // Folha de reflexão do dia: humor em escala de 1-5 (registro rápido), tags de
 // sentimento, nota e foto opcionais. A aparência de cada nível é personalizável
@@ -50,6 +39,7 @@ function ReflectionSheet({
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const t = translations[language] ?? translations.en;
+  const imageText = t.imageHandling;
   const [selectedLevel, setSelectedLevel] = useState(null);
   const [selectedTags, setSelectedTags] = useState([]);
   const [note, setNote] = useState('');
@@ -176,7 +166,7 @@ function ReflectionSheet({
     );
   };
 
-  const pickImage = async (options) => {
+  const pickImage = async ({ quality = 1, limits, prefix }) => {
     if (isLoadingImage) {
       return null;
     }
@@ -184,15 +174,19 @@ function ReflectionSheet({
       setIsLoadingImage(true);
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.9,
-        ...options,
+        allowsEditing: false,
+        quality,
       });
       if (result.canceled || !result.assets?.length) {
         return null;
       }
-      return result.assets[0].uri;
+      return await persistPickedImage(result.assets[0], { prefix, limits });
     } catch (error) {
-      console.error('Error picking mood image:', error);
+      console.warn('Failed to select or persist reflection image', error);
+      Alert.alert(
+        imageText.errorTitle,
+        getImageErrorMessage(imageText, error, limits)
+      );
       return null;
     } finally {
       setIsLoadingImage(false);
@@ -200,9 +194,13 @@ function ReflectionSheet({
   };
 
   const handlePickPhoto = async () => {
-    const uri = await pickImage({ allowsEditing: false });
+    const uri = await pickImage({
+      quality: 0.75,
+      limits: IMAGE_LIMITS.reflectionPhoto,
+      prefix: 'custom_mood_photo',
+    });
     if (uri) {
-      setPhoto(await persistPickedImage(uri, 'photo'));
+      setPhoto(uri);
     }
   };
 
@@ -213,9 +211,13 @@ function ReflectionSheet({
       {
         text: t.reflection.chooseImage,
         onPress: async () => {
-          const uri = await pickImage({ allowsEditing: false });
+          const uri = await pickImage({
+            quality: 1,
+            limits: IMAGE_LIMITS.moodAppearance,
+            prefix: `custom_mood_level_${level}`,
+          });
           if (uri) {
-            onSetAppearance?.(level, await persistPickedImage(uri, `level_${level}`));
+            onSetAppearance?.(level, uri);
           }
         },
       },
@@ -391,8 +393,14 @@ function ReflectionSheet({
                 onPress={handlePickPhoto}
                 disabled={isLoadingImage}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityState={{ busy: isLoadingImage, disabled: isLoadingImage }}
               >
-                <Ionicons name="camera-outline" size={18} color="#3c2ba7" />
+                {isLoadingImage ? (
+                  <ActivityIndicator size="small" color="#3c2ba7" />
+                ) : (
+                  <Ionicons name="camera-outline" size={18} color="#3c2ba7" />
+                )}
                 <Text style={styles.reflectionPhotoButtonText}>
                   {t.reflection.addPhoto}
                 </Text>

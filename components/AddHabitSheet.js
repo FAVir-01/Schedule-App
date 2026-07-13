@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
+  ActivityIndicator,
   Alert,
   Animated,
   BackHandler,
@@ -23,7 +24,6 @@ import Svg, { Path } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import { formatTaskTime, toTimerSeconds } from '../utils/timeUtils';
 import { isValidDateRange } from '../utils/dateUtils';
 import {
@@ -35,7 +35,9 @@ import {
 } from '../utils/taskUtils';
 import { buildWavePath } from '../utils/waveUtils';
 import { translations } from '../constants/i18n';
+import { persistPickedImage } from '../services/imagePersistenceService';
 import { requestReminderPermission } from '../services/reminderService';
+import { IMAGE_LIMITS, getImageErrorMessage } from '../utils/imageUtils';
 
 const SHEET_OPEN_DURATION = 300;
 const SHEET_CLOSE_DURATION = 220;
@@ -130,8 +132,13 @@ const EmojiGrid = React.memo(function EmojiGrid({
         accessibilityLabel="Upload custom image"
         accessibilityHint="Opens your gallery to choose an image"
         disabled={isLoadingImage}
+        accessibilityState={{ busy: isLoadingImage, disabled: isLoadingImage }}
       >
-        <Ionicons name="image-outline" size={24} color="#1F2742" />
+        {isLoadingImage ? (
+          <ActivityIndicator size="small" color="#1F2742" />
+        ) : (
+          <Ionicons name="image-outline" size={24} color="#1F2742" />
+        )}
       </Pressable>
       {customImage && (
         <Pressable
@@ -459,6 +466,7 @@ export default function AddHabitSheet({
   const t = localePack.sheet;
   const common = localePack.common;
   const notificationText = localePack.notifications;
+  const imageText = localePack.imageHandling;
   // Português usa relógio de 24h; inglês mantém AM/PM.
   const use24Hour = language === 'pt';
   const insets = useSafeAreaInsets();
@@ -643,36 +651,27 @@ export default function AddHabitSheet({
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
-        quality: 1,
+        quality: 0.8,
       });
 
       if (!result.canceled && result.assets?.length) {
-        const selectedUri = result.assets[0].uri;
-
-        if (Platform.OS === 'web') {
-          setCustomImage(selectedUri);
-          setEmojiPickerVisible(false);
-          return;
-        }
-
-        const extension = selectedUri.split('.').pop().split(/\#|\?/)[0] || 'jpg';
-        const fileName = `custom_habit_icon_${Date.now()}.${extension}`;
-        const persistentUri = `${FileSystem.documentDirectory}${fileName}`;
-
-        await FileSystem.copyAsync({
-          from: selectedUri,
-          to: persistentUri,
+        const persistentUri = await persistPickedImage(result.assets[0], {
+          prefix: 'custom_habit_icon',
+          limits: IMAGE_LIMITS.habitIcon,
         });
-
         setCustomImage(persistentUri);
         setEmojiPickerVisible(false);
       }
     } catch (error) {
-      console.error('Error selecting custom image:', error);
+      console.warn('Failed to select or persist custom habit image', error);
+      Alert.alert(
+        imageText.errorTitle,
+        getImageErrorMessage(imageText, error, IMAGE_LIMITS.habitIcon)
+      );
     } finally {
       setIsLoadingImage(false);
     }
-  }, [isLoadingImage]);
+  }, [imageText, isLoadingImage]);
 
   const handleRemoveCustomImage = useCallback(() => {
     setCustomImage(null);

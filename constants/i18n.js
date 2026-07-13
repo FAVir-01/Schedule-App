@@ -51,6 +51,15 @@ const translations = {
       errorTitle: 'Backup failed',
       errorMessage: 'The backup file could not be created. Please try again.',
     },
+    imageHandling: {
+      errorTitle: 'Image not added',
+      genericError: 'The image could not be saved. Please choose it again.',
+      fileTooLarge: 'Choose an image up to {maxSize}.',
+      dimensionsTooLarge: 'Choose an image no larger than {maxDimension} px on either side.',
+      unsupportedType: 'This file is not a supported image.',
+      sourceUnavailable: 'The selected image is no longer available. Please choose it again.',
+      storageUnavailable: 'Local storage is unavailable right now. Please try again.',
+    },
     profile: {
       stats: 'Stats',
       totalDays: 'TOTAL DAYS',
@@ -298,6 +307,15 @@ const translations = {
       successWithRecovery: 'O arquivo {fileName} foi criado e inclui dados brutos preservados para recuperação. Fotos e imagens personalizadas são referenciadas, mas não são incorporadas.',
       errorTitle: 'Falha no backup',
       errorMessage: 'Não foi possível criar o arquivo de backup. Tente novamente.',
+    },
+    imageHandling: {
+      errorTitle: 'Imagem não adicionada',
+      genericError: 'Não foi possível salvar a imagem. Escolha-a novamente.',
+      fileTooLarge: 'Escolha uma imagem de até {maxSize}.',
+      dimensionsTooLarge: 'Escolha uma imagem com no máximo {maxDimension} px em cada lado.',
+      unsupportedType: 'Este arquivo não é uma imagem compatível.',
+      sourceUnavailable: 'A imagem selecionada não está mais disponível. Escolha-a novamente.',
+      storageUnavailable: 'O armazenamento local está indisponível agora. Tente novamente.',
     },
     profile: {
       stats: 'Status',
