@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
   AppState,
   BackHandler,
@@ -75,7 +76,6 @@ import { getWeekdayInitials, translations } from './constants/i18n';
 import { styles } from './styles/appStyles';
 import {
   NOTIFICATIONS_SUPPORTED,
-  REMINDER_OFFSETS,
   USE_NATIVE_DRIVER,
 } from './constants/app';
 import {
@@ -98,6 +98,13 @@ import ReflectionSheet from './components/ReflectionSheet';
 import SettingsSheet from './components/SettingsSheet';
 import PerformanceChart from './components/PerformanceChart';
 import { CALENDAR_DAY_SIZE } from './constants/layout';
+import {
+  cancelTaskReminders,
+  getTaskNotificationIds,
+  getTaskReminderFingerprint,
+  reconcileTaskReminderSchedules,
+  scheduleTaskReminders,
+} from './services/reminderService';
 
 
 const habitImage = require('./assets/add-habit.png');
@@ -300,6 +307,8 @@ function ScheduleApp() {
   const historyRef = useRef(null);
   const dayMoodsRef = useRef(null);
   const isHydratedRef = useRef(false);
+  const reminderReconciliationInFlightRef = useRef(false);
+  const didInitialReminderReconciliationRef = useRef(false);
   const taskPositionsRef = useRef(new Map());
   const taskAnimationsRef = useRef(new Map());
   const [calendarMonths, setCalendarMonths] = useState(() => {
@@ -574,19 +583,20 @@ function ScheduleApp() {
   }, []);
   const handleDeleteProfileTasks = useCallback(
     (taskIds) => {
-      const tasksToDelete = tasks.filter((task) => taskIds.includes(task.id));
-      tasksToDelete.forEach((task) => {
-        void cancelTaskReminder(task.notificationId);
-        if (!task.profileLocked) {
-          appendHistoryEntry('task_deleted', { taskId: task.id, title: task.title });
-        }
-      });
-      setTasks((previous) =>
-        previous.filter((task) => task.profileLocked || !taskIds.includes(task.id))
+      const tasksToDelete = tasks.filter(
+        (task) => taskIds.includes(task.id) && !task.profileLocked
       );
-      setActiveProfileTaskId((current) => (taskIds.includes(current) ? null : current));
+      tasksToDelete.forEach((task) => {
+        void cancelTaskReminders(task);
+        appendHistoryEntry('task_deleted', { taskId: task.id, title: task.title });
+      });
+      const deletedTaskIds = new Set(tasksToDelete.map((task) => task.id));
+      setTasks((previous) =>
+        previous.filter((task) => !deletedTaskIds.has(task.id))
+      );
+      setActiveProfileTaskId((current) => (deletedTaskIds.has(current) ? null : current));
     },
-    [appendHistoryEntry, cancelTaskReminder, tasks]
+    [appendHistoryEntry, tasks]
   );
   const handleDeleteProfileTask = useCallback(
     (taskId) => {
@@ -1175,6 +1185,7 @@ function ScheduleApp() {
         : task.subtasks;
 
       const { completed, ...restTask } = task;
+      const notificationIds = getTaskNotificationIds(task);
 
       return {
         ...restTask,
@@ -1183,6 +1194,13 @@ function ScheduleApp() {
         subtasks: normalizedSubtasks,
         repeat: normalizeRepeatConfig(task.repeat),
         quantum: normalizedQuantum,
+        notificationIds,
+        notificationId: notificationIds[0] ?? null,
+        notificationScheduleMode:
+          task.notificationScheduleMode === 'recurring' ||
+          task.notificationScheduleMode === 'queued'
+            ? task.notificationScheduleMode
+            : null,
       };
     });
   }, []);
@@ -1286,17 +1304,6 @@ function ScheduleApp() {
       isMounted = false;
     };
   }, [normalizeStoredTasks]);
-
-  useEffect(() => {
-    if (!isHydrated) {
-      return;
-    }
-    tasks.forEach((task) => {
-      if (!task.notificationId && REMINDER_OFFSETS[task.reminder] != null) {
-        void refreshTaskReminder(task, null);
-      }
-    });
-  }, [isHydrated, refreshTaskReminder, tasks]);
 
   useEffect(() => {
     if (!isHydrated || loadFailuresRef.current.tasks) {
@@ -1776,153 +1783,195 @@ function ScheduleApp() {
     [t.common.untitledTask, tasks]
   );
 
-  const getReminderBaseTime = useCallback((time) => {
-    if (!time?.specified) {
-      return null;
-    }
-    if (time.mode === 'period') {
-      return time.period?.start ?? null;
-    }
-    return time.point ?? null;
-  }, []);
-
-  const buildReminderDateTime = useCallback((date, timeValue, offsetMinutes) => {
-    if (!date || !timeValue || typeof offsetMinutes !== 'number') {
-      return null;
-    }
-    const reminderDate = new Date(date);
-    reminderDate.setHours(0, 0, 0, 0);
-    reminderDate.setMinutes(toMinutes(timeValue) + offsetMinutes);
-    return reminderDate;
-  }, []);
-
-  const findNextReminderDate = useCallback(
-    (task) => {
-      const offsetMinutes = REMINDER_OFFSETS[task?.reminder] ?? null;
-      if (offsetMinutes === null) {
-        return null;
-      }
-      const baseTime = getReminderBaseTime(task?.time);
-      if (!baseTime) {
-        return null;
-      }
-      const startDate = normalizeDateValue(task?.date ?? task?.dateKey);
-      if (!startDate) {
-        return null;
-      }
-      const now = new Date();
-      const today = new Date(now);
-      today.setHours(0, 0, 0, 0);
-      const initialDate = startDate > today ? startDate : today;
-      const limitDays = 366;
-
-      for (let offset = 0; offset <= limitDays; offset += 1) {
-        const candidateDate = new Date(initialDate);
-        candidateDate.setDate(candidateDate.getDate() + offset);
-        if (!shouldTaskAppearOnDate(task, candidateDate)) {
-          continue;
-        }
-        const reminderDate = buildReminderDateTime(candidateDate, baseTime, offsetMinutes);
-        if (!reminderDate) {
-          continue;
-        }
-        if (reminderDate > now) {
-          return reminderDate;
-        }
-        const msDifference = now.getTime() - reminderDate.getTime();
-        if (offset === 0 && msDifference <= 60000) {
-          return new Date(now.getTime() + 5000);
-        }
-      }
-      return null;
-    },
-    [buildReminderDateTime, getReminderBaseTime]
+  const getReminderContent = useCallback(
+    (task) => ({
+      title: t.notifications.reminderTitle,
+      body: task?.title
+        ? t.notifications.reminderBody.split('{title}').join(task.title)
+        : t.notifications.reminderFallbackBody,
+    }),
+    [t.notifications]
   );
 
-  const scheduleTaskReminder = useCallback(
-    async (task) => {
-      if (!NOTIFICATIONS_SUPPORTED) {
-        return null;
-      }
-      const offsetMinutes = REMINDER_OFFSETS[task?.reminder] ?? null;
-      if (offsetMinutes === null) {
-        return null;
-      }
-      const permissionResponse = await Notifications.getPermissionsAsync();
-      if (permissionResponse.status !== 'granted') {
-        const requestResponse = await Notifications.requestPermissionsAsync();
-        if (requestResponse.status !== 'granted') {
-          return null;
-        }
-      }
-      const reminderDate = findNextReminderDate(task);
-      if (!reminderDate) {
-        return null;
-      }
-      const diffSeconds = Math.max(
-        1,
-        Math.ceil((reminderDate.getTime() - Date.now()) / 1000)
-      );
-      const timeIntervalType =
-        Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL ?? 'timeInterval';
-      const dateType = Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date';
-      const trigger =
-        diffSeconds <= 120
-          ? {
-              type: timeIntervalType,
-              seconds: diffSeconds,
-              repeats: false,
-            }
-          : {
-              type: dateType,
-              date: reminderDate,
-            };
-      return Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Lembrete',
-          body: task?.title ? `Hora de: ${task.title}` : 'Você tem uma tarefa pendente.',
-          sound: true,
-          channelId: 'default',
-        },
-        trigger,
-      });
-    },
-    [findNextReminderDate]
-  );
-
-  const cancelTaskReminder = useCallback(async (notificationId) => {
-    if (!NOTIFICATIONS_SUPPORTED || !notificationId) {
-      return;
-    }
-    try {
-      await Notifications.cancelScheduledNotificationAsync(notificationId);
-    } catch (error) {
-      console.warn('Failed to cancel notification', error);
-    }
-  }, []);
-
-  const updateTaskNotificationId = useCallback((taskId, notificationId) => {
+  const updateTaskReminderSchedule = useCallback((taskId, result) => {
     setTasks((previous) =>
-      previous.map((task) =>
-        task.id === taskId ? { ...task, notificationId } : task
-      )
+      previous.map((task) => {
+        if (
+          task.id !== taskId ||
+          getTaskReminderFingerprint(task) !== result.fingerprint
+        ) {
+          return task;
+        }
+        return {
+          ...task,
+          notificationIds: result.notificationIds ?? [],
+          notificationId: result.notificationId ?? null,
+          notificationScheduleMode: result.mode ?? null,
+        };
+      })
     );
   }, []);
 
-  const refreshTaskReminder = useCallback(
-    async (task, existingNotificationId) => {
-      if (existingNotificationId) {
-        await cancelTaskReminder(existingNotificationId);
+  const showReminderSchedulingError = useCallback(
+    (status) => {
+      if (status === 'permission-denied') {
+        Alert.alert(
+          t.notifications.permissionTitle,
+          t.notifications.permissionMessage
+        );
+        return;
       }
-      const nextNotificationId = await scheduleTaskReminder(task);
-      if (nextNotificationId) {
-        updateTaskNotificationId(task.id, nextNotificationId);
-      } else if (existingNotificationId) {
-        updateTaskNotificationId(task.id, null);
+      if (status === 'invalid-time') {
+        Alert.alert(
+          t.notifications.timeRequiredTitle,
+          t.notifications.timeRequiredMessage
+        );
+        return;
+      }
+      if (status === 'no-upcoming') {
+        Alert.alert(
+          t.notifications.noUpcomingTitle,
+          t.notifications.noUpcomingMessage
+        );
+        return;
+      }
+      if (status === 'unsupported') {
+        Alert.alert(
+          t.notifications.unsupportedTitle,
+          t.notifications.unsupportedMessage
+        );
+        return;
+      }
+      if (status === 'error') {
+        Alert.alert(
+          t.notifications.scheduleErrorTitle,
+          t.notifications.scheduleErrorMessage
+        );
       }
     },
-    [cancelTaskReminder, scheduleTaskReminder, updateTaskNotificationId]
+    [t.notifications]
   );
+
+  const refreshTaskReminder = useCallback(
+    async (task, existingTask = null, { notifyOnFailure = false } = {}) => {
+      try {
+        if (existingTask) {
+          await cancelTaskReminders(existingTask);
+        }
+        const result = await scheduleTaskReminders(task, {
+          requestPermission: false,
+          content: getReminderContent(task),
+        });
+        updateTaskReminderSchedule(task.id, result);
+        if (notifyOnFailure) {
+          showReminderSchedulingError(result.status);
+        }
+        return result;
+      } catch (error) {
+        const result = {
+          status: 'error',
+          mode: null,
+          notificationIds: [],
+          notificationId: null,
+          fingerprint: getTaskReminderFingerprint(task),
+          error,
+        };
+        updateTaskReminderSchedule(task.id, result);
+        if (notifyOnFailure) {
+          showReminderSchedulingError(result.status);
+        }
+        return result;
+      }
+    },
+    [getReminderContent, showReminderSchedulingError, updateTaskReminderSchedule]
+  );
+
+  const reconcileAllTaskReminders = useCallback(
+    async (taskSnapshot) => {
+      if (reminderReconciliationInFlightRef.current) {
+        return;
+      }
+      reminderReconciliationInFlightRef.current = true;
+      try {
+        const result = await reconcileTaskReminderSchedules(taskSnapshot, {
+          getContent: getReminderContent,
+        });
+        if (result.errors.length) {
+          console.warn('Failed to reconcile some task reminders', result.errors);
+        }
+        if (!result.updates.length) {
+          return;
+        }
+
+        const currentTasksById = new Map(
+          (tasksRef.current ?? []).map((task) => [task.id, task])
+        );
+        const applicableUpdates = result.updates.filter((update) => {
+          const currentTask = currentTasksById.get(update.taskId);
+          const isCurrent =
+            currentTask && getTaskReminderFingerprint(currentTask) === update.fingerprint;
+          if (!isCurrent && update.notificationIds?.length) {
+            void cancelTaskReminders(update.notificationIds);
+          }
+          return isCurrent;
+        });
+        if (!applicableUpdates.length) {
+          return;
+        }
+
+        const updatesById = new Map(
+          applicableUpdates.map((update) => [update.taskId, update])
+        );
+        setTasks((previous) =>
+          previous.map((task) => {
+            const update = updatesById.get(task.id);
+            if (!update || getTaskReminderFingerprint(task) !== update.fingerprint) {
+              return task;
+            }
+            return {
+              ...task,
+              notificationIds: update.notificationIds,
+              notificationId: update.notificationId,
+              notificationScheduleMode: update.notificationScheduleMode,
+            };
+          })
+        );
+      } catch (error) {
+        console.warn('Failed to reconcile task reminders', error);
+      } finally {
+        reminderReconciliationInFlightRef.current = false;
+      }
+    },
+    [getReminderContent]
+  );
+
+  useEffect(() => {
+    if (!isHydrated || didInitialReminderReconciliationRef.current) {
+      return;
+    }
+    didInitialReminderReconciliationRef.current = true;
+    void reconcileAllTaskReminders(tasks);
+  }, [isHydrated, reconcileAllTaskReminders, tasks]);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return undefined;
+    }
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void reconcileAllTaskReminders(tasksRef.current ?? []);
+      }
+    });
+    const notificationSubscription = NOTIFICATIONS_SUPPORTED
+      ? Notifications.addNotificationReceivedListener(() => {
+          void reconcileAllTaskReminders(tasksRef.current ?? []);
+        })
+      : null;
+    return () => {
+      subscription.remove();
+      notificationSubscription?.remove();
+    };
+  }, [isHydrated, reconcileAllTaskReminders]);
 
   const handleCreateHabit = useCallback((habit) => {
     const normalizedDate = new Date(habit?.startDate ?? new Date());
@@ -1950,10 +1999,12 @@ function ScheduleApp() {
       typeLabel: habit?.typeLabel,
       quantum: habit?.quantum,
       profileLocked: false,
+      notificationIds: [],
       notificationId: null,
+      notificationScheduleMode: null,
     };
     setTasks((previous) => [...previous, newTask]);
-    void refreshTaskReminder(newTask, null);
+    void refreshTaskReminder(newTask, null, { notifyOnFailure: true });
     setSelectedDate(normalizedDate);
     triggerImpact(Haptics.ImpactFeedbackStyle.Light);
     appendHistoryEntry('task_created', {
@@ -1976,7 +2027,6 @@ function ScheduleApp() {
       const nextTitle = habit?.title
         ? getUniqueTitle(habit.title, taskId)
         : existingTask?.title ?? t.common.untitledTask;
-      const existingNotificationId = existingTask?.notificationId ?? null;
       const nextDate = normalizedDate ? new Date(normalizedDate) : new Date(existingTask.date);
       nextDate.setHours(0, 0, 0, 0);
       const nextQuantum = habit?.quantum ?? existingTask.quantum;
@@ -2015,7 +2065,9 @@ function ScheduleApp() {
             date: nextDate,
             dateKey: getDateKey(nextDate),
             profileLocked: task.profileLocked ?? false,
-            notificationId: task.notificationId ?? null,
+            notificationIds: [],
+            notificationId: null,
+            notificationScheduleMode: null,
           };
         })
       );
@@ -2038,9 +2090,11 @@ function ScheduleApp() {
           date: nextDate,
           dateKey: getDateKey(nextDate),
           profileLocked: existingTask.profileLocked ?? false,
-          notificationId: existingNotificationId,
+          notificationIds: [],
+          notificationId: null,
+          notificationScheduleMode: null,
         };
-        void refreshTaskReminder(updatedTask, existingNotificationId);
+        void refreshTaskReminder(updatedTask, existingTask, { notifyOnFailure: true });
       }
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
       if (normalizedDate) {
@@ -2137,6 +2191,7 @@ function ScheduleApp() {
       if (task.profileLocked) {
         return;
       }
+      void cancelTaskReminders(task);
       setTasks((previous) => previous.filter((current) => current.id !== task.id));
       appendHistoryEntry('task_deleted', { taskId: task.id, title: task.title });
     },

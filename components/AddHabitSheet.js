@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
+  Alert,
   Animated,
   BackHandler,
   Easing,
@@ -22,19 +23,18 @@ import Svg, { Path } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import * as Notifications from 'expo-notifications';
 import * as FileSystem from 'expo-file-system/legacy';
 import { formatTaskTime, toTimerSeconds } from '../utils/timeUtils';
 import { getQuantumProgressLabel, getQuantumProgressPercent } from '../utils/taskUtils';
 import { buildWavePath } from '../utils/waveUtils';
 import { translations } from '../constants/i18n';
+import { requestReminderPermission } from '../services/reminderService';
 
 const SHEET_OPEN_DURATION = 300;
 const SHEET_CLOSE_DURATION = 220;
 const BACKDROP_MAX_OPACITY = 0.5;
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
-const NOTIFICATIONS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
 const COLORS = ['#FFCF70', '#F7A6A1', '#B39DD6', '#79C3FF', '#A8E6CF', '#FDE2A6'];
@@ -451,6 +451,7 @@ export default function AddHabitSheet({
   const localePack = translations[language] ?? translations.en;
   const t = localePack.sheet;
   const common = localePack.common;
+  const notificationText = localePack.notifications;
   // Português usa relógio de 24h; inglês mantém AM/PM.
   const use24Hour = language === 'pt';
   const insets = useSafeAreaInsets();
@@ -539,7 +540,7 @@ export default function AddHabitSheet({
   const translateY = useRef(new Animated.Value(sheetHeight || height)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const isClosingRef = useRef(false);
-  const requestedNotificationPermissionRef = useRef(false);
+  const isRequestingNotificationPermissionRef = useRef(false);
   const sheetBackgroundColor = useMemo(() => lightenColor(selectedColor, 0.75), [selectedColor]);
   const isEditMode = mode === 'edit';
   const isCopyMode = mode === 'copy';
@@ -672,15 +673,30 @@ export default function AddHabitSheet({
 
 
   const requestNotificationPermission = useCallback(async () => {
-    if (!NOTIFICATIONS_SUPPORTED || requestedNotificationPermissionRef.current) {
-      return;
+    if (isRequestingNotificationPermissionRef.current) {
+      return false;
     }
-    requestedNotificationPermissionRef.current = true;
-    const { status } = await Notifications.getPermissionsAsync();
-    if (status !== 'granted') {
-      await Notifications.requestPermissionsAsync();
+    isRequestingNotificationPermissionRef.current = true;
+    try {
+      const result = await requestReminderPermission({ requestIfNeeded: true });
+      if (result.status === 'granted') {
+        return true;
+      }
+      if (result.status === 'unsupported') {
+        Alert.alert(notificationText.unsupportedTitle, notificationText.unsupportedMessage);
+      } else if (result.status === 'permission-denied') {
+        Alert.alert(notificationText.permissionTitle, notificationText.permissionMessage);
+      } else {
+        Alert.alert(
+          notificationText.permissionErrorTitle,
+          notificationText.permissionErrorMessage
+        );
+      }
+      return false;
+    } finally {
+      isRequestingNotificationPermissionRef.current = false;
     }
-  }, []);
+  }, [notificationText]);
 
   const handleOpenPanel = useCallback(
     (panel) => {
@@ -706,7 +722,6 @@ export default function AddHabitSheet({
         });
       } else if (panel === 'reminder') {
         setPendingReminder(reminderOption);
-        void requestNotificationPermission();
       } else if (panel === 'tag') {
         setPendingTag(selectedTag);
       } else if (panel === 'type') {
@@ -725,7 +740,6 @@ export default function AddHabitSheet({
       handlePendingPeriodTimeChange,
       handlePendingPointTimeChange,
       hasSpecifiedTime,
-      requestNotificationPermission,
       subtasks,
       quantumMode,
       quantumAnimation,
@@ -825,10 +839,29 @@ export default function AddHabitSheet({
     pendingTimeMode,
   ]);
 
-  const handleApplyReminder = useCallback(() => {
+  const handleApplyReminder = useCallback(async () => {
+    if (pendingReminder !== 'none' && !hasSpecifiedTime) {
+      Alert.alert(
+        notificationText.timeRequiredTitle,
+        notificationText.timeRequiredMessage
+      );
+      return;
+    }
+    if (pendingReminder !== 'none') {
+      const hasPermission = await requestNotificationPermission();
+      if (!hasPermission) {
+        return;
+      }
+    }
     setReminderOption(pendingReminder);
     closePanel();
-  }, [closePanel, pendingReminder]);
+  }, [
+    closePanel,
+    hasSpecifiedTime,
+    notificationText,
+    pendingReminder,
+    requestNotificationPermission,
+  ]);
 
   const handleApplyTag = useCallback(() => {
     setSelectedTag(pendingTag);
@@ -1117,7 +1150,6 @@ export default function AddHabitSheet({
           setSubtasks([]);
           setCustomImage(null);
           setIsLoadingImage(false);
-          requestedNotificationPermissionRef.current = false;
         }
       });
     }
@@ -1161,6 +1193,13 @@ export default function AddHabitSheet({
 
   const handleSubmit = useCallback(() => {
     if (!title.trim()) {
+      return;
+    }
+    if (reminderOption !== 'none' && !hasSpecifiedTime) {
+      Alert.alert(
+        notificationText.timeRequiredTitle,
+        notificationText.timeRequiredMessage
+      );
       return;
     }
     const selectedTagOption =
@@ -1216,6 +1255,7 @@ export default function AddHabitSheet({
     isEditMode,
     handleClose,
     hasSpecifiedTime,
+    notificationText,
     onCreate,
     onUpdate,
     periodTime,
@@ -1925,12 +1965,7 @@ export default function AddHabitSheet({
                 <OptionList
                   options={reminderOptions}
                   selectedKey={pendingReminder}
-                  onSelect={(nextReminder) => {
-                    setPendingReminder(nextReminder);
-                    if (nextReminder !== 'none') {
-                      void requestNotificationPermission();
-                    }
-                  }}
+                  onSelect={setPendingReminder}
                 />
               </OptionOverlay>
             )}
