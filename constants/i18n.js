@@ -94,6 +94,7 @@ const translations = {
     },
     report: {
       noHabits: 'No habits scheduled for this day.',
+      onlyReminders: '{total} reminder(s) scheduled for this day.',
       perfect: 'Incredible! You crushed all your habits!',
       noneCompleted: "You had {total} habit(s) and completed none. Let's see what they were 👀",
       partialCompleted: 'You completed {completed} out of {total} habit(s). Keep going!',
@@ -102,6 +103,7 @@ const translations = {
       committed: 'Committed',
       completed: 'Completed',
       habits: 'Habits',
+      reminders: 'Reminders',
     },
     placeholders: {
       profileDescription: 'View and personalize your profile, preferences, and progress.',
@@ -300,6 +302,7 @@ const translations = {
     },
     report: {
       noHabits: 'Nenhum hábito agendado para este dia.',
+      onlyReminders: '{total} lembrete(s) agendado(s) para este dia.',
       perfect: 'Incrível! Você concluiu todos os seus hábitos!',
       noneCompleted: 'Você tinha {total} hábito(s) e não concluiu nenhum. Vamos ver quais eram 👀',
       partialCompleted: 'Você concluiu {completed} de {total} hábito(s). Continue assim!',
@@ -308,6 +311,7 @@ const translations = {
       committed: 'Planejados',
       completed: 'Concluídos',
       habits: 'Hábitos',
+      reminders: 'Lembretes',
     },
     placeholders: {
       profileDescription: 'Veja e personalize seu perfil, preferências e progresso.',

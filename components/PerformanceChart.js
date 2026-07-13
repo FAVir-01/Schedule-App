@@ -302,9 +302,15 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderTerminationRequest: () => false,
+      // Um toque ou arraste vertical pertence ao ScrollView do Profile.
+      // O gráfico só assume o gesto depois de detectar intenção horizontal.
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        const horizontalDistance = Math.abs(gestureState.dx);
+        const verticalDistance = Math.abs(gestureState.dy);
+        return horizontalDistance > 6 && horizontalDistance > verticalDistance * 1.2;
+      },
+      onPanResponderTerminationRequest: () => true,
       onPanResponderGrant: (event) => handleScrub(event.nativeEvent.locationX),
       onPanResponderMove: (event) => handleScrub(event.nativeEvent.locationX),
       onPanResponderRelease: () => setActiveIndex(null),
