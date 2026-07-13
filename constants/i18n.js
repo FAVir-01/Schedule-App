@@ -151,6 +151,9 @@ const translations = {
     },
     sheet: {
       newTask: 'New Task',
+      changePhoto: 'Choose a photo',
+      shuffleIcon: 'Shuffle icon',
+      removePhoto: 'Remove photo',
       setTaskRepeat: 'Set task repeat',
       doItAnyTime: 'Do it any time of the day',
       doItAt: 'Do it at {time} of the day',
@@ -408,6 +411,9 @@ const translations = {
     },
     sheet: {
       newTask: 'Nova Tarefa',
+      changePhoto: 'Escolher foto',
+      shuffleIcon: 'Sortear outro',
+      removePhoto: 'Remover foto',
       setTaskRepeat: 'Definir repetição da tarefa',
       doItAnyTime: 'Fazer em qualquer horário do dia',
       doItAt: 'Fazer às {time}',
