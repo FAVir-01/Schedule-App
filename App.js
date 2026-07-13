@@ -109,6 +109,9 @@ import {
 import { exportAppBackup } from './services/backupService';
 
 
+const habitImage = require('./assets/add-habit.png');
+const reflectionImage = require('./assets/add-reflection.png');
+
 const INITIAL_STORAGE_LOAD_FAILURES = {
   tasks: true,
   settings: true,
@@ -349,7 +352,11 @@ function ScheduleApp() {
   const horizontalPadding = useMemo(() => Math.max(16, Math.min(32, width * 0.06)), [width]);
   const bottomBarPadding = useMemo(() => Math.max(16, horizontalPadding * 0.75), [horizontalPadding]);
   const iconSize = isCompact ? 18 : 20;
-  const fabMenuOffset = isCompact ? 90 : 104;
+  const cardSize = isCompact ? 136 : 152;
+  const cardIconSize = Math.round(cardSize * 0.75);
+  const cardSpacing = isCompact ? 16 : 24;
+  const cardBorderRadius = isCompact ? 30 : 34;
+  const cardVerticalOffset = isCompact ? 200 : 230;
   const fabHaloSize = fabSize + (isCompact ? 26 : 30);
   const fabBaseSize = fabSize + (isCompact ? 14 : 18);
   const fabIconSize = isCompact ? 28 : 30;
@@ -3078,7 +3085,7 @@ function ScheduleApp() {
             style={[
               styles.fabActionsContainer,
               {
-                bottom: insets.bottom + fabSize / 2 + fabMenuOffset,
+                bottom: insets.bottom + fabSize / 2 + cardVerticalOffset,
                 opacity: actionsOpacity,
                 transform: [
                   { scale: actionsScale },
@@ -3089,45 +3096,148 @@ function ScheduleApp() {
             accessibilityViewIsModal
           >
             <View style={styles.fabActionsRow}>
-              <View style={styles.fabMenuCard}>
-                <TouchableOpacity
-                  style={styles.fabActionItem}
-                  onPress={handleAddHabit}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.fab.addHabit}
-                  activeOpacity={0.65}
+              <TouchableOpacity
+                style={[
+                  styles.fabCard,
+                  {
+                    width: cardSize,
+                    height: cardSize,
+                    borderRadius: cardBorderRadius,
+                    marginHorizontal: cardSpacing / 2,
+                    transform: [{ rotate: '-7deg' }],
+                    borderWidth: isCompact ? 4 : 5,
+                    borderColor: '#ffffff',
+                  },
+                ]}
+                onPress={handleAddHabit}
+                accessibilityRole="button"
+                accessibilityLabel={t.fab.addHabit}
+                activeOpacity={0.9}
+              >
+                <LinearGradient
+                  colors={['#8B5CF6', '#C084FC']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[
+                    styles.fabCardBackground,
+                    {
+                      borderRadius: cardBorderRadius,
+                      paddingHorizontal: cardSize * 0.14,
+                      paddingVertical: isCompact ? 18 : 22,
+                    },
+                  ]}
                 >
-                  <View style={[styles.fabActionIcon, styles.fabActionIconHabit]}>
-                    <Ionicons name="checkmark-circle-outline" size={24} color="#4B3BB3" />
-                  </View>
-                  <View style={styles.fabActionCopy}>
-                    <Text style={styles.fabActionTitle}>{t.fab.addHabit}</Text>
-                    <Text style={styles.fabActionSubtitle} numberOfLines={2}>
+                  <View style={styles.fabCardContent}>
+                    <Image
+                      source={habitImage}
+                      style={[
+                        styles.fabCardIcon,
+                        {
+                          width: cardIconSize,
+                          height: cardIconSize,
+                          marginBottom: isCompact ? 12 : 14,
+                        },
+                      ]}
+                      resizeMode="contain"
+                      accessible
+                      accessibilityLabel={t.fab.addHabit}
+                    />
+                    <Text
+                      style={[
+                        styles.fabCardTitle,
+                        {
+                          fontSize: isCompact ? 16 : 17,
+                          marginBottom: isCompact ? 6 : 8,
+                        },
+                      ]}
+                    >
+                      {t.fab.addHabit}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.fabCardSubtitle,
+                        {
+                          fontSize: isCompact ? 12 : 13,
+                          lineHeight: isCompact ? 18 : 20,
+                        },
+                      ]}
+                    >
                       {t.fab.addHabitDescription}
                     </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={18} color="#A0A6B4" />
-                </TouchableOpacity>
-                <View style={styles.fabActionDivider} />
-                <TouchableOpacity
-                  style={styles.fabActionItem}
-                  onPress={handleAddReflection}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.fab.addReflection}
-                  activeOpacity={0.65}
+                </LinearGradient>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.fabCard,
+                  {
+                    width: cardSize,
+                    height: cardSize,
+                    borderRadius: cardBorderRadius,
+                    marginHorizontal: cardSpacing / 2,
+                    transform: [{ rotate: '7deg' }],
+                    borderWidth: isCompact ? 4 : 5,
+                    borderColor: '#ffffff',
+                  },
+                ]}
+                onPress={handleAddReflection}
+                accessibilityRole="button"
+                accessibilityLabel={t.fab.addReflection}
+                activeOpacity={0.9}
+              >
+                <LinearGradient
+                  colors={['#F59E0B', '#FDE047']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[
+                    styles.fabCardBackground,
+                    {
+                      borderRadius: cardBorderRadius,
+                      paddingHorizontal: cardSize * 0.14,
+                      paddingVertical: isCompact ? 18 : 22,
+                    },
+                  ]}
                 >
-                  <View style={[styles.fabActionIcon, styles.fabActionIconReflection]}>
-                    <Ionicons name="journal-outline" size={23} color="#A75B12" />
-                  </View>
-                  <View style={styles.fabActionCopy}>
-                    <Text style={styles.fabActionTitle}>{t.fab.addReflection}</Text>
-                    <Text style={styles.fabActionSubtitle} numberOfLines={2}>
+                  <View style={styles.fabCardContent}>
+                    <Image
+                      source={reflectionImage}
+                      style={[
+                        styles.fabCardIcon,
+                        {
+                          width: cardIconSize,
+                          height: cardIconSize,
+                          marginBottom: isCompact ? 12 : 14,
+                        },
+                      ]}
+                      resizeMode="contain"
+                      accessible
+                      accessibilityLabel="Illustration of adding a reflection"
+                    />
+                    <Text
+                      style={[
+                        styles.fabCardTitle,
+                        {
+                          fontSize: isCompact ? 16 : 17,
+                          marginBottom: isCompact ? 6 : 8,
+                        },
+                      ]}
+                    >
+                      {t.fab.addReflection}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.fabCardSubtitle,
+                        {
+                          fontSize: isCompact ? 12 : 13,
+                          lineHeight: isCompact ? 18 : 20,
+                        },
+                      ]}
+                    >
                       {t.fab.addReflectionDescription}
                     </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={18} color="#A0A6B4" />
-                </TouchableOpacity>
-              </View>
+                </LinearGradient>
+              </TouchableOpacity>
             </View>
           </Animated.View>
         )}
