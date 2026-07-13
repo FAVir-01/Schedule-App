@@ -13,7 +13,8 @@
 - **13 de julho de 2026 — Sessão 1 concluída:** B01, B03, B08 e B12 implementados.
 - **13 de julho de 2026 — Sessão 2 concluída:** B05, B06 e B07 implementados; validação final em aparelhos Android e iOS ainda necessária.
 - **13 de julho de 2026 — Sessão 3 concluída:** primeira fase de B09 e a exportação de N01 implementadas; importação/restauração e incorporação de mídia continuam pendentes.
-- **Próximo bloco obrigatório antes de release:** B17, referente à identidade, versão e assinatura Android.
+- **13 de julho de 2026 — B17 configurado:** identidade Android fixada em `com.favit`, versões locais alinhadas e assinatura de debug removida do release; credencial, versão remota e artefato EAS ainda precisam de validação externa antes de publicar.
+- **Próximo bloco recomendado:** B10 e B11 acompanhados dos primeiros testes de T04 para quantum, datas e recorrência.
 
 ## 1. Objetivo
 
@@ -75,7 +76,7 @@ O arquivo `bugreport-sdk_gphone16k_x86_64-CP21.260330.005-2026-07-09-19-27-27.zi
 | B14 — Confirmado como falha de tratamento | **Persistência de fotos pode falhar fora do `try/catch`.** O picker captura seus erros, mas `copyAsync` é aguardado depois, sem tratamento, em [ReflectionSheet.js](./components/ReflectionSheet.js#L27). Não há limite de dimensão ou tamanho; o seletor de hábitos usa qualidade máxima em [AddHabitSheet.js](./components/AddHabitSheet.js#L635). | Rejeição não tratada, ausência de feedback, consumo excessivo de disco e memória. | Médio / **Alta** | Validar bytes e dimensões, redimensionar quando aplicável, tratar cópia e excluir arquivo parcial. Preservar GIF somente quando necessário. |
 | B15 — Confirmado | **Histórico e seleção podem ficar inconsistentes.** O histórico é limitado a 200 eventos em [App.js](./App.js#L532); eventos de conclusão não guardam título, então tarefas excluídas aparecem como desconhecidas em [ActivityTimelineModal.js](./components/ActivityTimelineModal.js#L42). A seleção em massa não remove IDs que desapareceram da lista. | Relatórios históricos perdem contexto; barra de seleção pode mostrar itens inexistentes. | Pequeno–médio / **Média** | Guardar snapshot mínimo do título, podar IDs selecionados quando `tasks` mudar e separar histórico analítico do histórico recente de interface. |
 | B16 — Confirmado, baixo impacto | **Celebração pode disparar na hidratação.** `previousCompletionRef` é escrito, mas nunca consultado em [App.js](./App.js#L815). O som vem de uma URL externa em [feedbackUtils.js](./utils/feedbackUtils.js#L59), e os helpers hápticos não capturam rejeições assíncronas. | Confete ou som ao simplesmente abrir o app, falhas offline e requisição de terceiros. | Pequeno / **Baixa–média** | Disparar somente na transição causada pelo usuário, empacotar o áudio localmente e respeitar preferência de som e redução de movimento. |
-| B17 — Confirmado na configuração; validar pipeline EAS | **Identidade Android divergente.** Expo usa `com.favit.schedule` e versão 2 em [app.json](./app.json#L23); o projeto nativo usa `com.favit`, versão 1 e assinatura de debug para release em [build.gradle](./android/app/build.gradle#L90). O bugreport confirma que o app instalado é `com.favit`. | Builds podem virar aplicativos diferentes, quebrar continuidade de loja/OTA e produzir release assinado incorretamente. | Médio / **Crítica antes de publicar** | Escolher uma identidade canônica, alinhar Expo, nativo e EAS, gerar release em ambiente limpo e validar assinatura, versão, canal e atualização OTA. |
+| B17 — Configuração implementada; validação externa obrigatória | **A identidade Android foi fixada em `com.favit`.** [app.json](./app.json), namespace, `applicationId` e pacotes Kotlin agora concordam. O Gradle usa versão `1.0.0`/código 2, o EAS declara versão remota, incremento automático, AAB e credenciais remotas, e o release não referencia mais `signingConfigs.debug`. [check-android-config.js](./scripts/check-android-config.js) protege essas invariantes. O bugreport confirma `com.favit`, versão 1, instalado no emulador. | Elimina a criação acidental de outro aplicativo Android e impede um release local aparentemente válido assinado com a chave de debug. A continuidade da chave e do código remoto ainda depende do EAS/Google Play. | Pequeno–médio / **Crítica antes de publicar** | Executar o checklist de [README.md](./README.md): confirmar que a credencial remota pertence a `com.favit`, reutilizar a upload key se já houver publicação, sincronizar o maior `versionCode`, gerar AAB limpo e inspecionar pacote, assinatura, versão, runtime e canal. A instalação antiga foi assinada com debug e não aceitará por cima uma chave de produção diferente; preservar dados antes de removê-la. |
 
 ## 5. Código antigo, lixo e partes possivelmente não utilizadas
 
@@ -164,7 +165,7 @@ As propostas abaixo consideram o que já existe: tarefas, quantum, reflexões co
 1. **Sessão 1 — concluída:** B01, B08, B03 e B12.
 2. **Sessão 2 — concluída:** B05, B06 e B07 — bloco coeso de lembretes.
 3. **Sessão 3 — concluída:** primeira fase de B09 e exportação de N01 como rede de segurança.
-4. **Antes de qualquer release:** B17, alinhando a identidade Android.
+4. **B17 — configuração concluída:** identidade Android alinhada; validação da credencial e do artefato EAS continua obrigatória antes de qualquer release.
 
 ### Etapa 1 — Estabilização
 
@@ -175,7 +176,7 @@ Ordem sugerida:
 3. Corrigir lembretes B05–B07.
 4. Corrigir o perfil B01–B03 e reproduzir B04.
 5. Corrigir virada do dia, quantum, recorrência, relatório e calendário.
-6. Alinhar a identidade e o pipeline Android em B17.
+6. Validar externamente o pipeline B17 já alinhado: credencial EAS, versão remota, AAB, assinatura e canal.
 7. Introduzir testes prioritários de T04 e observabilidade mínima de T06.
 
 Cenários obrigatórios:
