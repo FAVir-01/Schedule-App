@@ -17,7 +17,8 @@
 - **13 de julho de 2026 — Sessão 4 concluída no código:** B10 e B11 implementados, primeira fase de T04 criada e custo síncrono da primeira abertura do calendário reduzido. A suíte e a fluidez real ainda precisam ser validadas em ambiente com Node e em aparelho.
 - **13 de julho de 2026 — segunda passagem de B13 validada em Android:** o deslocamento inicial, a renderização redundante e a remontagem ao trocar de aba foram corrigidos. Nas reentradas medidas no aparelho conectado, frames problemáticos caíram de 14,29% para 3,64–5,77% e o percentil 95 caiu de 85 ms para 14–28 ms. A primeira abertura fria e outros aparelhos ainda precisam de validação.
 - **13 de julho de 2026 — B14 implementado e validado em Android:** reflexão, aparência de humor, ícone de hábito e fundo mensal passaram a usar persistência segura, limites explícitos, limpeza de arquivo parcial e feedback localizado. Foram validados no aparelho o cancelamento, a rejeição por dimensão e uma cópia real bem-sucedida.
-- **Próximo bloco recomendado:** redesenhar a seleção visual da criação de cards, conforme validação de UX no aparelho, e depois tratar B15; a primeira abertura do calendário em build release e a responsividade de B13 continuam pendentes.
+- **13 de julho de 2026 — personalização dos cards redesenhada e validada em Android:** a parede de emojis foi substituída por 25 ícones selecionados, o envio de imagem ou GIF ganhou destaque, a paleta passou de 6 para 12 cores e os controles receberam textos, feedback e acessibilidade localizados. Ícones antigos continuam visíveis ao editar cards existentes.
+- **Próximo bloco recomendado:** tratar B15; a primeira abertura do calendário em build release, a responsividade de B13 e a reprodução real de GIF em Android e iOS continuam pendentes de validação.
 
 ## 1. Objetivo
 
@@ -114,6 +115,7 @@ O arquivo `bugreport-sdk_gphone16k_x86_64-CP21.260330.005-2026-07-09-19-27-27.zi
 | U08 | **Navegação temporal confusa.** A faixa semanal fica centrada em hoje; editar ou criar tarefa para outra data muda `selectedDate`, mas a data pode ficar fora da faixa. O calendário abre relatório, não seleciona a data na aba Hoje. | O usuário não entende em qual dia está operando ou como voltar. | Médio / **Média** | Definir modelo único: selecionar uma data deve recentralizar a semana; oferecer “Voltar para hoje”; diferenciar “abrir relatório” de “editar o dia”. |
 | U09 | **Escalabilidade visual limitada.** A aba Hoje usa `ScrollView` com todos os cards e o perfil renderiza todos os chips de tarefa em um `map` em [App.js](./App.js#L2287). | Muitas tarefas deixam rolagem e filtros lentos e difíceis de navegar. | Médio / **Média** | Virtualizar listas, oferecer busca e filtros e limitar chips recentes ou favoritos. Depende de T05. |
 | U10 | **Configurações mínimas e pouca transparência sobre os dados.** A tela contém apenas idioma e imagens do calendário em [SettingsSheet.js](./components/SettingsSheet.js#L26). | O usuário não sabe que os dados são locais nem como recuperá-los, protegê-los ou transferi-los. | Médio / **Alta** | Adicionar exportação e importação, privacidade de notificações, som e háptico, redução de movimento e explicação sobre armazenamento local. |
+| U11 — implementado | **Personalização visual dos cards sobrecarregada.** A criação exibia centenas de emojis, escondia a escolha de mídia atrás de um botão pouco claro e apresentava seis cores sem rótulo em [AddHabitSheet.js](./components/AddHabitSheet.js). | A etapa parecia visualmente poluída e dificultava descobrir que imagens e GIFs eram aceitos. | Pequeno–médio / **Média** | Implementado: 25 ícones selecionados, ação visual destacada para imagem/GIF, prévia com substituir/remover, 12 cores rotuladas, fechamento do teclado e labels acessíveis. Ícones legados são preservados na edição. Validar telas pequenas, fonte ampliada, iOS e GIF animado real. |
 
 ## 7. Melhorias técnicas e arquiteturais
 
@@ -172,6 +174,7 @@ As propostas abaixo consideram o que já existe: tarefas, quantum, reflexões co
 5. **Sessão 4 — concluída no código:** B10, B11, primeira fase de T04 e otimização da primeira entrada no calendário; validação funcional ainda pendente.
 6. **B13 — segunda passagem validada em Android:** posicionamento inicial corrigido, render redundante removido e calendário preservado entre trocas de aba; validação release e responsiva ainda pendente.
 7. **B14 — implementado e validado parcialmente em Android:** persistência segura aplicada aos quatro usos de imagem, com feedback e limites; cenários residuais de iOS, GIF e falha física continuam pendentes.
+8. **Personalização dos cards — implementada e validada em Android:** seleção visual simplificada, imagem/GIF em destaque, paleta ampliada e compatibilidade com ícones legados; validação responsiva, iOS e GIF animado continua pendente.
 
 ### Etapa 1 — Estabilização
 
@@ -262,9 +265,9 @@ As futuras implementações devem seguir estes princípios:
 - O bugreport disponível não representa a versão atual dos gráficos.
 - Como não existe backend ou banco remoto no repositório, consistência entre frontend, backend e banco não pôde ser avaliada.
 
-## 13. Estado do projeto durante a análise
+## 13. Estado do projeto durante a análise original
 
 - Nenhum arquivo do aplicativo foi modificado durante a investigação original.
-- Nenhum código foi excluído ou refatorado.
-- Nenhum commit foi criado.
+- Nenhum código foi excluído ou refatorado durante a investigação original; as implementações posteriores estão registradas no início deste documento.
+- Nenhum commit foi criado durante a investigação original; as entregas posteriores foram organizadas em commits próprios.
 - Os arquivos não rastreados já presentes no workspace foram apenas identificados e não foram alterados.
