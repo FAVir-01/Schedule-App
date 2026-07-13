@@ -7,6 +7,7 @@ import {
   BackHandler,
   Easing,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -46,119 +47,116 @@ const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
-const COLORS = ['#FFCF70', '#F7A6A1', '#B39DD6', '#79C3FF', '#A8E6CF', '#FDE2A6'];
-const EMOJIS = [...new Set([
-  // carinhas & emoções
-  '😀','😁','😂','🤣','😊','🙂','🙃','😉','😍','🥰','😘','😗','😙','😚','🤗','🤩','🤔','🤨','😐','😑','😶',
-  '😏','😣','😥','😮','🤐','😯','😪','😫','🥱','😴','😌','😛','😜','😝','🤤','😒','🙄','😓','😔','😕','☹️','🙁',
-  '😖','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤒','🤕','🤢','🤮','🤧',
-  '😇','🤠','🥳','😎','🤓','🫠','🥸','🤡','💀','👻','👽','🤖','💩',
-  '👍','👎','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👊','👏','🙌','👐','🤲','🙏','🫶','🤝','👋','✋','🖐️',
-  '👉','👈','☝️','👇','👆','🫵','✍️',
-  '🏃‍♂️','🏃‍♀️','🚶‍♂️','🚶‍♀️','🏋️‍♂️','🏋️‍♀️','🤸‍♂️','🤸‍♀️','🏊‍♂️','🏊‍♀️','🚴‍♂️','🚴‍♀️','🧗‍♂️','🧗‍♀️','🧘‍♂️','🧘‍♀️','🤾‍♂️','🤾‍♀️',
-  '⛹️‍♂️','⛹️‍♀️','🤺','🤼‍♂️','🤼‍♀️','🤽‍♂️','🤽‍♀️','🚵‍♂️','🚵‍♀️','🧎‍♂️','🧎‍♀️','🧍‍♂️','🧍‍♀️',
-  '☀️','🌤️','⛅','🌥️','🌦️','🌧️','⛈️','🌩️','🌨️','❄️','☃️','🌈','🌪️','🌫️','💨',
-  '🌙','🌛','🌟','✨','💫','⚡','🔥','💧','💦','🌊',
-  '🌱','🌿','🍃','🌵','🌷','🌼','🌻','🌸','💐','🍁','🍂','🍀',
-  '🍎','🍏','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍒','🍑','🍍','🥭','🥝','🥑','🍅','🥕','🌽','🥦','🥒','🧄','🧅',
-  '🍞','🥐','🥖','🥨','🥯','🧇','🥞','🧀','🍳','🥚','🥗','🥙','🌯','🌮','🍔','🍟','🍕','🍝','🍜','🍣','🍱','🥟','🥠','🍲',
-  '🍚','🍛','🍥','🍡','🍢','🍘','🍙','🍿','🍫','🍪','🍩','🧁','🎂','🍰','🍦','🍨','🍧','🍯','🍮','🍵','☕','🧋','🥤','🧃','🧉','💧','🚰',
-  '⏰','⏱️','⏲️','🕰️','🗓️','📅','📆','📋','🗒️','📝','📖','📚','📘','📙','📗','📓','📔',
-  '🧠','💡','🔋','🔌','🔋','🪫','🔧','🛠️','🧰','🧪','🔬','⚖️','🧯','🧹','🪣','🧼','🪥','🪒','🚿','🛁',
-  '💻','🖥️','⌨️','🖱️','📱','📲','🎧','📷','🎥','🎙️','📎','📌','📍','🔖','🔗','🔒','🔓','🔑','🗝️','🔔','🔕',
-  '🏠','🏡','🏢','🏫','🏥','🏬','🏪','🏖️','🏕️','⛰️','🏞️','🌋','🏜️',
-  '🚗','🚕','🚙','🚌','🚎','🚑','🚒','🚓','🚚','🚲','🛵','🏍️','🚆','🚄','✈️','🛫','🛬','🚀','⛵','🚤','🚢',
-  '🎨','🖌️','🧵','🧶','🎸','🎹','🥁','🎻','🎤','🎮','🎲','♟️','🧩','📷','🎞️','🎬','🎯','🎳','🏸','🥊','🥋',
-  '🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵',
-  '🐔','🐧','🦆','🦅','🦉','🦇','🐢','🐍','🦎','🐙','🪼','🐠','🐟','🐡','🐬','🦈','🐳','🐋',
-  '🐝','🦋','🐞','🪲','🐜','🪳','🪰','🕷️','🕸️',
-  '✅','☑️','✔️','❌','✖️','⭕','❗','❕','⁉️','❓','❔',
-  '🔴','🟠','🟡','🟢','🔵','🟣','⚪','⚫','⬜','⬛','🔺','🔻','🔸','🔹',
-  '⭐','🌟','✨','💫','🎯','🏆','🎖️','🥇','🥈','🥉',
-  '💬','🗨️','🗯️','🔊','🔇','📣','📢','📶',
-  '💰','💸','💳','💵','💶','💷','💴','💹',
-  '💊','💉','🩹','🩺','🧼','🪥','🧴','🛌','🧘','🫁','🫀','🧬',
-  '🌟','🔥','💪','🧘','📚','🥗','🛏️','🚰','🎯','📝'
-])];
-const DEFAULT_EMOJI = EMOJIS[0];
+const COLORS = [
+  '#FFCF70',
+  '#F7A6A1',
+  '#B39DD6',
+  '#79C3FF',
+  '#A8E6CF',
+  '#FDE2A6',
+  '#FFAD73',
+  '#F58DB1',
+  '#8FA8FF',
+  '#70D6D2',
+  '#9BD17C',
+  '#8FB9A8',
+];
+
+const CURATED_ICONS = [
+  '✨', '🎯', '✅', '🔥', '💪',
+  '🏃', '🚴', '🧘', '💧', '🥗',
+  '🍎', '💊', '🛌', '🌙', '☀️',
+  '📚', '✍️', '🧠', '💻', '🧹',
+  '🪴', '🎨', '🎵', '💰', '😊',
+];
+const DEFAULT_EMOJI = CURATED_ICONS[0];
 
 // Célula memoizada: só re-renderiza quando a seleção dela muda
-const EmojiCell = React.memo(function EmojiCell({ emoji, isSelected, onSelect }) {
+const EmojiCell = React.memo(function EmojiCell({ emoji, isSelected, onSelect, accessibilityLabel }) {
   return (
     <Pressable
       style={[styles.emojiOption, isSelected && styles.emojiOptionSelected]}
       onPress={() => onSelect(emoji)}
       accessibilityRole="button"
       accessibilityState={{ selected: isSelected }}
-      accessibilityLabel={`Select emoji ${emoji}`}
+      accessibilityLabel={accessibilityLabel}
     >
       <Text style={styles.emojiOptionText}>{emoji}</Text>
     </Pressable>
   );
 });
 
-// Grid com montagem progressiva: as primeiras células aparecem na hora e o
-// resto monta em lotes nos frames seguintes. Componente isolado para os lotes
-// não re-renderizarem o sheet inteiro (e sem FlatList aninhada em ScrollView).
-const EMOJI_INITIAL_BATCH = 60;
-const EMOJI_BATCH_SIZE = 100;
-
-const EmojiGrid = React.memo(function EmojiGrid({
+const IconPicker = React.memo(function IconPicker({
   selectedEmoji,
   onSelect,
   customImage,
   onPickImage,
   onRemoveImage,
   isLoadingImage,
+  labels,
 }) {
-  const [visibleCount, setVisibleCount] = useState(EMOJI_INITIAL_BATCH);
-
-  useEffect(() => {
-    if (visibleCount >= EMOJIS.length) {
-      return undefined;
-    }
-    const id = setTimeout(() => {
-      setVisibleCount((count) => Math.min(EMOJIS.length, count + EMOJI_BATCH_SIZE));
-    }, 16);
-    return () => clearTimeout(id);
-  }, [visibleCount]);
+  const visibleIcons = CURATED_ICONS.includes(selectedEmoji)
+    ? CURATED_ICONS
+    : [selectedEmoji, ...CURATED_ICONS];
 
   return (
-    <View style={styles.emojiPicker}>
+    <View style={styles.iconPickerPanel}>
       <Pressable
-        style={[styles.emojiOption, styles.emojiUploadOption]}
+        style={({ pressed }) => [
+          styles.imageUploadCard,
+          pressed && !isLoadingImage && styles.imageUploadCardPressed,
+        ]}
         onPress={onPickImage}
         accessibilityRole="button"
-        accessibilityLabel="Upload custom image"
-        accessibilityHint="Opens your gallery to choose an image"
+        accessibilityLabel={customImage ? labels.replaceImage : labels.uploadImage}
+        accessibilityHint={labels.uploadImageHint}
         disabled={isLoadingImage}
         accessibilityState={{ busy: isLoadingImage, disabled: isLoadingImage }}
       >
-        {isLoadingImage ? (
-          <ActivityIndicator size="small" color="#1F2742" />
-        ) : (
-          <Ionicons name="image-outline" size={24} color="#1F2742" />
-        )}
+        <View style={styles.imageUploadPreview}>
+          {isLoadingImage ? (
+            <ActivityIndicator size="small" color="#3C2BA7" />
+          ) : customImage ? (
+            <Image source={{ uri: customImage }} style={styles.imageUploadThumbnail} />
+          ) : (
+            <Ionicons name="images-outline" size={25} color="#3C2BA7" />
+          )}
+        </View>
+        <View style={styles.imageUploadCopy}>
+          <Text style={styles.imageUploadTitle}>
+            {customImage ? labels.replaceImage : labels.uploadImage}
+          </Text>
+          <Text style={styles.imageUploadHint}>{labels.uploadImageHint}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color="#8B90A5" />
       </Pressable>
       {customImage && (
         <Pressable
-          style={[styles.emojiOption, styles.emojiOptionSelected]}
+          style={styles.removeImageButton}
           onPress={onRemoveImage}
           accessibilityRole="button"
-          accessibilityLabel="Remove custom image"
-          accessibilityHint="Revert to emoji icon"
+          accessibilityLabel={labels.removeImage}
         >
-          <Ionicons name="close" size={20} color="#1F2742" />
+          <Ionicons name="trash-outline" size={16} color="#C44B57" />
+          <Text style={styles.removeImageText}>{labels.removeImage}</Text>
         </Pressable>
       )}
-      {EMOJIS.slice(0, visibleCount).map((emoji) => (
-        <EmojiCell
-          key={emoji}
-          emoji={emoji}
-          isSelected={emoji === selectedEmoji}
-          onSelect={onSelect}
-        />
-      ))}
+
+      <View style={styles.iconPickerHeading}>
+        <Text style={styles.iconPickerTitle}>{labels.chooseIcon}</Text>
+        <Text style={styles.iconPickerHint}>{labels.chooseIconHint}</Text>
+      </View>
+      <View style={styles.emojiPicker}>
+        {visibleIcons.map((emoji) => (
+          <EmojiCell
+            key={emoji}
+            emoji={emoji}
+            isSelected={!customImage && emoji === selectedEmoji}
+            onSelect={onSelect}
+            accessibilityLabel={labels.selectIcon.replace('{icon}', emoji)}
+          />
+        ))}
+      </View>
     </View>
   );
 });
@@ -638,6 +636,7 @@ export default function AddHabitSheet({
   }, []);
 
   const handleToggleEmojiPicker = useCallback(() => {
+    Keyboard.dismiss();
     setEmojiPickerVisible((prev) => !prev);
   }, []);
 
@@ -651,7 +650,8 @@ export default function AddHabitSheet({
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
-        quality: 0.8,
+        // No Android, GIF animado só é preservado com quality 1 e sem edição.
+        quality: 1,
       });
 
       if (!result.canceled && result.assets?.length) {
@@ -1748,33 +1748,51 @@ export default function AddHabitSheet({
               keyboardDismissMode="interactive"
             >
               <Pressable
-                style={[styles.emojiButton, isEmojiPickerVisible && styles.emojiButtonActive]}
+                style={[
+                  styles.visualSelectorCard,
+                  isEmojiPickerVisible && styles.visualSelectorCardActive,
+                ]}
                 accessibilityRole="button"
-                accessibilityLabel={`Choose icon, currently ${customImage ? 'custom image' : selectedEmoji}`}
-                accessibilityHint="Opens a list of emoji options"
+                accessibilityLabel={t.cardAppearance}
+                accessibilityHint={t.cardAppearanceHint}
+                accessibilityState={{ expanded: isEmojiPickerVisible }}
                 onPress={handleToggleEmojiPicker}
-                hitSlop={12}
               >
-                {customImage ? (
-                  <Image source={{ uri: customImage }} style={styles.customIconImage} />
-                ) : (
-                  <Text style={styles.emoji}>{selectedEmoji}</Text>
-                )}
-                <Ionicons
-                  name={isEmojiPickerVisible ? 'chevron-up' : 'chevron-down'}
-                  size={18}
-                  color="#6f7a86"
-                  style={styles.emojiChevron}
-                />
+                <View
+                  style={[
+                    styles.visualIconPreview,
+                    { backgroundColor: lightenColor(selectedColor, 0.45) },
+                  ]}
+                >
+                  {customImage ? (
+                    <Image source={{ uri: customImage }} style={styles.customIconImage} />
+                  ) : (
+                    <Text style={styles.visualIconEmoji}>{selectedEmoji}</Text>
+                  )}
+                </View>
+                <View style={styles.visualSelectorCopy}>
+                  <Text style={styles.visualSelectorTitle}>{t.cardAppearance}</Text>
+                  <Text style={styles.visualSelectorHint} numberOfLines={1}>
+                    {customImage ? t.customImageSelected : t.cardAppearanceHint}
+                  </Text>
+                </View>
+                <View style={styles.visualSelectorChevron}>
+                  <Ionicons
+                    name={isEmojiPickerVisible ? 'chevron-up' : 'chevron-down'}
+                    size={18}
+                    color="#3C2BA7"
+                  />
+                </View>
               </Pressable>
               {isEmojiPickerVisible && (
-                <EmojiGrid
+                <IconPicker
                   selectedEmoji={selectedEmoji}
                   onSelect={handleSelectEmoji}
                   customImage={customImage}
                   onPickImage={handlePickImage}
                   onRemoveImage={handleRemoveCustomImage}
                   isLoadingImage={isLoadingImage}
+                  labels={t}
                 />
               )}
               <TextInput
@@ -1789,22 +1807,34 @@ export default function AddHabitSheet({
                 returnKeyType="done"
               />
               <Text style={styles.counter}>{`${title.length}/50`}</Text>
-              <View style={styles.paletteContainer}>
-                {COLORS.map((color) => {
-                  const isSelected = selectedColor === color;
-                  return (
-                    <Pressable
-                      key={color}
-                      style={[styles.colorDot, { backgroundColor: color }, isSelected && styles.colorDotSelected]}
-                      onPress={() => setSelectedColor(color)}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: isSelected }}
-                      accessibilityLabel={`Select color ${color}`}
-                    >
-                      {isSelected && <Ionicons name="checkmark" size={18} color="#1F2742" />}
-                    </Pressable>
-                  );
-                })}
+              <View style={styles.colorSelectorCard}>
+                <View style={styles.colorSelectorHeading}>
+                  <Text style={styles.colorSelectorTitle}>{t.cardColor}</Text>
+                  <Text style={styles.colorSelectorHint}>{t.cardColorHint}</Text>
+                </View>
+                <View style={styles.paletteContainer}>
+                  {COLORS.map((color) => {
+                    const isSelected = selectedColor === color;
+                    return (
+                      <Pressable
+                        key={color}
+                        style={[
+                          styles.colorDot,
+                          { backgroundColor: color },
+                          isSelected && styles.colorDotSelected,
+                        ]}
+                        onPress={() => setSelectedColor(color)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isSelected }}
+                        accessibilityLabel={t.selectColor.replace('{color}', color)}
+                      >
+                        {isSelected && (
+                          <Ionicons name="checkmark" size={18} color="#1F2742" />
+                        )}
+                      </Pressable>
+                    );
+                  })}
+                </View>
               </View>
               <View style={[styles.listContainer, activeInfoKey && styles.listContainerInfoActive]}>
                 <SheetRow
@@ -3486,42 +3516,151 @@ const styles = StyleSheet.create({
   scrollViewContent: {
     paddingBottom: 48,
   },
-  emojiButton: {
-    alignSelf: 'center',
+  visualSelectorCard: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    padding: 12,
+    marginBottom: 14,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(31,39,66,0.08)',
+    shadowColor: '#1F2742',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  visualSelectorCardActive: {
+    borderColor: 'rgba(60,43,167,0.35)',
+    backgroundColor: 'rgba(255,255,255,0.9)',
+  },
+  visualIconPreview: {
+    width: 68,
+    height: 68,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'transparent',
-    borderRadius: 56,
-    paddingHorizontal: 32,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
-  emojiButtonActive: {
-    // shadowOpacity: 0.12,
-    // shadowRadius: 16,
-    // elevation: 6,
+    overflow: 'hidden',
   },
   customIconImage: {
-    width: 67,
-    height: 67,
-    borderRadius: 33.5,
+    width: '100%',
+    height: '100%',
     resizeMode: 'cover',
   },
-  emoji: {
-    fontSize: 52,
+  visualIconEmoji: {
+    fontSize: 36,
     textAlign: 'center',
   },
-  emojiChevron: {
-    marginTop: 10,
+  visualSelectorCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  visualSelectorTitle: {
+    color: '#1F2742',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  visualSelectorHint: {
+    color: '#777F94',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  visualSelectorChevron: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#EEEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconPickerPanel: {
+    padding: 16,
+    marginBottom: 20,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(31,39,66,0.08)',
+  },
+  imageUploadCard: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 18,
+    backgroundColor: '#F2EFFF',
+    borderWidth: 1,
+    borderColor: '#DDD6FF',
+  },
+  imageUploadCardPressed: {
+    opacity: 0.78,
+    transform: [{ scale: 0.99 }],
+  },
+  imageUploadPreview: {
+    width: 50,
+    height: 50,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+  },
+  imageUploadThumbnail: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  imageUploadCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  imageUploadTitle: {
+    color: '#2E246E',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  imageUploadHint: {
+    color: '#777F94',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  removeImageButton: {
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 9,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  removeImageText: {
+    color: '#C44B57',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  iconPickerHeading: {
+    marginTop: 16,
+    marginBottom: 12,
+    gap: 3,
+  },
+  iconPickerTitle: {
+    color: '#1F2742',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  iconPickerHint: {
+    color: '#7F8799',
+    fontSize: 12,
+    fontWeight: '500',
   },
   emojiPicker: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 12,
-    marginBottom: 20,
+    gap: 10,
   },
   emojiOption: {
     width: 48,
@@ -3530,14 +3669,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#F2F6FF',
-  },
-  emojiUploadOption: {
-    backgroundColor: '#E7F0FF',
+    borderWidth: 1,
+    borderColor: 'rgba(31,39,66,0.06)',
   },
   emojiOptionSelected: {
-    backgroundColor: '#DDE9FF',
+    backgroundColor: '#E5E0FF',
     borderWidth: 2,
-    borderColor: '#1F2742',
+    borderColor: '#3C2BA7',
   },
   emojiOptionText: {
     fontSize: 28,
@@ -3555,16 +3693,39 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     fontWeight: '500',
   },
+  colorSelectorCard: {
+    padding: 16,
+    marginBottom: 24,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.68)',
+    borderWidth: 1,
+    borderColor: 'rgba(31,39,66,0.08)',
+  },
+  colorSelectorHeading: {
+    gap: 3,
+    marginBottom: 14,
+  },
+  colorSelectorTitle: {
+    color: '#1F2742',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  colorSelectorHint: {
+    color: '#7F8799',
+    fontSize: 12,
+    fontWeight: '500',
+  },
   paletteContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 28,
+    gap: 12,
   },
   colorDot: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
