@@ -39,6 +39,15 @@ Se estiver usando development build:
 npm run start:dev
 ```
 
+### 2.1 Testar regras de domínio
+
+As regras mais sensíveis de data, recorrência e progresso quantum possuem uma suíte
+mínima que usa diretamente os helpers do aplicativo:
+
+```bash
+npm run test:domain
+```
+
 ### 3. Atualizar o app já instalado no celular
 
 Este projeto já usa `expo-updates` e EAS Update.

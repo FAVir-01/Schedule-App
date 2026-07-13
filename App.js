@@ -68,6 +68,7 @@ import {
   normalizeTaskTagKey,
   isPassiveTaskType,
   isReminderExpiredForDate,
+  reconcileTaskProgressOnEdit,
   shouldCountTaskTowardsCompletion,
   normalizeRepeatConfig,
 } from './utils/taskUtils';
@@ -333,6 +334,9 @@ function ScheduleApp() {
     return months;
   });
   const [visibleCalendarDate, setVisibleCalendarDate] = useState(new Date());
+  const [visibleCalendarMonthIds, setVisibleCalendarMonthIds] = useState(
+    () => new Set([getMonthId(new Date())])
+  );
   const initialCalendarIndex = useMemo(() => {
     const todayId = getMonthId(new Date());
     return calendarMonths.findIndex((month) => getMonthId(month.date) === todayId);
@@ -490,17 +494,41 @@ function ScheduleApp() {
       };
     });
   }, [language, tasks, today]);
-  // Cache persistente do status dos dias do calendário. Antes, qualquer
-  // mudança em tasks (ou mês novo no scroll) recalculava TODOS os meses ×
-  // dias × tarefas, mesmo fora da aba calendário — era a fonte das travadas.
-  // Agora: fora da aba devolve o último resultado sem calcular nada; dentro
-  // da aba, dias já calculados vêm do cache (só o mês novo é computado).
+  // Calcula somente os meses visíveis e seus vizinhos. A primeira abertura
+  // antes percorria 25 meses × dias × tarefas de forma síncrona, bloqueando a UI.
   const calendarStatusStoreRef = useRef({
     tasksRef: null,
     dayStatusCache: new Map(),
     lastResult: { calendarDayStatusByKey: {}, calendarMonthStatusSignatureById: {} },
   });
   const isCalendarTabActive = activeTab === 'calendar';
+  const calendarStatusMonths = useMemo(() => {
+    if (!isCalendarTabActive || calendarMonths.length === 0) {
+      return [];
+    }
+
+    const visibleIndexes = calendarMonths.reduce((indexes, month, index) => {
+      if (visibleCalendarMonthIds.has(month.monthId)) {
+        indexes.push(index);
+      }
+      return indexes;
+    }, []);
+    if (visibleIndexes.length === 0) {
+      visibleIndexes.push(initialCalendarIndex >= 0 ? initialCalendarIndex : 0);
+    }
+
+    const indexesToCalculate = new Set();
+    visibleIndexes.forEach((index) => {
+      for (let offset = -1; offset <= 1; offset += 1) {
+        const candidate = index + offset;
+        if (candidate >= 0 && candidate < calendarMonths.length) {
+          indexesToCalculate.add(candidate);
+        }
+      }
+    });
+
+    return calendarMonths.filter((_, index) => indexesToCalculate.has(index));
+  }, [calendarMonths, initialCalendarIndex, isCalendarTabActive, visibleCalendarMonthIds]);
   const { calendarDayStatusByKey, calendarMonthStatusSignatureById } = useMemo(() => {
     const store = calendarStatusStoreRef.current;
     if (store.tasksRef !== tasks) {
@@ -532,7 +560,7 @@ function ScheduleApp() {
       return status;
     };
 
-    calendarMonths.forEach((month) => {
+    calendarStatusMonths.forEach((month) => {
       const signature = month.days
         .map((day) => {
           const status = resolveDayStatus(day);
@@ -548,7 +576,7 @@ function ScheduleApp() {
     };
     store.lastResult = result;
     return result;
-  }, [calendarMonths, isCalendarTabActive, tasks]);
+  }, [calendarStatusMonths, isCalendarTabActive, tasks]);
 
   const reportTasks = useMemo(() => {
     if (!reportDate) return [];
@@ -644,7 +672,7 @@ function ScheduleApp() {
   // Assinatura dos humores por mês: só o mês cujo emoji mudou re-renderiza.
   const calendarMonthMoodSignatureById = useMemo(() => {
     const result = {};
-    calendarMonths.forEach((month) => {
+    calendarStatusMonths.forEach((month) => {
       result[month.monthId] = month.days
         .map((day) => {
           const marker = getMoodMarker(dayMoods[getDateKey(day)], moodAppearance);
@@ -655,7 +683,7 @@ function ScheduleApp() {
         .join('|');
     });
     return result;
-  }, [calendarMonths, dayMoods, moodAppearance]);
+  }, [calendarStatusMonths, dayMoods, moodAppearance]);
 
   const renderCalendarMonth = useCallback(
     ({ item }) => (
@@ -1127,6 +1155,18 @@ function ScheduleApp() {
   }).current;
   const onViewableItemsChanged = useRef(({ viewableItems }) => {
     if (viewableItems && viewableItems.length > 0) {
+      const nextVisibleMonthIds = new Set(
+        viewableItems
+          .filter((viewable) => viewable.isViewable !== false)
+          .map((viewable) => viewable.item?.monthId)
+          .filter(Boolean)
+      );
+      setVisibleCalendarMonthIds((previous) => {
+        const unchanged =
+          previous.size === nextVisibleMonthIds.size &&
+          Array.from(previous).every((monthId) => nextVisibleMonthIds.has(monthId));
+        return unchanged ? previous : nextVisibleMonthIds;
+      });
       const topItem = viewableItems[0];
       if (topItem && topItem.item && topItem.item.date) {
         setVisibleCalendarDate(topItem.item.date);
@@ -1253,10 +1293,12 @@ function ScheduleApp() {
           }
         }
 
-        // Migração: o tipo 'list' foi removido (era idêntico ao default).
+        // Migração: aliases antigos eram equivalentes ao tipo padrão atual.
         if (Array.isArray(storedTasks)) {
           storedTasks = storedTasks.map((task) =>
-            task?.type === 'list' ? { ...task, type: 'default' } : task
+            task?.type === 'list' || task?.type === 'normal'
+              ? { ...task, type: 'default' }
+              : task
           );
         }
 
@@ -1759,6 +1801,11 @@ function ScheduleApp() {
   const handleChangeTab = useCallback(
     (tabKey) => {
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
+      if (tabKey === 'calendar') {
+        const currentDate = new Date();
+        setVisibleCalendarDate(currentDate);
+        setVisibleCalendarMonthIds(new Set([getMonthId(currentDate)]));
+      }
       setActiveTab(tabKey);
       updateUserSettings({ activeTab: tabKey });
       void applyNavigationBarThemeForTab(tabKey);
@@ -2080,9 +2127,9 @@ function ScheduleApp() {
       reminder: habit?.reminder,
       tag: habit?.tag,
       tagLabel: habit?.tagLabel,
-      type: habit?.type ?? 'normal',
+      type: habit?.type ?? 'default',
       typeLabel: habit?.typeLabel,
-      quantum: habit?.quantum,
+      quantum: habit?.type === 'quantum' ? habit?.quantum : null,
       profileLocked: false,
       notificationIds: [],
       notificationId: null,
@@ -2114,17 +2161,12 @@ function ScheduleApp() {
         : existingTask?.title ?? t.common.untitledTask;
       const nextDate = normalizedDate ? new Date(normalizedDate) : new Date(existingTask.date);
       nextDate.setHours(0, 0, 0, 0);
+      const nextType = habit?.type ?? existingTask.type;
       const nextQuantum = habit?.quantum ?? existingTask.quantum;
-      let mergedQuantum = nextQuantum;
-      if (nextQuantum && existingTask.quantum) {
-        const sameMode = nextQuantum.mode === existingTask.quantum.mode;
-        mergedQuantum = {
-          ...existingTask.quantum,
-          ...nextQuantum,
-          doneSeconds: sameMode ? existingTask.quantum.doneSeconds ?? 0 : 0,
-          doneCount: sameMode ? existingTask.quantum.doneCount ?? 0 : 0,
-        };
-      }
+      const {
+        completedDates: nextCompletedDates,
+        quantum: mergedQuantum,
+      } = reconcileTaskProgressOnEdit(existingTask, nextType, nextQuantum);
       setTasks((previous) =>
         previous.map((task) => {
           if (task.id !== taskId) {
@@ -2144,8 +2186,9 @@ function ScheduleApp() {
             reminder: habit?.reminder,
             tag: habit?.tag,
             tagLabel: habit?.tagLabel,
-            type: habit?.type,
+            type: nextType,
             typeLabel: habit?.typeLabel,
+            completedDates: nextCompletedDates,
             quantum: mergedQuantum,
             date: nextDate,
             dateKey: getDateKey(nextDate),
@@ -2169,8 +2212,9 @@ function ScheduleApp() {
           reminder: habit?.reminder,
           tag: habit?.tag,
           tagLabel: habit?.tagLabel,
-          type: habit?.type,
+          type: nextType,
           typeLabel: habit?.typeLabel,
+          completedDates: nextCompletedDates,
           quantum: mergedQuantum,
           date: nextDate,
           dateKey: getDateKey(nextDate),
