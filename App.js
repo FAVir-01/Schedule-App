@@ -272,6 +272,9 @@ if (NOTIFICATIONS_SUPPORTED) {
 function ScheduleApp() {
   const [userSettings, setUserSettings] = useState(DEFAULT_USER_SETTINGS);
   const [activeTab, setActiveTab] = useState(DEFAULT_USER_SETTINGS.activeTab);
+  const [hasMountedCalendar, setHasMountedCalendar] = useState(
+    DEFAULT_USER_SETTINGS.activeTab === 'calendar'
+  );
   const [isFabOpen, setIsFabOpen] = useState(false);
   const [isFabMenuMounted, setIsFabMenuMounted] = useState(false);
   const [isHabitSheetOpen, setIsHabitSheetOpen] = useState(false);
@@ -358,7 +361,10 @@ function ScheduleApp() {
   const fabBaseSize = fabSize + (isCompact ? 14 : 18);
   const fabIconSize = isCompact ? 28 : 30;
   const HEADER_HEIGHT = 100;
-  const MARGINS = 30;
+  // Espaço real ocupado fora da grade: 10 do cabeçalho e 32 do container.
+  // Antes, 12 desses pontos vinham do `gap` da lista e não eram incluídos no
+  // getItemLayout, então o initialScrollIndex parava antes do mês atual.
+  const MARGINS = 42;
   const BASE_HEIGHT = HEADER_HEIGHT + MARGINS;
   const buildMonthLayouts = useCallback((months) => {
     let currentOffset = 0;
@@ -502,6 +508,11 @@ function ScheduleApp() {
     lastResult: { calendarDayStatusByKey: {}, calendarMonthStatusSignatureById: {} },
   });
   const isCalendarTabActive = activeTab === 'calendar';
+  useEffect(() => {
+    if (isCalendarTabActive) {
+      setHasMountedCalendar(true);
+    }
+  }, [isCalendarTabActive]);
   const calendarStatusMonths = useMemo(() => {
     if (!isCalendarTabActive || calendarMonths.length === 0) {
       return [];
@@ -1153,22 +1164,48 @@ function ScheduleApp() {
     itemVisiblePercentThreshold: 50,
     waitForInteraction: false,
   }).current;
+  const calendarListRef = useRef(null);
+  const calendarScrollRetryTimerRef = useRef(null);
+  const calendarScrollRetryIndexRef = useRef(null);
+  const handleCalendarScrollToIndexFailed = useCallback(({ index, averageItemLength }) => {
+    if (!Number.isInteger(index) || index < 0 || calendarScrollRetryIndexRef.current === index) {
+      return;
+    }
+
+    calendarScrollRetryIndexRef.current = index;
+    const cachedOffset = monthLayoutsRef.current[index]?.offset;
+    const estimatedOffset = Number.isFinite(cachedOffset)
+      ? cachedOffset
+      : Math.max(0, (averageItemLength || 0) * index);
+    calendarListRef.current?.scrollToOffset({ offset: estimatedOffset, animated: false });
+
+    if (calendarScrollRetryTimerRef.current) {
+      clearTimeout(calendarScrollRetryTimerRef.current);
+    }
+    calendarScrollRetryTimerRef.current = setTimeout(() => {
+      calendarListRef.current?.scrollToIndex({ index, animated: false });
+      calendarScrollRetryIndexRef.current = null;
+      calendarScrollRetryTimerRef.current = null;
+    }, 100);
+  }, []);
+  useEffect(
+    () => () => {
+      if (calendarScrollRetryTimerRef.current) {
+        clearTimeout(calendarScrollRetryTimerRef.current);
+      }
+    },
+    []
+  );
   const onViewableItemsChanged = useRef(({ viewableItems }) => {
     if (viewableItems && viewableItems.length > 0) {
-      const nextVisibleMonthIds = new Set(
-        viewableItems
-          .filter((viewable) => viewable.isViewable !== false)
-          .map((viewable) => viewable.item?.monthId)
-          .filter(Boolean)
-      );
-      setVisibleCalendarMonthIds((previous) => {
-        const unchanged =
-          previous.size === nextVisibleMonthIds.size &&
-          Array.from(previous).every((monthId) => nextVisibleMonthIds.has(monthId));
-        return unchanged ? previous : nextVisibleMonthIds;
-      });
       const topItem = viewableItems[0];
       if (topItem && topItem.item && topItem.item.date) {
+        const topMonthId = topItem.item.monthId;
+        setVisibleCalendarMonthIds((previous) =>
+          previous.size === 1 && previous.has(topMonthId)
+            ? previous
+            : new Set([topMonthId])
+        );
         setVisibleCalendarDate(topItem.item.date);
       }
     }
@@ -1801,11 +1838,6 @@ function ScheduleApp() {
   const handleChangeTab = useCallback(
     (tabKey) => {
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
-      if (tabKey === 'calendar') {
-        const currentDate = new Date();
-        setVisibleCalendarDate(currentDate);
-        setVisibleCalendarMonthIds(new Set([getMonthId(currentDate)]));
-      }
       setActiveTab(tabKey);
       updateUserSettings({ activeTab: tabKey });
       void applyNavigationBarThemeForTab(tabKey);
@@ -2687,43 +2719,7 @@ function ScheduleApp() {
                 )}
               </View>
             </ScrollView>
-          ) : activeTab === 'calendar' ? (
-            <View style={{ flex: 1 }}>
-              <StickyMonthHeader date={visibleCalendarDate} customImages={customMonthImages} language={language} />
-
-              <FlatList
-                data={calendarMonths}
-                renderItem={renderCalendarMonth}
-                keyExtractor={(item) => item.id.toString()}
-                showsVerticalScrollIndicator={false}
-                removeClippedSubviews={Platform.OS === 'android'}
-                maxToRenderPerBatch={3}
-                windowSize={5}
-                initialScrollIndex={initialCalendarIndex !== -1 ? initialCalendarIndex : 12}
-                initialNumToRender={2}
-                updateCellsBatchingPeriod={16}
-                onViewableItemsChanged={onViewableItemsChanged}
-                viewabilityConfig={viewabilityConfig}
-                getItemLayout={getItemLayout}
-                onScrollToIndexFailed={(info) => {
-                  const wait = new Promise((resolve) => setTimeout(resolve, 500));
-                  wait.then(() => {
-                    // Retry can be added here if a ref is available
-                  });
-                }}
-                contentContainerStyle={[
-                  styles.calendarListContent,
-                  {
-                    paddingTop: 0,
-                    paddingBottom: isCompact ? 56 : 72,
-                    paddingHorizontal: 0,
-                  },
-                ]}
-                onEndReached={loadMoreCalendarMonths}
-                onEndReachedThreshold={0.5}
-              />
-            </View>
-          ) : activeTab === 'profile' ? (
+          ) : activeTab === 'calendar' ? null : activeTab === 'profile' ? (
              <ScrollView
                style={{ flex: 1 }}
                contentContainerStyle={styles.profileScrollContent}
@@ -2953,6 +2949,48 @@ function ScheduleApp() {
               </Text>
             </View>
           )}
+          {(hasMountedCalendar || isCalendarTabActive) ? (
+            <View
+              key="calendar-tab"
+              style={[{ flex: 1, width: '100%' }, !isCalendarTabActive && { display: 'none' }]}
+              pointerEvents={isCalendarTabActive ? 'auto' : 'none'}
+              importantForAccessibility={isCalendarTabActive ? 'auto' : 'no-hide-descendants'}
+            >
+              <StickyMonthHeader
+                date={visibleCalendarDate}
+                customImages={customMonthImages}
+                language={language}
+              />
+
+              <FlatList
+                ref={calendarListRef}
+                data={calendarMonths}
+                renderItem={renderCalendarMonth}
+                keyExtractor={(item) => item.id.toString()}
+                showsVerticalScrollIndicator={false}
+                removeClippedSubviews={Platform.OS === 'android'}
+                maxToRenderPerBatch={3}
+                windowSize={5}
+                initialScrollIndex={initialCalendarIndex !== -1 ? initialCalendarIndex : 12}
+                initialNumToRender={2}
+                updateCellsBatchingPeriod={16}
+                onViewableItemsChanged={onViewableItemsChanged}
+                viewabilityConfig={viewabilityConfig}
+                getItemLayout={getItemLayout}
+                onScrollToIndexFailed={handleCalendarScrollToIndexFailed}
+                contentContainerStyle={[
+                  styles.calendarListContent,
+                  {
+                    paddingTop: 0,
+                    paddingBottom: isCompact ? 56 : 72,
+                    paddingHorizontal: 0,
+                  },
+                ]}
+                onEndReached={loadMoreCalendarMonths}
+                onEndReachedThreshold={0.5}
+              />
+            </View>
+          ) : null}
         </View>
 
         <View
