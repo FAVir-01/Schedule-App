@@ -7,7 +7,6 @@ import {
   BackHandler,
   Easing,
   Image,
-  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -47,65 +46,119 @@ const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
-const COLORS = [
-  '#FFCF70',
-  '#F7A6A1',
-  '#B39DD6',
-  '#79C3FF',
-  '#A8E6CF',
-  '#FFAD73',
-  '#F58DB1',
-  '#8FA8FF',
-];
-
-const CURATED_ICONS = [
-  '✨', '🎯', '✅', '🔥', '💪', '🏃', '🧘', '📚',
-];
-const DEFAULT_EMOJI = CURATED_ICONS[0];
+const COLORS = ['#FFCF70', '#F7A6A1', '#B39DD6', '#79C3FF', '#A8E6CF', '#FDE2A6'];
+const EMOJIS = [...new Set([
+  // carinhas & emoções
+  '😀','😁','😂','🤣','😊','🙂','🙃','😉','😍','🥰','😘','😗','😙','😚','🤗','🤩','🤔','🤨','😐','😑','😶',
+  '😏','😣','😥','😮','🤐','😯','😪','😫','🥱','😴','😌','😛','😜','😝','🤤','😒','🙄','😓','😔','😕','☹️','🙁',
+  '😖','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤒','🤕','🤢','🤮','🤧',
+  '😇','🤠','🥳','😎','🤓','🫠','🥸','🤡','💀','👻','👽','🤖','💩',
+  '👍','👎','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👊','👏','🙌','👐','🤲','🙏','🫶','🤝','👋','✋','🖐️',
+  '👉','👈','☝️','👇','👆','🫵','✍️',
+  '🏃‍♂️','🏃‍♀️','🚶‍♂️','🚶‍♀️','🏋️‍♂️','🏋️‍♀️','🤸‍♂️','🤸‍♀️','🏊‍♂️','🏊‍♀️','🚴‍♂️','🚴‍♀️','🧗‍♂️','🧗‍♀️','🧘‍♂️','🧘‍♀️','🤾‍♂️','🤾‍♀️',
+  '⛹️‍♂️','⛹️‍♀️','🤺','🤼‍♂️','🤼‍♀️','🤽‍♂️','🤽‍♀️','🚵‍♂️','🚵‍♀️','🧎‍♂️','🧎‍♀️','🧍‍♂️','🧍‍♀️',
+  '☀️','🌤️','⛅','🌥️','🌦️','🌧️','⛈️','🌩️','🌨️','❄️','☃️','🌈','🌪️','🌫️','💨',
+  '🌙','🌛','🌟','✨','💫','⚡','🔥','💧','💦','🌊',
+  '🌱','🌿','🍃','🌵','🌷','🌼','🌻','🌸','💐','🍁','🍂','🍀',
+  '🍎','🍏','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍒','🍑','🍍','🥭','🥝','🥑','🍅','🥕','🌽','🥦','🥒','🧄','🧅',
+  '🍞','🥐','🥖','🥨','🥯','🧇','🥞','🧀','🍳','🥚','🥗','🥙','🌯','🌮','🍔','🍟','🍕','🍝','🍜','🍣','🍱','🥟','🥠','🍲',
+  '🍚','🍛','🍥','🍡','🍢','🍘','🍙','🍿','🍫','🍪','🍩','🧁','🎂','🍰','🍦','🍨','🍧','🍯','🍮','🍵','☕','🧋','🥤','🧃','🧉','💧','🚰',
+  '⏰','⏱️','⏲️','🕰️','🗓️','📅','📆','📋','🗒️','📝','📖','📚','📘','📙','📗','📓','📔',
+  '🧠','💡','🔋','🔌','🔋','🪫','🔧','🛠️','🧰','🧪','🔬','⚖️','🧯','🧹','🪣','🧼','🪥','🪒','🚿','🛁',
+  '💻','🖥️','⌨️','🖱️','📱','📲','🎧','📷','🎥','🎙️','📎','📌','📍','🔖','🔗','🔒','🔓','🔑','🗝️','🔔','🔕',
+  '🏠','🏡','🏢','🏫','🏥','🏬','🏪','🏖️','🏕️','⛰️','🏞️','🌋','🏜️',
+  '🚗','🚕','🚙','🚌','🚎','🚑','🚒','🚓','🚚','🚲','🛵','🏍️','🚆','🚄','✈️','🛫','🛬','🚀','⛵','🚤','🚢',
+  '🎨','🖌️','🧵','🧶','🎸','🎹','🥁','🎻','🎤','🎮','🎲','♟️','🧩','📷','🎞️','🎬','🎯','🎳','🏸','🥊','🥋',
+  '🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵',
+  '🐔','🐧','🦆','🦅','🦉','🦇','🐢','🐍','🦎','🐙','🪼','🐠','🐟','🐡','🐬','🦈','🐳','🐋',
+  '🐝','🦋','🐞','🪲','🐜','🪳','🪰','🕷️','🕸️',
+  '✅','☑️','✔️','❌','✖️','⭕','❗','❕','⁉️','❓','❔',
+  '🔴','🟠','🟡','🟢','🔵','🟣','⚪','⚫','⬜','⬛','🔺','🔻','🔸','🔹',
+  '⭐','🌟','✨','💫','🎯','🏆','🎖️','🥇','🥈','🥉',
+  '💬','🗨️','🗯️','🔊','🔇','📣','📢','📶',
+  '💰','💸','💳','💵','💶','💷','💴','💹',
+  '💊','💉','🩹','🩺','🧼','🪥','🧴','🛌','🧘','🫁','🫀','🧬',
+  '🌟','🔥','💪','🧘','📚','🥗','🛏️','🚰','🎯','📝'
+])];
+const DEFAULT_EMOJI = EMOJIS[0];
 
 // Célula memoizada: só re-renderiza quando a seleção dela muda
-const EmojiCell = React.memo(function EmojiCell({ emoji, isSelected, onSelect, accessibilityLabel }) {
+const EmojiCell = React.memo(function EmojiCell({ emoji, isSelected, onSelect }) {
   return (
     <Pressable
       style={[styles.emojiOption, isSelected && styles.emojiOptionSelected]}
       onPress={() => onSelect(emoji)}
       accessibilityRole="button"
       accessibilityState={{ selected: isSelected }}
-      accessibilityLabel={accessibilityLabel}
-      hitSlop={5}
+      accessibilityLabel={`Select emoji ${emoji}`}
     >
       <Text style={styles.emojiOptionText}>{emoji}</Text>
     </Pressable>
   );
 });
 
-const IconPicker = React.memo(function IconPicker({
+// Grid com montagem progressiva: as primeiras células aparecem na hora e o
+// resto monta em lotes nos frames seguintes. Componente isolado para os lotes
+// não re-renderizarem o sheet inteiro (e sem FlatList aninhada em ScrollView).
+const EMOJI_INITIAL_BATCH = 60;
+const EMOJI_BATCH_SIZE = 100;
+
+const EmojiGrid = React.memo(function EmojiGrid({
   selectedEmoji,
   onSelect,
   customImage,
-  labels,
+  onPickImage,
+  onRemoveImage,
+  isLoadingImage,
 }) {
-  const visibleIcons = CURATED_ICONS.includes(selectedEmoji)
-    ? CURATED_ICONS
-    : [selectedEmoji, ...CURATED_ICONS];
+  const [visibleCount, setVisibleCount] = useState(EMOJI_INITIAL_BATCH);
+
+  useEffect(() => {
+    if (visibleCount >= EMOJIS.length) {
+      return undefined;
+    }
+    const id = setTimeout(() => {
+      setVisibleCount((count) => Math.min(EMOJIS.length, count + EMOJI_BATCH_SIZE));
+    }, 16);
+    return () => clearTimeout(id);
+  }, [visibleCount]);
 
   return (
-    <View style={styles.iconPickerPanel}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.emojiPicker}
+    <View style={styles.emojiPicker}>
+      <Pressable
+        style={[styles.emojiOption, styles.emojiUploadOption]}
+        onPress={onPickImage}
+        accessibilityRole="button"
+        accessibilityLabel="Upload custom image"
+        accessibilityHint="Opens your gallery to choose an image"
+        disabled={isLoadingImage}
+        accessibilityState={{ busy: isLoadingImage, disabled: isLoadingImage }}
       >
-        {visibleIcons.map((emoji) => (
-          <EmojiCell
-            key={emoji}
-            emoji={emoji}
-            isSelected={!customImage && emoji === selectedEmoji}
-            onSelect={onSelect}
-            accessibilityLabel={labels.selectIcon.replace('{icon}', emoji)}
-          />
-        ))}
-      </ScrollView>
+        {isLoadingImage ? (
+          <ActivityIndicator size="small" color="#1F2742" />
+        ) : (
+          <Ionicons name="image-outline" size={24} color="#1F2742" />
+        )}
+      </Pressable>
+      {customImage && (
+        <Pressable
+          style={[styles.emojiOption, styles.emojiOptionSelected]}
+          onPress={onRemoveImage}
+          accessibilityRole="button"
+          accessibilityLabel="Remove custom image"
+          accessibilityHint="Revert to emoji icon"
+        >
+          <Ionicons name="close" size={20} color="#1F2742" />
+        </Pressable>
+      )}
+      {EMOJIS.slice(0, visibleCount).map((emoji) => (
+        <EmojiCell
+          key={emoji}
+          emoji={emoji}
+          isSelected={emoji === selectedEmoji}
+          onSelect={onSelect}
+        />
+      ))}
     </View>
   );
 });
@@ -503,11 +556,7 @@ export default function AddHabitSheet({
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const isClosingRef = useRef(false);
   const isRequestingNotificationPermissionRef = useRef(false);
-  const sheetBackgroundColor = '#F7F8FC';
-  const previewBackgroundColor = useMemo(
-    () => lightenColor(selectedColor, 0.75),
-    [selectedColor]
-  );
+  const sheetBackgroundColor = useMemo(() => lightenColor(selectedColor, 0.75), [selectedColor]);
   const isEditMode = mode === 'edit';
   const isCopyMode = mode === 'copy';
   const submitLabel = isEditMode ? common.save : common.create;
@@ -589,7 +638,6 @@ export default function AddHabitSheet({
   }, []);
 
   const handleToggleEmojiPicker = useCallback(() => {
-    Keyboard.dismiss();
     setEmojiPickerVisible((prev) => !prev);
   }, []);
 
@@ -603,8 +651,7 @@ export default function AddHabitSheet({
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
-        // No Android, GIF animado só é preservado com quality 1 e sem edição.
-        quality: 1,
+        quality: 0.8,
       });
 
       if (!result.canceled && result.assets?.length) {
@@ -1668,17 +1715,13 @@ export default function AddHabitSheet({
             ) : null}
             <View style={styles.header}>
               <Pressable
-                style={styles.headerSideButton}
                 accessibilityRole="button"
                 accessibilityLabel="Close"
                 onPress={handleClose}
                 hitSlop={16}
               >
-                <Ionicons name="close" size={23} color="#4D5568" />
+                <Ionicons name="close" size={26} color="#6f7a86" />
               </Pressable>
-              <Text style={styles.headerTitle} numberOfLines={1}>
-                {isEditMode ? t.editTask : t.newTask}
-              </Text>
               <Pressable
                 style={[styles.createButton, isSubmitDisabled && styles.createButtonDisabled]}
                 accessibilityRole="button"
@@ -1698,132 +1741,71 @@ export default function AddHabitSheet({
               style={styles.scrollView}
               contentContainerStyle={[
                 styles.scrollViewContent,
-                { paddingBottom: Math.max(insets.bottom, 24) + 72 },
+                { paddingBottom: Math.max(insets.bottom, 24) + 240 },
               ]}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
             >
-              <View style={styles.heroSection}>
-                <Pressable
-                  style={styles.heroIconButton}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.chooseIcon}
-                  accessibilityHint={t.cardAppearanceHint}
-                  accessibilityState={{ expanded: isEmojiPickerVisible }}
-                  onPress={handleToggleEmojiPicker}
-                >
-                  <View
-                    style={[
-                      styles.visualIconPreview,
-                      { backgroundColor: lightenColor(selectedColor, 0.45) },
-                    ]}
-                  >
-                    {customImage ? (
-                      <Image source={{ uri: customImage }} style={styles.customIconImage} />
-                    ) : (
-                      <Text style={styles.visualIconEmoji}>{selectedEmoji}</Text>
-                    )}
-                  </View>
-                  <View style={styles.heroEditBadge}>
-                    <Ionicons name="pencil" size={10} color="#FFFFFF" />
-                  </View>
-                </Pressable>
-                <View style={styles.titleField}>
-                  <TextInput
-                    ref={titleInputRef}
-                    value={title}
-                    onChangeText={(text) => setTitle(text.slice(0, 50))}
-                    placeholder={t.taskNamePlaceholder}
-                    placeholderTextColor="#9AA2B1"
-                    style={styles.titleInput}
-                    accessibilityLabel={t.taskNamePlaceholder}
-                    maxLength={50}
-                    returnKeyType="done"
-                  />
-                  <Text style={styles.counter}>{`${title.length}/50`}</Text>
-                </View>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.heroMediaButton,
-                    pressed && !isLoadingImage && styles.heroMediaButtonPressed,
-                  ]}
-                  onPress={handlePickImage}
-                  accessibilityRole="button"
-                  accessibilityLabel={customImage ? t.replaceImage : t.uploadImage}
-                  accessibilityHint={t.uploadImageHint}
-                  disabled={isLoadingImage}
-                  accessibilityState={{ busy: isLoadingImage, disabled: isLoadingImage }}
-                >
-                  {isLoadingImage ? (
-                    <ActivityIndicator size="small" color="#3C2BA7" />
-                  ) : (
-                    <Ionicons name="image-outline" size={22} color="#3C2BA7" />
-                  )}
-                </Pressable>
-              </View>
+              <Pressable
+                style={[styles.emojiButton, isEmojiPickerVisible && styles.emojiButtonActive]}
+                accessibilityRole="button"
+                accessibilityLabel={`Choose icon, currently ${customImage ? 'custom image' : selectedEmoji}`}
+                accessibilityHint="Opens a list of emoji options"
+                onPress={handleToggleEmojiPicker}
+                hitSlop={12}
+              >
+                {customImage ? (
+                  <Image source={{ uri: customImage }} style={styles.customIconImage} />
+                ) : (
+                  <Text style={styles.emoji}>{selectedEmoji}</Text>
+                )}
+                <Ionicons
+                  name={isEmojiPickerVisible ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color="#6f7a86"
+                  style={styles.emojiChevron}
+                />
+              </Pressable>
               {isEmojiPickerVisible && (
-                <View style={styles.appearancePanel}>
-                  <View style={styles.appearancePanelHeader}>
-                    <Text style={styles.appearancePanelTitle}>{t.cardAppearance}</Text>
-                    {customImage && (
-                      <Pressable
-                        style={styles.removeImageButton}
-                        onPress={handleRemoveCustomImage}
-                        accessibilityRole="button"
-                        accessibilityLabel={t.removeImage}
-                      >
-                        <Ionicons name="trash-outline" size={14} color="#9A5260" />
-                        <Text style={styles.removeImageText} numberOfLines={1}>
-                          {t.removeImage}
-                        </Text>
-                      </Pressable>
-                    )}
-                  </View>
-                  <IconPicker
-                    selectedEmoji={selectedEmoji}
-                    onSelect={handleSelectEmoji}
-                    customImage={customImage}
-                    labels={t}
-                  />
-                  <View style={styles.colorRow}>
-                    <Text style={styles.colorLabel}>{t.cardColor}</Text>
-                    <ScrollView
-                      horizontal
-                      style={styles.paletteScroll}
-                      contentContainerStyle={styles.paletteContainer}
-                      showsHorizontalScrollIndicator={false}
-                      keyboardShouldPersistTaps="handled"
-                    >
-                      {(COLORS.includes(selectedColor)
-                        ? COLORS
-                        : [selectedColor, ...COLORS]
-                      ).map((color) => {
-                        const isSelected = selectedColor === color;
-                        return (
-                          <Pressable
-                            key={color}
-                            style={[
-                              styles.colorDot,
-                              { backgroundColor: color },
-                              isSelected && styles.colorDotSelected,
-                            ]}
-                            onPress={() => setSelectedColor(color)}
-                            accessibilityRole="button"
-                            accessibilityState={{ selected: isSelected }}
-                            accessibilityLabel={t.selectColor.replace('{color}', color)}
-                          >
-                            {isSelected && (
-                              <Ionicons name="checkmark" size={13} color="#1F2742" />
-                            )}
-                          </Pressable>
-                        );
-                      })}
-                    </ScrollView>
-                  </View>
-                </View>
+                <EmojiGrid
+                  selectedEmoji={selectedEmoji}
+                  onSelect={handleSelectEmoji}
+                  customImage={customImage}
+                  onPickImage={handlePickImage}
+                  onRemoveImage={handleRemoveCustomImage}
+                  isLoadingImage={isLoadingImage}
+                />
               )}
-              <Text style={styles.formSectionLabel}>{t.scheduleSection}</Text>
+              <TextInput
+                ref={titleInputRef}
+                value={title}
+                onChangeText={(text) => setTitle(text.slice(0, 50))}
+                placeholder={t.newTask}
+                placeholderTextColor="#7f8a9a"
+                style={styles.titleInput}
+                accessibilityLabel={t.newTask}
+                maxLength={50}
+                returnKeyType="done"
+              />
+              <Text style={styles.counter}>{`${title.length}/50`}</Text>
+              <View style={styles.paletteContainer}>
+                {COLORS.map((color) => {
+                  const isSelected = selectedColor === color;
+                  return (
+                    <Pressable
+                      key={color}
+                      style={[styles.colorDot, { backgroundColor: color }, isSelected && styles.colorDotSelected]}
+                      onPress={() => setSelectedColor(color)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
+                      accessibilityLabel={`Select color ${color}`}
+                    >
+                      {isSelected && <Ionicons name="checkmark" size={18} color="#1F2742" />}
+                    </Pressable>
+                  );
+                })}
+              </View>
               <View style={[styles.listContainer, activeInfoKey && styles.listContainerInfoActive]}>
                 <SheetRow
                   icon={(
@@ -1892,11 +1874,7 @@ export default function AddHabitSheet({
                   onPressInfo={() => showInfo('reminder')}
                   isInfoVisible={activeInfoKey === 'reminder'}
                   bubbleMaxWidth={infoBubbleMaxWidth}
-                  isLast
                 />
-              </View>
-              <Text style={styles.formSectionLabel}>{t.detailsSection}</Text>
-              <View style={[styles.listContainer, activeInfoKey && styles.listContainerInfoActive]}>
                 <SheetRow
                   icon={(
                     <View style={styles.rowIconContainer}>
@@ -2164,7 +2142,7 @@ export default function AddHabitSheet({
                   <View
                     style={[
                       styles.typePreviewCard,
-                      { backgroundColor: previewBackgroundColor, borderColor: selectedColor },
+                      { backgroundColor: sheetBackgroundColor, borderColor: selectedColor },
                     ]}
                     onLayout={(event) => {
                       const { width, height } = event.nativeEvent.layout;
@@ -3457,14 +3435,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#F7F8FC',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: '#DDE9FF',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 18,
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 24,
     overflow: 'hidden',
   },
   keyboardAvoiding: {
@@ -3472,7 +3450,8 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
+    paddingTop: 12,
   },
   infoBackdropDismiss: {
     ...StyleSheet.absoluteFillObject,
@@ -3481,203 +3460,111 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 52,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E4E7EE',
-  },
-  headerSideButton: {
-    width: 64,
-    height: 40,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    flex: 1,
-    color: '#202535',
-    fontSize: 17,
-    fontWeight: '700',
-    textAlign: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 12,
   },
   createButton: {
-    width: 64,
-    height: 40,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#1F2742',
   },
   createButtonDisabled: {
-    opacity: 0.45,
+    backgroundColor: '#B7C2D6',
   },
   createButtonText: {
-    color: '#4B3BB3',
+    color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 15,
   },
   createButtonTextDisabled: {
-    color: '#8D94A4',
+    color: '#E5EBF6',
   },
   scrollView: {
     flex: 1,
   },
   scrollViewContent: {
-    paddingTop: 22,
     paddingBottom: 48,
   },
-  heroSection: {
+  emojiButton: {
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    borderRadius: 56,
+    paddingHorizontal: 32,
+    paddingVertical: 10,
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
+    gap: 8,
+    marginBottom: 16,
   },
-  heroIconButton: {
-    width: 58,
-    height: 58,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  visualIconPreview: {
-    width: 54,
-    height: 54,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
+  emojiButtonActive: {
+    // shadowOpacity: 0.12,
+    // shadowRadius: 16,
+    // elevation: 6,
   },
   customIconImage: {
-    width: '100%',
-    height: '100%',
+    width: 67,
+    height: 67,
+    borderRadius: 33.5,
     resizeMode: 'cover',
   },
-  visualIconEmoji: {
-    fontSize: 29,
+  emoji: {
+    fontSize: 52,
     textAlign: 'center',
   },
-  heroEditBadge: {
-    position: 'absolute',
-    right: -1,
-    bottom: -1,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#4B3BB3',
-    borderWidth: 2,
-    borderColor: '#F7F8FC',
-  },
-  titleField: {
-    flex: 1,
-    minWidth: 0,
-    marginHorizontal: 13,
-    paddingBottom: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: '#D9DDE6',
-  },
-  titleInput: {
-    minHeight: 38,
-    paddingVertical: 4,
-    color: '#202535',
-    fontSize: 20,
-    fontWeight: '600',
-    textAlign: 'left',
-  },
-  counter: {
-    alignSelf: 'flex-end',
-    color: '#A0A6B4',
-    fontSize: 10,
-    fontWeight: '500',
-  },
-  heroMediaButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#D9DDE6',
-  },
-  heroMediaButtonPressed: {
-    opacity: 0.55,
-  },
-  appearancePanel: {
-    marginTop: -6,
-    marginBottom: 22,
-    padding: 14,
-    borderRadius: 16,
-    backgroundColor: '#FFFFFF',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#E2E5EC',
-  },
-  appearancePanelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  appearancePanelTitle: {
-    color: '#71798A',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  iconPickerPanel: {
+  emojiChevron: {
     marginTop: 10,
   },
-  removeImageButton: {
-    maxWidth: '65%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  removeImageText: {
-    flexShrink: 1,
-    color: '#9A5260',
-    fontSize: 11,
-    fontWeight: '600',
-  },
   emojiPicker: {
-    gap: 5,
-    paddingRight: 4,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 12,
+    marginBottom: 20,
   },
   emojiOption: {
-    width: 34,
-    height: 34,
-    borderRadius: 11,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F5F6FA',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(31,39,66,0.1)',
+    backgroundColor: '#F2F6FF',
+  },
+  emojiUploadOption: {
+    backgroundColor: '#E7F0FF',
   },
   emojiOptionSelected: {
-    backgroundColor: '#ECE9FB',
-    borderWidth: 1.5,
-    borderColor: '#6557B5',
+    backgroundColor: '#DDE9FF',
+    borderWidth: 2,
+    borderColor: '#1F2742',
   },
   emojiOptionText: {
-    fontSize: 20,
+    fontSize: 28,
   },
-  colorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 12,
-  },
-  colorLabel: {
-    color: '#687086',
-    fontSize: 12,
+  titleInput: {
+    fontSize: 24,
     fontWeight: '700',
+    color: '#1F2742',
+    textAlign: 'center',
   },
-  paletteScroll: {
-    flex: 1,
+  counter: {
+    textAlign: 'center',
+    color: '#7F8A9A',
+    marginTop: 4,
+    marginBottom: 24,
+    fontWeight: '500',
   },
   paletteContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 8,
-    paddingRight: 4,
+    marginBottom: 28,
   },
   colorDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
@@ -3685,23 +3572,19 @@ const styles = StyleSheet.create({
   },
   colorDotSelected: {
     borderWidth: 2,
-    borderColor: '#343B50',
-  },
-  formSectionLabel: {
-    marginLeft: 3,
-    marginBottom: 8,
-    color: '#858C9C',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.3,
+    borderColor: '#1F2742',
   },
   listContainer: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    marginBottom: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#E2E5EC',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 6,
     overflow: 'visible',
   },
   listContainerInfoActive: {
@@ -3713,11 +3596,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   subtasksTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#858C9C',
-    marginLeft: 3,
-    letterSpacing: 0.3,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2742',
+    marginLeft: 6,
   },
   sectionTitleRow: {
     flexDirection: 'row',
@@ -3729,12 +3611,15 @@ const styles = StyleSheet.create({
   },
   subtasksCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    paddingHorizontal: 14,
+    borderRadius: 20,
+    paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#E2E5EC',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 6,
     overflow: 'hidden',
     zIndex: 1,
   },
@@ -3800,7 +3685,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(109, 125, 150, 0.16)',
   },
@@ -3829,15 +3714,17 @@ const styles = StyleSheet.create({
     elevation: 130,
   },
   rowIconContainer: {
-    width: 28,
-    height: 32,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    backgroundColor: '#EEF3FF',
+    marginRight: 12,
   },
   rowLabel: {
-    fontSize: 15,
-    color: '#2A3040',
+    fontSize: 16,
+    color: '#1F2742',
     fontWeight: '600',
   },
   rowRight: {
@@ -3847,21 +3734,26 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   rowValue: {
-    color: '#858C9C',
-    fontSize: 14,
+    color: '#7F8A9A',
+    fontSize: 15,
   },
   overlayContainer: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#F7F8FC',
+    backgroundColor: '#DDE9FF',
     zIndex: 2,
   },
   overlayCard: {
     flex: 1,
-    borderRadius: 0,
-    backgroundColor: '#F7F8FC',
+    borderRadius: 28,
+    backgroundColor: '#FFFFFF',
     paddingTop: 12,
-    paddingHorizontal: 0,
+    paddingHorizontal: 20,
     paddingBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 10,
     overflow: 'visible',
   },
   overlayHeader: {
@@ -3905,10 +3797,8 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   optionList: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#E2E5EC',
+    backgroundColor: '#F5F7FF',
+    borderRadius: 20,
     overflow: 'hidden',
   },
   typePreviewSection: {
