@@ -375,28 +375,51 @@ function ScheduleApp() {
     },
     [BASE_HEIGHT]
   );
-  const today = useMemo(() => {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    return now;
-  }, []);
-  const todayKey = useMemo(() => getDateKey(today), [today]);
+  const currentDayKey = useMemo(() => getDateKey(currentTime), [currentTime]);
+  const today = useMemo(() => normalizeDateValue(currentDayKey), [currentDayKey]);
+  const todayKey = currentDayKey;
   const selectedDateKey = useMemo(() => getDateKey(selectedDate), [selectedDate]);
+  const previousTodayKeyRef = useRef(todayKey);
 
   useEffect(() => {
-    // currentTime só decide expiração de lembretes (granularidade de minuto).
+    const previousTodayKey = previousTodayKeyRef.current;
+    if (previousTodayKey === todayKey) {
+      return;
+    }
+
+    // Se o usuário estava acompanhando "hoje", acompanha a virada do dia.
+    // Uma data histórica escolhida manualmente permanece selecionada.
+    setSelectedDate((previousSelectedDate) =>
+      getDateKey(previousSelectedDate) === previousTodayKey
+        ? new Date(today)
+        : previousSelectedDate
+    );
+    previousTodayKeyRef.current = todayKey;
+  }, [today, todayKey]);
+
+  useEffect(() => {
+    // currentTime decide a expiração de lembretes e também a virada do dia.
     // Devolver o mesmo objeto enquanto o minuto não muda evita re-renderizar
     // o app inteiro a cada segundo.
-    const timerId = setInterval(() => {
+    const updateCurrentTime = () => {
       setCurrentTime((previous) => {
         const now = new Date();
         return Math.floor(now.getTime() / 60000) === Math.floor(previous.getTime() / 60000)
           ? previous
           : now;
       });
-    }, 10000);
+    };
+    const timerId = setInterval(updateCurrentTime, 10000);
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        updateCurrentTime();
+      }
+    });
 
-    return () => clearInterval(timerId);
+    return () => {
+      clearInterval(timerId);
+      appStateSubscription.remove();
+    };
   }, []);
 
   const isSelectedToday = selectedDateKey === todayKey;
@@ -879,7 +902,9 @@ function ScheduleApp() {
     const totalDays = Math.max(0, differenceInCalendarDays(today, startDate) + 1);
 
     const completions = profileFilterTask
-      ? profileFilterTask.completedDates?.length ?? 0
+      ? Object.values(profileFilterTask.completedDates ?? {}).filter(
+          (isCompleted) => isCompleted === true
+        ).length
       : 0;
 
     if (!statsTasks.length) {
@@ -3133,4 +3158,3 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
-

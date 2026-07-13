@@ -49,6 +49,8 @@ function DayReportModal({
 
   const scoredTasks = tasks.filter(shouldCountTaskTowardsCompletion);
   const totalTasks = scoredTasks.length;
+  const reminderTasks = tasks.filter((task) => task.type === 'reminder');
+  const hasOnlyReminders = reminderTasks.length > 0 && totalTasks === 0;
   const dateKey = date ? getDateKey(date) : null;
   const completedTasks = scoredTasks.filter((t) => t.completed).length;
   const targetSuccessRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
@@ -91,6 +93,9 @@ function DayReportModal({
   if (!visible || !date) return null;
 
   const getSummaryText = () => {
+    if (hasOnlyReminders) {
+      return t.report.onlyReminders.replace('{total}', String(reminderTasks.length));
+    }
     if (totalTasks === 0) return t.report.noHabits;
     if (targetSuccessRate === 100) return t.report.perfect;
     if (targetSuccessRate === 0)
@@ -266,9 +271,11 @@ function DayReportModal({
               </View>
             </View>
 
-            {totalTasks > 0 && (
+            {tasks.length > 0 && (
               <>
-                <Text style={styles.reportSectionTitle}>{t.report.habits}</Text>
+                <Text style={styles.reportSectionTitle}>
+                  {hasOnlyReminders ? t.report.reminders : t.report.habits}
+                </Text>
                 <View style={styles.reportTaskList}>
                   {tasks.map((task, index) => {
                     const baseColor = task.color || '#3c2ba7';
