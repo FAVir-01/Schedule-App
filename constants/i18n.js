@@ -36,6 +36,20 @@ const translations = {
       scheduleErrorTitle: 'Reminder not scheduled',
       scheduleErrorMessage: 'The task was saved, but its notification could not be scheduled. Try editing it again.',
     },
+    dataProtection: {
+      loadErrorTitle: 'Your data was protected',
+      loadErrorMessage: 'Some saved data could not be loaded. Automatic saving for that data was paused to avoid overwriting it. Export a backup from Settings before continuing.',
+    },
+    backup: {
+      exportLabel: 'Export backup',
+      exportHint: 'Creates a JSON copy of your app data.',
+      exporting: 'Exporting backup…',
+      successTitle: 'Backup exported',
+      successMessage: 'The file {fileName} was created. Photos and custom images are referenced, but are not embedded in this version of the backup.',
+      successWithRecovery: 'The file {fileName} was created and includes preserved raw data for recovery. Photos and custom images are referenced, but are not embedded.',
+      errorTitle: 'Backup failed',
+      errorMessage: 'The backup file could not be created. Please try again.',
+    },
     profile: {
       stats: 'Stats',
       totalDays: 'TOTAL DAYS',
@@ -260,6 +274,20 @@ const translations = {
       noUpcomingMessage: 'Esta tarefa não possui uma ocorrência futura disponível para notificação.',
       scheduleErrorTitle: 'Lembrete não agendado',
       scheduleErrorMessage: 'A tarefa foi salva, mas a notificação não pôde ser agendada. Tente editá-la novamente.',
+    },
+    dataProtection: {
+      loadErrorTitle: 'Seus dados foram protegidos',
+      loadErrorMessage: 'Parte dos dados salvos não pôde ser carregada. O salvamento automático desses dados foi pausado para evitar sobrescrita. Exporte um backup nas Configurações antes de continuar.',
+    },
+    backup: {
+      exportLabel: 'Exportar backup',
+      exportHint: 'Cria uma cópia JSON dos dados do aplicativo.',
+      exporting: 'Exportando backup…',
+      successTitle: 'Backup exportado',
+      successMessage: 'O arquivo {fileName} foi criado. Fotos e imagens personalizadas são referenciadas, mas ainda não são incorporadas nesta versão do backup.',
+      successWithRecovery: 'O arquivo {fileName} foi criado e inclui dados brutos preservados para recuperação. Fotos e imagens personalizadas são referenciadas, mas não são incorporadas.',
+      errorTitle: 'Falha no backup',
+      errorMessage: 'Não foi possível criar o arquivo de backup. Tente novamente.',
     },
     profile: {
       stats: 'Status',

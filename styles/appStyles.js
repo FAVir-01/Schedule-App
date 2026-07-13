@@ -1887,6 +1887,9 @@ export const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 14,
   },
+  settingsRowDisabled: {
+    opacity: 0.6,
+  },
   settingsRowLabel: {
     flex: 1,
     fontSize: 15,

@@ -12,7 +12,8 @@
 
 - **13 de julho de 2026 — Sessão 1 concluída:** B01, B03, B08 e B12 implementados.
 - **13 de julho de 2026 — Sessão 2 concluída:** B05, B06 e B07 implementados; validação final em aparelhos Android e iOS ainda necessária.
-- **Próximo bloco recomendado:** B09 simplificado e N01, referentes à proteção dos dados e exportação de backup.
+- **13 de julho de 2026 — Sessão 3 concluída:** primeira fase de B09 e a exportação de N01 implementadas; importação/restauração e incorporação de mídia continuam pendentes.
+- **Próximo bloco obrigatório antes de release:** B17, referente à identidade, versão e assinatura Android.
 
 ## 1. Objetivo
 
@@ -66,7 +67,7 @@ O arquivo `bugreport-sdk_gphone16k_x86_64-CP21.260330.005-2026-07-09-19-27-27.zi
 | B06 — Implementado na Sessão 2; validar em aparelho | **Exclusões deixavam notificações órfãs ou cancelavam lembretes de tarefas bloqueadas.** Exclusões pelo card e perfil agora cancelam todos os IDs associados; a seleção em massa filtra bloqueadas antes do cancelamento. A reconciliação também remove agendamentos órfãos identificados pelo ID da tarefa. | Impede notificações de tarefas apagadas e preserva lembretes de tarefas bloqueadas. | Pequeno–médio / **Alta** | Implementado em [App.js](./App.js) e [reminderService.js](./services/reminderService.js). Validar exclusão normal, em massa, bloqueada e exclusão logo após criar/editar. |
 | B07 — Implementado na Sessão 2; validar em aparelho | **O formulário aceitava lembrete sem horário e solicitava permissão ao abrir o painel.** [AddHabitSheet.js](./components/AddHabitSheet.js) agora exige horário, pede permissão apenas ao aplicar a opção e apresenta feedback localizado para negação, indisponibilidade e falha de agendamento. | Reduz configurações que parecem ativas mas nunca notificam e deixa a solicitação de permissão contextual. | Médio / **Alta** | Implementado com tratamento explícito de erros. Validar permissão concedida, negada, revogada e reativada nas configurações do sistema. Depende de U04/T04. |
 | B08 — Implementado na Sessão 1 | **O aplicativo não acompanhava a virada do dia.** `today` era calculado uma vez com `useMemo([])` em [App.js](./App.js#L378). | Após passar da meia-noite ou voltar do background, a tela podia mostrar e registrar no dia errado. | Pequeno / **Alta** | Implementado: derivar o dia do relógio atualizado, sincronizar ao retornar ao app e avançar `selectedDate` somente quando o usuário estava em “hoje”. |
-| B09 — Caminho de risco confirmado | **JSON válido com formato errado pode provocar sobrescrita de dados.** [storage.js](./storage.js#L16) valida apenas a sintaxe. Se `tasks` for um objeto, a carga não o aceita como array, mas também não marca falha; após hidratar, o estado vazio pode ser salvo sobre o valor original em [App.js](./App.js#L1213). Falhas de escrita são apenas registradas no console. | Possível perda definitiva de dados locais, sem backup ou aviso. | Médio–grande / **Crítica** | Adicionar esquemas, versão de dados, backup antes de migrações, retorno explícito de sucesso/erro e modo somente leitura quando a validação falhar. Incluir `moodAppearance` no controle de falhas. Depende de T02 e N01. |
+| B09 — Primeira fase implementada na Sessão 3; validar em aparelho | **JSON válido com formato errado podia provocar sobrescrita de dados.** [storage.js](./storage.js) agora valida a estrutura de nível superior de cada store, preserva o valor bruto inválido e sinaliza falha. [App.js](./App.js) inicia em modo protegido, bloqueia as escritas da store que falhou — incluindo imagens mensais e `moodAppearance` — e avisa o usuário. | Reduz o risco imediato de substituir dados locais válidos por estados vazios e oferece material bruto para recuperação. Ainda não há validação campo a campo nem feedback de falha de escrita. | Médio / **Crítica** | Implementado no escopo simplificado aprovado. Validar dados malformados e falhas reais de leitura em Android/iOS. Depois, adicionar esquema versionado mais profundo, retorno explícito das escritas e a importação/restauração de N01. |
 | B10 — Confirmado | **Tarefas quantum inválidas e progresso inconsistente.** O formulário valida apenas título e aceita timer `0:00` ou contador zero em [AddHabitSheet.js](./components/AddHabitSheet.js#L1162). Ao alterar tipo, modo ou meta, `completedDates` e `progressByDate` antigos permanecem em [App.js](./App.js#L1941). | Tarefa impossível de progredir ou marcada como concluída com uma meta que já mudou. | Médio / **Alta** | Validar meta positiva e definir política explícita para recalcular, preservar ou reiniciar progresso durante a edição. Depende de T03/T04. |
 | B11 — Confirmado | **Repetição permite data final anterior ao início.** O seletor de fim usa “hoje” como mínimo, não a data inicial, em [AddHabitSheet.js](./components/AddHabitSheet.js#L2924). A regra sempre mostra a tarefa no dia inicial antes de verificar o fim em [dateUtils.js](./utils/dateUtils.js#L121). Datas como `2026-02-31` também são normalizadas pelo JavaScript. | Configurações contraditórias e tarefas que aparecem uma única vez sem explicação. | Pequeno–médio / **Média** | Validar calendário real, garantir `endDate >= startDate` e aplicar a regra de término antes do caso especial do início. |
 | B12 — Implementado na Sessão 1 | **Relatório com apenas lembretes ficava vazio.** O total excluía lembretes e também controlava a renderização da lista em [DayReportModal.js](./components/DayReportModal.js#L49). | Um dia com lembretes mostrava “sem hábitos” e ocultava os próprios lembretes. | Pequeno / **Média** | Implementado: manter lembretes fora da taxa de sucesso, mas exibi-los com resumo e título próprios. |
@@ -115,7 +116,7 @@ O arquivo `bugreport-sdk_gphone16k_x86_64-CP21.260330.005-2026-07-09-19-27-27.zi
 | ID | Descrição e evidência | Impacto e risco | Esforço / prioridade | Recomendação e dependências |
 |---|---|---|---|---|
 | T01 | **Componentes monolíticos.** [App.js](./App.js#L254) possui cerca de 3.100 linhas; [AddHabitSheet.js](./components/AddHabitSheet.js) possui cerca de 4.300. Estado, persistência, notificações, domínio e UI estão misturados. | Alta chance de regressão e dificuldade de teste. | Grande, gradual / **Alta** | Extrair por domínio: tarefas, calendário, perfil, reflexões, notificações e persistência. Não reescrever telas inteiras; mover funções puras primeiro. |
-| T02 | **Persistência sem validação estrutural suficiente.** Stores separados são salvos sem esquema de formato ou retorno de erro. | Dados inválidos podem ser tratados como estado vazio e sobrescritos. | Médio / **Crítica para B09** | Primeira fase: validar formato no `load`, bloquear qualquer escrita após falha de leitura e oferecer exportação N01. Avaliar transações e snapshots somente se a complexidade futura justificar. |
+| T02 — Primeira fase implementada na Sessão 3 | **Persistência ainda não tem esquema campo a campo nem retorno de erro, mas passou a validar o formato de nível superior.** Stores inválidas são preservadas e entram em modo protegido contra escrita. | Remove o caminho confirmado de sobrescrita após falha de leitura; erros de gravação e incompatibilidades internas ainda precisam de tratamento. | Pequeno–médio entregue; restante médio / **Alta** | Validar a proteção em aparelhos e evoluir gradualmente para schema versionado e retorno explícito de escrita. Transações e snapshots só devem ser avaliados se a complexidade futura justificar. |
 | T03 | **Lógica de domínio espalhada.** Recorrência, progresso, lembrete, exclusão e analytics são calculados em vários componentes. | Regras divergentes entre perfil, calendário e Hoje. | Médio–grande / **Alta** | Serviços ou funções puras para agenda, conclusão, quantum e lembretes; usar os mesmos resultados em todas as telas. |
 | T04 | **Ausência completa de testes e checks.** Não há arquivos de teste; [package.json](./package.json#L21) não possui scripts de teste, lint ou typecheck. | Bugs simples, como `.length` em objeto, chegam ao fluxo principal. | Pequeno inicialmente / **Alta** | Começar com uma suíte mínima para data, recorrência, quantum, perfil e persistência. Expandir somente ao corrigir bugs ou alterar regras críticas. |
 | T05 | **Trabalho pesado na thread de UI.** Perfil e calendário varrem listas repetidamente; Hoje monta todos os cards; GIFs de calendário chegam a 385 frames e dimensões de 1024 px, por exemplo [feb.gif](./assets/months/feb.gif). | Queda de FPS e memória em aparelhos modestos. | Médio–grande / **Alta** | Pré-indexar dados, virtualizar listas, limitar caches, medir imagens e gerar assets apropriados por uso. |
@@ -132,7 +133,7 @@ As propostas abaixo consideram o que já existe: tarefas, quantum, reflexões co
 
 | ID | Problema e funcionamento | Evidência e valor | Complexidade e riscos | Momento e dependências |
 |---|---|---|---|---|
-| N01 — Exportar, importar e restaurar | Gerar arquivo versionado contendo tarefas, reflexões, configurações e, opcionalmente, mídia. A importação deve mostrar prévia e nunca sobrescrever sem confirmação. | Resolve a fragilidade do armazenamento exclusivamente local em [storage.js](./storage.js). | Média; criptografia, tamanho de fotos e migração. | **Agora**, antes de grandes migrações. Depende de T02. |
+| N01 — Exportação implementada; importação/restauração pendentes | [backupService.js](./services/backupService.js) gera um JSON versionado com tarefas, reflexões, configurações, humores, aparência, imagens mensais e snapshot bruto de recuperação. O usuário exporta pelas Configurações; Android usa seletor de pasta, iOS usa compartilhamento e web faz download. As URIs de mídia são listadas, mas os arquivos ainda não são incorporados. | Cria a primeira rede de segurança explícita para dados exclusivamente locais e preserva dados brutos quando uma store falha. | Pequena–média entregue; restante médio–grande por causa de mídia, validação, migração e conflitos. | **Exportação entregue na Sessão 3.** Validar em Android/iOS/web. A próxima fase deve importar com prévia, validação de versão e confirmação, sem sobrescrever automaticamente. Depende da evolução de T02. |
 | N02 — Templates e onboarding na aba Descubra | Transformar o placeholder em coleções como estudo, saúde, rotina matinal e organização; o usuário visualiza e escolhe o que importar. | Reduz a barreira da primeira tarefa e dá função real à aba existente. | Média; evitar excesso de templates e recomendações genéricas. | **Agora ou depois da estabilização**. Depende de U01. |
 | N03 — Metas explícitas e comparação de períodos | Permitir meta semanal ou mensal por hábito e comparação com período anterior. Reutilizar o gráfico, mas separar meta, taxa e volume. | Dá contexto ao progresso, hoje exibido sem objetivo definido. | Média; não punir hábitos não diários. | **Depois**. Depende de B01–B04 e T03. |
 | N04 — Lembretes inteligentes | Sugerir horários com base em quando o usuário normalmente conclui, permitindo aceitar, ajustar ou ignorar. | Aumenta utilidade sem elevar a quantidade de notificações. | Média–grande; permissão, transparência, timezone e risco de spam. | **Depois**, somente após B05–B07. |
@@ -162,7 +163,7 @@ As propostas abaixo consideram o que já existe: tarefas, quantum, reflexões co
 
 1. **Sessão 1 — concluída:** B01, B08, B03 e B12.
 2. **Sessão 2 — concluída:** B05, B06 e B07 — bloco coeso de lembretes.
-3. **Sessão 3:** B09 com proteção simplificada e N01 como rede de segurança.
+3. **Sessão 3 — concluída:** primeira fase de B09 e exportação de N01 como rede de segurança.
 4. **Antes de qualquer release:** B17, alinhando a identidade Android.
 
 ### Etapa 1 — Estabilização
@@ -170,7 +171,7 @@ As propostas abaixo consideram o que já existe: tarefas, quantum, reflexões co
 Ordem sugerida:
 
 1. Criar fixtures e proteção de dados antes de modificar persistência.
-2. Corrigir B09 com validação estrutural, bloqueio de escrita após falha e backup N01.
+2. Validar em aparelhos a primeira fase de B09 e a exportação de N01 implementadas na Sessão 3; planejar importação/restauração separadamente.
 3. Corrigir lembretes B05–B07.
 4. Corrigir o perfil B01–B03 e reproduzir B04.
 5. Corrigir virada do dia, quantum, recorrência, relatório e calendário.
@@ -218,7 +219,7 @@ Cenários obrigatórios:
 
 Prioridade sugerida:
 
-1. N01 — exportação e importação.
+1. N01 — concluir importação/restauração e decidir a estratégia de mídia após validar a exportação.
 2. N02 — templates.
 3. N03 — metas e comparação.
 4. N05 — resumos locais.

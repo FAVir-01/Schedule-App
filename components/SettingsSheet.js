@@ -1,5 +1,12 @@
-import React from 'react';
-import { Modal, Pressable, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { translations } from '../constants/i18n';
@@ -7,9 +14,29 @@ import { styles } from '../styles/appStyles';
 
 // Configurações do app (idioma, personalização) fora da área principal do
 // Profile: abre pela engrenagem do cabeçalho.
-function SettingsSheet({ visible, onClose, language = 'en', onChangeLanguage, onCustomizeCalendar }) {
+function SettingsSheet({
+  visible,
+  onClose,
+  language = 'en',
+  onChangeLanguage,
+  onCustomizeCalendar,
+  onExportBackup,
+}) {
   const insets = useSafeAreaInsets();
   const t = translations[language] ?? translations.en;
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportBackup = useCallback(async () => {
+    if (isExporting) {
+      return;
+    }
+    setIsExporting(true);
+    try {
+      await onExportBackup?.();
+    } finally {
+      setIsExporting(false);
+    }
+  }, [isExporting, onExportBackup]);
 
   return (
     <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
@@ -65,6 +92,27 @@ function SettingsSheet({ visible, onClose, language = 'en', onChangeLanguage, on
               <Ionicons name="images-outline" size={20} color="#3c2ba7" />
               <Text style={styles.settingsRowLabel}>{t.profile.customizeCalendar}</Text>
               <Ionicons name="chevron-forward" size={18} color="#9a96b8" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.settingsRow, isExporting && styles.settingsRowDisabled]}
+              onPress={handleExportBackup}
+              activeOpacity={0.7}
+              disabled={isExporting}
+              accessibilityRole="button"
+              accessibilityLabel={t.backup.exportLabel}
+              accessibilityHint={t.backup.exportHint}
+              accessibilityState={{ disabled: isExporting, busy: isExporting }}
+            >
+              <Ionicons name="download-outline" size={20} color="#3c2ba7" />
+              <Text style={styles.settingsRowLabel}>
+                {isExporting ? t.backup.exporting : t.backup.exportLabel}
+              </Text>
+              {isExporting ? (
+                <ActivityIndicator size="small" color="#3c2ba7" />
+              ) : (
+                <Ionicons name="chevron-forward" size={18} color="#9a96b8" />
+              )}
             </TouchableOpacity>
           </View>
         </View>

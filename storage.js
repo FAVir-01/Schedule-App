@@ -11,18 +11,37 @@ const STORAGE_KEYS = {
   MOOD_APPEARANCE: '@schedule_app/mood_appearance',
 };
 
-// Se o JSON estiver corrompido, guarda o dado bruto numa chave de backup
-// antes de cair no fallback, para nunca destruir dados irrecuperáveis.
-const parseStoredJson = (key, value, fallback) => {
+const isPlainObject = (value) =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const isObjectArray = (value) =>
+  Array.isArray(value) &&
+  value.every((item) => item == null || isPlainObject(item));
+
+const preserveInvalidStoredValue = (key, value) => {
+  AsyncStorage.setItem(`${key}_corrupt_backup`, value).catch((error) => {
+    console.warn('Failed to preserve invalid stored data', error);
+  });
+};
+
+// Se o JSON ou sua estrutura estiverem inválidos, guarda o dado bruto numa
+// chave de recuperação e sinaliza falha para bloquear qualquer sobrescrita.
+const parseStoredJson = (key, value, fallback, isValid) => {
   if (value == null) {
     return fallback;
   }
   try {
-    return JSON.parse(value);
+    const parsed = JSON.parse(value);
+    if (!isValid(parsed)) {
+      console.warn(`Stored data has an invalid format: ${key}`);
+      preserveInvalidStoredValue(key, value);
+      return undefined;
+    }
+    return parsed;
   } catch (error) {
     console.warn('Failed to parse stored data', error);
-    AsyncStorage.setItem(`${key}_corrupt_backup`, value).catch(() => {});
-    return fallback;
+    preserveInvalidStoredValue(key, value);
+    return undefined;
   }
 };
 
@@ -31,7 +50,7 @@ const parseStoredJson = (key, value, fallback) => {
 export async function loadTasks() {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.TASKS);
-    return parseStoredJson(STORAGE_KEYS.TASKS, raw, []);
+    return parseStoredJson(STORAGE_KEYS.TASKS, raw, [], isObjectArray);
   } catch (error) {
     console.warn('Failed to load tasks', error);
     return undefined;
@@ -49,7 +68,12 @@ export async function saveTasks(tasks) {
 export async function loadUserSettings() {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.SETTINGS);
-    return parseStoredJson(STORAGE_KEYS.SETTINGS, raw, null);
+    return parseStoredJson(
+      STORAGE_KEYS.SETTINGS,
+      raw,
+      null,
+      (value) => value === null || isPlainObject(value)
+    );
   } catch (error) {
     console.warn('Failed to load settings', error);
     return undefined;
@@ -67,7 +91,7 @@ export async function saveUserSettings(settings) {
 export async function loadHistory() {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.HISTORY);
-    return parseStoredJson(STORAGE_KEYS.HISTORY, raw, []);
+    return parseStoredJson(STORAGE_KEYS.HISTORY, raw, [], isObjectArray);
   } catch (error) {
     console.warn('Failed to load history', error);
     return undefined;
@@ -85,7 +109,7 @@ export async function saveHistory(history) {
 export async function loadMonthImages() {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.MONTH_IMAGES);
-    return parseStoredJson(STORAGE_KEYS.MONTH_IMAGES, raw, {});
+    return parseStoredJson(STORAGE_KEYS.MONTH_IMAGES, raw, {}, isPlainObject);
   } catch (error) {
     console.warn('Failed to load month images', error);
     return undefined;
@@ -105,7 +129,7 @@ export async function saveMonthImages(imagesMap) {
 export async function loadDayMoods() {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.DAY_MOODS);
-    return parseStoredJson(STORAGE_KEYS.DAY_MOODS, raw, {});
+    return parseStoredJson(STORAGE_KEYS.DAY_MOODS, raw, {}, isPlainObject);
   } catch (error) {
     console.warn('Failed to load day moods', error);
     return undefined;
@@ -124,7 +148,7 @@ export async function saveDayMoods(moodsMap) {
 export async function loadMoodAppearance() {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.MOOD_APPEARANCE);
-    return parseStoredJson(STORAGE_KEYS.MOOD_APPEARANCE, raw, {});
+    return parseStoredJson(STORAGE_KEYS.MOOD_APPEARANCE, raw, {}, isPlainObject);
   } catch (error) {
     console.warn('Failed to load mood appearance', error);
     return undefined;
@@ -139,6 +163,20 @@ export async function saveMoodAppearance(appearanceMap) {
     );
   } catch (error) {
     console.warn('Failed to save mood appearance', error);
+  }
+}
+
+export async function getRawStorageSnapshot() {
+  const primaryKeys = Object.values(STORAGE_KEYS);
+  const recoveryKeys = primaryKeys.map((key) => `${key}_corrupt_backup`);
+  try {
+    const entries = await AsyncStorage.multiGet([...primaryKeys, ...recoveryKeys]);
+    return Object.fromEntries(
+      entries.filter(([, value]) => value !== null)
+    );
+  } catch (error) {
+    console.warn('Failed to read raw storage snapshot', error);
+    return null;
   }
 }
 

@@ -105,10 +105,20 @@ import {
   reconcileTaskReminderSchedules,
   scheduleTaskReminders,
 } from './services/reminderService';
+import { exportAppBackup } from './services/backupService';
 
 
 const habitImage = require('./assets/add-habit.png');
 const reflectionImage = require('./assets/add-reflection.png');
+
+const INITIAL_STORAGE_LOAD_FAILURES = {
+  tasks: true,
+  settings: true,
+  history: true,
+  images: true,
+  moods: true,
+  appearance: true,
+};
 
 const buildCalendarMonthItem = (id, baseDate) => {
   const date = getMonthStart(baseDate);
@@ -300,7 +310,8 @@ function ScheduleApp() {
   const historySaveTimeoutRef = useRef(null);
   const dayMoodsSaveTimeoutRef = useRef(null);
   // Marca quais stores falharam ao carregar, p/ não sobrescrever dado bom com estado vazio
-  const loadFailuresRef = useRef({});
+  const loadFailuresRef = useRef({ ...INITIAL_STORAGE_LOAD_FAILURES });
+  const storageProtectionAlertShownRef = useRef(false);
   // Espelhos do estado mais recente p/ flush imediato quando o app vai pra background
   const tasksRef = useRef(null);
   const userSettingsRef = useRef(null);
@@ -1253,13 +1264,28 @@ function ScheduleApp() {
           return;
         }
 
-        loadFailuresRef.current = {
+        const storageLoadFailures = {
           tasks: storedTasks === undefined,
           settings: storedSettings === undefined,
           history: storedHistory === undefined,
           images: storedImages === undefined,
           moods: storedMoods === undefined,
+          appearance: storedAppearance === undefined,
         };
+        loadFailuresRef.current = storageLoadFailures;
+
+        if (
+          Object.values(storageLoadFailures).some(Boolean) &&
+          !storageProtectionAlertShownRef.current
+        ) {
+          storageProtectionAlertShownRef.current = true;
+          const alertLanguage = storedSettings?.language ?? DEFAULT_USER_SETTINGS.language;
+          const alertText = translations[alertLanguage] ?? translations.en;
+          Alert.alert(
+            alertText.dataProtection.loadErrorTitle,
+            alertText.dataProtection.loadErrorMessage
+          );
+        }
 
         if (Array.isArray(storedTasks)) {
           setTasks(normalizeStoredTasks(storedTasks));
@@ -1291,6 +1317,14 @@ function ScheduleApp() {
         }
       } catch (error) {
         console.warn('Failed to load stored data', error);
+        if (isMounted && !storageProtectionAlertShownRef.current) {
+          storageProtectionAlertShownRef.current = true;
+          const alertText = translations[DEFAULT_USER_SETTINGS.language] ?? translations.en;
+          Alert.alert(
+            alertText.dataProtection.loadErrorTitle,
+            alertText.dataProtection.loadErrorMessage
+          );
+        }
       } finally {
         if (isMounted) {
           setIsHydrated(true);
@@ -1447,19 +1481,28 @@ function ScheduleApp() {
     };
   }, []);
 
+  const showDataProtectionAlert = useCallback(() => {
+    Alert.alert(
+      t.dataProtection.loadErrorTitle,
+      t.dataProtection.loadErrorMessage
+    );
+  }, [t.dataProtection]);
+
   const handleUpdateMonthImage = useCallback(
     async (monthIndex, uri) => {
+      if (loadFailuresRef.current.images) {
+        showDataProtectionAlert();
+        return;
+      }
       const updatedImages = {
         ...customMonthImages,
         [monthIndex]: uri,
       };
 
       setCustomMonthImages(updatedImages);
-      if (!loadFailuresRef.current.images) {
-        await saveMonthImages(updatedImages);
-      }
+      await saveMonthImages(updatedImages);
     },
-    [customMonthImages]
+    [customMonthImages, showDataProtectionAlert]
   );
 
   const updateUserSettings = useCallback((updates) => {
@@ -1468,6 +1511,41 @@ function ScheduleApp() {
       ...updates,
     }));
   }, []);
+
+  const handleExportBackup = useCallback(async () => {
+    try {
+      const result = await exportAppBackup({
+        tasks,
+        userSettings,
+        history,
+        monthImages: customMonthImages,
+        dayMoods,
+        moodAppearance,
+        loadFailures: { ...loadFailuresRef.current },
+      });
+      if (result.status === 'cancelled') {
+        return;
+      }
+      const messageTemplate = result.includesRecoveryData
+        ? t.backup.successWithRecovery
+        : t.backup.successMessage;
+      Alert.alert(
+        t.backup.successTitle,
+        messageTemplate.split('{fileName}').join(result.fileName)
+      );
+    } catch (error) {
+      console.warn('Failed to export backup', error);
+      Alert.alert(t.backup.errorTitle, t.backup.errorMessage);
+    }
+  }, [
+    customMonthImages,
+    dayMoods,
+    history,
+    moodAppearance,
+    t.backup,
+    tasks,
+    userSettings,
+  ]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') {
@@ -1617,18 +1695,25 @@ function ScheduleApp() {
 
   // Aparência é pequena e muda raramente: salva na hora, sem debounce.
   // Arquivo antigo substituído é apagado depois pela limpeza de órfãos.
-  const handleSetMoodAppearance = useCallback((level, uri) => {
-    setMoodAppearance((previous) => {
-      const next = { ...previous };
-      if (uri) {
-        next[level] = uri;
-      } else {
-        delete next[level];
+  const handleSetMoodAppearance = useCallback(
+    (level, uri) => {
+      if (loadFailuresRef.current.appearance) {
+        showDataProtectionAlert();
+        return;
       }
-      void saveMoodAppearance(next);
-      return next;
-    });
-  }, []);
+      setMoodAppearance((previous) => {
+        const next = { ...previous };
+        if (uri) {
+          next[level] = uri;
+        } else {
+          delete next[level];
+        }
+        void saveMoodAppearance(next);
+        return next;
+      });
+    },
+    [showDataProtectionAlert]
+  );
 
   const handleCloseCreateHabit = useCallback(() => {
     setIsHabitSheetOpen(false);
@@ -3142,6 +3227,7 @@ function ScheduleApp() {
         language={language}
         onChangeLanguage={(key) => updateUserSettings({ language: key })}
         onCustomizeCalendar={() => setCustomizeCalendarOpen(true)}
+        onExportBackup={handleExportBackup}
       />
       <CustomizeCalendarModal
         visible={isCustomizeCalendarOpen}
