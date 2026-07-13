@@ -53,12 +53,22 @@ const normalizeDateValue = (value) => {
   }
   if (value instanceof Date) {
     const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
     date.setHours(0, 0, 0, 0);
     return date;
   }
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
     const [year, month, day] = value.split('-').map((part) => Number.parseInt(part, 10));
     const date = new Date(year, month - 1, day);
+    if (
+      date.getFullYear() !== year ||
+      date.getMonth() !== month - 1 ||
+      date.getDate() !== day
+    ) {
+      return null;
+    }
     date.setHours(0, 0, 0, 0);
     return date;
   }
@@ -98,6 +108,15 @@ const isSameDay = (dateA, dateB) => {
   return isSameDayDateFns(dateA, dateB);
 };
 
+const isValidDateRange = (startDate, endDate) => {
+  const normalizedStart = normalizeDateValue(startDate);
+  const normalizedEnd = normalizeDateValue(endDate);
+  if (!normalizedStart || !normalizedEnd) {
+    return false;
+  }
+  return !isBefore(normalizedEnd, normalizedStart);
+};
+
 const getWeekdayKeyFromDate = (date) => {
   const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
   return WEEKDAY_KEYS[date.getDay()] ?? null;
@@ -117,6 +136,11 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
 
   const targetDay = startOfDay(normalizedTargetDate);
   const startDay = startOfDay(normalizedStartDate);
+  const configuredEndDate = normalizeDateValue(task.repeat?.endDate);
+
+  if (configuredEndDate && isBefore(configuredEndDate, targetDay)) {
+    return false;
+  }
 
   if (isSameDay(startDay, targetDay)) {
     return true;
@@ -151,11 +175,6 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
   const rawFrequency = repeat.frequency || repeat.option || 'daily';
   const frequency = rawFrequency === 'interval' ? 'daily' : rawFrequency;
   const interval = normalizeRepeatInterval(repeat.interval);
-
-  const endDate = normalizeDateValue(repeat.endDate);
-  if (endDate && isBefore(endDate, targetDay)) {
-    return false;
-  }
 
   switch (frequency) {
     case 'daily':
@@ -206,6 +225,7 @@ export {
   getMonthStart,
   getWeekdayKeyFromDate,
   isSameDay,
+  isValidDateRange,
   normalizeDateValue,
   shouldTaskAppearOnDate,
 };

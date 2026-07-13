@@ -25,7 +25,14 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { formatTaskTime, toTimerSeconds } from '../utils/timeUtils';
-import { getQuantumProgressLabel, getQuantumProgressPercent } from '../utils/taskUtils';
+import { isValidDateRange } from '../utils/dateUtils';
+import {
+  getQuantumProgressLabel,
+  getQuantumProgressPercent,
+  hasTaskProgress,
+  isValidQuantumDefinition,
+  shouldResetTaskProgress,
+} from '../utils/taskUtils';
 import { buildWavePath } from '../utils/waveUtils';
 import { translations } from '../constants/i18n';
 import { requestReminderPermission } from '../services/reminderService';
@@ -711,7 +718,9 @@ export default function AddHabitSheet({
         setPendingWeekdays(new Set(selectedWeekdays));
         setPendingMonthDays(new Set(selectedMonthDays));
         setPendingHasEndDate(hasEndDate);
-        setPendingEndDate(endDate ?? startDate);
+        setPendingEndDate(
+          endDate && isValidDateRange(startDate, endDate) ? endDate : startDate
+        );
       } else if (panel === 'time') {
         setPendingHasSpecifiedTime(hasSpecifiedTime);
         setPendingTimeMode(timeMode);
@@ -771,6 +780,10 @@ export default function AddHabitSheet({
   const handleApplyDate = useCallback(() => {
     const normalizedDate = normalizeDate(pendingDate);
     setStartDate(normalizedDate);
+    if (hasEndDate && endDate && !isValidDateRange(normalizedDate, endDate)) {
+      setEndDate(normalizedDate);
+      setPendingEndDate(normalizedDate);
+    }
     setCalendarMonthState(new Date(normalizedDate.getFullYear(), normalizedDate.getMonth(), 1));
     if (repeatFrequency === 'weekly' && selectedWeekdays.size === 0) {
       setSelectedWeekdays(new Set([getWeekdayKeyFromDate(normalizedDate)]));
@@ -781,6 +794,8 @@ export default function AddHabitSheet({
     closePanel();
   }, [
     closePanel,
+    endDate,
+    hasEndDate,
     pendingDate,
     repeatFrequency,
     selectedMonthDays,
@@ -801,13 +816,23 @@ export default function AddHabitSheet({
         ? (pendingMonthDays.size ? new Set(pendingMonthDays) : new Set([startDate.getDate()]))
         : new Set(pendingMonthDays);
 
+    const normalizedEndDate = pendingEndDate ? normalizeDate(pendingEndDate) : null;
+    if (
+      pendingIsRepeatEnabled &&
+      pendingHasEndDate &&
+      (!normalizedEndDate || !isValidDateRange(startDate, normalizedEndDate))
+    ) {
+      Alert.alert(t.invalidEndDateTitle, t.invalidEndDateMessage);
+      return;
+    }
+
     setIsRepeatEnabled(pendingIsRepeatEnabled);
     setRepeatFrequency(pendingRepeatFrequency);
     setRepeatInterval(normalizedInterval);
     setSelectedWeekdays(resolvedWeekdays);
     setSelectedMonthDays(resolvedMonthDays);
     setHasEndDate(pendingHasEndDate && !!pendingEndDate);
-    setEndDate(pendingHasEndDate && pendingEndDate ? normalizeDate(pendingEndDate) : null);
+    setEndDate(pendingHasEndDate ? normalizedEndDate : null);
     closePanel();
   }, [
     closePanel,
@@ -819,6 +844,8 @@ export default function AddHabitSheet({
     pendingRepeatInterval,
     pendingWeekdays,
     startDate,
+    t.invalidEndDateMessage,
+    t.invalidEndDateTitle,
   ]);
 
   const handleApplyTime = useCallback(() => {
@@ -959,7 +986,10 @@ export default function AddHabitSheet({
       }
       if (repeatSettings.endDate) {
         resolvedHasEndDate = true;
-        resolvedEndDate = normalizeDate(new Date(repeatSettings.endDate));
+        const candidateEndDate = normalizeDate(new Date(repeatSettings.endDate));
+        resolvedEndDate = isValidDateRange(resolvedStartDate, candidateEndDate)
+          ? candidateEndDate
+          : resolvedStartDate;
       }
     } else if (repeatSettings.option) {
       const option = repeatSettings.option;
@@ -1206,6 +1236,37 @@ export default function AddHabitSheet({
       tagOptions.find((option) => option.key === selectedTag) ?? tagOptions[0];
     const selectedTypeOption =
       typeOptions.find((option) => option.key === selectedType) ?? typeOptions[0];
+    const quantumPayload = {
+      mode: quantumMode,
+      animation: quantumAnimation,
+      timer: {
+        minutes: Number.parseInt(quantumTimerMinutes, 10) || 0,
+        seconds: Number.parseInt(quantumTimerSeconds, 10) || 0,
+      },
+      count: {
+        value: Number.parseInt(quantumCountValue, 10) || 0,
+        unit: quantumCountUnit.trim(),
+      },
+    };
+
+    if (
+      isRepeatEnabled &&
+      hasEndDate &&
+      (!endDate || !isValidDateRange(startDate, endDate))
+    ) {
+      Alert.alert(t.invalidEndDateTitle, t.invalidEndDateMessage);
+      return;
+    }
+    if (selectedTypeOption.key === 'quantum' && !isValidQuantumDefinition(quantumPayload)) {
+      Alert.alert(
+        t.invalidQuantumTitle,
+        quantumMode === 'timer'
+          ? t.invalidTimerTargetMessage
+          : t.invalidCountTargetMessage
+      );
+      return;
+    }
+
     const payload = {
       title: title.trim(),
       color: selectedColor,
@@ -1231,27 +1292,33 @@ export default function AddHabitSheet({
       tagLabel: selectedTagOption.label,
       type: selectedTypeOption.key,
       typeLabel: selectedTypeOption.label,
-      quantum: {
-        mode: quantumMode,
-        animation: quantumAnimation,
-        timer: {
-          minutes: Number.parseInt(quantumTimerMinutes, 10) || 0,
-          seconds: Number.parseInt(quantumTimerSeconds, 10) || 0,
-        },
-        count: {
-          value: Number.parseInt(quantumCountValue, 10) || 0,
-          unit: quantumCountUnit.trim(),
-        },
-      },
+      quantum: selectedTypeOption.key === 'quantum' ? quantumPayload : null,
       subtasks,
     };
-    if (isEditMode) {
-      onUpdate?.(payload);
-    } else {
-      onCreate?.(payload);
+    const submitPayload = () => {
+      if (isEditMode) {
+        onUpdate?.(payload);
+      } else {
+        onCreate?.(payload);
+      }
+      handleClose();
+    };
+
+    if (
+      isEditMode &&
+      hasTaskProgress(initialHabit) &&
+      shouldResetTaskProgress(initialHabit, payload.type, payload.quantum)
+    ) {
+      Alert.alert(t.resetProgressTitle, t.resetProgressMessage, [
+        { text: common.cancel, style: 'cancel' },
+        { text: t.resetProgressConfirm, style: 'destructive', onPress: submitPayload },
+      ]);
+      return;
     }
-    handleClose();
+
+    submitPayload();
   }, [
+    common.cancel,
     isEditMode,
     handleClose,
     hasSpecifiedTime,
@@ -1265,6 +1332,7 @@ export default function AddHabitSheet({
     isRepeatEnabled,
     hasEndDate,
     endDate,
+    initialHabit,
     selectedMonthDays,
     selectedColor,
     selectedEmoji,
@@ -1284,6 +1352,14 @@ export default function AddHabitSheet({
     subtasks,
     customImage,
     tagOptions,
+    t.invalidCountTargetMessage,
+    t.invalidEndDateMessage,
+    t.invalidEndDateTitle,
+    t.invalidQuantumTitle,
+    t.invalidTimerTargetMessage,
+    t.resetProgressConfirm,
+    t.resetProgressMessage,
+    t.resetProgressTitle,
     typeOptions,
   ]);
 
@@ -2574,7 +2650,15 @@ function SubtasksPanel({
   );
 }
 
-function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatConfig, labels = {} }) {
+function DatePanel({
+  month,
+  selectedDate,
+  onSelectDate,
+  onChangeMonth,
+  repeatConfig,
+  minimumDate,
+  labels = {},
+}) {
   const resolvedLabels = useMemo(() => ({
     quickToday: 'Today',
     quickTomorrow: 'Tomorrow',
@@ -2582,6 +2666,10 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatCon
     ...((labels && typeof labels === 'object') ? labels : {}),
   }), [labels]);
   const today = useMemo(() => normalizeDate(new Date()), []);
+  const minimumSelectableDate = useMemo(
+    () => normalizeDate(minimumDate ?? today),
+    [minimumDate, today]
+  );
   const [visibleMonth, setVisibleMonth] = useState(() => normalizeDate(month));
 
   useEffect(() => {
@@ -2604,8 +2692,8 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatCon
   const nextMonth = useMemo(() => addMonths(visibleMonth, 1), [visibleMonth]);
   const previousMonthDisabled = useMemo(() => {
     const lastDayPrev = new Date(previousMonth.getFullYear(), previousMonth.getMonth() + 1, 0);
-    return isBeforeDay(lastDayPrev, today);
-  }, [previousMonth, today]);
+    return isBeforeDay(lastDayPrev, minimumSelectableDate);
+  }, [minimumSelectableDate, previousMonth]);
   const tomorrow = useMemo(() => {
     const t = new Date(today);
     t.setDate(today.getDate() + 1);
@@ -2672,6 +2760,9 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatCon
   const handleSelectQuick = useCallback(
     (targetDate) => {
       const normalizedTarget = normalizeDate(targetDate);
+      if (isBeforeDay(normalizedTarget, minimumSelectableDate)) {
+        return;
+      }
       if (
         normalizedTarget.getFullYear() !== visibleMonth.getFullYear() ||
         normalizedTarget.getMonth() !== visibleMonth.getMonth()
@@ -2680,7 +2771,7 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatCon
       }
       onSelectDate(normalizedTarget);
     },
-    [handleChangeMonth, onSelectDate, visibleMonth]
+    [handleChangeMonth, minimumSelectableDate, onSelectDate, visibleMonth]
   );
 
   return (
@@ -2689,16 +2780,19 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatCon
         <QuickSelectButton
           label={resolvedLabels.quickToday}
           active={isSameDay(selectedDate, today)}
+          disabled={isBeforeDay(today, minimumSelectableDate)}
           onPress={() => handleSelectQuick(today)}
         />
         <QuickSelectButton
           label={resolvedLabels.quickTomorrow}
           active={isSameDay(selectedDate, tomorrow)}
+          disabled={isBeforeDay(tomorrow, minimumSelectableDate)}
           onPress={() => handleSelectQuick(tomorrow)}
         />
         <QuickSelectButton
           label={resolvedLabels.quickNextMonday}
           active={isSameDay(selectedDate, nextMonday)}
+          disabled={isBeforeDay(nextMonday, minimumSelectableDate)}
           onPress={() => handleSelectQuick(nextMonday)}
         />
       </View>
@@ -2729,7 +2823,7 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatCon
               return <View key={`empty-${rowIndex}-${Math.random().toString(36).slice(2, 6)}`} style={styles.dayCellEmpty} />;
             }
 
-            const disabled = isBeforeDay(date, today);
+            const disabled = isBeforeDay(date, minimumSelectableDate);
             const selected = isSameDay(date, selectedDate);
             const repeating = isRepeatingDay(date);
             const disabledStyle = disabled ? styles.dayCellDisabled : null;
@@ -2753,15 +2847,28 @@ function DatePanel({ month, selectedDate, onSelectDate, onChangeMonth, repeatCon
   );
 }
 
-function QuickSelectButton({ label, active, onPress }) {
+function QuickSelectButton({ label, active, disabled = false, onPress }) {
   return (
     <Pressable
-      style={[styles.quickSelectButton, active && styles.quickSelectButtonActive]}
+      style={[
+        styles.quickSelectButton,
+        active && styles.quickSelectButtonActive,
+        disabled && styles.quickSelectButtonDisabled,
+      ]}
       onPress={onPress}
+      disabled={disabled}
       accessibilityRole="button"
-      accessibilityState={{ selected: active }}
+      accessibilityState={{ selected: active, disabled }}
     >
-      <Text style={[styles.quickSelectLabel, active && styles.quickSelectLabelActive]}>{label}</Text>
+      <Text
+        style={[
+          styles.quickSelectLabel,
+          active && styles.quickSelectLabelActive,
+          disabled && styles.quickSelectLabelDisabled,
+        ]}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -2974,6 +3081,7 @@ function RepeatPanel({
                   onSelectDate={onChangeEndDate}
                   onChangeMonth={setEndDateMonth}
                   repeatConfig={{ enabled: false }}
+                  minimumDate={startDate}
                   labels={labels}
                 />
               </View>
@@ -3960,6 +4068,9 @@ const styles = StyleSheet.create({
   quickSelectButtonActive: {
     backgroundColor: '#1F2742',
   },
+  quickSelectButtonDisabled: {
+    opacity: 0.35,
+  },
   quickSelectLabel: {
     fontSize: 14,
     color: '#1F2742',
@@ -3967,6 +4078,9 @@ const styles = StyleSheet.create({
   },
   quickSelectLabelActive: {
     color: '#FFFFFF',
+  },
+  quickSelectLabelDisabled: {
+    color: '#7F8A9A',
   },
   calendarHeader: {
     flexDirection: 'row',

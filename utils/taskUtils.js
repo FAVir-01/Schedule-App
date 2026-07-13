@@ -123,6 +123,135 @@ const getQuantumProgressPercent = (task, dateKey) => {
   return 0;
 };
 
+const normalizeTaskBehaviorType = (type) => {
+  if (!type || type === 'normal' || type === 'list') {
+    return 'default';
+  }
+  return type;
+};
+
+const getQuantumDefinitionSignature = (quantum) => {
+  const mode = quantum?.mode;
+  if (mode === 'timer') {
+    return `timer:${getTimerTotalSeconds(quantum.timer)}`;
+  }
+  if (mode === 'count') {
+    const value = Number.parseInt(quantum?.count?.value, 10) || 0;
+    const unit = quantum?.count?.unit?.trim().toLowerCase() ?? '';
+    return `count:${value}:${unit}`;
+  }
+  return `unknown:${mode ?? ''}`;
+};
+
+const isValidQuantumDefinition = (quantum) => {
+  if (quantum?.mode === 'timer') {
+    return getTimerTotalSeconds(quantum.timer) > 0;
+  }
+  if (quantum?.mode === 'count') {
+    return (Number.parseInt(quantum?.count?.value, 10) || 0) > 0;
+  }
+  return false;
+};
+
+const hasTaskProgress = (task) => {
+  if (!task) {
+    return false;
+  }
+  if (
+    task.completedDates &&
+    typeof task.completedDates === 'object' &&
+    Object.values(task.completedDates).some(Boolean)
+  ) {
+    return true;
+  }
+
+  const quantum = task.quantum;
+  if (!quantum) {
+    return false;
+  }
+  if ((quantum.doneSeconds ?? 0) > 0 || (quantum.doneCount ?? 0) > 0) {
+    return true;
+  }
+  const progressByDate = quantum.progressByDate;
+  return Boolean(
+    progressByDate &&
+      typeof progressByDate === 'object' &&
+      !Array.isArray(progressByDate) &&
+      Object.values(progressByDate).some(
+        (entry) => (entry?.doneSeconds ?? 0) > 0 || (entry?.doneCount ?? 0) > 0
+      )
+  );
+};
+
+const shouldResetTaskProgress = (existingTask, nextType, nextQuantum) => {
+  if (!existingTask) {
+    return false;
+  }
+  const currentType = normalizeTaskBehaviorType(existingTask.type);
+  const normalizedNextType = normalizeTaskBehaviorType(nextType);
+  if (currentType !== normalizedNextType) {
+    return true;
+  }
+  if (normalizedNextType !== 'quantum') {
+    return false;
+  }
+  return (
+    getQuantumDefinitionSignature(existingTask.quantum) !==
+    getQuantumDefinitionSignature(nextQuantum)
+  );
+};
+
+const reconcileTaskProgressOnEdit = (existingTask, nextType, nextQuantum) => {
+  const normalizedNextType = normalizeTaskBehaviorType(nextType);
+  const shouldReset = shouldResetTaskProgress(existingTask, normalizedNextType, nextQuantum);
+  const existingCompletedDates =
+    existingTask?.completedDates && typeof existingTask.completedDates === 'object'
+      ? existingTask.completedDates
+      : {};
+
+  if (normalizedNextType !== 'quantum') {
+    return {
+      completedDates: shouldReset ? {} : { ...existingCompletedDates },
+      quantum: null,
+      progressReset: shouldReset && hasTaskProgress(existingTask),
+    };
+  }
+
+  if (shouldReset) {
+    return {
+      completedDates: {},
+      quantum: {
+        ...(nextQuantum ?? {}),
+        progressByDate: {},
+        doneSeconds: 0,
+        doneCount: 0,
+        lastAdjustSeconds: 0,
+        lastAdjustCount: 0,
+      },
+      progressReset: hasTaskProgress(existingTask),
+    };
+  }
+
+  const existingQuantum = existingTask?.quantum ?? {};
+  const existingProgressByDate =
+    existingQuantum.progressByDate &&
+    typeof existingQuantum.progressByDate === 'object' &&
+    !Array.isArray(existingQuantum.progressByDate)
+      ? existingQuantum.progressByDate
+      : {};
+  return {
+    completedDates: { ...existingCompletedDates },
+    quantum: {
+      ...existingQuantum,
+      ...(nextQuantum ?? {}),
+      progressByDate: { ...existingProgressByDate },
+      doneSeconds: existingQuantum.doneSeconds ?? 0,
+      doneCount: existingQuantum.doneCount ?? 0,
+    },
+    progressReset: false,
+  };
+};
+
 const normalizeTaskTagKey = (task) => {
   if (!task) {
     return null;
@@ -172,10 +301,14 @@ const getTaskTagDisplayLabel = (task) => {
 export {
   getQuantumProgressLabel,
   getQuantumProgressPercent,
+  hasTaskProgress,
+  isValidQuantumDefinition,
+  reconcileTaskProgressOnEdit,
   getSubtaskCompletionStatus,
   getTaskCompletionStatus,
   getTaskTagDisplayLabel,
   normalizeTaskTagKey,
+  shouldResetTaskProgress,
 };
 
 export const isPassiveTaskType = (task) => {
