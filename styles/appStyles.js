@@ -793,10 +793,9 @@ export const styles = StyleSheet.create({
   },
   calendarListContent: {
     paddingBottom: 60,
-    gap: 12,
   },
   calendarMonthContainer: {
-    marginBottom: 20,
+    marginBottom: 32,
     marginHorizontal: 0,
   },
   calendarMonthHeader: {
