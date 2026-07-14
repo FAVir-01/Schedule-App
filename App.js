@@ -73,6 +73,11 @@ import {
   normalizeRepeatConfig,
 } from './utils/taskUtils';
 import { getTimerTotalSeconds, toMinutes } from './utils/timeUtils';
+import {
+  backfillTaskTitlesInHistory,
+  createTaskHistoryDetails,
+  MAX_RECENT_ACTIVITY_ENTRIES,
+} from './utils/historyUtils';
 import { getWeekdayInitials, translations } from './constants/i18n';
 import { styles } from './styles/appStyles';
 import {
@@ -618,7 +623,18 @@ function ScheduleApp() {
       timestamp: new Date().toISOString(),
       details,
     };
-    setHistory((previous) => [entry, ...previous].slice(0, 200));
+    setHistory((previous) =>
+      [entry, ...previous].slice(0, MAX_RECENT_ACTIVITY_ENTRIES)
+    );
+  }, []);
+
+  const preserveTaskTitlesInHistory = useCallback((tasksToPreserve) => {
+    if (!tasksToPreserve?.length) {
+      return;
+    }
+    setHistory((previous) =>
+      backfillTaskTitlesInHistory(previous, tasksToPreserve)
+    );
   }, []);
 
   const handleOpenReport = useCallback((date) => {
@@ -636,9 +652,10 @@ function ScheduleApp() {
       const tasksToDelete = tasks.filter(
         (task) => taskIds.includes(task.id) && !task.profileLocked
       );
+      preserveTaskTitlesInHistory(tasksToDelete);
       tasksToDelete.forEach((task) => {
         void cancelTaskReminders(task);
-        appendHistoryEntry('task_deleted', { taskId: task.id, title: task.title });
+        appendHistoryEntry('task_deleted', createTaskHistoryDetails(task));
       });
       const deletedTaskIds = new Set(tasksToDelete.map((task) => task.id));
       setTasks((previous) =>
@@ -646,7 +663,7 @@ function ScheduleApp() {
       );
       setActiveProfileTaskId((current) => (deletedTaskIds.has(current) ? null : current));
     },
-    [appendHistoryEntry, tasks]
+    [appendHistoryEntry, preserveTaskTitlesInHistory, tasks]
   );
   const handleDeleteProfileTask = useCallback(
     (taskId) => {
@@ -1892,11 +1909,10 @@ function ScheduleApp() {
         })
       );
 
-      appendHistoryEntry('task_completion_toggled', {
-        taskId,
+      appendHistoryEntry('task_completion_toggled', createTaskHistoryDetails(targetTask, {
         dateKey: resolvedDateKey,
         completed: !wasCompleted,
-      });
+      }));
     },
     [appendHistoryEntry, selectedDateKey]
   );
@@ -2308,12 +2324,12 @@ function ScheduleApp() {
           };
         })
       );
-      appendHistoryEntry('subtask_completion_toggled', {
-        taskId,
+      appendHistoryEntry('subtask_completion_toggled', createTaskHistoryDetails(targetTask, {
         subtaskId,
+        subtaskTitle: targetSubtask?.title,
         dateKey: targetDateKey,
         completed: !wasCompleted,
-      });
+      }));
     },
     [appendHistoryEntry, selectedDateKey, tasks]
   );
@@ -2353,10 +2369,11 @@ function ScheduleApp() {
         return;
       }
       void cancelTaskReminders(task);
+      preserveTaskTitlesInHistory([task]);
       setTasks((previous) => previous.filter((current) => current.id !== task.id));
-      appendHistoryEntry('task_deleted', { taskId: task.id, title: task.title });
+      appendHistoryEntry('task_deleted', createTaskHistoryDetails(task));
     },
-    [appendHistoryEntry]
+    [appendHistoryEntry, preserveTaskTitlesInHistory]
   );
   const handleCardEdit = useCallback(
     (task) => {

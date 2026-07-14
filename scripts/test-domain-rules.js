@@ -53,6 +53,11 @@ const {
   getPickedImageExtension,
   validatePickedImageAsset,
 } = require('../utils/imageUtils');
+const {
+  backfillTaskTitlesInHistory,
+  createTaskHistoryDetails,
+  pruneSelectedTaskIds,
+} = require('../utils/historyUtils');
 
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
@@ -174,6 +179,59 @@ test('reinicia progresso quando meta, unidade, modo ou tipo muda', () => {
   assert.deepEqual(reconciled.completedDates, {});
   assert.equal(reconciled.quantum, null);
   assert.equal(reconciled.progressReset, true);
+});
+
+test('guarda um snapshot mínimo da tarefa nos eventos de histórico', () => {
+  assert.deepEqual(
+    createTaskHistoryDetails(
+      { id: 'task-1', title: 'Ler' },
+      { dateKey: '2026-07-13', completed: true }
+    ),
+    {
+      taskId: 'task-1',
+      title: 'Ler',
+      dateKey: '2026-07-13',
+      completed: true,
+    }
+  );
+  assert.equal(
+    createTaskHistoryDetails(
+      { id: 'task-1', title: 'Nome atual' },
+      { title: 'Nome do evento' }
+    ).title,
+    'Nome do evento'
+  );
+});
+
+test('preserva nomes antigos antes de uma tarefa ser excluída', () => {
+  const history = [
+    { id: 'missing-title', details: { taskId: 'task-1', completed: true } },
+    { id: 'existing-title', details: { taskId: 'task-1', title: 'Nome anterior' } },
+    { id: 'unknown-task', details: { taskId: 'task-2' } },
+  ];
+  const result = backfillTaskTitlesInHistory(history, [
+    { id: 'task-1', title: 'Nome atual' },
+  ]);
+
+  assert.equal(result[0].details.title, 'Nome atual');
+  assert.equal(result[1].details.title, 'Nome anterior');
+  assert.equal(result[2].details.title, undefined);
+  assert.strictEqual(
+    backfillTaskTitlesInHistory(result, [{ id: 'task-1', title: 'Outro nome' }]),
+    result
+  );
+});
+
+test('remove da seleção em massa IDs de tarefas que não existem mais', () => {
+  const selectedTaskIds = ['task-1', 'task-2'];
+  const tasks = [{ id: 'task-1' }];
+  const unchangedSelection = ['task-1'];
+
+  assert.deepEqual(pruneSelectedTaskIds(selectedTaskIds, tasks), ['task-1']);
+  assert.strictEqual(
+    pruneSelectedTaskIds(unchangedSelection, tasks),
+    unchangedSelection
+  );
 });
 
 test('valida tamanho, dimensoes e tipo das imagens selecionadas', () => {

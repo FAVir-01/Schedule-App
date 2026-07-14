@@ -14,6 +14,7 @@ import {
   normalizeRepeatConfig,
   normalizeTaskTagKey,
 } from '../utils/taskUtils';
+import { pruneSelectedTaskIds } from '../utils/historyUtils';
 import ProfileSwipeTaskCard from './ProfileSwipeTaskCard';
 import { styles } from '../styles/appStyles';
 
@@ -39,6 +40,10 @@ export default function ProfileTasksModal({
       setSelectedTaskIds([]);
     }
   }, [visible]);
+
+  useEffect(() => {
+    setSelectedTaskIds((previous) => pruneSelectedTaskIds(previous, tasks));
+  }, [tasks]);
 
   const tagOptions = useMemo(() => {
     const seen = new Map();
