@@ -324,6 +324,12 @@ function ScheduleApp() {
   // Evita exibir movimento antes de a preferência de acessibilidade ser carregada.
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(true);
   const [currentTime, setCurrentTime] = useState(() => new Date());
+  const updateUserSettings = useCallback((updates) => {
+    setUserSettings((previous) => ({
+      ...previous,
+      ...updates,
+    }));
+  }, []);
   const saveTimeoutRef = useRef(null);
   const settingsSaveTimeoutRef = useRef(null);
   const historySaveTimeoutRef = useRef(null);
@@ -1629,13 +1635,6 @@ function ScheduleApp() {
     [customMonthImages, showDataProtectionAlert]
   );
 
-  const updateUserSettings = useCallback((updates) => {
-    setUserSettings((previous) => ({
-      ...previous,
-      ...updates,
-    }));
-  }, []);
-
   const handleExportBackup = useCallback(async () => {
     try {
       const result = await exportAppBackup({
@@ -1670,6 +1669,28 @@ function ScheduleApp() {
     tasks,
     userSettings,
   ]);
+
+  const applyNavigationBarThemeForTab = useCallback(async (tabKey) => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+
+    const theme = getNavigationBarThemeForTab(tabKey);
+    // Only adjust navigation bar button style. Android edge-to-edge prevents background/position
+    // tweaks, and some devices warn when unsupported methods are called.
+    if (!theme || !theme.buttonStyle) {
+      return;
+    }
+    // Lazy-require to avoid importing when not available on platform
+    const NavigationBar = require('expo-navigation-bar');
+    if (NavigationBar?.setButtonStyleAsync) {
+      try {
+        await NavigationBar.setButtonStyleAsync(theme.buttonStyle);
+      } catch (error) {
+        // Ignore when navigation bar button style can't be updated
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (Platform.OS !== 'android') {
@@ -1857,28 +1878,6 @@ function ScheduleApp() {
     },
     [handleSelectDate]
   );
-
-  const applyNavigationBarThemeForTab = useCallback(async (tabKey) => {
-    if (Platform.OS !== 'android') {
-      return;
-    }
-
-    const theme = getNavigationBarThemeForTab(tabKey);
-    // Only adjust navigation bar button style. Android edge-to-edge prevents background/position
-    // tweaks, and some devices warn when unsupported methods are called.
-    if (!theme || !theme.buttonStyle) {
-      return;
-    }
-    // Lazy-require to avoid importing when not available on platform
-    const NavigationBar = require('expo-navigation-bar');
-    if (NavigationBar?.setButtonStyleAsync) {
-      try {
-        await NavigationBar.setButtonStyleAsync(theme.buttonStyle);
-      } catch (error) {
-        // Ignore when navigation bar button style can't be updated
-      }
-    }
-  }, []);
 
   const handleChangeTab = useCallback(
     (tabKey) => {
