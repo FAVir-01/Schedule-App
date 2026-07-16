@@ -87,7 +87,9 @@ export default function TaskDetailModal({
                   <Text style={styles.detailSubtaskSummaryLabel}>{quantumLabel}</Text>
                 ) : !isReminder && totalSubtasks > 0 ? (
                     <Text style={styles.detailSubtaskSummaryLabel}>
-                      {completedSubtasks}/{totalSubtasks} subtasks completed
+                      {t.taskModal.subtasksCompleted
+                        .replace('{completed}', String(completedSubtasks))
+                        .replace('{total}', String(totalSubtasks))}
                     </Text>
                   ) : null}
                 </View>
@@ -101,7 +103,9 @@ export default function TaskDetailModal({
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: task.completed }}
                   accessibilityLabel={
-                    task.completed ? 'Mark task as incomplete' : 'Mark task as complete'
+                    task.completed
+                      ? t.taskModal.markTaskIncomplete
+                      : t.taskModal.markTaskComplete
                   }
                 >
                   {task.completed && <Ionicons name="checkmark" size={18} color="#fff" />}
@@ -129,8 +133,8 @@ export default function TaskDetailModal({
                     accessibilityState={{ checked: getSubtaskCompletionStatus(subtask, dateKey) }}
                     accessibilityLabel={
                       getSubtaskCompletionStatus(subtask, dateKey)
-                        ? `Mark ${subtask.title} as incomplete`
-                        : `Mark ${subtask.title} as complete`
+                        ? t.taskModal.markSubtaskIncomplete.replace('{title}', subtask.title)
+                        : t.taskModal.markSubtaskComplete.replace('{title}', subtask.title)
                     }
                   >
                     <View
@@ -161,7 +165,7 @@ export default function TaskDetailModal({
               style={styles.detailEditLink}
               onPress={() => onEdit?.(task.id)}
               accessibilityRole="button"
-              accessibilityLabel="Edit task"
+              accessibilityLabel={t.taskModal.editTask}
             >
               <View style={styles.detailEditContent}>
                 <Ionicons name="create-outline" size={18} color="#3c2ba7" />

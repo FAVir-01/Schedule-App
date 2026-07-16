@@ -110,6 +110,7 @@ const {
   buildTaskReminderContent,
   scheduledReminderContentMatches,
 } = require('../utils/notificationUtils');
+const { translations } = require('../constants/i18n');
 const { AppErrorBoundary } = require('../components/AppErrorBoundary');
 
 const tests = [];
@@ -143,6 +144,24 @@ test('traduz rotulos de tarefa pela chave semantica atual', () => {
       { oneTime: 'Uma vez' }
     ),
     'Uma vez'
+  );
+});
+
+test('mantem acoes de tarefa completas nos dois idiomas', () => {
+  assert.deepEqual(
+    Object.keys(translations.pt.taskCard).sort(),
+    Object.keys(translations.en.taskCard).sort()
+  );
+  assert.deepEqual(
+    Object.keys(translations.pt.taskModal).sort(),
+    Object.keys(translations.en.taskModal).sort()
+  );
+  assert.equal(translations.pt.taskCard.copy, 'Copiar');
+  assert.equal(
+    translations.pt.taskModal.subtasksCompleted
+      .replace('{completed}', '2')
+      .replace('{total}', '3'),
+    '2/3 subtarefas concluídas'
   );
 });
 
