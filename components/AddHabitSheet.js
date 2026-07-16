@@ -370,6 +370,7 @@ export default function AddHabitSheet({
   const localePack = translations[language] ?? translations.en;
   const t = localePack.sheet;
   const common = localePack.common;
+  const taskDisplayText = localePack.taskDisplay;
   const notificationText = localePack.notifications;
   const imageText = localePack.imageHandling;
   // Português usa relógio de 24h; inglês mantém AM/PM.
@@ -406,13 +407,13 @@ export default function AddHabitSheet({
 
   const localizedDefaultTags = useMemo(() => ([
     { key: 'none', label: t.noTag },
-    { key: 'clean_room', label: language === 'pt' ? 'Limpar o quarto' : 'Clean Room' },
-    { key: 'healthy_lifestyle', label: language === 'pt' ? 'Estilo de vida saudável' : 'Healthy Lifestyle' },
-    { key: 'morning_routine', label: language === 'pt' ? 'Rotina matinal' : 'Morning Routine' },
-    { key: 'relationship', label: language === 'pt' ? 'Relacionamento' : 'Relationship' },
-    { key: 'sleep_better', label: language === 'pt' ? 'Dormir melhor' : 'Sleep Better' },
-    { key: 'workout', label: language === 'pt' ? 'Treino' : 'Workout' },
-  ]), [language, t.noTag]);
+    { key: 'clean_room', label: taskDisplayText.tags.clean_room },
+    { key: 'healthy_lifestyle', label: taskDisplayText.tags.healthy_lifestyle },
+    { key: 'morning_routine', label: taskDisplayText.tags.morning_routine },
+    { key: 'relationship', label: taskDisplayText.tags.relationship },
+    { key: 'sleep_better', label: taskDisplayText.tags.sleep_better },
+    { key: 'workout', label: taskDisplayText.tags.workout },
+  ]), [t.noTag, taskDisplayText.tags]);
   const [tagOptions, setTagOptions] = useState(() =>
     mergeTagOptions(localizedDefaultTags, availableTagOptions)
   );

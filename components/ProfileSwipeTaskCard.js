@@ -26,6 +26,7 @@ export default function ProfileSwipeTaskCard({
   selectionMode,
   language = 'en',
 }) {
+  const t = translations[language] ?? translations.en;
   const translateX = useRef(new Animated.Value(0)).current;
   const actionWidth = 92;
   const [isOpen, setIsOpen] = useState(false);
@@ -116,7 +117,7 @@ export default function ProfileSwipeTaskCard({
     onDelete?.(task.id);
   }, [closeActions, onDelete, task.id]);
 
-  const tagLabel = getTaskTagDisplayLabel(task);
+  const tagLabel = getTaskTagDisplayLabel(task, t.taskDisplay.tags);
   const backgroundColor = lightenColor(task.color, 0.92);
 
   return (
@@ -129,11 +130,11 @@ export default function ProfileSwipeTaskCard({
           ]}
           onPress={handleDelete}
           accessibilityRole="button"
-          accessibilityLabel="Delete task"
+          accessibilityLabel={t.profileTasks.deleteTask}
           disabled={task.profileLocked}
         >
           <Ionicons name="trash-outline" size={18} color="#fff" />
-          <Text style={styles.profileSwipeDeleteText}>Delete</Text>
+          <Text style={styles.profileSwipeDeleteText}>{t.profileTasks.delete}</Text>
         </TouchableOpacity>
       </View>
       <Animated.View
@@ -179,7 +180,7 @@ export default function ProfileSwipeTaskCard({
               ) : null}
             </View>
             <View style={styles.profileTaskMetaRow}>
-              <Text style={styles.profileTaskTime}>{formatTaskTime(task.time, { language, anytimeLabel: translations[language]?.sheet?.anytime })}</Text>
+              <Text style={styles.profileTaskTime}>{formatTaskTime(task.time, { language, anytimeLabel: t.sheet.anytime })}</Text>
               {tagLabel ? (
                 <View style={styles.profileTaskTag}>
                   <Text style={styles.profileTaskTagText}>{tagLabel}</Text>

@@ -273,9 +273,13 @@ const normalizeTaskTagKey = (task) => {
   return null;
 };
 
-const getTaskTagDisplayLabel = (task) => {
+const getTaskTagDisplayLabel = (task, localizedLabels = {}) => {
   if (!task) {
     return null;
+  }
+  const semanticKey = normalizeTaskTagKey(task);
+  if (semanticKey && localizedLabels[semanticKey]) {
+    return localizedLabels[semanticKey];
   }
   if (task.tagLabel && typeof task.tagLabel === 'string') {
     const label = task.tagLabel.trim();
@@ -298,6 +302,14 @@ const getTaskTagDisplayLabel = (task) => {
   return null;
 };
 
+const getTaskTypeDisplayLabel = (task, localizedLabels = {}) => {
+  if (!task) {
+    return localizedLabels.default ?? null;
+  }
+  const semanticType = normalizeTaskBehaviorType(task.type);
+  return localizedLabels[semanticType] ?? task.typeLabel ?? task.type ?? localizedLabels.default ?? null;
+};
+
 export {
   getQuantumProgressLabel,
   getQuantumProgressPercent,
@@ -307,6 +319,7 @@ export {
   getSubtaskCompletionStatus,
   getTaskCompletionStatus,
   getTaskTagDisplayLabel,
+  getTaskTypeDisplayLabel,
   normalizeTaskTagKey,
   shouldResetTaskProgress,
 };
@@ -405,4 +418,24 @@ export const normalizeRepeatConfig = (repeatConfig) => {
     frequency: resolvedFrequency,
     interval: resolvedInterval,
   };
+};
+
+export const getTaskRepeatDisplayLabel = (repeatConfig, localizedLabels = {}) => {
+  const normalized = normalizeRepeatConfig(repeatConfig);
+  if (!normalized.enabled) {
+    return localizedLabels.oneTime ?? 'One-time';
+  }
+
+  const { frequency, interval } = normalized;
+  if (interval === 1) {
+    return localizedLabels[frequency] ?? frequency;
+  }
+
+  const intervalTemplateKey = {
+    daily: 'everyDays',
+    weekly: 'everyWeeks',
+    monthly: 'everyMonths',
+  }[frequency];
+  const template = intervalTemplateKey ? localizedLabels[intervalTemplateKey] : null;
+  return template ? template.replace('{count}', String(interval)) : localizedLabels[frequency] ?? frequency;
 };
