@@ -20,12 +20,8 @@ import Svg, {
 import {
   getDateKey,
   normalizeDateValue,
-  shouldTaskAppearOnDate,
 } from '../utils/dateUtils';
-import {
-  getTaskCompletionStatus,
-  shouldCountTaskTowardsCompletion,
-} from '../utils/taskUtils';
+import { buildDailyCompletionSeries } from '../utils/profileStatsUtils';
 import { FALLBACK_EMOJI } from '../constants/app';
 import { translations } from '../constants/i18n';
 import { styles } from '../styles/appStyles';
@@ -148,32 +144,13 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
     const warmup = 6;
     const totalDays = periodDays + warmup;
 
-    const dates = [];
-    for (let i = totalDays - 1; i >= 0; i -= 1) {
-      const date = new Date(today);
-      date.setDate(today.getDate() - i);
-      dates.push(date);
-    }
-
-    const rawBySeries = seriesDescriptors.map((descriptor) =>
-      dates.map((date) => {
-        const dateKey = getDateKey(date);
-        if (descriptor.task) {
-          const scheduled = shouldTaskAppearOnDate(descriptor.task, date);
-          const completed =
-            scheduled && getTaskCompletionStatus(descriptor.task, dateKey) ? 1 : 0;
-          return { completed, total: scheduled ? 1 : 0 };
-        }
-        const scored = tasks.filter(
-          (task) =>
-            shouldTaskAppearOnDate(task, date) && shouldCountTaskTowardsCompletion(task)
-        );
-        const completed = scored.filter((task) =>
-          getTaskCompletionStatus(task, dateKey)
-        ).length;
-        return { completed, total: scored.length };
-      })
-    );
+    const { dates, entries } = buildDailyCompletionSeries({
+      tasks,
+      selectedTask,
+      endDate: today,
+      days: totalDays,
+    });
+    const rawBySeries = [entries];
 
     let values;
     if (mode === 'percent') {
@@ -230,7 +207,7 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
 
     const hasData = rawBySeries[0].some((entry) => entry.total > 0);
     return { dates: visibleDates, values, raw: visibleRaw, hasData };
-  }, [mode, periodDays, seriesDescriptors, tasks]);
+  }, [mode, periodDays, selectedTask, tasks]);
 
   const { dates, values, raw, hasData } = chartData;
 
