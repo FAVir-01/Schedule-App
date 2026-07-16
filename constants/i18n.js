@@ -60,6 +60,10 @@ const translations = {
       errorTitle: 'Backup failed',
       errorMessage: 'The backup file could not be created. Please try again.',
     },
+    developer: {
+      errorBoundaryLabel: 'Test error recovery',
+      errorBoundaryHint: 'Development only. Opens the app recovery screen.',
+    },
     imageHandling: {
       errorTitle: 'Image not added',
       genericError: 'The image could not be saved. Please choose it again.',
@@ -402,6 +406,10 @@ const translations = {
       successWithRecovery: 'O arquivo {fileName} foi criado e inclui dados brutos preservados para recuperação. Fotos e imagens personalizadas são referenciadas, mas não são incorporadas.',
       errorTitle: 'Falha no backup',
       errorMessage: 'Não foi possível criar o arquivo de backup. Tente novamente.',
+    },
+    developer: {
+      errorBoundaryLabel: 'Testar recuperação de erro',
+      errorBoundaryHint: 'Apenas em desenvolvimento. Abre a tela de recuperação do aplicativo.',
     },
     imageHandling: {
       errorTitle: 'Imagem não adicionada',
