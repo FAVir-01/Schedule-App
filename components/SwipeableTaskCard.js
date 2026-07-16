@@ -36,6 +36,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
   language = 'en',
   isVisible = true,
 }) {
+  const t = translations[language] ?? translations.en;
   const translateX = useRef(new Animated.Value(0)).current;
   const waveShiftAnim = useRef(new Animated.Value(0)).current;
   const waveIntensityAnim = useRef(new Animated.Value(1)).current;
@@ -294,13 +295,13 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     const options = [{ label: '1', value: 1 }];
     const half = countLimit ? Math.max(1, Math.round(countLimit / 2)) : 0;
     if (half > 1) {
-      options.push({ label: language === 'pt' ? 'metade' : 'half', value: half });
+      options.push({ label: t.taskCard.half, value: half });
     }
     if (countLimit > 1 && countLimit !== half) {
-      options.push({ label: language === 'pt' ? 'máx' : 'max', value: countLimit });
+      options.push({ label: t.taskCard.maximum, value: countLimit });
     }
     return options;
-  }, [countLimit, isQuantum, isTimerMode, language, timerLimitSeconds]);
+  }, [countLimit, isQuantum, isTimerMode, t.taskCard.half, t.taskCard.maximum, timerLimitSeconds]);
   // Painel some sozinho após alguns segundos sem interação — sem botão de fechar.
   const adjustCloseTimerRef = useRef(null);
   const bumpAdjustClose = useCallback(() => {
@@ -345,10 +346,10 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
           style={[styles.swipeActionButton, styles.swipeActionCopy]}
           onPress={() => handleAction(() => onCopy?.(task))}
           accessibilityRole="button"
-          accessibilityLabel="Copy task"
+          accessibilityLabel={t.taskCard.copyTask}
         >
           <Ionicons name="copy-outline" size={18} color="#3c2ba7" />
-          <Text style={styles.swipeActionText}>Copy</Text>
+          <Text style={styles.swipeActionText}>{t.taskCard.copy}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[
@@ -358,7 +359,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
           ]}
           onPress={() => handleAction(() => onDelete?.(task))}
           accessibilityRole="button"
-          accessibilityLabel="Delete task"
+          accessibilityLabel={t.taskCard.deleteTask}
           disabled={task.profileLocked}
         >
           <Ionicons name="trash-outline" size={18} color="#fff" />
@@ -369,7 +370,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
               task.profileLocked && styles.swipeActionTextDisabled,
             ]}
           >
-            Delete
+            {t.taskCard.delete}
           </Text>
         </TouchableOpacity>
       </View>
@@ -444,7 +445,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
               >
                 {task.title}
               </Text>
-              <Text style={styles.taskTime}>{formatTaskTime(task.time, { language, anytimeLabel: translations[language]?.sheet?.anytime })}</Text>
+              <Text style={styles.taskTime}>{formatTaskTime(task.time, { language, anytimeLabel: t.sheet.anytime })}</Text>
               {totalLabel && (
                 <View style={styles.taskSubtaskSummary}>
                   <Text style={styles.taskSubtaskSummaryText}>{totalLabel}</Text>
@@ -456,7 +457,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
         {isReminder && task.missed && (
           <View style={styles.missedBadge} pointerEvents="none">
             <Text style={styles.missedBadgeText}>
-              {translations[language]?.today?.missed ?? translations.en.today.missed}
+              {t.today.missed}
             </Text>
           </View>
         )}
@@ -472,10 +473,10 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
             accessibilityRole={isQuantum ? 'button' : 'checkbox'}
             accessibilityLabel={
               isQuantum
-                ? 'Add quantum progress'
+                ? t.taskCard.addQuantumProgress
                 : task.completed
-                ? 'Mark task as incomplete'
-                : 'Mark task as complete'
+                ? t.taskModal.markTaskIncomplete
+                : t.taskModal.markTaskComplete
             }
             accessibilityState={isQuantum ? undefined : { checked: task.completed }}
           >
@@ -500,7 +501,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
                 bumpAdjustClose();
               }}
               accessibilityRole="button"
-              accessibilityLabel="Subtract progress"
+              accessibilityLabel={t.taskCard.subtractProgress}
             >
               <Ionicons name="remove" size={18} color="#1a1a2e" />
             </Pressable>
@@ -518,7 +519,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
                     bumpAdjustClose();
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={`Set step ${option.label}`}
+                  accessibilityLabel={t.taskCard.setStep.replace('{step}', option.label)}
                 >
                   <Text
                     style={[
@@ -538,7 +539,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
                 bumpAdjustClose();
               }}
               accessibilityRole="button"
-              accessibilityLabel="Add progress"
+              accessibilityLabel={t.taskCard.addProgress}
             >
               <Ionicons name="add" size={18} color="#ffffff" />
             </Pressable>
