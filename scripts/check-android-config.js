@@ -69,6 +69,14 @@ expectEqual(
   native.namespace
 );
 
+if (
+  !/override\s+fun\s+onUserLeaveHint\s*\(\s*\)[\s\S]*?BuildConfig\.DEBUG\s*&&\s*reactDelegate\s*==\s*null[\s\S]*?return[\s\S]*?super\.onUserLeaveHint\s*\(\s*\)/.test(
+    mainActivity
+  )
+) {
+  errors.push('MainActivity deve proteger onUserLeaveHint enquanto o delegate de debug não estiver pronto.');
+}
+
 const applicationTag = extract(
   mainManifest,
   /(<application\b[^>]*>)/,
