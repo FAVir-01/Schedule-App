@@ -33,7 +33,7 @@
     "ios": "npx expo run:ios",
     "prebuild": "npx expo prebuild",
     "check:android-config": "node scripts/check-android-config.js",
-    "test:domain": "node scripts/test-domain-rules.js",
+    "test:domain": "node scripts/check-hook-declaration-order.js && node scripts/test-domain-rules.js",
     "update:preview": "npx eas update --channel preview",
     "update:production": "npx eas update --channel production"
   }

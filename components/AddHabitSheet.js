@@ -1119,6 +1119,15 @@ export default function AddHabitSheet({
     }
   }, [height, isMounted, sheetHeight, translateY]);
 
+  const typeOptions = useMemo(
+    () => [
+      { key: 'default', label: t.defaultType },
+      { key: 'quantum', label: t.measurementType },
+      { key: 'reminder', label: t.reminderType },
+    ],
+    [t.defaultType, t.measurementType, t.reminderType]
+  );
+
   const handleSubmit = useCallback(() => {
     if (!title.trim()) {
       return;
@@ -1383,12 +1392,6 @@ export default function AddHabitSheet({
     const match = tagOptions.find((option) => option.key === selectedTag);
     return match?.label ?? t.noTag;
   }, [selectedTag, t.noTag, tagOptions]);
-
-  const typeOptions = useMemo(() => ([
-    { key: 'default', label: t.defaultType },
-    { key: 'quantum', label: t.measurementType },
-    { key: 'reminder', label: t.reminderType },
-  ]), [t.defaultType, t.measurementType, t.reminderType]);
 
   const typeLabel = useMemo(() => {
     const match = typeOptions.find((option) => option.key === selectedType);
