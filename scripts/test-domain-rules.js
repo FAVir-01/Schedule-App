@@ -28,9 +28,28 @@ require.extensions['.js'] = (module, filename) => {
 // precisa carregar o bundle nativo (que contém sintaxe Flow). Um mock mínimo
 // mantém o teste em Node e deixa explícita a única informação usada aqui.
 const originalModuleLoader = Module._load;
+const hapticsMockState = {
+  calls: [],
+  shouldReject: false,
+};
+const runHapticsMock = async (operation, value) => {
+  hapticsMockState.calls.push({ operation, value });
+  if (hapticsMockState.shouldReject) {
+    throw new Error('haptics unavailable');
+  }
+};
 Module._load = function loadWithReactNativeMock(request, parent, isMain) {
   if (request === 'react-native') {
-    return { Platform: { OS: 'test' } };
+    return { Platform: { OS: 'android' } };
+  }
+  if (request === 'expo-haptics') {
+    return {
+      ImpactFeedbackStyle: { Light: 'light' },
+      NotificationFeedbackType: { Success: 'success' },
+      impactAsync: (style) => runHapticsMock('impact', style),
+      notificationAsync: (type) => runHapticsMock('notification', type),
+      selectionAsync: () => runHapticsMock('selection'),
+    };
   }
   return originalModuleLoader.call(this, request, parent, isMain);
 };
@@ -58,9 +77,166 @@ const {
   createTaskHistoryDetails,
   pruneSelectedTaskIds,
 } = require('../utils/historyUtils');
+const {
+  shouldTriggerCompletionCelebration,
+  willProgressReachCompletion,
+} = require('../utils/celebrationUtils');
+const {
+  triggerImpact,
+  triggerSelection,
+  triggerSuccessFeedback,
+} = require('../utils/feedbackUtils');
+const {
+  buildDailyCompletionSeries,
+  calculateProfileStats,
+  MAX_PROFILE_STREAK_DAYS,
+} = require('../utils/profileStatsUtils');
 
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
+
+test('celebra apenas uma nova conclusão causada pelo usuário na data visível', () => {
+  const validTransition = {
+    isHydrated: true,
+    wasComplete: false,
+    isComplete: true,
+    actionDateKey: '2026-07-13',
+    selectedDateKey: '2026-07-13',
+  };
+
+  assert.equal(shouldTriggerCompletionCelebration(validTransition), true);
+  assert.equal(
+    shouldTriggerCompletionCelebration({ ...validTransition, isHydrated: false }),
+    false
+  );
+  assert.equal(
+    shouldTriggerCompletionCelebration({ ...validTransition, wasComplete: true }),
+    false
+  );
+  assert.equal(
+    shouldTriggerCompletionCelebration({ ...validTransition, actionDateKey: null }),
+    false
+  );
+  assert.equal(
+    shouldTriggerCompletionCelebration({ ...validTransition, actionDateKey: '2026-07-12' }),
+    false
+  );
+});
+
+test('reconhece quando um ajuste quantum alcança a meta', () => {
+  assert.equal(
+    willProgressReachCompletion({ currentValue: 8, limitValue: 10, direction: 1, amount: 2 }),
+    true
+  );
+  assert.equal(
+    willProgressReachCompletion({ currentValue: 8, limitValue: 10, direction: 1, amount: 1 }),
+    false
+  );
+  assert.equal(
+    willProgressReachCompletion({ currentValue: 10, limitValue: 10, direction: 1, amount: 1 }),
+    false
+  );
+  assert.equal(
+    willProgressReachCompletion({ currentValue: 2, limitValue: 10, direction: -1, amount: 2 }),
+    false
+  );
+  assert.equal(
+    willProgressReachCompletion({ currentValue: NaN, limitValue: 10, direction: 1, amount: 2 }),
+    false
+  );
+  assert.equal(
+    willProgressReachCompletion({ currentValue: 8, limitValue: 10, direction: 0, amount: 2 }),
+    false
+  );
+});
+
+test('feedback haptico absorve rejeicoes assincronas sem quebrar a acao', async () => {
+  hapticsMockState.calls = [];
+  hapticsMockState.shouldReject = false;
+  assert.equal(await triggerImpact('light'), true);
+  assert.equal(await triggerSelection(), true);
+  assert.equal(await triggerSuccessFeedback(), true);
+  assert.deepEqual(
+    hapticsMockState.calls.map(({ operation }) => operation),
+    ['impact', 'selection', 'notification']
+  );
+
+  hapticsMockState.shouldReject = true;
+  assert.equal(await triggerImpact('light'), false);
+  assert.equal(await triggerSelection(), false);
+  assert.equal(await triggerSuccessFeedback(), false);
+  hapticsMockState.shouldReject = false;
+});
+
+test('calcula sequencias do perfil sem contar lembretes como pendencias', () => {
+  const today = new Date(2026, 6, 15);
+  const task = {
+    id: 'habit-1',
+    type: 'habit',
+    dateKey: '2026-07-10',
+    completedDates: {
+      '2026-07-10': true,
+      '2026-07-11': true,
+      '2026-07-13': true,
+      '2026-07-14': true,
+    },
+  };
+  const reminder = {
+    id: 'reminder-1',
+    type: 'reminder',
+    dateKey: '2026-07-10',
+  };
+  const stats = calculateProfileStats({ tasks: [task, reminder], history: [], today });
+  const selectedStats = calculateProfileStats({
+    tasks: [task, reminder],
+    history: [],
+    selectedTask: task,
+    today,
+  });
+
+  assert.equal(stats.totalDays, 6);
+  assert.equal(stats.committedHabits, 2);
+  assert.equal(stats.currentStreak, 2);
+  assert.equal(stats.bestStreak, 2);
+  assert.equal(selectedStats.completions, 4);
+});
+
+test('limita a janela de sequencia e ignora datas invalidas sem alterar o total', () => {
+  const stats = calculateProfileStats({
+    tasks: [{ id: 'old', type: 'habit', dateKey: '1900-01-01', completedDates: {} }],
+    history: [{ timestamp: 'data-invalida' }],
+    today: new Date(2026, 6, 15),
+  });
+
+  assert.ok(stats.totalDays > MAX_PROFILE_STREAK_DAYS);
+  assert.equal(stats.evaluatedDays, MAX_PROFILE_STREAK_DAYS);
+  assert.equal(stats.isStreakRangeLimited, true);
+});
+
+test('processa fixtures de perfil com 0, 50, 500 e 2.000 tarefas', () => {
+  const today = new Date(2026, 6, 15);
+  const todayKey = '2026-07-15';
+
+  [0, 50, 500, 2000].forEach((taskCount) => {
+    const tasks = Array.from({ length: taskCount }, (_, index) => ({
+      id: `fixture-${taskCount}-${index}`,
+      type: 'habit',
+      dateKey: '2024-07-16',
+      completedDates: index % 2 === 0 ? { [todayKey]: true } : {},
+    }));
+    const stats = calculateProfileStats({ tasks, history: [], today });
+    const series = buildDailyCompletionSeries({ tasks, endDate: today, days: 30 });
+
+    assert.equal(stats.committedHabits, taskCount);
+    assert.equal(
+      stats.evaluatedDays,
+      taskCount === 0 ? 0 : MAX_PROFILE_STREAK_DAYS
+    );
+    assert.equal(series.entries.length, 30);
+    assert.equal(series.entries[29].total, taskCount);
+    assert.equal(series.entries[29].completed, Math.ceil(taskCount / 2));
+  });
+});
 
 test('rejeita datas de calendário inexistentes', () => {
   assert.equal(normalizeDateValue('2026-02-29'), null);
@@ -310,17 +486,21 @@ test('formata mensagens localizadas com os limites aplicados', () => {
   );
 });
 
-let failures = 0;
-tests.forEach(({ name, run }) => {
-  try {
-    run();
-    console.log(`✓ ${name}`);
-  } catch (error) {
-    failures += 1;
-    console.error(`✗ ${name}`);
-    console.error(error);
+const runTests = async () => {
+  let failures = 0;
+  for (const { name, run } of tests) {
+    try {
+      await run();
+      console.log(`✓ ${name}`);
+    } catch (error) {
+      failures += 1;
+      console.error(`✗ ${name}`);
+      console.error(error);
+    }
   }
-});
 
-console.log(`\n${tests.length - failures}/${tests.length} testes passaram.`);
-process.exitCode = failures > 0 ? 1 : 0;
+  console.log(`\n${tests.length - failures}/${tests.length} testes passaram.`);
+  process.exitCode = failures > 0 ? 1 : 0;
+};
+
+void runTests();

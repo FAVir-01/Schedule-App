@@ -1745,6 +1745,12 @@ export const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
   },
+  profileStatsRangeHint: {
+    marginTop: 2,
+    color: '#77738f',
+    fontSize: 11,
+    lineHeight: 16,
+  },
   profileStatCard: {
     width: '48%',
     borderRadius: 20,

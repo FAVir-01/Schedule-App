@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  AccessibilityInfo,
   Animated,
   AppState,
   BackHandler,
@@ -27,7 +28,6 @@ import * as FileSystem from 'expo-file-system/legacy';
 import {
   addMonths as addMonthsDateFns,
   eachDayOfInterval,
-  differenceInCalendarDays,
   endOfMonth,
   endOfWeek,
   getWeeksInMonth,
@@ -89,6 +89,11 @@ import {
   triggerSelection,
   triggerSuccessFeedback,
 } from './utils/feedbackUtils';
+import {
+  shouldTriggerCompletionCelebration,
+  willProgressReachCompletion,
+} from './utils/celebrationUtils';
+import { calculateProfileStats } from './utils/profileStatsUtils';
 import { AnimatedPressable } from './components/animatedComponents';
 import ConfettiOverlay from './components/ConfettiOverlay';
 import StickyMonthHeader from './components/StickyMonthHeader';
@@ -313,6 +318,8 @@ function ScheduleApp() {
   const [profileFilterId, setProfileFilterId] = useState(null);
   const [isSettingsOpen, setSettingsOpen] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
+  // Evita exibir movimento antes de a preferência de acessibilidade ser carregada.
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(true);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const saveTimeoutRef = useRef(null);
   const settingsSaveTimeoutRef = useRef(null);
@@ -329,6 +336,7 @@ function ScheduleApp() {
   const isHydratedRef = useRef(false);
   const reminderReconciliationInFlightRef = useRef(false);
   const didInitialReminderReconciliationRef = useRef(false);
+  const pendingCompletionActionDateRef = useRef(null);
   const taskPositionsRef = useRef(new Map());
   const taskAnimationsRef = useRef(new Map());
   const [calendarMonths, setCalendarMonths] = useState(() => {
@@ -918,23 +926,69 @@ function ScheduleApp() {
   }, []);
 
   useEffect(() => {
+    const wasComplete = previousCompletionRef.current;
+    const actionDateKey = pendingCompletionActionDateRef.current;
     previousCompletionRef.current = allTasksCompletedForSelectedDay;
-    if (!allTasksCompletedForSelectedDay) {
+    pendingCompletionActionDateRef.current = null;
+
+    if (
+      !shouldTriggerCompletionCelebration({
+        isHydrated,
+        wasComplete,
+        isComplete: allTasksCompletedForSelectedDay,
+        actionDateKey,
+        selectedDateKey,
+      })
+    ) {
       return undefined;
     }
+
+    void triggerSuccessFeedback();
+    if (prefersReducedMotion) {
+      return undefined;
+    }
+
     // Adia a montagem do confete p/ depois do frame da conclusão (re-render da
     // lista + animação do card); montar tudo junto causava uma travada leve.
-    void triggerSuccessFeedback();
     const timeoutId = setTimeout(() => {
       setConfettiKey((previous) => previous + 1);
       setShowConfetti(true);
     }, 150);
     return () => clearTimeout(timeoutId);
-  }, [allTasksCompletedForSelectedDay]);
+  }, [
+    allTasksCompletedForSelectedDay,
+    isHydrated,
+    prefersReducedMotion,
+    selectedDateKey,
+    tasks,
+  ]);
 
   useEffect(() => {
-    previousCompletionRef.current = false;
-  }, [selectedDateKey]);
+    let isMounted = true;
+    void AccessibilityInfo.isReduceMotionEnabled()
+      .then((isEnabled) => {
+        if (isMounted) {
+          setPrefersReducedMotion(isEnabled);
+        }
+      })
+      .catch(() => undefined);
+
+    const subscription = AccessibilityInfo.addEventListener(
+      'reduceMotionChanged',
+      setPrefersReducedMotion
+    );
+
+    return () => {
+      isMounted = false;
+      subscription?.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (prefersReducedMotion) {
+      setShowConfetti(false);
+    }
+  }, [prefersReducedMotion]);
   const activeTask = useMemo(
     () => tasks.find((task) => task.id === activeTaskId) ?? null,
     [activeTaskId, tasks]
@@ -949,79 +1003,16 @@ function ScheduleApp() {
   );
   // Com um hábito filtrado, as stats passam a ser dele: dias desde a criação,
   // total de conclusões e sequências do próprio hábito.
-  const profileStats = useMemo(() => {
-    const statsTasks = profileFilterTask ? [profileFilterTask] : tasks;
-    const committedHabits = tasks.length;
-    const dateCandidates = [];
-
-    if (!profileFilterTask) {
-      history.forEach((entry) => {
-        if (entry?.timestamp) {
-          const normalized = normalizeDateValue(entry.timestamp);
-          if (normalized) {
-            dateCandidates.push(normalized);
-          }
-        }
-      });
-    }
-
-    statsTasks.forEach((task) => {
-      const normalized = normalizeDateValue(task.date ?? task.dateKey);
-      if (normalized) {
-        dateCandidates.push(normalized);
-      }
-    });
-
-    const minDate = dateCandidates.length
-      ? new Date(Math.min(...dateCandidates.map((date) => date.getTime())))
-      : today;
-    const startDate = minDate > today ? today : minDate;
-    const totalDays = Math.max(0, differenceInCalendarDays(today, startDate) + 1);
-
-    const completions = profileFilterTask
-      ? Object.values(profileFilterTask.completedDates ?? {}).filter(
-          (isCompleted) => isCompleted === true
-        ).length
-      : 0;
-
-    if (!statsTasks.length) {
-      return {
-        totalDays,
-        committedHabits,
-        completions,
-        currentStreak: 0,
-        bestStreak: 0,
-      };
-    }
-
-    const dateRange = eachDayOfInterval({ start: startDate, end: today });
-    let currentStreak = 0;
-    let bestStreak = 0;
-
-    dateRange.forEach((date) => {
-      const scheduledTasks = statsTasks.filter((task) => shouldTaskAppearOnDate(task, date));
-      const scoredTasks = scheduledTasks.filter(shouldCountTaskTowardsCompletion);
-      if (scoredTasks.length === 0) {
-        return;
-      }
-      const isComplete = scoredTasks.every((task) => getTaskCompletionStatus(task, date));
-      if (isComplete) {
-        currentStreak += 1;
-        bestStreak = Math.max(bestStreak, currentStreak);
-      } else if (date.getTime() !== today.getTime()) {
-        // Hoje ainda em andamento não zera a sequência; só um dia passado falhado.
-        currentStreak = 0;
-      }
-    });
-
-    return {
-      totalDays,
-      committedHabits,
-      completions,
-      currentStreak,
-      bestStreak,
-    };
-  }, [history, profileFilterTask, tasks, today]);
+  const profileStats = useMemo(
+    () =>
+      calculateProfileStats({
+        tasks,
+        history,
+        selectedTask: profileFilterTask,
+        today,
+      }),
+    [history, profileFilterTask, tasks, today]
+  );
   // Faixa de humor dos últimos 7 dias exibida no Profile.
   const weekMoodDays = useMemo(() => {
     const initials = getWeekdayInitials(language);
@@ -1070,6 +1061,27 @@ function ScheduleApp() {
         return;
       }
       const dateKey = selectedDateKey;
+      const targetTask = tasksRef.current?.find((task) => task.id === taskId);
+      const baseDateKey =
+        dateKey ??
+        targetTask?.dateKey ??
+        (targetTask?.date ? getDateKey(targetTask.date) : null);
+      const isTimer = targetTask?.quantum?.mode === 'timer';
+      const currentValue = isTimer
+        ? targetTask?.quantum?.progressByDate?.[baseDateKey]?.doneSeconds ?? 0
+        : targetTask?.quantum?.progressByDate?.[baseDateKey]?.doneCount ?? 0;
+      const limitValue = isTimer
+        ? getTimerTotalSeconds(targetTask?.quantum?.timer)
+        : targetTask?.quantum?.count?.value ?? 0;
+      pendingCompletionActionDateRef.current = willProgressReachCompletion({
+        currentValue,
+        limitValue,
+        direction,
+        amount: deltaAmount,
+      })
+        ? baseDateKey
+        : null;
+
       setTasks((previous) =>
         previous.map((task) => {
           if (task.id !== taskId) {
@@ -1873,8 +1885,8 @@ function ScheduleApp() {
   const handleToggleTaskCompletion = useCallback(
     (taskId, dateKey = selectedDateKey) => {
       const initialDateKey = dateKey ?? selectedDateKey;
-      const targetTask = tasksRef.current.find((task) => task.id === taskId);
-      if (isPassiveTaskType(targetTask)) {
+      const targetTask = tasksRef.current?.find((task) => task.id === taskId);
+      if (!targetTask || isPassiveTaskType(targetTask)) {
         return;
       }
       const resolvedDateKey =
@@ -1884,6 +1896,8 @@ function ScheduleApp() {
       const wasCompleted = targetTask
         ? getTaskCompletionStatus(targetTask, resolvedDateKey)
         : false;
+
+      pendingCompletionActionDateRef.current = !wasCompleted ? resolvedDateKey : null;
 
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -2886,6 +2900,11 @@ function ScheduleApp() {
                       </View>
                     </View>
                   </View>
+                  {profileStats.isStreakRangeLimited ? (
+                    <Text style={styles.profileStatsRangeHint}>
+                      {t.profile.streakWindowHint}
+                    </Text>
+                  ) : null}
                 </View>
 
                 <View style={styles.profileMoodSection}>

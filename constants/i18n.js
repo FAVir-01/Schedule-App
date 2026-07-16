@@ -87,6 +87,7 @@ const translations = {
       overallSeries: 'Overall',
       settings: 'Settings',
       completions: 'COMPLETIONS',
+      streakWindowHint: 'Streaks consider the last 2 years.',
     },
     fab: {
       addHabit: 'Add habit',
@@ -347,6 +348,7 @@ const translations = {
       overallSeries: 'Geral',
       settings: 'Configurações',
       completions: 'CONCLUSÕES',
+      streakWindowHint: 'As sequências consideram os últimos 2 anos.',
     },
     fab: {
       addHabit: 'Adicionar hábito',
