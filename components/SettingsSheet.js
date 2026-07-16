@@ -29,6 +29,7 @@ function SettingsSheet({
   const insets = useSafeAreaInsets();
   const t = translations[language] ?? translations.en;
   const [isExporting, setIsExporting] = useState(false);
+  const [shouldTestErrorBoundary, setShouldTestErrorBoundary] = useState(false);
 
   const handleExportBackup = useCallback(async () => {
     if (isExporting) {
@@ -41,6 +42,10 @@ function SettingsSheet({
       setIsExporting(false);
     }
   }, [isExporting, onExportBackup]);
+
+  if (__DEV__ && shouldTestErrorBoundary) {
+    throw new Error('Intentional development error boundary test');
+  }
 
   return (
     <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
@@ -151,6 +156,23 @@ function SettingsSheet({
                 <Ionicons name="chevron-forward" size={18} color="#9a96b8" />
               )}
             </TouchableOpacity>
+
+            {__DEV__ ? (
+              <TouchableOpacity
+                style={styles.settingsRow}
+                onPress={() => setShouldTestErrorBoundary(true)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t.developer.errorBoundaryLabel}
+                accessibilityHint={t.developer.errorBoundaryHint}
+              >
+                <Ionicons name="bug-outline" size={20} color="#a23b3b" />
+                <Text style={styles.settingsRowLabel}>
+                  {t.developer.errorBoundaryLabel}
+                </Text>
+                <Ionicons name="warning-outline" size={18} color="#a23b3b" />
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
       </View>
