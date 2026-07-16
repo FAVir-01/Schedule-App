@@ -6,6 +6,8 @@ const path = require('path');
 const root = path.resolve(__dirname, '..');
 const read = (relativePath) =>
   fs.readFileSync(path.join(root, relativePath), 'utf8');
+const escapeRegExp = (value) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const extract = (contents, pattern, label) => {
   const match = contents.match(pattern);
   if (!match) {
@@ -20,6 +22,7 @@ const gradle = read('android/app/build.gradle');
 const stringsXml = read('android/app/src/main/res/values/strings.xml');
 const mainManifest = read('android/app/src/main/AndroidManifest.xml');
 const debugManifest = read('android/app/src/debug/AndroidManifest.xml');
+const stylesXml = read('android/app/src/main/res/values/styles.xml');
 const mainActivity = read('android/app/src/main/java/com/favit/MainActivity.kt');
 const mainApplication = read('android/app/src/main/java/com/favit/MainApplication.kt');
 
@@ -35,6 +38,16 @@ const native = {
     /<string\s+name=["']expo_runtime_version["']>([^<]+)<\/string>/,
     'expo_runtime_version'
   ),
+  appName: extract(
+    stringsXml,
+    /<string\s+name=["']app_name["']>([^<]+)<\/string>/,
+    'app_name'
+  ),
+  mainActivityTag: extract(
+    mainManifest,
+    /(<activity\b[^>]*android:name=["']\.MainActivity["'][^>]*>)/,
+    'tag de MainActivity'
+  ),
 };
 
 const errors = [];
@@ -49,11 +62,81 @@ expectEqual('namespace x applicationId', native.namespace, native.applicationId)
 expectEqual('Expo version x versionName', expo.version, native.versionName);
 expectEqual('Expo versionCode x versionCode nativo', android.versionCode, native.versionCode);
 expectEqual('Expo runtimeVersion x runtime nativo', expo.runtimeVersion, native.runtimeVersion);
+expectEqual('Nome Expo x app_name nativo', expo.name, native.appName);
 expectEqual(
   'Pacote de MainActivity',
   extract(mainActivity, /^package\s+([^\s]+)$/m, 'pacote de MainActivity'),
   native.namespace
 );
+
+const applicationTag = extract(
+  mainManifest,
+  /(<application\b[^>]*>)/,
+  'tag de application'
+);
+if (!/android:label=["']@string\/app_name["']/.test(applicationTag)) {
+  errors.push('Application deve usar @string/app_name como label.');
+}
+if (!/android:icon=["']@mipmap\/ic_launcher["']/.test(applicationTag)) {
+  errors.push('Application deve usar @mipmap/ic_launcher como ícone.');
+}
+if (!/android:roundIcon=["']@mipmap\/ic_launcher_round["']/.test(applicationTag)) {
+  errors.push('Application deve usar @mipmap/ic_launcher_round como ícone redondo.');
+}
+
+if (expo.orientation === 'portrait' && !/android:screenOrientation=["']portrait["']/.test(native.mainActivityTag)) {
+  errors.push('MainActivity deve manter screenOrientation="portrait".');
+}
+if (expo.userInterfaceStyle === 'automatic' && !/Theme\.AppCompat\.DayNight\./.test(stylesXml)) {
+  errors.push('AppTheme deve herdar de um tema DayNight para userInterfaceStyle="automatic".');
+}
+
+if (!expo.scheme) {
+  errors.push('Expo deve declarar um scheme para deep links.');
+} else {
+  const schemePattern = new RegExp(
+    `<data\\s+[^>]*android:scheme=["']${escapeRegExp(expo.scheme)}["'][^>]*/?>`
+  );
+  if (!schemePattern.test(mainManifest)) {
+    errors.push(`Manifest principal deve registrar o scheme ${expo.scheme}://.`);
+  }
+}
+
+const nativeUpdateUrl = extract(
+  mainManifest,
+  /<meta-data\s+android:name=["']expo\.modules\.updates\.EXPO_UPDATE_URL["']\s+android:value=["']([^"']+)["']\s*\/>/,
+  'EXPO_UPDATE_URL'
+);
+expectEqual('Expo updates.url x URL nativa', expo.updates?.url, nativeUpdateUrl);
+
+const validateSquarePng = (label, configuredPath) => {
+  if (!configuredPath) {
+    errors.push(`${label} não foi configurado.`);
+    return;
+  }
+
+  const absolutePath = path.resolve(root, configuredPath);
+  if (!absolutePath.startsWith(`${root}${path.sep}`) || !fs.existsSync(absolutePath)) {
+    errors.push(`${label} aponta para um arquivo ausente ou fora do projeto.`);
+    return;
+  }
+
+  const image = fs.readFileSync(absolutePath);
+  const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  if (image.length < 24 || !image.subarray(0, 8).equals(pngSignature)) {
+    errors.push(`${label} deve ser um PNG real.`);
+    return;
+  }
+
+  const width = image.readUInt32BE(16);
+  const height = image.readUInt32BE(20);
+  if (width !== height) {
+    errors.push(`${label} deve ser quadrado; recebido ${width}x${height}.`);
+  }
+};
+
+validateSquarePng('Ícone principal', expo.icon);
+validateSquarePng('Ícone adaptativo', android.adaptiveIcon?.foregroundImage);
 expectEqual(
   'Pacote de MainApplication',
   extract(mainApplication, /^package\s+([^\s]+)$/m, 'pacote de MainApplication'),
