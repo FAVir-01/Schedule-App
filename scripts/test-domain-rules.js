@@ -66,6 +66,9 @@ const {
   shouldTaskAppearOnDate,
 } = require('../utils/dateUtils');
 const {
+  getTaskRepeatDisplayLabel,
+  getTaskTagDisplayLabel,
+  getTaskTypeDisplayLabel,
   isValidQuantumDefinition,
   reconcileTaskProgressOnEdit,
   shouldResetTaskProgress,
@@ -111,6 +114,37 @@ const { AppErrorBoundary } = require('../components/AppErrorBoundary');
 
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
+
+test('traduz rotulos de tarefa pela chave semantica atual', () => {
+  assert.equal(
+    getTaskTagDisplayLabel(
+      { tag: 'workout', tagLabel: 'Workout' },
+      { workout: 'Treino' }
+    ),
+    'Treino'
+  );
+  assert.equal(
+    getTaskTypeDisplayLabel(
+      { type: 'quantum', typeLabel: 'Goal' },
+      { default: 'Habito', quantum: 'Meta', reminder: 'Lembrete' }
+    ),
+    'Meta'
+  );
+  assert.equal(
+    getTaskRepeatDisplayLabel(
+      { enabled: true, frequency: 'weekly', interval: 3 },
+      { weekly: 'Semanal', everyWeeks: 'A cada {count} semanas' }
+    ),
+    'A cada 3 semanas'
+  );
+  assert.equal(
+    getTaskRepeatDisplayLabel(
+      { enabled: false },
+      { oneTime: 'Uma vez' }
+    ),
+    'Uma vez'
+  );
+});
 
 test('oculta o titulo da tarefa em notificacoes privadas', () => {
   const strings = {

@@ -7,8 +7,9 @@ import { FALLBACK_EMOJI } from '../constants/app';
 import { getDateKey, normalizeDateValue } from '../utils/dateUtils';
 import {
   getQuantumProgressLabel,
+  getTaskRepeatDisplayLabel,
   getTaskTagDisplayLabel,
-  normalizeRepeatConfig,
+  getTaskTypeDisplayLabel,
 } from '../utils/taskUtils';
 import { formatTaskTime } from '../utils/timeUtils';
 import { styles } from '../styles/appStyles';
@@ -28,33 +29,14 @@ export default function ProfileTaskDetailModal({ visible, task, onClose, onToggl
 
   const normalizedDate = normalizeDateValue(task.date ?? task.dateKey);
   const dateLabel = normalizedDate ? format(normalizedDate, 'PPP', { locale: getDateLocale(language) }) : t.common.notSet;
-  const tagLabel = getTaskTagDisplayLabel(task) ?? t.sheet.noTag;
-  const typeLabel = task.typeLabel ?? task.type ?? 'Standard';
+  const tagLabel = getTaskTagDisplayLabel(task, t.taskDisplay.tags) ?? t.sheet.noTag;
+  const typeLabel = getTaskTypeDisplayLabel(task, t.taskDisplay.types);
   const isQuantum = task.type === 'quantum';
-  const repeatConfig = normalizeRepeatConfig(task.repeat);
   const todayKey = getDateKey(new Date());
   const quantumLabel = isQuantum ? getQuantumProgressLabel(task, todayKey) : null;
-  const quantumModeLabel =
-    task.quantum?.mode === 'timer' ? 'Timer' : task.quantum?.mode ? 'Cont' : 'Quantum';
-  const repeatLabel = repeatConfig.enabled
-    ? repeatConfig.frequency === 'daily'
-      ? repeatConfig.interval === 1
-        ? 'Daily'
-        : `Every ${repeatConfig.interval} days`
-      : repeatConfig.frequency === 'weekly'
-      ? repeatConfig.interval === 1
-        ? 'Weekly'
-        : `Every ${repeatConfig.interval} weeks`
-      : repeatConfig.frequency === 'monthly'
-      ? repeatConfig.interval === 1
-        ? 'Monthly'
-        : `Every ${repeatConfig.interval} months`
-      : repeatConfig.frequency === 'weekend'
-      ? 'Weekends'
-      : repeatConfig.frequency === 'weekdays'
-      ? 'Weekdays'
-      : repeatConfig.frequency
-    : 'One-time';
+  const quantumModeLabel = t.taskDisplay.quantumModes[task.quantum?.mode]
+    ?? t.taskDisplay.quantumModes.quantum;
+  const repeatLabel = getTaskRepeatDisplayLabel(task.repeat, t.taskDisplay.repeats);
   const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
 
   return (
@@ -81,7 +63,7 @@ export default function ProfileTaskDetailModal({ visible, task, onClose, onToggl
             <Pressable
               onPress={onClose}
               accessibilityRole="button"
-              accessibilityLabel="Close task details"
+              accessibilityLabel={t.taskDetails.close}
               hitSlop={8}
             >
               <Ionicons name="close" size={20} color="#1F2742" />
@@ -89,19 +71,19 @@ export default function ProfileTaskDetailModal({ visible, task, onClose, onToggl
           </View>
           <View style={styles.profileDetailBody}>
             <View style={styles.profileDetailRow}>
-              <Text style={styles.profileDetailLabel}>Start date</Text>
+              <Text style={styles.profileDetailLabel}>{t.taskDetails.startDate}</Text>
               <Text style={styles.profileDetailValue}>{dateLabel}</Text>
             </View>
             <View style={styles.profileDetailRow}>
-              <Text style={styles.profileDetailLabel}>Repeat</Text>
+              <Text style={styles.profileDetailLabel}>{t.taskDetails.repeat}</Text>
               <Text style={styles.profileDetailValue}>{repeatLabel}</Text>
             </View>
             <View style={styles.profileDetailRow}>
-              <Text style={styles.profileDetailLabel}>Type</Text>
+              <Text style={styles.profileDetailLabel}>{t.taskDetails.type}</Text>
               <Text style={styles.profileDetailValue}>{typeLabel}</Text>
             </View>
             <View style={styles.profileDetailRow}>
-              <Text style={styles.profileDetailLabel}>Tag</Text>
+              <Text style={styles.profileDetailLabel}>{t.taskDetails.tag}</Text>
               <Text style={styles.profileDetailValue}>{tagLabel}</Text>
             </View>
             {isQuantum ? (
@@ -111,7 +93,7 @@ export default function ProfileTaskDetailModal({ visible, task, onClose, onToggl
               </View>
             ) : (
               <View style={styles.profileDetailRow}>
-                <Text style={styles.profileDetailLabel}>Subtasks</Text>
+                <Text style={styles.profileDetailLabel}>{t.taskDetails.subtasks}</Text>
                 <Text style={styles.profileDetailValue}>{totalSubtasks}</Text>
               </View>
             )}
@@ -123,7 +105,7 @@ export default function ProfileTaskDetailModal({ visible, task, onClose, onToggl
             ]}
             onPress={() => onToggleLock?.(task.id)}
             accessibilityRole="button"
-            accessibilityLabel={task.profileLocked ? 'Unlock task' : 'Lock task'}
+            accessibilityLabel={task.profileLocked ? t.taskDetails.unlock : t.taskDetails.lock}
           >
             <Ionicons
               name={task.profileLocked ? 'lock-closed' : 'lock-open'}
@@ -136,7 +118,7 @@ export default function ProfileTaskDetailModal({ visible, task, onClose, onToggl
                 task.profileLocked && styles.profileDetailLockButtonTextActive,
               ]}
             >
-              {task.profileLocked ? 'Unlock task' : 'Lock task'}
+              {task.profileLocked ? t.taskDetails.unlock : t.taskDetails.lock}
             </Text>
           </Pressable>
         </View>

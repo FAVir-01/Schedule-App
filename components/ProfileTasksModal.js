@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { translations } from '../constants/i18n';
 import {
   getTaskTagDisplayLabel,
   normalizeRepeatConfig,
@@ -27,6 +28,7 @@ export default function ProfileTasksModal({
   onDeleteSelected,
   language = 'en',
 }) {
+  const t = translations[language] ?? translations.en;
   const [searchValue, setSearchValue] = useState('');
   const [selectedTag, setSelectedTag] = useState('all');
   const [selectedRepeat, setSelectedRepeat] = useState('all');
@@ -52,10 +54,10 @@ export default function ProfileTasksModal({
       if (!key || seen.has(key)) {
         return;
       }
-      seen.set(key, getTaskTagDisplayLabel(task) ?? 'Tag');
+      seen.set(key, getTaskTagDisplayLabel(task, t.taskDisplay.tags) ?? t.taskDetails.tag);
     });
     return Array.from(seen.entries()).map(([key, label]) => ({ key, label }));
-  }, [tasks]);
+  }, [t.taskDetails.tag, t.taskDisplay.tags, tasks]);
 
   const repeatOptions = useMemo(() => {
     const seen = new Set();
@@ -73,14 +75,14 @@ export default function ProfileTasksModal({
 
   const repeatLabels = useMemo(
     () => ({
-      daily: 'Daily',
-      weekly: 'Weekly',
-      monthly: 'Monthly',
-      weekend: 'Weekend',
-      weekdays: 'Weekdays',
-      'one-time': 'One-time',
+      daily: t.taskDisplay.repeats.daily,
+      weekly: t.taskDisplay.repeats.weekly,
+      monthly: t.taskDisplay.repeats.monthly,
+      weekend: t.taskDisplay.repeats.weekend,
+      weekdays: t.taskDisplay.repeats.weekdays,
+      'one-time': t.taskDisplay.repeats.oneTime,
     }),
-    []
+    [t.taskDisplay.repeats]
   );
 
   const filteredTasks = useMemo(() => {
@@ -135,15 +137,15 @@ export default function ProfileTasksModal({
       <View style={styles.profileTasksContainer}>
         <View style={styles.profileTasksHeader}>
           <View>
-            <Text style={styles.profileTasksTitle}>Your tasks</Text>
+            <Text style={styles.profileTasksTitle}>{t.profileTasks.title}</Text>
             <Text style={styles.profileTasksSubtitle}>
-              Minimal view to keep your profile organized.
+              {t.profileTasks.subtitle}
             </Text>
           </View>
           <Pressable
             onPress={onClose}
             accessibilityRole="button"
-            accessibilityLabel="Close profile tasks"
+            accessibilityLabel={t.profileTasks.close}
             hitSlop={8}
           >
             <Ionicons name="close" size={20} color="#1F2742" />
@@ -156,7 +158,7 @@ export default function ProfileTasksModal({
               style={styles.profileTasksSearchInput}
               value={searchValue}
               onChangeText={setSearchValue}
-              placeholder="Search by name"
+              placeholder={t.profileTasks.searchPlaceholder}
               placeholderTextColor="#9aa5b5"
             />
           </View>
@@ -178,7 +180,7 @@ export default function ProfileTasksModal({
                   selectedTag === 'all' && styles.profileTasksFilterTextActive,
                 ]}
               >
-                All tags
+                {t.profileTasks.allTags}
               </Text>
             </Pressable>
             {tagOptions.map((option) => (
@@ -219,7 +221,7 @@ export default function ProfileTasksModal({
                   selectedRepeat === 'all' && styles.profileTasksFilterTextActive,
                 ]}
               >
-                All repeats
+                {t.profileTasks.allRepeats}
               </Text>
             </Pressable>
             {repeatOptions.map((option) => (
@@ -246,7 +248,7 @@ export default function ProfileTasksModal({
         {filteredTasks.length === 0 ? (
           <View style={styles.profileTasksEmpty}>
             <Text style={styles.profileTasksEmptyText}>
-              No tasks match the current filters.
+              {t.profileTasks.empty}
             </Text>
           </View>
         ) : (
@@ -271,16 +273,19 @@ export default function ProfileTasksModal({
         {selectionMode ? (
           <View style={styles.profileTasksBulkBar}>
             <Text style={styles.profileTasksBulkText}>
-              {selectedTaskIds.length} selected
+              {(selectedTaskIds.length === 1
+                ? t.profileTasks.selectedOne
+                : t.profileTasks.selectedMany
+              ).replace('{count}', String(selectedTaskIds.length))}
             </Text>
             <Pressable
               style={styles.profileTasksBulkDelete}
               onPress={handleBulkDelete}
               accessibilityRole="button"
-              accessibilityLabel="Delete selected tasks"
+              accessibilityLabel={t.profileTasks.deleteSelectedAccessibility}
             >
               <Ionicons name="trash-outline" size={18} color="#fff" />
-              <Text style={styles.profileTasksBulkDeleteText}>Delete selected</Text>
+              <Text style={styles.profileTasksBulkDeleteText}>{t.profileTasks.deleteSelected}</Text>
             </Pressable>
           </View>
         ) : null}
