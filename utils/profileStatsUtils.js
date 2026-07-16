@@ -103,7 +103,9 @@ export const calculateProfileStats = ({
   const dates = createDateRangeEndingAt(normalizedToday, evaluatedDays);
   const scheduledTasks = scorableTasks.map((task) => ({
     task,
-    matchesDate: createTaskScheduleMatcher(task),
+    matchesDate: createTaskScheduleMatcher(task, {
+      targetDatesAreNormalized: true,
+    }),
   }));
   let currentStreak = 0;
   let bestStreak = 0;
@@ -163,7 +165,9 @@ export const buildDailyCompletionSeries = ({
   const totalByDate = Array(dayCount).fill(0);
 
   statsTasks.forEach((task) => {
-    const matchesDate = createTaskScheduleMatcher(task);
+    const matchesDate = createTaskScheduleMatcher(task, {
+      targetDatesAreNormalized: true,
+    });
     dates.forEach((date, index) => {
       if (!matchesDate(date)) {
         return;

@@ -40,7 +40,13 @@ const runHapticsMock = async (operation, value) => {
 };
 Module._load = function loadWithReactNativeMock(request, parent, isMain) {
   if (request === 'react-native') {
-    return { Platform: { OS: 'android' } };
+    return {
+      Platform: { OS: 'android' },
+      Pressable: 'Pressable',
+      StyleSheet: { create: (styles) => styles },
+      Text: 'Text',
+      View: 'View',
+    };
   }
   if (request === 'expo-haptics') {
     return {
@@ -91,9 +97,48 @@ const {
   calculateProfileStats,
   MAX_PROFILE_STREAK_DAYS,
 } = require('../utils/profileStatsUtils');
+const {
+  clearPerformanceMetrics,
+  getRecentPerformanceMetrics,
+  measureSynchronous,
+  recordPerformanceMetric,
+} = require('../utils/performanceUtils');
+const {
+  buildTaskReminderContent,
+  scheduledReminderContentMatches,
+} = require('../utils/notificationUtils');
+const { AppErrorBoundary } = require('../components/AppErrorBoundary');
 
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
+
+test('oculta o titulo da tarefa em notificacoes privadas', () => {
+  const strings = {
+    reminderTitle: 'Lembrete',
+    reminderBody: 'Hora de: {title}',
+    reminderFallbackBody: 'Tarefa pendente.',
+    privateReminderBody: 'Você tem um lembrete no Favit.',
+  };
+  const privateContent = buildTaskReminderContent(
+    { title: 'Consulta médica' },
+    strings,
+    true
+  );
+  const publicContent = buildTaskReminderContent(
+    { title: 'Consulta médica' },
+    strings,
+    false
+  );
+
+  assert.deepEqual(privateContent, {
+    title: 'Lembrete',
+    body: 'Você tem um lembrete no Favit.',
+  });
+  assert.equal(JSON.stringify(privateContent).includes('Consulta médica'), false);
+  assert.equal(publicContent.body, 'Hora de: Consulta médica');
+  assert.equal(scheduledReminderContentMatches(privateContent, privateContent), true);
+  assert.equal(scheduledReminderContentMatches(publicContent, privateContent), false);
+});
 
 test('celebra apenas uma nova conclusão causada pelo usuário na data visível', () => {
   const validTransition = {
@@ -236,6 +281,111 @@ test('processa fixtures de perfil com 0, 50, 500 e 2.000 tarefas', () => {
     assert.equal(series.entries[29].total, taskCount);
     assert.equal(series.entries[29].completed, Math.ceil(taskCount / 2));
   });
+});
+
+test('registra somente metadados de performance nao sensiveis', () => {
+  clearPerformanceMetrics();
+  const result = measureSynchronous(
+    'profile.test',
+    () => ({ taskCount: 2 }),
+    (value) => ({
+      taskCount: value.taskCount,
+      filtered: false,
+      preciseValue: 1.234,
+      title: 'segredo',
+      nested: { note: 'segredo' },
+      InvalidKey: 1,
+    }),
+    { log: false }
+  );
+  const metrics = getRecentPerformanceMetrics();
+
+  assert.equal(result.taskCount, 2);
+  assert.equal(metrics.length, 1);
+  assert.deepEqual(metrics[0].metadata, {
+    taskCount: 2,
+    filtered: false,
+    preciseValue: 1.23,
+  });
+  metrics[0].metadata.taskCount = 999;
+  assert.equal(getRecentPerformanceMetrics()[0].metadata.taskCount, 2);
+});
+
+test('observabilidade nao substitui o resultado nem o erro real da operacao', () => {
+  clearPerformanceMetrics();
+  assert.equal(
+    measureSynchronous('profile.metadata-failure', () => 42, () => {
+      throw new Error('metadata failure');
+    }, { log: false }),
+    42
+  );
+
+  const operationError = new Error('operation failure');
+  assert.throws(
+    () =>
+      measureSynchronous(
+        'profile.operation-failure',
+        () => {
+          throw operationError;
+        },
+        { taskCount: 3 },
+        { log: false }
+      ),
+    (error) => error === operationError
+  );
+  const failureMetric = getRecentPerformanceMetrics().at(-1);
+  assert.equal(failureMetric.metadata.taskCount, 3);
+  assert.equal(failureMetric.metadata.failed, true);
+});
+
+test('limita o buffer de observabilidade as 100 metricas mais recentes', () => {
+  clearPerformanceMetrics();
+  for (let index = 0; index < 105; index += 1) {
+    recordPerformanceMetric(`profile.buffer-${index}`, index, {}, { log: false });
+  }
+  const metrics = getRecentPerformanceMetrics();
+  assert.equal(metrics.length, 100);
+  assert.equal(metrics[0].name, 'profile.buffer-5');
+  assert.equal(metrics[99].name, 'profile.buffer-104');
+  clearPerformanceMetrics();
+});
+
+test('error boundary registra falha sanitizada e remonta no retry', () => {
+  clearPerformanceMetrics();
+  const boundary = new AppErrorBoundary({ children: 'app' });
+  boundary.state = {
+    hasError: true,
+    recoveryAttempt: 0,
+    contentKey: 0,
+  };
+  boundary.setState = (update, onComplete) => {
+    const nextState = typeof update === 'function' ? update(boundary.state) : update;
+    boundary.state = { ...boundary.state, ...nextState };
+    onComplete?.();
+  };
+
+  assert.deepEqual(AppErrorBoundary.getDerivedStateFromError(new Error('secret')), {
+    hasError: true,
+  });
+  boundary.componentDidCatch(new TypeError('secret'), { componentStack: 'private stack' });
+  boundary.handleRetry();
+
+  assert.equal(boundary.state.hasError, false);
+  assert.equal(boundary.state.recoveryAttempt, 1);
+  assert.equal(boundary.state.contentKey, 1);
+  const metrics = getRecentPerformanceMetrics();
+  assert.deepEqual(metrics.map(({ name }) => name), [
+    'app.render-error',
+    'app.render-retry',
+  ]);
+  assert.deepEqual(metrics[0].metadata, {
+    recoveryAttempt: 0,
+    errorTypeKnown: true,
+    componentStackAvailable: true,
+  });
+  assert.equal(JSON.stringify(metrics).includes('secret'), false);
+  assert.equal(JSON.stringify(metrics).includes('private stack'), false);
+  clearPerformanceMetrics();
 });
 
 test('rejeita datas de calendário inexistentes', () => {

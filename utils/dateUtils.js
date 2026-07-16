@@ -1,6 +1,4 @@
 import {
-  differenceInCalendarDays,
-  differenceInCalendarMonths,
   endOfMonth,
   endOfWeek,
   getWeeksInMonth,
@@ -10,6 +8,14 @@ import {
   startOfMonth,
   startOfWeek,
 } from 'date-fns';
+
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
+
+const getCalendarDayOrdinal = (date) =>
+  Math.floor(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) /
+      MILLISECONDS_PER_DAY
+  );
 
 const getDateKey = (date) => {
   const normalized = new Date(date);
@@ -122,7 +128,10 @@ const getWeekdayKeyFromDate = (date) => {
   return WEEKDAY_KEYS[date.getDay()] ?? null;
 };
 
-const createTaskScheduleMatcher = (task) => {
+const createTaskScheduleMatcher = (
+  task,
+  { targetDatesAreNormalized = false } = {}
+) => {
   if (!task || typeof task !== 'object') {
     return () => false;
   }
@@ -134,6 +143,9 @@ const createTaskScheduleMatcher = (task) => {
 
   const startDay = startOfDay(normalizedStartDate);
   const configuredEndDate = normalizeDateValue(task.repeat?.endDate);
+  const startTime = startDay.getTime();
+  const configuredEndTime = configuredEndDate?.getTime() ?? null;
+  const startDayOrdinal = getCalendarDayOrdinal(startDay);
   const isQuantumTask = task.type === 'quantum';
   let repeat = task.repeat;
   if (!repeat) {
@@ -160,32 +172,41 @@ const createTaskScheduleMatcher = (task) => {
   const selectedMonthDays = normalizeRepeatCollection(repeat.monthDays);
 
   return (targetDate) => {
-    const normalizedTargetDate = normalizeDateValue(targetDate);
+    const normalizedTargetDate = targetDatesAreNormalized
+      ? targetDate
+      : normalizeDateValue(targetDate);
     if (!normalizedTargetDate) {
       return false;
     }
 
-    const targetDay = startOfDay(normalizedTargetDate);
-    if (configuredEndDate && isBefore(configuredEndDate, targetDay)) {
+    const targetDay = targetDatesAreNormalized
+      ? normalizedTargetDate
+      : startOfDay(normalizedTargetDate);
+    if (!(targetDay instanceof Date) || Number.isNaN(targetDay.getTime())) {
+      return false;
+    }
+    const targetTime = targetDay.getTime();
+    if (configuredEndTime != null && configuredEndTime < targetTime) {
       return false;
     }
 
-    if (isSameDay(startDay, targetDay)) {
+    if (startTime === targetTime) {
       return true;
     }
 
-    if (isBefore(targetDay, startDay) || !repeatsAfterStart) {
+    if (targetTime < startTime || !repeatsAfterStart) {
       return false;
     }
 
     switch (frequency) {
       case 'daily':
       case 'interval': {
-        const diffDays = differenceInCalendarDays(targetDay, startDay);
+        const diffDays = getCalendarDayOrdinal(targetDay) - startDayOrdinal;
         return diffDays % interval === 0;
       }
       case 'weekly': {
-        const diffWeeks = Math.floor(differenceInCalendarDays(targetDay, startDay) / 7);
+        const diffDays = getCalendarDayOrdinal(targetDay) - startDayOrdinal;
+        const diffWeeks = Math.floor(diffDays / 7);
         if (diffWeeks % interval !== 0) {
           return false;
         }
@@ -196,7 +217,10 @@ const createTaskScheduleMatcher = (task) => {
         return targetDay.getDay() === startDay.getDay();
       }
       case 'monthly': {
-        const diffMonths = differenceInCalendarMonths(targetDay, startDay);
+        const diffMonths =
+          (targetDay.getFullYear() - startDay.getFullYear()) * 12 +
+          targetDay.getMonth() -
+          startDay.getMonth();
         if (diffMonths % interval !== 0) {
           return false;
         }

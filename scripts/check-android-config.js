@@ -18,6 +18,8 @@ const appConfig = JSON.parse(read('app.json'));
 const easConfig = JSON.parse(read('eas.json'));
 const gradle = read('android/app/build.gradle');
 const stringsXml = read('android/app/src/main/res/values/strings.xml');
+const mainManifest = read('android/app/src/main/AndroidManifest.xml');
+const debugManifest = read('android/app/src/debug/AndroidManifest.xml');
 const mainActivity = read('android/app/src/main/java/com/favit/MainActivity.kt');
 const mainApplication = read('android/app/src/main/java/com/favit/MainApplication.kt');
 
@@ -75,6 +77,35 @@ if (easConfig.build?.production_apk?.credentialsSource !== 'remote') {
 }
 if (/release\s*\{[\s\S]*?signingConfig\s+signingConfigs\.debug/.test(gradle)) {
   errors.push('O build release não pode usar signingConfigs.debug.');
+}
+
+const blockedPermissions = new Set(android.blockedPermissions ?? []);
+const releaseBlockedPermissions = [
+  'android.permission.READ_EXTERNAL_STORAGE',
+  'android.permission.WRITE_EXTERNAL_STORAGE',
+  'android.permission.SYSTEM_ALERT_WINDOW',
+];
+
+releaseBlockedPermissions.forEach((permission) => {
+  if (!blockedPermissions.has(permission)) {
+    errors.push(`Expo deve bloquear ${permission} no manifest final.`);
+  }
+
+  const escapedPermission = permission.replaceAll('.', '\\.');
+  const removalPattern = new RegExp(
+    `<uses-permission\\s+android:name=["']${escapedPermission}["'][^>]*tools:node=["']remove["'][^>]*/?>`
+  );
+  if (!removalPattern.test(mainManifest)) {
+    errors.push(`Manifest principal deve remover ${permission}.`);
+  }
+});
+
+if (
+  !/<uses-permission\s+android:name=["']android\.permission\.SYSTEM_ALERT_WINDOW["'][^>]*tools:node=["']replace["'][^>]*\/?>/.test(
+    debugManifest
+  )
+) {
+  errors.push('SYSTEM_ALERT_WINDOW deve ficar restrita ao manifest de debug.');
 }
 
 if (errors.length > 0) {
