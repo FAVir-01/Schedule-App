@@ -40,6 +40,17 @@ class MainActivity : ReactActivity() {
           ){})
   }
 
+  override fun onUserLeaveHint() {
+    // The Expo development launcher can temporarily replace the activity delegate
+    // with a no-op delegate while redirecting between launcher and app. React Native
+    // 0.81 requires an initialized ReactDelegate here, so skip this debug-only event
+    // until the app delegate is ready. Release builds always keep the normal path.
+    if (BuildConfig.DEBUG && reactDelegate == null) {
+      return
+    }
+    super.onUserLeaveHint()
+  }
+
   /**
     * Align the back button behavior with Android S
     * where moving root activities to background instead of finishing activities.
