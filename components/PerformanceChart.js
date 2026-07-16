@@ -22,6 +22,7 @@ import {
   normalizeDateValue,
 } from '../utils/dateUtils';
 import { buildDailyCompletionSeries } from '../utils/profileStatsUtils';
+import { measureSynchronous } from '../utils/performanceUtils';
 import { FALLBACK_EMOJI } from '../constants/app';
 import { translations } from '../constants/i18n';
 import { styles } from '../styles/appStyles';
@@ -138,76 +139,94 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
   );
 
   // Dados diários por série (com 6 dias extras no início pra aquecer a média móvel).
-  const chartData = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const warmup = 6;
-    const totalDays = periodDays + warmup;
+  const chartData = useMemo(
+    () =>
+      measureSynchronous(
+        'profile.chart-data',
+        () => {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const warmup = 6;
+          const totalDays = periodDays + warmup;
 
-    const { dates, entries } = buildDailyCompletionSeries({
-      tasks,
-      selectedTask,
-      endDate: today,
-      days: totalDays,
-    });
-    const rawBySeries = [entries];
-
-    let values;
-    if (mode === 'percent') {
-      values = rawBySeries.map((entries) => smoothPercentSeries(entries).slice(warmup));
-    } else if (mode === 'values') {
-      values = rawBySeries.map((entries) =>
-        entries.slice(warmup).map((entry) => entry.completed)
-      );
-    } else {
-      values = rawBySeries.map((entries) => {
-        let running = 0;
-        return entries.slice(warmup).map((entry) => {
-          running += entry.completed;
-          return running;
-        });
-      });
-    }
-
-    let visibleDates = dates.slice(warmup);
-    let visibleRaw = rawBySeries.map((entries) => entries.slice(warmup));
-
-    // Períodos longos: agrega por semana pra manter leve.
-    if (visibleDates.length > 120) {
-      const aggregatedDates = [];
-      const aggregatedValues = values.map(() => []);
-      const aggregatedRaw = visibleRaw.map(() => []);
-      for (let start = 0; start < visibleDates.length; start += 7) {
-        const end = Math.min(start + 7, visibleDates.length);
-        aggregatedDates.push(visibleDates[end - 1]);
-        values.forEach((serie, seriesIndex) => {
-          const chunk = serie.slice(start, end);
-          let value;
-          if (mode === 'values') {
-            value = chunk.reduce((sum, item) => sum + item, 0);
-          } else if (mode === 'accum') {
-            value = chunk[chunk.length - 1];
-          } else {
-            value = chunk.reduce((sum, item) => sum + item, 0) / chunk.length;
-          }
-          aggregatedValues[seriesIndex].push(value);
-        });
-        visibleRaw.forEach((serie, seriesIndex) => {
-          const chunk = serie.slice(start, end);
-          aggregatedRaw[seriesIndex].push({
-            completed: chunk.reduce((sum, item) => sum + item.completed, 0),
-            total: chunk.reduce((sum, item) => sum + item.total, 0),
+          const { dates, entries } = buildDailyCompletionSeries({
+            tasks,
+            selectedTask,
+            endDate: today,
+            days: totalDays,
           });
-        });
-      }
-      visibleDates = aggregatedDates;
-      values = aggregatedValues;
-      visibleRaw = aggregatedRaw;
-    }
+          const rawBySeries = [entries];
 
-    const hasData = rawBySeries[0].some((entry) => entry.total > 0);
-    return { dates: visibleDates, values, raw: visibleRaw, hasData };
-  }, [mode, periodDays, selectedTask, tasks]);
+          let values;
+          if (mode === 'percent') {
+            values = rawBySeries.map((entries) =>
+              smoothPercentSeries(entries).slice(warmup)
+            );
+          } else if (mode === 'values') {
+            values = rawBySeries.map((entries) =>
+              entries.slice(warmup).map((entry) => entry.completed)
+            );
+          } else {
+            values = rawBySeries.map((entries) => {
+              let running = 0;
+              return entries.slice(warmup).map((entry) => {
+                running += entry.completed;
+                return running;
+              });
+            });
+          }
+
+          let visibleDates = dates.slice(warmup);
+          let visibleRaw = rawBySeries.map((entries) => entries.slice(warmup));
+
+          // Períodos longos: agrega por semana pra manter leve.
+          if (visibleDates.length > 120) {
+            const aggregatedDates = [];
+            const aggregatedValues = values.map(() => []);
+            const aggregatedRaw = visibleRaw.map(() => []);
+            for (let start = 0; start < visibleDates.length; start += 7) {
+              const end = Math.min(start + 7, visibleDates.length);
+              aggregatedDates.push(visibleDates[end - 1]);
+              values.forEach((serie, seriesIndex) => {
+                const chunk = serie.slice(start, end);
+                let value;
+                if (mode === 'values') {
+                  value = chunk.reduce((sum, item) => sum + item, 0);
+                } else if (mode === 'accum') {
+                  value = chunk[chunk.length - 1];
+                } else {
+                  value = chunk.reduce((sum, item) => sum + item, 0) / chunk.length;
+                }
+                aggregatedValues[seriesIndex].push(value);
+              });
+              visibleRaw.forEach((serie, seriesIndex) => {
+                const chunk = serie.slice(start, end);
+                aggregatedRaw[seriesIndex].push({
+                  completed: chunk.reduce((sum, item) => sum + item.completed, 0),
+                  total: chunk.reduce((sum, item) => sum + item.total, 0),
+                });
+              });
+            }
+            visibleDates = aggregatedDates;
+            values = aggregatedValues;
+            visibleRaw = aggregatedRaw;
+          }
+
+          const hasData = rawBySeries[0].some((entry) => entry.total > 0);
+          return { dates: visibleDates, values, raw: visibleRaw, hasData };
+        },
+        (result) => ({
+          taskCount: tasks.length,
+          filtered: Boolean(selectedTask),
+          periodDays,
+          pointCount: result.dates.length,
+          percentMode: mode === 'percent',
+          valueMode: mode === 'values',
+          accumMode: mode === 'accum',
+        })
+      ),
+    [mode, periodDays, selectedTask, tasks]
+  );
 
   const { dates, values, raw, hasData } = chartData;
 

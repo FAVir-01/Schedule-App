@@ -1901,6 +1901,20 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1a1a2e',
   },
+  settingsRowTextGroup: {
+    flex: 1,
+    gap: 3,
+  },
+  settingsRowTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1a1a2e',
+  },
+  settingsRowHint: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: '#6f6b87',
+  },
   settingsLanguageGroup: {
     flexDirection: 'row',
     gap: 6,

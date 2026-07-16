@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { NOTIFICATIONS_SUPPORTED, REMINDER_OFFSETS } from '../constants/app';
 import { normalizeDateValue, shouldTaskAppearOnDate } from '../utils/dateUtils';
+import { scheduledReminderContentMatches } from '../utils/notificationUtils';
 import { toMinutes } from '../utils/timeUtils';
 
 const REMINDER_QUEUE_SIZE = 8;
@@ -462,6 +463,7 @@ export const reconcileTaskReminderSchedules = async (
 
   for (const task of tasks) {
     const plan = getTaskReminderPlan(task);
+    const expectedContent = getContent(task);
     const associatedRequests = getPendingRequestsForTask(pendingRequests, task);
     const associatedIds = uniqueIds(
       associatedRequests.map((request) => request.identifier)
@@ -484,8 +486,12 @@ export const reconcileTaskReminderSchedules = async (
 
     const expectedCount = plan.triggers.length;
     const queueMinimum = Math.min(REMINDER_QUEUE_REPLENISH_AT, expectedCount);
+    const scheduledContentIsCurrent = associatedRequests.every((request) =>
+      scheduledReminderContentMatches(request.content, expectedContent)
+    );
     const scheduleIsHealthy =
       task.notificationScheduleMode === plan.mode &&
+      scheduledContentIsCurrent &&
       (plan.mode === 'recurring'
         ? associatedIds.length === expectedCount
         : associatedIds.length >= queueMinimum);
@@ -504,7 +510,7 @@ export const reconcileTaskReminderSchedules = async (
     }
 
     await cancelTaskReminders(uniqueIds([...associatedIds, ...storedIds]));
-    const result = await schedulePlan(task, plan, getContent(task));
+    const result = await schedulePlan(task, plan, expectedContent);
     if (result.status === 'scheduled') {
       updates.push({
         taskId: task.id,

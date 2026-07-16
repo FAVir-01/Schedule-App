@@ -24,6 +24,9 @@ const translations = {
       reminderTitle: 'Reminder',
       reminderBody: 'Time for: {title}',
       reminderFallbackBody: 'You have a pending task.',
+      privateReminderBody: 'You have a reminder in Favit.',
+      privateContentLabel: 'Hide task names in notifications',
+      privateContentHint: 'Uses generic notification text to protect your privacy.',
       timeRequiredTitle: 'Set a time first',
       timeRequiredMessage: 'A notification needs a specific time for this task.',
       permissionTitle: 'Notifications are disabled',
@@ -40,6 +43,12 @@ const translations = {
     dataProtection: {
       loadErrorTitle: 'Your data was protected',
       loadErrorMessage: 'Some saved data could not be loaded. Automatic saving for that data was paused to avoid overwriting it. Export a backup from Settings before continuing.',
+    },
+    privacy: {
+      settingsLabel: 'Your data and privacy',
+      title: 'Your data and privacy',
+      message: 'Your tasks, reflections, settings, and photos stay on this device and are not sent to a Favit server.\n\nRemoving the app or losing the device can erase them. Export backups regularly. The current backup includes app data, but references photos and custom images instead of copying those files.\n\nReminders are scheduled on the device. Keep “Hide task names in notifications” on to use generic notification text.',
+      hint: 'Learn where your data is stored and what the backup includes.',
     },
     backup: {
       exportLabel: 'Export backup',
@@ -285,6 +294,9 @@ const translations = {
       reminderTitle: 'Lembrete',
       reminderBody: 'Hora de: {title}',
       reminderFallbackBody: 'Você tem uma tarefa pendente.',
+      privateReminderBody: 'Você tem um lembrete no Favit.',
+      privateContentLabel: 'Ocultar tarefas nas notificações',
+      privateContentHint: 'Usa um texto genérico para proteger sua privacidade.',
       timeRequiredTitle: 'Defina um horário primeiro',
       timeRequiredMessage: 'Uma notificação precisa de um horário específico para esta tarefa.',
       permissionTitle: 'Notificações desativadas',
@@ -301,6 +313,12 @@ const translations = {
     dataProtection: {
       loadErrorTitle: 'Seus dados foram protegidos',
       loadErrorMessage: 'Parte dos dados salvos não pôde ser carregada. O salvamento automático desses dados foi pausado para evitar sobrescrita. Exporte um backup nas Configurações antes de continuar.',
+    },
+    privacy: {
+      settingsLabel: 'Seus dados e privacidade',
+      title: 'Seus dados e privacidade',
+      message: 'Suas tarefas, reflexões, configurações e fotos ficam neste aparelho e não são enviadas para um servidor do Favit.\n\nRemover o app ou perder o aparelho pode apagar esses dados. Exporte backups regularmente. O backup atual inclui os dados do app, mas apenas referencia fotos e imagens personalizadas, sem copiar esses arquivos.\n\nOs lembretes são agendados no aparelho. Mantenha “Ocultar tarefas nas notificações” ligado para usar um texto genérico.',
+      hint: 'Saiba onde seus dados ficam e o que o backup inclui.',
     },
     backup: {
       exportLabel: 'Exportar backup',

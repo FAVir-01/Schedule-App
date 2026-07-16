@@ -94,6 +94,8 @@ import {
   willProgressReachCompletion,
 } from './utils/celebrationUtils';
 import { calculateProfileStats } from './utils/profileStatsUtils';
+import { measureSynchronous } from './utils/performanceUtils';
+import { buildTaskReminderContent } from './utils/notificationUtils';
 import { AnimatedPressable } from './components/animatedComponents';
 import ConfettiOverlay from './components/ConfettiOverlay';
 import StickyMonthHeader from './components/StickyMonthHeader';
@@ -108,6 +110,7 @@ import SwipeableTaskCard from './components/SwipeableTaskCard';
 import ReflectionSheet from './components/ReflectionSheet';
 import SettingsSheet from './components/SettingsSheet';
 import PerformanceChart from './components/PerformanceChart';
+import AppErrorBoundary from './components/AppErrorBoundary';
 import { CALENDAR_DAY_SIZE } from './constants/layout';
 import {
   cancelTaskReminders,
@@ -335,7 +338,9 @@ function ScheduleApp() {
   const dayMoodsRef = useRef(null);
   const isHydratedRef = useRef(false);
   const reminderReconciliationInFlightRef = useRef(false);
+  const pendingReminderReconciliationRef = useRef(null);
   const didInitialReminderReconciliationRef = useRef(false);
+  const reminderContentSignatureRef = useRef(null);
   const pendingCompletionActionDateRef = useRef(null);
   const taskPositionsRef = useRef(new Map());
   const taskAnimationsRef = useRef(new Map());
@@ -1005,12 +1010,23 @@ function ScheduleApp() {
   // total de conclusões e sequências do próprio hábito.
   const profileStats = useMemo(
     () =>
-      calculateProfileStats({
-        tasks,
-        history,
-        selectedTask: profileFilterTask,
-        today,
-      }),
+      measureSynchronous(
+        'profile.stats',
+        () =>
+          calculateProfileStats({
+            tasks,
+            history,
+            selectedTask: profileFilterTask,
+            today,
+          }),
+        (result) => ({
+          taskCount: tasks.length,
+          historyCount: history.length,
+          filtered: Boolean(profileFilterTask),
+          evaluatedDays: result.evaluatedDays,
+          rangeLimited: result.isStreakRangeLimited,
+        })
+      ),
     [history, profileFilterTask, tasks, today]
   );
   // Faixa de humor dos últimos 7 dias exibida no Profile.
@@ -1978,13 +1994,13 @@ function ScheduleApp() {
   );
 
   const getReminderContent = useCallback(
-    (task) => ({
-      title: t.notifications.reminderTitle,
-      body: task?.title
-        ? t.notifications.reminderBody.split('{title}').join(task.title)
-        : t.notifications.reminderFallbackBody,
-    }),
-    [t.notifications]
+    (task) =>
+      buildTaskReminderContent(
+        task,
+        t.notifications,
+        userSettings.privateNotificationContent
+      ),
+    [t.notifications, userSettings.privateNotificationContent]
   );
 
   const updateTaskReminderSchedule = useCallback((taskId, result) => {
@@ -2082,56 +2098,67 @@ function ScheduleApp() {
 
   const reconcileAllTaskReminders = useCallback(
     async (taskSnapshot) => {
+      pendingReminderReconciliationRef.current = {
+        tasks: taskSnapshot,
+        getContent: getReminderContent,
+      };
       if (reminderReconciliationInFlightRef.current) {
         return;
       }
       reminderReconciliationInFlightRef.current = true;
       try {
-        const result = await reconcileTaskReminderSchedules(taskSnapshot, {
-          getContent: getReminderContent,
-        });
-        if (result.errors.length) {
-          console.warn('Failed to reconcile some task reminders', result.errors);
-        }
-        if (!result.updates.length) {
-          return;
-        }
-
-        const currentTasksById = new Map(
-          (tasksRef.current ?? []).map((task) => [task.id, task])
-        );
-        const applicableUpdates = result.updates.filter((update) => {
-          const currentTask = currentTasksById.get(update.taskId);
-          const isCurrent =
-            currentTask && getTaskReminderFingerprint(currentTask) === update.fingerprint;
-          if (!isCurrent && update.notificationIds?.length) {
-            void cancelTaskReminders(update.notificationIds);
-          }
-          return isCurrent;
-        });
-        if (!applicableUpdates.length) {
-          return;
-        }
-
-        const updatesById = new Map(
-          applicableUpdates.map((update) => [update.taskId, update])
-        );
-        setTasks((previous) =>
-          previous.map((task) => {
-            const update = updatesById.get(task.id);
-            if (!update || getTaskReminderFingerprint(task) !== update.fingerprint) {
-              return task;
+        while (pendingReminderReconciliationRef.current) {
+          const request = pendingReminderReconciliationRef.current;
+          pendingReminderReconciliationRef.current = null;
+          try {
+            const result = await reconcileTaskReminderSchedules(request.tasks, {
+              getContent: request.getContent,
+            });
+            if (result.errors.length) {
+              console.warn('Failed to reconcile some task reminders', result.errors);
             }
-            return {
-              ...task,
-              notificationIds: update.notificationIds,
-              notificationId: update.notificationId,
-              notificationScheduleMode: update.notificationScheduleMode,
-            };
-          })
-        );
-      } catch (error) {
-        console.warn('Failed to reconcile task reminders', error);
+            if (!result.updates.length) {
+              continue;
+            }
+
+            const currentTasksById = new Map(
+              (tasksRef.current ?? []).map((task) => [task.id, task])
+            );
+            const applicableUpdates = result.updates.filter((update) => {
+              const currentTask = currentTasksById.get(update.taskId);
+              const isCurrent =
+                currentTask &&
+                getTaskReminderFingerprint(currentTask) === update.fingerprint;
+              if (!isCurrent && update.notificationIds?.length) {
+                void cancelTaskReminders(update.notificationIds);
+              }
+              return isCurrent;
+            });
+            if (!applicableUpdates.length) {
+              continue;
+            }
+
+            const updatesById = new Map(
+              applicableUpdates.map((update) => [update.taskId, update])
+            );
+            setTasks((previous) =>
+              previous.map((task) => {
+                const update = updatesById.get(task.id);
+                if (!update || getTaskReminderFingerprint(task) !== update.fingerprint) {
+                  return task;
+                }
+                return {
+                  ...task,
+                  notificationIds: update.notificationIds,
+                  notificationId: update.notificationId,
+                  notificationScheduleMode: update.notificationScheduleMode,
+                };
+              })
+            );
+          } catch (error) {
+            console.warn('Failed to reconcile task reminders', error);
+          }
+        }
       } finally {
         reminderReconciliationInFlightRef.current = false;
       }
@@ -2146,6 +2173,27 @@ function ScheduleApp() {
     didInitialReminderReconciliationRef.current = true;
     void reconcileAllTaskReminders(tasks);
   }, [isHydrated, reconcileAllTaskReminders, tasks]);
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+    const signature = `${language}:${userSettings.privateNotificationContent !== false}`;
+    if (reminderContentSignatureRef.current === null) {
+      reminderContentSignatureRef.current = signature;
+      return;
+    }
+    if (reminderContentSignatureRef.current === signature) {
+      return;
+    }
+    reminderContentSignatureRef.current = signature;
+    void reconcileAllTaskReminders(tasksRef.current ?? []);
+  }, [
+    isHydrated,
+    language,
+    reconcileAllTaskReminders,
+    userSettings.privateNotificationContent,
+  ]);
 
   useEffect(() => {
     if (!isHydrated) {
@@ -3343,7 +3391,11 @@ function ScheduleApp() {
         visible={isSettingsOpen}
         onClose={() => setSettingsOpen(false)}
         language={language}
+        privateNotificationContent={userSettings.privateNotificationContent !== false}
         onChangeLanguage={(key) => updateUserSettings({ language: key })}
+        onChangePrivateNotificationContent={(value) =>
+          updateUserSettings({ privateNotificationContent: value })
+        }
         onCustomizeCalendar={() => setCustomizeCalendarOpen(true)}
         onExportBackup={handleExportBackup}
       />
@@ -3406,14 +3458,17 @@ export default function App() {
       importance: Notifications.AndroidImportance.HIGH,
       sound: 'default',
       enableVibrate: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,
     });
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <ScheduleApp />
-      </SafeAreaView>
-    </SafeAreaProvider>
+    <AppErrorBoundary>
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+          <ScheduleApp />
+        </SafeAreaView>
+      </SafeAreaProvider>
+    </AppErrorBoundary>
   );
 }
