@@ -2587,6 +2587,9 @@ function DatePanel({
     quickToday: 'Today',
     quickTomorrow: 'Tomorrow',
     quickNextMonday: 'Next Monday',
+    previousMonth: 'Previous month',
+    nextMonth: 'Next month',
+    repeatingDate: 'Repeating date',
     ...((labels && typeof labels === 'object') ? labels : {}),
   }), [labels]);
   const today = useMemo(() => normalizeDate(new Date()), []);
@@ -2612,6 +2615,7 @@ function DatePanel({
       }),
     [resolvedLabels.quickToday, visibleMonth]
   );
+  const dateLocale = resolvedLabels.quickToday === 'Hoje' ? 'pt-BR' : 'en-US';
   const previousMonth = useMemo(() => addMonths(visibleMonth, -1), [visibleMonth]);
   const nextMonth = useMemo(() => addMonths(visibleMonth, 1), [visibleMonth]);
   const previousMonthDisabled = useMemo(() => {
@@ -2721,15 +2725,27 @@ function DatePanel({
         />
       </View>
       <View style={styles.calendarHeader}>
-        <Pressable onPress={() => handleChangeMonth(previousMonth)} disabled={previousMonthDisabled} hitSlop={12}>
+        <Pressable
+          onPress={() => handleChangeMonth(previousMonth)}
+          disabled={previousMonthDisabled}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={resolvedLabels.previousMonth}
+          accessibilityState={{ disabled: previousMonthDisabled }}
+        >
           <Ionicons
             name="chevron-back"
             size={22}
             color={previousMonthDisabled ? '#B8C4D6' : '#1F2742'}
           />
         </Pressable>
-        <Text style={styles.calendarHeaderText}>{monthLabel}</Text>
-        <Pressable onPress={() => handleChangeMonth(nextMonth)} hitSlop={12}>
+        <Text style={styles.calendarHeaderText} accessibilityRole="header">{monthLabel}</Text>
+        <Pressable
+          onPress={() => handleChangeMonth(nextMonth)}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={resolvedLabels.nextMonth}
+        >
           <Ionicons name="chevron-forward" size={22} color="#1F2742" />
         </Pressable>
       </View>
@@ -2742,9 +2758,9 @@ function DatePanel({
       </View>
       {daysMatrix.map((week, rowIndex) => (
         <View key={`week-${rowIndex}`} style={styles.weekRow}>
-          {week.map((date) => {
+          {week.map((date, columnIndex) => {
             if (!date) {
-              return <View key={`empty-${rowIndex}-${Math.random().toString(36).slice(2, 6)}`} style={styles.dayCellEmpty} />;
+              return <View key={`empty-${rowIndex}-${columnIndex}`} style={styles.dayCellEmpty} />;
             }
 
             const disabled = isBeforeDay(date, minimumSelectableDate);
@@ -2753,6 +2769,17 @@ function DatePanel({
             const disabledStyle = disabled ? styles.dayCellDisabled : null;
             const selectedStyle = selected ? styles.dayCellSelected : null;
             const repeatingStyle = repeating ? styles.dayCellRepeating : null;
+            const dateAccessibilityLabel = [
+              date.toLocaleDateString(dateLocale, {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+              }),
+              repeating ? resolvedLabels.repeatingDate : null,
+            ]
+              .filter(Boolean)
+              .join('. ');
 
             return (
               <Pressable
@@ -2760,6 +2787,9 @@ function DatePanel({
                 style={[styles.dayCell, disabledStyle, selectedStyle, repeatingStyle]}
                 disabled={disabled}
                 onPress={() => onSelectDate(date)}
+                accessibilityRole="button"
+                accessibilityLabel={dateAccessibilityLabel}
+                accessibilityState={{ selected, disabled }}
               >
                 <Text style={[styles.dayCellText, disabled && styles.dayCellTextDisabled, selected && styles.dayCellTextSelected, repeating && styles.dayCellTextRepeating]}>{date.getDate()}</Text>
               </Pressable>
@@ -2908,16 +2938,19 @@ function RepeatPanel({
             <View style={styles.weekdayGrid}>
               {WEEKDAYS.map((weekday) => {
                 const active = weekdaySet.has(weekday.key);
+                const shortLabel = labels.weekdayShortLabels?.[weekday.key] ?? weekday.label;
+                const fullLabel = labels.weekdayFullLabels?.[weekday.key] ?? shortLabel;
                 return (
                   <Pressable
                     key={weekday.key}
                     style={[styles.weekdayPill, active && styles.weekdayPillActive]}
                     onPress={() => onToggleWeekday(weekday.key)}
                     accessibilityRole="button"
+                    accessibilityLabel={fullLabel}
                     accessibilityState={{ selected: active }}
                   >
                     <Text style={[styles.weekdayPillLabel, active && styles.weekdayPillLabelActive]}>
-                      {weekday.label}
+                      {shortLabel}
                     </Text>
                   </Pressable>
                 );
@@ -2935,6 +2968,7 @@ function RepeatPanel({
                     style={[styles.monthDayCell, active && styles.monthDayCellActive]}
                     onPress={() => onToggleMonthDay(day)}
                     accessibilityRole="button"
+                    accessibilityLabel={labels.dayOfMonth.replace('{day}', String(day))}
                     accessibilityState={{ selected: active }}
                   >
                     <Text style={[styles.monthDayLabel, active && styles.monthDayLabelActive]}>{day}</Text>
