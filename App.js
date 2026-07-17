@@ -41,6 +41,7 @@ import {
   loadMoodAppearance,
   loadTasks,
   loadUserSettings,
+  replaceStoredAppData,
   saveDayMoods,
   saveMoodAppearance,
   saveHistory,
@@ -121,7 +122,11 @@ import {
   reconcileTaskReminderSchedules,
   scheduleTaskReminders,
 } from './services/reminderService';
-import { exportAppBackup } from './services/backupService';
+import {
+  exportAppBackup,
+  prepareImportedBackupData,
+  selectLatestAppBackupFromDirectory,
+} from './services/backupService';
 
 
 const habitImage = require('./assets/add-habit.png');
@@ -354,6 +359,7 @@ function ScheduleApp() {
   const isHydratedRef = useRef(false);
   const reminderReconciliationInFlightRef = useRef(false);
   const pendingReminderReconciliationRef = useRef(null);
+  const pendingImportedReminderReconciliationRef = useRef(false);
   const didInitialReminderReconciliationRef = useRef(false);
   const reminderContentSignatureRef = useRef(null);
   const pendingCompletionActionDateRef = useRef(null);
@@ -2376,6 +2382,172 @@ function ScheduleApp() {
     };
   }, [isHydrated, reconcileAllTaskReminders]);
 
+  useEffect(() => {
+    if (!pendingImportedReminderReconciliationRef.current) {
+      return;
+    }
+    pendingImportedReminderReconciliationRef.current = false;
+    reminderContentSignatureRef.current =
+      `${language}:${userSettings.privateNotificationContent !== false}`;
+    void reconcileAllTaskReminders(tasks);
+  }, [language, reconcileAllTaskReminders, tasks, userSettings.privateNotificationContent]);
+
+  const applyImportedBackup = useCallback(
+    async (importedData) => {
+      const rawSettings = importedData.userSettings ?? {};
+      const nextSettings = {
+        ...DEFAULT_USER_SETTINGS,
+        language: rawSettings.language === 'pt' ? 'pt' : 'en',
+        activeTab: ['today', 'calendar', 'discover', 'profile'].includes(rawSettings.activeTab)
+          ? rawSettings.activeTab
+          : DEFAULT_USER_SETTINGS.activeTab,
+        selectedTagFilter:
+          typeof rawSettings.selectedTagFilter === 'string'
+            ? rawSettings.selectedTagFilter
+            : DEFAULT_USER_SETTINGS.selectedTagFilter,
+        privateNotificationContent: rawSettings.privateNotificationContent !== false,
+      };
+      const normalizedTasks = normalizeStoredTasks(
+        importedData.tasks.map((task) =>
+          task?.type === 'list' || task?.type === 'normal'
+            ? { ...task, type: 'default' }
+            : task
+        )
+      ).map((task) => {
+        const { typeLabel, ...restTask } = task;
+        return {
+          ...restTask,
+          notificationIds: [],
+          notificationId: null,
+          notificationScheduleMode: null,
+        };
+      });
+      const nextHistory = importedData.history.slice(0, MAX_RECENT_ACTIVITY_ENTRIES);
+      const replacementData = {
+        tasks: normalizedTasks,
+        userSettings: nextSettings,
+        history: nextHistory,
+        monthImages: importedData.monthImages,
+        dayMoods: importedData.dayMoods,
+        moodAppearance: importedData.moodAppearance,
+      };
+
+      [
+        saveTimeoutRef,
+        settingsSaveTimeoutRef,
+        historySaveTimeoutRef,
+        dayMoodsSaveTimeoutRef,
+      ].forEach((timeoutRef) => {
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
+      });
+
+      const saved = await replaceStoredAppData(replacementData);
+      if (!saved) {
+        // Reagenda os autosaves atuais que foram cancelados antes da tentativa.
+        setTasks((previous) => previous.slice());
+        setUserSettings((previous) => ({ ...previous }));
+        setHistory((previous) => previous.slice());
+        setDayMoods((previous) => ({ ...previous }));
+        Alert.alert(t.backup.restoreErrorTitle, t.backup.restoreErrorMessage);
+        return;
+      }
+
+      await Promise.all(
+        tasks.map((task) => cancelTaskReminders(task).catch(() => undefined))
+      );
+      loadFailuresRef.current = {
+        tasks: false,
+        settings: false,
+        history: false,
+        images: false,
+        moods: false,
+        appearance: false,
+      };
+      failedStorageWritesRef.current.clear();
+      latestStorageWriteSequenceRef.current.clear();
+      pendingStorageWriteAlertRef.current = false;
+      storageProtectionAlertShownRef.current = false;
+      pendingImportedReminderReconciliationRef.current = true;
+
+      setTasks(normalizedTasks);
+      setUserSettings(nextSettings);
+      setActiveTab(nextSettings.activeTab);
+      setSelectedTagFilter(nextSettings.selectedTagFilter);
+      setHistory(nextHistory);
+      setCustomMonthImages(importedData.monthImages);
+      setDayMoods(importedData.dayMoods);
+      setMoodAppearance(importedData.moodAppearance);
+      setActiveTaskId(null);
+      setActiveProfileTaskId(null);
+      setProfileFilterId(null);
+      setReportDate(null);
+      setReflectionDateKey(null);
+      setProfileTasksOpen(false);
+      setActivityOpen(false);
+      setSettingsOpen(false);
+      Alert.alert(t.backup.restoreSuccessTitle, t.backup.restoreSuccessMessage);
+    },
+    [normalizeStoredTasks, t.backup, tasks]
+  );
+
+  const handleImportBackup = useCallback(async () => {
+    try {
+      const selected = await selectLatestAppBackupFromDirectory();
+      if (selected.status === 'cancelled') {
+        return;
+      }
+      if (selected.status === 'unsupported') {
+        Alert.alert(t.backup.unsupportedTitle, t.backup.unsupportedMessage);
+        return;
+      }
+      if (selected.status !== 'selected') {
+        Alert.alert(t.backup.notFoundTitle, t.backup.notFoundMessage);
+        return;
+      }
+
+      const prepared = await prepareImportedBackupData(selected.data);
+      const locale = language === 'pt' ? 'pt-BR' : 'en-US';
+      const exportedDate = new Date(selected.preview.exportedAt).toLocaleString(locale);
+      const replaceToken = (value, token, replacement) =>
+        value.split(token).join(String(replacement));
+      let previewMessage = t.backup.previewMessage;
+      [
+        ['{date}', exportedDate],
+        ['{tasks}', selected.preview.taskCount],
+        ['{reflections}', selected.preview.reflectionCount],
+        ['{history}', selected.preview.historyCount],
+        ['{media}', selected.preview.referencedMediaCount],
+      ].forEach(([token, value]) => {
+        previewMessage = replaceToken(previewMessage, token, value);
+      });
+      if (prepared.missingMediaCount > 0) {
+        previewMessage += prepared.missingMediaCount === 1
+          ? t.backup.missingMediaOne
+          : replaceToken(
+              t.backup.missingMediaMany,
+              '{count}',
+              prepared.missingMediaCount
+            );
+      }
+      previewMessage += t.backup.replaceWarning;
+
+      Alert.alert(t.backup.previewTitle, previewMessage, [
+        { text: t.common.cancel, style: 'cancel' },
+        {
+          text: t.backup.restoreConfirm,
+          style: 'destructive',
+          onPress: () => void applyImportedBackup(prepared.data),
+        },
+      ]);
+    } catch (error) {
+      console.warn('Failed to import backup', error);
+      Alert.alert(t.backup.importErrorTitle, t.backup.importErrorMessage);
+    }
+  }, [applyImportedBackup, language, t.backup, t.common.cancel]);
+
   const handleCreateHabit = useCallback((habit) => {
     const normalizedDate = new Date(habit?.startDate ?? new Date());
     normalizedDate.setHours(0, 0, 0, 0);
@@ -3573,6 +3745,7 @@ function ScheduleApp() {
         }
         onCustomizeCalendar={() => setCustomizeCalendarOpen(true)}
         onExportBackup={handleExportBackup}
+        onImportBackup={handleImportBackup}
       />
       <CustomizeCalendarModal
         visible={isCustomizeCalendarOpen}

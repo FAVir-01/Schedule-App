@@ -10,6 +10,7 @@ const STORAGE_KEYS = {
   CUSTOM_MOOD_IMAGES: '@schedule_app/custom_mood_images',
   MOOD_APPEARANCE: '@schedule_app/mood_appearance',
 };
+const PRE_RESTORE_BACKUP_KEY = '@schedule_app/pre_restore_backup';
 
 const isPlainObject = (value) =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -192,9 +193,53 @@ export async function getRawStorageSnapshot() {
   }
 }
 
+export async function replaceStoredAppData({
+  tasks,
+  userSettings,
+  history,
+  monthImages,
+  dayMoods,
+  moodAppearance,
+}) {
+  const primaryKeys = Object.values(STORAGE_KEYS);
+  try {
+    const previousEntries = await AsyncStorage.multiGet(primaryKeys);
+    await AsyncStorage.setItem(
+      PRE_RESTORE_BACKUP_KEY,
+      JSON.stringify({
+        createdAt: new Date().toISOString(),
+        entries: Object.fromEntries(previousEntries),
+      })
+    );
+
+    const replacementEntries = [
+      [STORAGE_KEYS.TASKS, JSON.stringify(tasks ?? [])],
+      [STORAGE_KEYS.SETTINGS, JSON.stringify(userSettings ?? null)],
+      [STORAGE_KEYS.HISTORY, JSON.stringify(history ?? [])],
+      [STORAGE_KEYS.MONTH_IMAGES, JSON.stringify(monthImages ?? {})],
+      [STORAGE_KEYS.DAY_MOODS, JSON.stringify(dayMoods ?? {})],
+      [STORAGE_KEYS.MOOD_APPEARANCE, JSON.stringify(moodAppearance ?? {})],
+    ];
+    try {
+      await AsyncStorage.multiSet(replacementEntries);
+      return true;
+    } catch (error) {
+      const entriesToRestore = previousEntries.filter(([, value]) => value !== null);
+      await AsyncStorage.multiRemove(primaryKeys).catch(() => {});
+      if (entriesToRestore.length) {
+        await AsyncStorage.multiSet(entriesToRestore).catch(() => {});
+      }
+      throw error;
+    }
+  } catch (error) {
+    console.warn('Failed to replace stored app data', error);
+    return false;
+  }
+}
+
 export async function resetStorage() {
   try {
-    await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
+    await AsyncStorage.multiRemove([...Object.values(STORAGE_KEYS), PRE_RESTORE_BACKUP_KEY]);
     return true;
   } catch (error) {
     console.warn('Failed to reset storage', error);
