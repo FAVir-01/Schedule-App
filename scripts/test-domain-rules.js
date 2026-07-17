@@ -231,6 +231,8 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
   assert.equal(translations.pt.sheet.interval, 'Intervalo');
   assert.equal(translations.pt.sheet.endDate, 'Data final');
   assert.equal(translations.pt.sheet.goBack, 'Voltar');
+  assert.equal(translations.pt.sheet.duplicateHabitAnnouncement, 'Duplicar hábito');
+  assert.equal(translations.pt.sheet.closeEditHabit, 'Fechar edição de hábito');
   assert.equal(translations.pt.sheet.timerHoursAccessibility, 'Horas do temporizador');
   assert.deepEqual(
     Object.keys(translations.pt.sheet.weekdayFullLabels).sort(),

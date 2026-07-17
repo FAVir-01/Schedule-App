@@ -466,15 +466,15 @@ export default function AddHabitSheet({
   const isCopyMode = mode === 'copy';
   const submitLabel = isEditMode ? common.save : common.create;
   const accessibilityAnnouncement = isEditMode
-    ? 'Edit habit'
+    ? t.editHabitAnnouncement
     : isCopyMode
-    ? 'Duplicate habit'
-    : 'Create habit';
+    ? t.duplicateHabitAnnouncement
+    : t.createHabitAnnouncement;
   const closeSheetAccessibilityLabel = isEditMode
-    ? 'Close edit habit'
+    ? t.closeEditHabit
     : isCopyMode
-    ? 'Close duplicate habit'
-    : 'Close create habit';
+    ? t.closeDuplicateHabit
+    : t.closeCreateHabit;
   const mergedDefaultTagOptions = useMemo(
     () => mergeTagOptions(localizedDefaultTags, availableTagOptions),
     [availableTagOptions, localizedDefaultTags]
