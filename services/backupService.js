@@ -1,9 +1,7 @@
 import { Platform, Share } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getRawStorageSnapshot } from '../storage';
-
-const BACKUP_FORMAT = 'favit-backup';
-const BACKUP_VERSION = 1;
+import { BACKUP_FORMAT, BACKUP_VERSION } from '../utils/backupUtils';
 
 const getBackupFileName = (exportedAt) =>
   `favit-backup-${exportedAt.replace(/[:.]/g, '-')}.json`;

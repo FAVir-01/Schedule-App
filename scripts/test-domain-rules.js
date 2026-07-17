@@ -130,6 +130,10 @@ const {
   scheduledReminderContentMatches,
 } = require('../utils/notificationUtils');
 const { translations } = require('../constants/i18n');
+const {
+  BACKUP_ERROR_CODES,
+  parseAppBackupContents,
+} = require('../utils/backupUtils');
 const { AppErrorBoundary } = require('../components/AppErrorBoundary');
 const { saveTasks } = require('../storage');
 
@@ -190,6 +194,74 @@ test('restaura tarefa excluida na posicao original sem duplicar', () => {
   );
   assert.deepEqual(restored.map((task) => task.id), ['task-1', 'task-2', 'task-3']);
   assert.equal(restoreDeletedTaskAtIndex(restored, deletedTask, 1), restored);
+});
+
+test('valida backup versionado e monta previa sem alterar dados', () => {
+  const result = parseAppBackupContents(JSON.stringify({
+    format: 'favit-backup',
+    version: 1,
+    exportedAt: '2026-07-16T12:00:00.000Z',
+    platform: 'android',
+    data: {
+      tasks: [{ id: 'task-1', title: 'Ler' }, { id: 'task-2', title: 'Treinar' }],
+      userSettings: { language: 'pt' },
+      history: [{ id: 'history-1' }],
+      monthImages: { 0: 'file://month.png' },
+      dayMoods: { '2026-07-16': { level: 4 } },
+      moodAppearance: {},
+    },
+    recovery: {},
+    media: {
+      filesIncluded: false,
+      referencedUris: ['file://month.png'],
+    },
+  }));
+
+  assert.equal(result.preview.taskCount, 2);
+  assert.equal(result.preview.historyCount, 1);
+  assert.equal(result.preview.reflectionCount, 1);
+  assert.equal(result.preview.referencedMediaCount, 1);
+  assert.equal(result.data.userSettings.language, 'pt');
+});
+
+test('rejeita backup incorreto, futuro ou com tarefas duplicadas', () => {
+  const buildContents = (overrides = {}) => JSON.stringify({
+    format: 'favit-backup',
+    version: 1,
+    exportedAt: '2026-07-16T12:00:00.000Z',
+    data: {
+      tasks: [],
+      userSettings: null,
+      history: [],
+      monthImages: {},
+      dayMoods: {},
+      moodAppearance: {},
+    },
+    media: { filesIncluded: false, referencedUris: [] },
+    ...overrides,
+  });
+
+  assert.throws(
+    () => parseAppBackupContents('{'),
+    (error) => error.code === BACKUP_ERROR_CODES.INVALID_JSON
+  );
+  assert.throws(
+    () => parseAppBackupContents(buildContents({ version: 2 })),
+    (error) => error.code === BACKUP_ERROR_CODES.UNSUPPORTED_VERSION
+  );
+  assert.throws(
+    () => parseAppBackupContents(buildContents({
+      data: {
+        tasks: [{ id: 'same' }, { id: 'same' }],
+        userSettings: null,
+        history: [],
+        monthImages: {},
+        dayMoods: {},
+        moodAppearance: {},
+      },
+    })),
+    (error) => error.code === BACKUP_ERROR_CODES.INVALID_DATA
+  );
 });
 
 test('informa sucesso ou falha ao gravar dados locais', async () => {
