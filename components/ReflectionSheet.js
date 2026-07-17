@@ -155,7 +155,15 @@ function ReflectionSheet({
   };
 
   const handleRemove = () => {
-    onSave(dateKey, null);
+    const removeReflection = () => onSave(dateKey, null);
+    if (!note.trim() && !photo) {
+      removeReflection();
+      return;
+    }
+    Alert.alert(t.reflection.removeConfirmTitle, t.reflection.removeConfirmMessage, [
+      { text: t.reflection.cancel, style: 'cancel' },
+      { text: t.reflection.remove, style: 'destructive', onPress: removeReflection },
+    ]);
   };
 
   const handleToggleTag = (tag) => {

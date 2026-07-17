@@ -157,6 +157,14 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
     Object.keys(translations.en.taskModal).sort()
   );
   assert.deepEqual(
+    Object.keys(translations.pt.profileTasks).sort(),
+    Object.keys(translations.en.profileTasks).sort()
+  );
+  assert.deepEqual(
+    Object.keys(translations.pt.reflection).sort(),
+    Object.keys(translations.en.reflection).sort()
+  );
+  assert.deepEqual(
     Object.keys(translations.pt.developer).sort(),
     Object.keys(translations.en.developer).sort()
   );
@@ -188,6 +196,7 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
   assert.equal(translations.pt.profile.periodAll, 'Todo o histórico disponível');
   assert.equal(translations.pt.profile.nextChartPoint, 'Próximo ponto do gráfico');
   assert.equal(translations.pt.calendar.openDayReport, 'Abre o relatório diário');
+  assert.equal(translations.pt.reflection.removeConfirmTitle, 'Remover esta reflexão?');
   assert.equal(
     translations.pt.taskModal.subtasksCompleted
       .replace('{completed}', '2')

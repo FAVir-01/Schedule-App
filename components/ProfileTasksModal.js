@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   FlatList,
   Modal,
   Pressable,
@@ -121,12 +122,36 @@ export default function ProfileTasksModal({
 
   const selectionMode = selectedTaskIds.length > 0;
   const handleBulkDelete = useCallback(() => {
-    if (selectedTaskIds.length === 0) {
+    const deletableIds = selectedTaskIds.filter((taskId) =>
+      tasks.some((task) => task.id === taskId && !task.profileLocked)
+    );
+    if (deletableIds.length === 0) {
+      setSelectedTaskIds([]);
       return;
     }
-    onDeleteSelected?.(selectedTaskIds);
-    setSelectedTaskIds([]);
-  }, [onDeleteSelected, selectedTaskIds]);
+    const confirmMessage =
+      deletableIds.length === 1
+        ? t.profileTasks.deleteSelectedConfirmMessageOne
+        : t.profileTasks.deleteSelectedConfirmMessageMany.replace(
+            '{count}',
+            String(deletableIds.length)
+          );
+    Alert.alert(
+      t.profileTasks.deleteSelectedConfirmTitle,
+      confirmMessage,
+      [
+        { text: t.common.cancel, style: 'cancel' },
+        {
+          text: t.profileTasks.deleteSelected,
+          style: 'destructive',
+          onPress: () => {
+            onDeleteSelected?.(deletableIds);
+            setSelectedTaskIds([]);
+          },
+        },
+      ]
+    );
+  }, [onDeleteSelected, selectedTaskIds, t.common.cancel, t.profileTasks, tasks]);
 
   if (!visible) {
     return null;
