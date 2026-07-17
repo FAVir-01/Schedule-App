@@ -69,6 +69,7 @@ import {
   isPassiveTaskType,
   isReminderExpiredForDate,
   reconcileTaskProgressOnEdit,
+  restoreDeletedTaskAtIndex,
   shouldCountTaskTowardsCompletion,
   normalizeRepeatConfig,
 } from './utils/taskUtils';
@@ -111,6 +112,7 @@ import ReflectionSheet from './components/ReflectionSheet';
 import SettingsSheet from './components/SettingsSheet';
 import PerformanceChart from './components/PerformanceChart';
 import AppErrorBoundary from './components/AppErrorBoundary';
+import UndoSnackbar from './components/UndoSnackbar';
 import { CALENDAR_DAY_SIZE } from './constants/layout';
 import {
   cancelTaskReminders,
@@ -124,6 +126,7 @@ import { exportAppBackup } from './services/backupService';
 
 const habitImage = require('./assets/add-habit.png');
 const reflectionImage = require('./assets/add-reflection.png');
+const TASK_DELETE_UNDO_DURATION_MS = 6000;
 
 const INITIAL_STORAGE_LOAD_FAILURES = {
   tasks: true,
@@ -305,6 +308,7 @@ function ScheduleApp() {
   const [reportDate, setReportDate] = useState(null);
   const [activeTaskId, setActiveTaskId] = useState(null);
   const [activeProfileTaskId, setActiveProfileTaskId] = useState(null);
+  const [pendingTaskDeletion, setPendingTaskDeletion] = useState(null);
   const [selectedTagFilter, setSelectedTagFilter] = useState(
     DEFAULT_USER_SETTINGS.selectedTagFilter
   );
@@ -334,6 +338,7 @@ function ScheduleApp() {
   const settingsSaveTimeoutRef = useRef(null);
   const historySaveTimeoutRef = useRef(null);
   const dayMoodsSaveTimeoutRef = useRef(null);
+  const taskDeleteUndoTimeoutRef = useRef(null);
   // Marca quais stores falharam ao carregar, p/ não sobrescrever dado bom com estado vazio
   const loadFailuresRef = useRef({ ...INITIAL_STORAGE_LOAD_FAILURES });
   const storageProtectionAlertShownRef = useRef(false);
@@ -649,6 +654,7 @@ function ScheduleApp() {
     setHistory((previous) =>
       [entry, ...previous].slice(0, MAX_RECENT_ACTIVITY_ENTRIES)
     );
+    return entry.id;
   }, []);
 
   const preserveTaskTitlesInHistory = useCallback((tasksToPreserve) => {
@@ -659,6 +665,28 @@ function ScheduleApp() {
       backfillTaskTitlesInHistory(previous, tasksToPreserve)
     );
   }, []);
+
+  const queueTaskDeletionUndo = useCallback((task, originalIndex, historyEntryId) => {
+    if (taskDeleteUndoTimeoutRef.current) {
+      clearTimeout(taskDeleteUndoTimeoutRef.current);
+    }
+    setPendingTaskDeletion({ task, originalIndex, historyEntryId });
+    taskDeleteUndoTimeoutRef.current = setTimeout(() => {
+      setPendingTaskDeletion((current) =>
+        current?.historyEntryId === historyEntryId ? null : current
+      );
+      taskDeleteUndoTimeoutRef.current = null;
+    }, TASK_DELETE_UNDO_DURATION_MS);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (taskDeleteUndoTimeoutRef.current) {
+        clearTimeout(taskDeleteUndoTimeoutRef.current);
+      }
+    },
+    []
+  );
 
   const handleOpenReport = useCallback((date) => {
     setReportDate(date);
@@ -690,9 +718,22 @@ function ScheduleApp() {
   );
   const handleDeleteProfileTask = useCallback(
     (taskId) => {
-      handleDeleteProfileTasks([taskId]);
+      const originalIndex = tasks.findIndex((task) => task.id === taskId);
+      const task = tasks[originalIndex];
+      if (!task || task.profileLocked) {
+        return;
+      }
+      void cancelTaskReminders(task);
+      preserveTaskTitlesInHistory([task]);
+      setTasks((previous) => previous.filter((current) => current.id !== task.id));
+      setActiveProfileTaskId((current) => (current === task.id ? null : current));
+      const historyEntryId = appendHistoryEntry(
+        'task_deleted',
+        createTaskHistoryDetails(task)
+      );
+      queueTaskDeletionUndo(task, originalIndex, historyEntryId);
     },
-    [handleDeleteProfileTasks]
+    [appendHistoryEntry, preserveTaskTitlesInHistory, queueTaskDeletionUndo, tasks]
   );
   const handleToggleProfileTaskLock = useCallback((taskId) => {
     setTasks((previous) =>
@@ -2180,6 +2221,42 @@ function ScheduleApp() {
     [getReminderContent, showReminderSchedulingError, updateTaskReminderSchedule]
   );
 
+  const handleUndoTaskDeletion = useCallback(() => {
+    if (!pendingTaskDeletion) {
+      return;
+    }
+    if (taskDeleteUndoTimeoutRef.current) {
+      clearTimeout(taskDeleteUndoTimeoutRef.current);
+      taskDeleteUndoTimeoutRef.current = null;
+    }
+    const restoredTask = {
+      ...pendingTaskDeletion.task,
+      notificationIds: [],
+      notificationId: null,
+      notificationScheduleMode: null,
+    };
+    setPendingTaskDeletion(null);
+    setTasks((previous) =>
+      restoreDeletedTaskAtIndex(
+        previous,
+        restoredTask,
+        pendingTaskDeletion.originalIndex
+      )
+    );
+    setHistory((previous) =>
+      previous.filter((entry) => entry.id !== pendingTaskDeletion.historyEntryId)
+    );
+    void refreshTaskReminder(restoredTask, null, { notifyOnFailure: true });
+    AccessibilityInfo.announceForAccessibility(t.taskCard.restoredTask);
+  }, [pendingTaskDeletion, refreshTaskReminder, t.taskCard.restoredTask]);
+
+  const pendingTaskDeletionMessage = pendingTaskDeletion
+    ? t.taskCard.deletedTask.replace(
+        '{title}',
+        pendingTaskDeletion.task.title ?? t.common.untitledTask
+      )
+    : null;
+
   const reconcileAllTaskReminders = useCallback(
     async (taskSnapshot) => {
       pendingReminderReconciliationRef.current = {
@@ -2513,12 +2590,19 @@ function ScheduleApp() {
       if (task.profileLocked) {
         return;
       }
+      const originalIndex = (tasksRef.current ?? []).findIndex(
+        (current) => current.id === task.id
+      );
       void cancelTaskReminders(task);
       preserveTaskTitlesInHistory([task]);
       setTasks((previous) => previous.filter((current) => current.id !== task.id));
-      appendHistoryEntry('task_deleted', createTaskHistoryDetails(task));
+      const historyEntryId = appendHistoryEntry(
+        'task_deleted',
+        createTaskHistoryDetails(task)
+      );
+      queueTaskDeletionUndo(task, originalIndex, historyEntryId);
     },
-    [appendHistoryEntry, preserveTaskTitlesInHistory]
+    [appendHistoryEntry, preserveTaskTitlesInHistory, queueTaskDeletionUndo]
   );
   const handleCardEdit = useCallback(
     (task) => {
@@ -3409,6 +3493,14 @@ function ScheduleApp() {
           </Animated.View>
         )}
       </View>
+      {!isProfileTasksOpen ? (
+        <UndoSnackbar
+          message={pendingTaskDeletionMessage}
+          actionLabel={t.common.undo}
+          onAction={handleUndoTaskDeletion}
+          bottom={insets.bottom + 112}
+        />
+      ) : null}
       <TaskDetailModal
         language={language}
         visible={Boolean(activeTaskForSelectedDate)}
@@ -3496,6 +3588,9 @@ function ScheduleApp() {
         onSelectTask={(taskId) => setActiveProfileTaskId(taskId)}
         onDeleteTask={handleDeleteProfileTask}
         onDeleteSelected={handleDeleteProfileTasks}
+        undoMessage={pendingTaskDeletionMessage}
+        undoActionLabel={t.common.undo}
+        onUndoDelete={handleUndoTaskDeletion}
         language={language}
       />
       <ActivityTimelineModal
