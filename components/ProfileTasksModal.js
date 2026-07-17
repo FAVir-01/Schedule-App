@@ -18,6 +18,7 @@ import {
 } from '../utils/taskUtils';
 import { pruneSelectedTaskIds } from '../utils/historyUtils';
 import ProfileSwipeTaskCard from './ProfileSwipeTaskCard';
+import UndoSnackbar from './UndoSnackbar';
 import { styles } from '../styles/appStyles';
 
 export default function ProfileTasksModal({
@@ -27,6 +28,9 @@ export default function ProfileTasksModal({
   onSelectTask,
   onDeleteTask,
   onDeleteSelected,
+  undoMessage,
+  undoActionLabel,
+  onUndoDelete,
   language = 'en',
 }) {
   const t = translations[language] ?? translations.en;
@@ -314,6 +318,11 @@ export default function ProfileTasksModal({
             </Pressable>
           </View>
         ) : null}
+        <UndoSnackbar
+          message={undoMessage}
+          actionLabel={undoActionLabel}
+          onAction={onUndoDelete}
+        />
       </View>
     </Modal>
   );

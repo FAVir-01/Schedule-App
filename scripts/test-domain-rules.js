@@ -89,6 +89,7 @@ const {
   getTaskTypeDisplayLabel,
   isValidQuantumDefinition,
   reconcileTaskProgressOnEdit,
+  restoreDeletedTaskAtIndex,
   shouldResetTaskProgress,
 } = require('../utils/taskUtils');
 const {
@@ -180,6 +181,17 @@ test('traduz rotulos de tarefa pela chave semantica atual', () => {
   );
 });
 
+test('restaura tarefa excluida na posicao original sem duplicar', () => {
+  const deletedTask = { id: 'task-2', title: 'Segunda' };
+  const restored = restoreDeletedTaskAtIndex(
+    [{ id: 'task-1' }, { id: 'task-3' }],
+    deletedTask,
+    1
+  );
+  assert.deepEqual(restored.map((task) => task.id), ['task-1', 'task-2', 'task-3']);
+  assert.equal(restoreDeletedTaskAtIndex(restored, deletedTask, 1), restored);
+});
+
 test('informa sucesso ou falha ao gravar dados locais', async () => {
   asyncStorageMockState.calls = [];
   asyncStorageMockState.shouldReject = false;
@@ -246,6 +258,8 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
     Object.keys(translations.en.sheet).sort()
   );
   assert.equal(translations.pt.taskCard.copy, 'Copiar');
+  assert.equal(translations.pt.taskCard.deletedTask, 'Tarefa excluída: {title}');
+  assert.equal(translations.pt.taskCard.restoredTask, 'Tarefa restaurada');
   assert.equal(translations.pt.sheet.interval, 'Intervalo');
   assert.equal(translations.pt.sheet.endDate, 'Data final');
   assert.equal(translations.pt.sheet.goBack, 'Voltar');
@@ -271,6 +285,7 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
   assert.equal(translations.pt.reflection.removeConfirmTitle, 'Remover esta reflexão?');
   assert.equal(translations.pt.dataProtection.saveErrorTitle, 'As alterações não foram salvas');
   assert.equal(translations.pt.common.retry, 'Tentar novamente');
+  assert.equal(translations.pt.common.undo, 'Desfazer');
   assert.equal(
     translations.pt.taskModal.subtasksCompleted
       .replace('{completed}', '2')

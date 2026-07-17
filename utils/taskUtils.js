@@ -41,6 +41,18 @@ const getSubtaskCompletionStatus = (subtask, dateKey) => {
   return Boolean(subtask.completed);
 };
 
+const restoreDeletedTaskAtIndex = (tasks, task, index) => {
+  const currentTasks = Array.isArray(tasks) ? tasks : [];
+  if (!task?.id || currentTasks.some((current) => current.id === task.id)) {
+    return currentTasks;
+  }
+  const requestedIndex = Number.isInteger(index) ? index : currentTasks.length;
+  const insertionIndex = Math.max(0, Math.min(requestedIndex, currentTasks.length));
+  const restored = currentTasks.slice();
+  restored.splice(insertionIndex, 0, task);
+  return restored;
+};
+
 const getQuantumProgressValues = (task, dateKey) => {
   if (!task || task.type !== 'quantum' || !task.quantum) {
     return { doneSeconds: 0, doneCount: 0 };
@@ -321,6 +333,7 @@ export {
   getTaskTagDisplayLabel,
   getTaskTypeDisplayLabel,
   normalizeTaskTagKey,
+  restoreDeletedTaskAtIndex,
   shouldResetTaskProgress,
 };
 
