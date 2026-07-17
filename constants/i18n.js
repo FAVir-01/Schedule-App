@@ -214,6 +214,12 @@ const translations = {
       showTasksTagged: 'Show tasks tagged {tag}',
       missed: 'Missed',
     },
+    calendar: {
+      today: 'Today',
+      completed: 'All scheduled habits completed',
+      moodRecorded: 'Mood recorded',
+      openDayReport: 'Opens the daily report',
+    },
     report: {
       noHabits: 'No habits scheduled for this day.',
       onlyReminders: '{total} reminder(s) scheduled for this day.',
@@ -579,6 +585,12 @@ const translations = {
       emptyIllustration: 'Ilustração de uma agenda vazia',
       showTasksTagged: 'Mostrar tarefas com o rótulo {tag}',
       missed: 'Perdido',
+    },
+    calendar: {
+      today: 'Hoje',
+      completed: 'Todos os hábitos programados foram concluídos',
+      moodRecorded: 'Humor registrado',
+      openDayReport: 'Abre o relatório diário',
     },
     report: {
       noHabits: 'Nenhum hábito agendado para este dia.',
