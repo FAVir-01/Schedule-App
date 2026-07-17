@@ -1619,7 +1619,7 @@ export default function AddHabitSheet({
             <View style={styles.header}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Close"
+                accessibilityLabel={t.closeTaskEditor}
                 onPress={handleClose}
                 hitSlop={16}
               >
@@ -1869,6 +1869,7 @@ export default function AddHabitSheet({
                 onClose={closePanel}
                 onApply={handleApplyDate}
                 applyLabel={common.apply}
+                backLabel={t.goBack}
               >
                 <DatePanel
                   month={calendarMonth}
@@ -1886,6 +1887,7 @@ export default function AddHabitSheet({
                 onClose={closePanel}
                 onApply={handleApplyRepeat}
                 applyLabel={common.apply}
+                backLabel={t.goBack}
               >
                 <RepeatPanel
                   isEnabled={pendingIsRepeatEnabled}
@@ -1933,6 +1935,7 @@ export default function AddHabitSheet({
                 onClose={closePanel}
                 onApply={handleApplyTime}
                 applyLabel={common.apply}
+                backLabel={t.goBack}
               >
                 <TimePanel
                   specified={pendingHasSpecifiedTime}
@@ -1954,6 +1957,7 @@ export default function AddHabitSheet({
                 onClose={closePanel}
                 onApply={handleApplyReminder}
                 applyLabel={common.apply}
+                backLabel={t.goBack}
               >
                 <OptionList
                   options={reminderOptions}
@@ -1968,6 +1972,7 @@ export default function AddHabitSheet({
                 onClose={closePanel}
                 onApply={handleApplyTag}
                 applyLabel={common.apply}
+                backLabel={t.goBack}
               >
                 <TagPanel
                   options={tagOptions}
@@ -1984,6 +1989,7 @@ export default function AddHabitSheet({
                 onClose={closePanel}
                 onApply={handleApplyType}
                 applyLabel={common.apply}
+                backLabel={t.goBack}
               >
                 <OptionList
                   options={typeOptions}
@@ -2174,7 +2180,8 @@ function OptionOverlay({
   onClose,
   onApply,
   children,
-  applyLabel = 'Apply',
+  applyLabel,
+  backLabel,
   applyDisabled,
   scrollEnabled = true,
 }) {
@@ -2184,7 +2191,7 @@ function OptionOverlay({
         <View style={styles.overlayHeader}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Go back"
+            accessibilityLabel={backLabel}
             onPress={onClose}
             hitSlop={12}
           >
@@ -2373,7 +2380,7 @@ function QuantumPanel({
                 maxLength={2}
                 placeholder="00"
                 placeholderTextColor="#9AA5B5"
-                accessibilityLabel="Timer hours"
+                accessibilityLabel={labels.timerHoursAccessibility}
               />
             </View>
             <View style={styles.quantumField}>
@@ -2386,7 +2393,7 @@ function QuantumPanel({
                 maxLength={2}
                 placeholder="00"
                 placeholderTextColor="#9AA5B5"
-                accessibilityLabel="Timer minutes"
+                accessibilityLabel={labels.timerMinutesAccessibility}
               />
             </View>
           </View>
@@ -2402,7 +2409,7 @@ function QuantumPanel({
                 maxLength={4}
                 placeholder="0"
                 placeholderTextColor="#9AA5B5"
-                accessibilityLabel="Count value"
+                accessibilityLabel={labels.countValueAccessibility}
               />
             </View>
             <View style={styles.quantumField}>
@@ -2414,7 +2421,7 @@ function QuantumPanel({
                 maxLength={12}
                 placeholder={labels.unit}
                 placeholderTextColor="#9AA5B5"
-                accessibilityLabel="Count unit"
+                accessibilityLabel={labels.countUnitAccessibility}
               />
             </View>
           </View>

@@ -3157,7 +3157,7 @@ function ScheduleApp() {
             accessibilityRole="button"
             accessibilityLabel={t.common.closeAddMenu}
             pointerEvents="auto"
-            accessibilityHint="Tap to dismiss the add options"
+            accessibilityHint={t.common.closeAddMenuHint}
           >
           </AnimatedPressable>
         )}
@@ -3294,7 +3294,7 @@ function ScheduleApp() {
                       ]}
                       resizeMode="contain"
                       accessible
-                      accessibilityLabel="Illustration of adding a reflection"
+                      accessibilityLabel={t.fab.addReflectionIllustration}
                     />
                     <Text
                       style={[
