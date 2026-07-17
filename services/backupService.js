@@ -1,7 +1,13 @@
 import { Platform, Share } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getRawStorageSnapshot } from '../storage';
-import { BACKUP_FORMAT, BACKUP_VERSION } from '../utils/backupUtils';
+import {
+  BACKUP_FORMAT,
+  BACKUP_VERSION,
+  parseAppBackupContents,
+} from '../utils/backupUtils';
+
+const MAX_BACKUP_CANDIDATES = 25;
 
 const getBackupFileName = (exportedAt) =>
   `favit-backup-${exportedAt.replace(/[:.]/g, '-')}.json`;
@@ -69,6 +75,138 @@ const saveBackupOnAndroid = async (contents, fileName) => {
     encoding: FileSystem.EncodingType.UTF8,
   });
   return { status: 'saved', uri: fileUri };
+};
+
+const decodeFileUri = (uri) => {
+  try {
+    return decodeURIComponent(uri);
+  } catch {
+    return uri;
+  }
+};
+
+const getBackupCandidateUris = (uris) => {
+  const jsonUris = (uris ?? []).filter((uri) =>
+    decodeFileUri(uri).toLowerCase().endsWith('.json')
+  );
+  return jsonUris
+    .sort((left, right) => {
+      const leftName = decodeFileUri(left).toLowerCase();
+      const rightName = decodeFileUri(right).toLowerCase();
+      const leftPreferred = leftName.includes('favit-backup');
+      const rightPreferred = rightName.includes('favit-backup');
+      if (leftPreferred !== rightPreferred) {
+        return leftPreferred ? -1 : 1;
+      }
+      return rightName.localeCompare(leftName);
+    })
+    .slice(0, MAX_BACKUP_CANDIDATES);
+};
+
+export const selectLatestAppBackupFromDirectory = async () => {
+  if (Platform.OS !== 'android') {
+    return { status: 'unsupported' };
+  }
+  const permissions =
+    await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+  if (!permissions.granted) {
+    return { status: 'cancelled' };
+  }
+  const directoryUris = await FileSystem.StorageAccessFramework.readDirectoryAsync(
+    permissions.directoryUri
+  );
+  const candidates = getBackupCandidateUris(directoryUris);
+  for (const uri of candidates) {
+    try {
+      const contents = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+      const parsed = parseAppBackupContents(contents);
+      return {
+        status: 'selected',
+        uri,
+        fileName: decodeFileUri(uri).split('/').pop(),
+        ...parsed,
+      };
+    } catch {
+      // Ignora JSONs que não sejam backups válidos e tenta o próximo arquivo.
+    }
+  }
+  return { status: 'not_found' };
+};
+
+const resolveAvailableMediaUri = async (uri, availability, missingUris) => {
+  if (typeof uri !== 'string' || !uri) {
+    return null;
+  }
+  if (!availability.has(uri)) {
+    const exists = await FileSystem.getInfoAsync(uri)
+      .then((info) => Boolean(info.exists))
+      .catch(() => false);
+    availability.set(uri, exists);
+  }
+  if (!availability.get(uri)) {
+    missingUris.add(uri);
+    return null;
+  }
+  return uri;
+};
+
+export const prepareImportedBackupData = async (data) => {
+  const availability = new Map();
+  const missingUris = new Set();
+  const tasks = await Promise.all(
+    data.tasks.map(async (task) => ({
+      ...task,
+      customImage: await resolveAvailableMediaUri(
+        task.customImage,
+        availability,
+        missingUris
+      ),
+    }))
+  );
+  const monthImageEntries = await Promise.all(
+    Object.entries(data.monthImages).map(async ([key, uri]) => [
+      key,
+      await resolveAvailableMediaUri(uri, availability, missingUris),
+    ])
+  );
+  const moodAppearanceEntries = await Promise.all(
+    Object.entries(data.moodAppearance).map(async ([key, uri]) => [
+      key,
+      await resolveAvailableMediaUri(uri, availability, missingUris),
+    ])
+  );
+  const dayMoodEntries = await Promise.all(
+    Object.entries(data.dayMoods).map(async ([key, mood]) => {
+      if (!mood || typeof mood !== 'object' || Array.isArray(mood)) {
+        return [key, mood];
+      }
+      return [
+        key,
+        {
+          ...mood,
+          image: await resolveAvailableMediaUri(mood.image, availability, missingUris),
+          photo: await resolveAvailableMediaUri(mood.photo, availability, missingUris),
+        },
+      ];
+    })
+  );
+
+  return {
+    data: {
+      ...data,
+      tasks,
+      monthImages: Object.fromEntries(
+        monthImageEntries.filter(([, uri]) => Boolean(uri))
+      ),
+      dayMoods: Object.fromEntries(dayMoodEntries),
+      moodAppearance: Object.fromEntries(
+        moodAppearanceEntries.filter(([, uri]) => Boolean(uri))
+      ),
+    },
+    missingMediaCount: missingUris.size,
+  };
 };
 
 const shareBackupOnIos = async (contents, fileName) => {

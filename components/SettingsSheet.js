@@ -25,14 +25,16 @@ function SettingsSheet({
   onChangePrivateNotificationContent,
   onCustomizeCalendar,
   onExportBackup,
+  onImportBackup,
 }) {
   const insets = useSafeAreaInsets();
   const t = translations[language] ?? translations.en;
   const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [shouldTestErrorBoundary, setShouldTestErrorBoundary] = useState(false);
 
   const handleExportBackup = useCallback(async () => {
-    if (isExporting) {
+    if (isExporting || isImporting) {
       return;
     }
     setIsExporting(true);
@@ -41,7 +43,21 @@ function SettingsSheet({
     } finally {
       setIsExporting(false);
     }
-  }, [isExporting, onExportBackup]);
+  }, [isExporting, isImporting, onExportBackup]);
+
+  const handleImportBackup = useCallback(async () => {
+    if (isExporting || isImporting) {
+      return;
+    }
+    setIsImporting(true);
+    try {
+      await onImportBackup?.();
+    } finally {
+      setIsImporting(false);
+    }
+  }, [isExporting, isImporting, onImportBackup]);
+
+  const isBackupBusy = isExporting || isImporting;
 
   if (__DEV__ && shouldTestErrorBoundary) {
     throw new Error('Intentional development error boundary test');
@@ -137,20 +153,41 @@ function SettingsSheet({
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.settingsRow, isExporting && styles.settingsRowDisabled]}
+              style={[styles.settingsRow, isBackupBusy && styles.settingsRowDisabled]}
               onPress={handleExportBackup}
               activeOpacity={0.7}
-              disabled={isExporting}
+              disabled={isBackupBusy}
               accessibilityRole="button"
               accessibilityLabel={t.backup.exportLabel}
               accessibilityHint={t.backup.exportHint}
-              accessibilityState={{ disabled: isExporting, busy: isExporting }}
+              accessibilityState={{ disabled: isBackupBusy, busy: isExporting }}
             >
               <Ionicons name="download-outline" size={20} color="#3c2ba7" />
               <Text style={styles.settingsRowLabel}>
                 {isExporting ? t.backup.exporting : t.backup.exportLabel}
               </Text>
               {isExporting ? (
+                <ActivityIndicator size="small" color="#3c2ba7" />
+              ) : (
+                <Ionicons name="chevron-forward" size={18} color="#9a96b8" />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.settingsRow, isBackupBusy && styles.settingsRowDisabled]}
+              onPress={handleImportBackup}
+              activeOpacity={0.7}
+              disabled={isBackupBusy}
+              accessibilityRole="button"
+              accessibilityLabel={t.backup.importLabel}
+              accessibilityHint={t.backup.importHint}
+              accessibilityState={{ disabled: isBackupBusy, busy: isImporting }}
+            >
+              <Ionicons name="folder-open-outline" size={20} color="#3c2ba7" />
+              <Text style={styles.settingsRowLabel}>
+                {isImporting ? t.backup.importing : t.backup.importLabel}
+              </Text>
+              {isImporting ? (
                 <ActivityIndicator size="small" color="#3c2ba7" />
               ) : (
                 <Ionicons name="chevron-forward" size={18} color="#9a96b8" />

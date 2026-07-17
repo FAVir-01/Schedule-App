@@ -35,11 +35,20 @@ const hapticsMockState = {
 const asyncStorageMockState = {
   calls: [],
   shouldReject: false,
+  shouldRejectMultiSet: false,
 };
 const asyncStorageMock = {
   getItem: async () => null,
   multiGet: async () => [],
-  multiRemove: async () => undefined,
+  multiRemove: async (keys) => {
+    asyncStorageMockState.calls.push({ operation: 'multiRemove', keys });
+  },
+  multiSet: async (entries) => {
+    asyncStorageMockState.calls.push({ operation: 'multiSet', entries });
+    if (asyncStorageMockState.shouldRejectMultiSet) {
+      throw new Error('storage unavailable');
+    }
+  },
   setItem: async (key, value) => {
     asyncStorageMockState.calls.push({ key, value });
     if (asyncStorageMockState.shouldReject) {
@@ -135,7 +144,7 @@ const {
   parseAppBackupContents,
 } = require('../utils/backupUtils');
 const { AppErrorBoundary } = require('../components/AppErrorBoundary');
-const { saveTasks } = require('../storage');
+const { replaceStoredAppData, saveTasks } = require('../storage');
 
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
@@ -284,6 +293,43 @@ test('informa sucesso ou falha ao gravar dados locais', async () => {
   }
 });
 
+test('protege estado anterior antes de substituir dados restaurados', async () => {
+  asyncStorageMockState.calls = [];
+  const saved = await replaceStoredAppData({
+    tasks: [{ id: 'restored' }],
+    userSettings: { language: 'pt' },
+    history: [],
+    monthImages: {},
+    dayMoods: {},
+    moodAppearance: {},
+  });
+
+  assert.equal(saved, true);
+  assert.equal(asyncStorageMockState.calls[0].key, '@schedule_app/pre_restore_backup');
+  const replacement = asyncStorageMockState.calls.find(
+    (call) => call.operation === 'multiSet'
+  );
+  assert.equal(replacement.entries.length, 6);
+  assert.equal(JSON.parse(replacement.entries[0][1])[0].id, 'restored');
+});
+
+test('tenta rollback quando a substituicao restaurada falha', async () => {
+  const originalWarn = console.warn;
+  console.warn = () => undefined;
+  asyncStorageMockState.calls = [];
+  asyncStorageMockState.shouldRejectMultiSet = true;
+  try {
+    assert.equal(await replaceStoredAppData({ tasks: [] }), false);
+  } finally {
+    asyncStorageMockState.shouldRejectMultiSet = false;
+    console.warn = originalWarn;
+  }
+  assert.equal(
+    asyncStorageMockState.calls.some((call) => call.operation === 'multiRemove'),
+    true
+  );
+});
+
 test('mantem acoes de tarefa completas nos dois idiomas', () => {
   assert.deepEqual(
     Object.keys(translations.pt.taskCard).sort(),
@@ -304,6 +350,10 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
   assert.deepEqual(
     Object.keys(translations.pt.dataProtection).sort(),
     Object.keys(translations.en.dataProtection).sort()
+  );
+  assert.deepEqual(
+    Object.keys(translations.pt.backup).sort(),
+    Object.keys(translations.en.backup).sort()
   );
   assert.deepEqual(
     Object.keys(translations.pt.common).sort(),
@@ -356,6 +406,8 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
   assert.equal(translations.pt.today.showAllTags, 'Mostrar todos os rótulos');
   assert.equal(translations.pt.reflection.removeConfirmTitle, 'Remover esta reflexão?');
   assert.equal(translations.pt.dataProtection.saveErrorTitle, 'As alterações não foram salvas');
+  assert.equal(translations.pt.backup.importLabel, 'Restaurar backup');
+  assert.equal(translations.pt.backup.restoreConfirm, 'Restaurar');
   assert.equal(translations.pt.common.retry, 'Tentar novamente');
   assert.equal(translations.pt.common.undo, 'Desfazer');
   assert.equal(

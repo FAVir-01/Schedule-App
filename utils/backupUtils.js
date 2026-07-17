@@ -48,7 +48,7 @@ const isValidData = (data) =>
 
 const isValidMedia = (media) =>
   isPlainObject(media) &&
-  typeof media.filesIncluded === 'boolean' &&
+  media.filesIncluded === false &&
   Array.isArray(media.referencedUris) &&
   media.referencedUris.every((uri) => typeof uri === 'string');
 
