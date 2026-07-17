@@ -2629,7 +2629,7 @@ function ScheduleApp() {
         style={styles.tabButton}
         onPress={() => handleChangeTab(key)}
         accessibilityRole="button"
-        accessibilityLabel={`${label} tab`}
+        accessibilityLabel={t.common.tabAccessibility.replace('{label}', label)}
         disabled={isFabOpen}
       >
         <Ionicons

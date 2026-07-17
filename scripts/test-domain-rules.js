@@ -234,12 +234,16 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
   assert.equal(translations.pt.sheet.duplicateHabitAnnouncement, 'Duplicar hábito');
   assert.equal(translations.pt.sheet.closeEditHabit, 'Fechar edição de hábito');
   assert.equal(translations.pt.sheet.timerHoursAccessibility, 'Horas do temporizador');
+  assert.equal(translations.pt.sheet.selectColor, 'Selecionar cor {color}');
+  assert.equal(translations.pt.sheet.removeSubtask, 'Remover subtarefa');
+  assert.equal(translations.pt.sheet.removeReminder, 'Remover lembrete');
   assert.deepEqual(
     Object.keys(translations.pt.sheet.weekdayFullLabels).sort(),
     Object.keys(translations.en.sheet.weekdayFullLabels).sort()
   );
   assert.equal(translations.pt.sheet.weekdayFullLabels.wed, 'Quarta-feira');
   assert.equal(translations.pt.common.closeAddMenuHint, 'Toque para fechar as opções de adição');
+  assert.equal(translations.pt.common.tabAccessibility, 'Aba {label}');
   assert.equal(translations.pt.fab.addReflectionIllustration, 'Ilustração para adicionar uma reflexão');
   assert.equal(translations.pt.profile.showBarChart, 'Mostrar gráfico de barras');
   assert.equal(translations.pt.profile.periodAll, 'Todo o histórico disponível');
