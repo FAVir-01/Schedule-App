@@ -2944,7 +2944,7 @@ function RepeatPanel({
               accessibilityRole="button"
               accessibilityState={{ expanded: showIntervalPicker }}
             >
-              <Text style={styles.intervalLabel}>Interval</Text>
+              <Text style={styles.intervalLabel}>{labels.interval}</Text>
               <View style={styles.intervalValueContainer}>
                 <Text style={styles.intervalValue}>{intervalSummary}</Text>
                 <Ionicons
@@ -2959,7 +2959,7 @@ function RepeatPanel({
               <View style={styles.wheelGroup}>
                 <View style={styles.wheelLabelsRow}>
                   <Text style={styles.wheelLabel}>{labels.repeatEvery}</Text>
-                  <Text style={styles.wheelLabel}>{labels.unit}</Text>
+                  <Text style={styles.wheelLabel}>{labels.repeatUnit}</Text>
                 </View>
                 <View style={styles.wheelArea}>
                   <View pointerEvents="none" style={styles.wheelHighlight} />
@@ -2982,7 +2982,7 @@ function RepeatPanel({
 
           <View style={styles.intervalSection}>
             <View style={styles.endDateRow}>
-              <Text style={styles.intervalLabel}>End date</Text>
+              <Text style={styles.intervalLabel}>{labels.endDate}</Text>
               <Switch
                 value={hasEndDate}
                 onValueChange={handleToggleEndDate}

@@ -160,7 +160,13 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
     Object.keys(translations.pt.developer).sort(),
     Object.keys(translations.en.developer).sort()
   );
+  assert.deepEqual(
+    Object.keys(translations.pt.sheet).sort(),
+    Object.keys(translations.en.sheet).sort()
+  );
   assert.equal(translations.pt.taskCard.copy, 'Copiar');
+  assert.equal(translations.pt.sheet.interval, 'Intervalo');
+  assert.equal(translations.pt.sheet.endDate, 'Data final');
   assert.equal(
     translations.pt.taskModal.subtasksCompleted
       .replace('{completed}', '2')
