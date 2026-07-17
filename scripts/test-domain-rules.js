@@ -186,6 +186,7 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
   assert.equal(translations.pt.fab.addReflectionIllustration, 'Ilustração para adicionar uma reflexão');
   assert.equal(translations.pt.profile.showBarChart, 'Mostrar gráfico de barras');
   assert.equal(translations.pt.profile.periodAll, 'Todo o histórico disponível');
+  assert.equal(translations.pt.profile.nextChartPoint, 'Próximo ponto do gráfico');
   assert.equal(translations.pt.calendar.openDayReport, 'Abre o relatório diário');
   assert.equal(
     translations.pt.taskModal.subtasksCompleted
