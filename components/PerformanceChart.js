@@ -460,8 +460,27 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
     { key: 'values', label: t.profile.valuesMode },
     { key: 'accum', label: t.profile.accumMode },
   ];
+  const periodAccessibilityLabels = {
+    '7D': t.profile.period7Days,
+    '1M': t.profile.period30Days,
+    '3M': t.profile.period3Months,
+    '1A': t.profile.period1Year,
+    ALL: t.profile.periodAll,
+  };
 
   const showChart = chartWidth > 0 && dates.length >= 2 && hasData;
+  const chartTitle = selectedTask ? seriesDescriptors[0].label : t.profile.performance;
+  const currentValue = formatValue(
+    activeIndex != null ? displaySerie[focusedIndex] : periodSummary.value
+  );
+  const currentModeLabel = modeOptions.find((option) => option.key === mode)?.label ?? '';
+  const chartAccessibilityLabel = showChart
+    ? t.profile.chartSummary
+        .replace('{title}', chartTitle)
+        .replace('{mode}', currentModeLabel)
+        .replace('{range}', activeIndex != null ? focusedDateLabel : periodRangeLabel)
+        .replace('{value}', currentValue)
+    : `${chartTitle}. ${t.profile.noChartData}`;
   const scrubX =
     chartType === 'bars'
       ? barBuckets.length
@@ -475,13 +494,11 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
       <View style={styles.perfHeaderRow}>
         <View style={styles.perfHeaderInfo}>
           <Text style={styles.perfTitle} numberOfLines={1}>
-            {selectedTask ? seriesDescriptors[0].label : t.profile.performance}
+            {chartTitle}
           </Text>
           <View style={styles.perfValueRow}>
             <Text style={styles.perfValue}>
-              {formatValue(
-                activeIndex != null ? displaySerie[focusedIndex] : periodSummary.value
-              )}
+              {currentValue}
             </Text>
             {overallDelta ? (
               <View
@@ -514,6 +531,10 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
             }}
             activeOpacity={0.75}
             hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={
+              chartType === 'line' ? t.profile.showBarChart : t.profile.showLineChart
+            }
           >
             <Ionicons
               name={chartType === 'line' ? 'bar-chart-outline' : 'analytics-outline'}
@@ -526,6 +547,9 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
             onPress={() => setModeMenuOpen((previous) => !previous)}
             activeOpacity={0.75}
             hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={t.profile.chartModeOptions}
+            accessibilityState={{ expanded: isModeMenuOpen }}
           >
             <Ionicons name="ellipsis-horizontal" size={16} color="#6f7a86" />
           </TouchableOpacity>
@@ -538,6 +562,7 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
           <Pressable
             style={styles.perfMenuBackdrop}
             onPress={() => setModeMenuOpen(false)}
+            accessible={false}
           />
           <View style={styles.perfMenuDropdown}>
             {modeOptions.map((option) => (
@@ -549,6 +574,8 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
                   setModeMenuOpen(false);
                 }}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityState={{ selected: mode === option.key }}
               >
                 {mode === option.key ? (
                   <Ionicons name="checkmark" size={16} color="#3c2ba7" />
@@ -572,6 +599,9 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
       {/* Área de plotagem */}
       <View
         style={styles.perfChartArea}
+        accessible
+        accessibilityRole="image"
+        accessibilityLabel={chartAccessibilityLabel}
         onLayout={(event) => {
           const { width } = event.nativeEvent.layout;
           chartWidthRef.current = width;
@@ -745,6 +775,9 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
               setActiveIndex(null);
             }}
             activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel={periodAccessibilityLabels[option.key]}
+            accessibilityState={{ selected: periodKey === option.key }}
           >
             <Text
               style={[

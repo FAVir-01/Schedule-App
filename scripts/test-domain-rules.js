@@ -161,6 +161,10 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
     Object.keys(translations.en.developer).sort()
   );
   assert.deepEqual(
+    Object.keys(translations.pt.profile).sort(),
+    Object.keys(translations.en.profile).sort()
+  );
+  assert.deepEqual(
     Object.keys(translations.pt.sheet).sort(),
     Object.keys(translations.en.sheet).sort()
   );
@@ -171,6 +175,8 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
   assert.equal(translations.pt.sheet.timerHoursAccessibility, 'Horas do temporizador');
   assert.equal(translations.pt.common.closeAddMenuHint, 'Toque para fechar as opções de adição');
   assert.equal(translations.pt.fab.addReflectionIllustration, 'Ilustração para adicionar uma reflexão');
+  assert.equal(translations.pt.profile.showBarChart, 'Mostrar gráfico de barras');
+  assert.equal(translations.pt.profile.periodAll, 'Todo o histórico disponível');
   assert.equal(
     translations.pt.taskModal.subtasksCompleted
       .replace('{completed}', '2')
