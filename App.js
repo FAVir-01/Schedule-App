@@ -779,7 +779,7 @@ function ScheduleApp() {
       seen.add(key);
       options.push({
         key,
-        label: getTaskTagDisplayLabel(task, t.taskDisplay.tags) ?? 'Tag',
+        label: getTaskTagDisplayLabel(task, t.taskDisplay.tags) ?? t.taskDetails.tag,
       });
       return options;
     }, []);
@@ -794,7 +794,7 @@ function ScheduleApp() {
       seen.add(key);
       options.push({
         key,
-        label: getTaskTagDisplayLabel(task, t.taskDisplay.tags) ?? 'Tag',
+        label: getTaskTagDisplayLabel(task, t.taskDisplay.tags) ?? t.taskDetails.tag,
       });
       return options;
     }, []);
@@ -2795,7 +2795,7 @@ function ScheduleApp() {
                         }
                       }}
                       accessibilityRole="button"
-                      accessibilityLabel={language === 'pt' ? 'Mostrar todos os rótulos' : 'Show all tags'}
+                      accessibilityLabel={t.today.showAllTags}
                       accessibilityState={{ selected: selectedTagFilter === 'all' }}
                     >
                       <Text

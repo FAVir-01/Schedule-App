@@ -238,6 +238,10 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
     Object.keys(translations.en.calendar).sort()
   );
   assert.deepEqual(
+    Object.keys(translations.pt.today).sort(),
+    Object.keys(translations.en.today).sort()
+  );
+  assert.deepEqual(
     Object.keys(translations.pt.sheet).sort(),
     Object.keys(translations.en.sheet).sort()
   );
@@ -263,6 +267,7 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
   assert.equal(translations.pt.profile.periodAll, 'Todo o histórico disponível');
   assert.equal(translations.pt.profile.nextChartPoint, 'Próximo ponto do gráfico');
   assert.equal(translations.pt.calendar.openDayReport, 'Abre o relatório diário');
+  assert.equal(translations.pt.today.showAllTags, 'Mostrar todos os rótulos');
   assert.equal(translations.pt.reflection.removeConfirmTitle, 'Remover esta reflexão?');
   assert.equal(translations.pt.dataProtection.saveErrorTitle, 'As alterações não foram salvas');
   assert.equal(translations.pt.common.retry, 'Tentar novamente');
