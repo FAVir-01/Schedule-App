@@ -3,23 +3,50 @@ import { Image, ImageBackground, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { getMonthImageSource } from '../constants/months';
-import { getDateLocale } from '../constants/i18n';
+import { getDateLocale, translations } from '../constants/i18n';
 import { getDateKey } from '../utils/dateUtils';
 import { getMoodMarker } from '../utils/moodUtils';
 import { CALENDAR_DAY_SIZE } from '../constants/layout';
 import { styles } from '../styles/appStyles';
 
 // --- CÉLULA DO DIA ATUALIZADA (COM DESTAQUE PARA HOJE E HUMOR) ---
-const CalendarDayCell = React.memo(({ date, isCurrentMonth, status, onPress, isToday, moodEmoji, moodImage }) => {
+const CalendarDayCell = React.memo(({
+  date,
+  isCurrentMonth,
+  status,
+  onPress,
+  isToday,
+  moodEmoji,
+  moodImage,
+  language,
+  labels,
+}) => {
   if (!isCurrentMonth) {
     return <View style={{ width: CALENDAR_DAY_SIZE, height: CALENDAR_DAY_SIZE }} />;
   }
 
   const isSuccess = status === 'success';
+  const dateLabel = date.toLocaleDateString(language === 'pt' ? 'pt-BR' : 'en-US', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  const accessibilityLabel = [
+    dateLabel,
+    isToday ? labels.today : null,
+    isSuccess ? labels.completed : null,
+    moodImage || moodEmoji ? labels.moodRecorded : null,
+  ]
+    .filter(Boolean)
+    .join('. ');
 
   return (
     <Pressable
       onPress={() => onPress(date)}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={labels.openDayReport}
       style={({ pressed }) => [
         styles.calendarDayCellWrapper,
         pressed && { opacity: 0.7, transform: [{ scale: 0.95 }] },
@@ -63,6 +90,7 @@ const CalendarMonthItem = React.memo(({
   monthMoodSignature,
 }) => {
   const imageSource = getMonthImageSource(item.monthIndex, customImages);
+  const labels = (translations[language] ?? translations.en).calendar;
 
   return (
     <View style={styles.calendarMonthContainer}>
@@ -73,7 +101,9 @@ const CalendarMonthItem = React.memo(({
         resizeMethod="resize"
       >
         {/* Overlay removido aqui */}
-        <Text style={styles.calendarMonthTitle}>{format(item.date, 'MMMM yyyy', { locale: getDateLocale(language) })}</Text>
+        <Text style={styles.calendarMonthTitle} accessibilityRole="header">
+          {format(item.date, 'MMMM yyyy', { locale: getDateLocale(language) })}
+        </Text>
       </ImageBackground>
 
       <View style={styles.calendarDaysGrid}>
@@ -90,6 +120,8 @@ const CalendarMonthItem = React.memo(({
               isToday={dayKey === todayKey}
               moodEmoji={marker?.emoji ?? null}
               moodImage={marker?.image ?? null}
+              language={language}
+              labels={labels}
             />
           );
         })}
