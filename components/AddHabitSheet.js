@@ -1717,7 +1717,7 @@ export default function AddHabitSheet({
                       onPress={() => setSelectedColor(color)}
                       accessibilityRole="button"
                       accessibilityState={{ selected: isSelected }}
-                      accessibilityLabel={`Select color ${color}`}
+                      accessibilityLabel={t.selectColor.replace('{color}', color)}
                     >
                       {isSelected && <Ionicons name="checkmark" size={18} color="#1F2742" />}
                     </Pressable>
@@ -1858,7 +1858,7 @@ export default function AddHabitSheet({
                   titleLabel={selectedType === 'reminder' ? t.reminders : t.subtasks}
                   addLabel={selectedType === 'reminder' ? t.addReminder : t.addSubtask}
                   hintLabel={selectedType === 'reminder' ? t.remindersHint : t.subtasksHint}
-                  removeAccessibilityPrefix={selectedType === 'reminder' ? 'Remove reminder' : 'Remove subtask'}
+                  removeAccessibilityPrefix={selectedType === 'reminder' ? t.removeReminder : t.removeSubtask}
                 />
               )}
             </ScrollView>
@@ -2532,7 +2532,7 @@ function SubtasksPanel({
                 <Text style={styles.subtaskText}>{item}</Text>
                 <Pressable
                   onPress={() => handleRemove(index)}
-                  accessibilityLabel={`${removeAccessibilityPrefix ?? 'Remove subtask'} ${item}`}
+                  accessibilityLabel={`${removeAccessibilityPrefix ?? labels.removeSubtask} ${item}`}
                   accessibilityRole="button"
                   hitSlop={8}
                   style={styles.subtaskRemoveButton}
