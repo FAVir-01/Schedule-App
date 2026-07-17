@@ -18,6 +18,7 @@ const translations = {
       notSet: 'Not set',
       openAddMenu: 'Open add menu',
       closeAddMenu: 'Close add menu',
+      closeAddMenuHint: 'Tap to dismiss the add options',
       untitledTask: 'Untitled task',
     },
     notifications: {
@@ -163,6 +164,7 @@ const translations = {
       addHabitDescription: 'Add a new routine\nto your life',
       addReflection: 'Add reflection',
       addReflectionDescription: 'Reflect on your day\nwith your mood and feelings',
+      addReflectionIllustration: 'Illustration of adding a reflection',
     },
     reflection: {
       title: 'Reflection of the day',
@@ -221,6 +223,8 @@ const translations = {
     },
     sheet: {
       newTask: 'New Task',
+      closeTaskEditor: 'Close task editor',
+      goBack: 'Go back',
       changePhoto: 'Choose a photo',
       shuffleIcon: 'Shuffle icon',
       removePhoto: 'Remove photo',
@@ -258,6 +262,10 @@ const translations = {
       hour: 'Hour',
       min: 'Min',
       unit: 'Unit',
+      timerHoursAccessibility: 'Timer hours',
+      timerMinutesAccessibility: 'Timer minutes',
+      countValueAccessibility: 'Count value',
+      countUnitAccessibility: 'Count unit',
       animation: 'Animation',
       addSubtask: 'Add subtask',
       addReminder: 'Add reminder',
@@ -367,6 +375,7 @@ const translations = {
       notSet: 'Não definido',
       openAddMenu: 'Abrir menu de adição',
       closeAddMenu: 'Fechar menu de adição',
+      closeAddMenuHint: 'Toque para fechar as opções de adição',
       untitledTask: 'Tarefa sem título',
     },
     notifications: {
@@ -512,6 +521,7 @@ const translations = {
       addHabitDescription: 'Adicione uma nova rotina\nna sua vida',
       addReflection: 'Adicionar reflexão',
       addReflectionDescription: 'Reflita sobre seu dia\ncom seu humor e sentimentos',
+      addReflectionIllustration: 'Ilustração para adicionar uma reflexão',
     },
     reflection: {
       title: 'Reflexão do dia',
@@ -570,6 +580,8 @@ const translations = {
     },
     sheet: {
       newTask: 'Nova Tarefa',
+      closeTaskEditor: 'Fechar editor de tarefa',
+      goBack: 'Voltar',
       changePhoto: 'Escolher foto',
       shuffleIcon: 'Sortear outro',
       removePhoto: 'Remover foto',
@@ -607,6 +619,10 @@ const translations = {
       hour: 'Hora',
       min: 'Min',
       unit: 'Unidade',
+      timerHoursAccessibility: 'Horas do temporizador',
+      timerMinutesAccessibility: 'Minutos do temporizador',
+      countValueAccessibility: 'Valor da quantidade',
+      countUnitAccessibility: 'Unidade da quantidade',
       animation: 'Animação',
       addSubtask: 'Adicionar subtarefa',
       addReminder: 'Adicionar lembrete',

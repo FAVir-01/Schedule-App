@@ -167,6 +167,10 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
   assert.equal(translations.pt.taskCard.copy, 'Copiar');
   assert.equal(translations.pt.sheet.interval, 'Intervalo');
   assert.equal(translations.pt.sheet.endDate, 'Data final');
+  assert.equal(translations.pt.sheet.goBack, 'Voltar');
+  assert.equal(translations.pt.sheet.timerHoursAccessibility, 'Horas do temporizador');
+  assert.equal(translations.pt.common.closeAddMenuHint, 'Toque para fechar as opções de adição');
+  assert.equal(translations.pt.fab.addReflectionIllustration, 'Ilustração para adicionar uma reflexão');
   assert.equal(
     translations.pt.taskModal.subtasksCompleted
       .replace('{completed}', '2')
