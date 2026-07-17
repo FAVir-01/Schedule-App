@@ -481,6 +481,25 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
         .replace('{range}', activeIndex != null ? focusedDateLabel : periodRangeLabel)
         .replace('{value}', currentValue)
     : `${chartTitle}. ${t.profile.noChartData}`;
+  const handleChartAccessibilityAction = ({ nativeEvent }) => {
+    if (!showChart || displaySerie.length === 0) {
+      return;
+    }
+    const lastIndex = displaySerie.length - 1;
+    if (activeIndex == null) {
+      if (nativeEvent.actionName === 'increment') {
+        setActiveIndex(0);
+      } else if (nativeEvent.actionName === 'decrement') {
+        setActiveIndex(lastIndex);
+      }
+      return;
+    }
+    if (nativeEvent.actionName === 'increment') {
+      setActiveIndex(Math.min(lastIndex, activeIndex + 1));
+    } else if (nativeEvent.actionName === 'decrement') {
+      setActiveIndex(Math.max(0, activeIndex - 1));
+    }
+  };
   const scrubX =
     chartType === 'bars'
       ? barBuckets.length
@@ -600,8 +619,13 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
       <View
         style={styles.perfChartArea}
         accessible
-        accessibilityRole="image"
+        accessibilityRole="adjustable"
         accessibilityLabel={chartAccessibilityLabel}
+        accessibilityActions={[
+          { name: 'decrement', label: t.profile.previousChartPoint },
+          { name: 'increment', label: t.profile.nextChartPoint },
+        ]}
+        onAccessibilityAction={handleChartAccessibilityAction}
         onLayout={(event) => {
           const { width } = event.nativeEvent.layout;
           chartWidthRef.current = width;
