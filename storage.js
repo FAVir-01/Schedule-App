@@ -60,8 +60,10 @@ export async function loadTasks() {
 export async function saveTasks(tasks) {
   try {
     await AsyncStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(tasks));
+    return true;
   } catch (error) {
     console.warn('Failed to save tasks', error);
+    return false;
   }
 }
 
@@ -83,8 +85,10 @@ export async function loadUserSettings() {
 export async function saveUserSettings(settings) {
   try {
     await AsyncStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+    return true;
   } catch (error) {
     console.warn('Failed to save settings', error);
+    return false;
   }
 }
 
@@ -101,8 +105,10 @@ export async function loadHistory() {
 export async function saveHistory(history) {
   try {
     await AsyncStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(history));
+    return true;
   } catch (error) {
     console.warn('Failed to save history', error);
+    return false;
   }
 }
 
@@ -119,8 +125,10 @@ export async function loadMonthImages() {
 export async function saveMonthImages(imagesMap) {
   try {
     await AsyncStorage.setItem(STORAGE_KEYS.MONTH_IMAGES, JSON.stringify(imagesMap));
+    return true;
   } catch (error) {
     console.warn('Failed to save month images', error);
+    return false;
   }
 }
 
@@ -139,8 +147,10 @@ export async function loadDayMoods() {
 export async function saveDayMoods(moodsMap) {
   try {
     await AsyncStorage.setItem(STORAGE_KEYS.DAY_MOODS, JSON.stringify(moodsMap));
+    return true;
   } catch (error) {
     console.warn('Failed to save day moods', error);
+    return false;
   }
 }
 
@@ -161,8 +171,10 @@ export async function saveMoodAppearance(appearanceMap) {
       STORAGE_KEYS.MOOD_APPEARANCE,
       JSON.stringify(appearanceMap)
     );
+    return true;
   } catch (error) {
     console.warn('Failed to save mood appearance', error);
+    return false;
   }
 }
 
@@ -183,7 +195,9 @@ export async function getRawStorageSnapshot() {
 export async function resetStorage() {
   try {
     await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
+    return true;
   } catch (error) {
     console.warn('Failed to reset storage', error);
+    return false;
   }
 }

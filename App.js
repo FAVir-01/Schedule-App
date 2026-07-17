@@ -337,6 +337,8 @@ function ScheduleApp() {
   // Marca quais stores falharam ao carregar, p/ não sobrescrever dado bom com estado vazio
   const loadFailuresRef = useRef({ ...INITIAL_STORAGE_LOAD_FAILURES });
   const storageProtectionAlertShownRef = useRef(false);
+  const failedStorageWritesRef = useRef(new Set());
+  const pendingStorageWriteAlertRef = useRef(false);
   // Espelhos do estado mais recente p/ flush imediato quando o app vai pra background
   const tasksRef = useRef(null);
   const userSettingsRef = useRef(null);
@@ -1469,6 +1471,52 @@ function ScheduleApp() {
     };
   }, [normalizeStoredTasks]);
 
+  const showStorageWriteAlert = useCallback(() => {
+    Alert.alert(
+      t.dataProtection.saveErrorTitle,
+      t.dataProtection.saveErrorMessage
+    );
+  }, [t.dataProtection]);
+
+  const reportStorageWriteResult = useCallback(
+    async (storeKey, operation) => {
+      const saved = await operation;
+      if (saved) {
+        failedStorageWritesRef.current.delete(storeKey);
+        if (failedStorageWritesRef.current.size === 0) {
+          pendingStorageWriteAlertRef.current = false;
+        }
+        return true;
+      }
+
+      const shouldNotify = failedStorageWritesRef.current.size === 0;
+      failedStorageWritesRef.current.add(storeKey);
+      if (shouldNotify) {
+        if (AppState.currentState === 'active') {
+          showStorageWriteAlert();
+        } else {
+          pendingStorageWriteAlertRef.current = true;
+        }
+      }
+      return false;
+    },
+    [showStorageWriteAlert]
+  );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (
+        nextState === 'active' &&
+        pendingStorageWriteAlertRef.current &&
+        failedStorageWritesRef.current.size > 0
+      ) {
+        pendingStorageWriteAlertRef.current = false;
+        showStorageWriteAlert();
+      }
+    });
+    return () => subscription.remove();
+  }, [showStorageWriteAlert]);
+
   useEffect(() => {
     if (!isHydrated || loadFailuresRef.current.tasks) {
       return undefined;
@@ -1483,7 +1531,7 @@ function ScheduleApp() {
         ...task,
         repeat: normalizeRepeatConfig(task.repeat),
       }));
-      void saveTasks(normalizedTasks);
+      void reportStorageWriteResult('tasks', saveTasks(normalizedTasks));
     }, 500);
 
     saveTimeoutRef.current = timeoutId;
@@ -1491,7 +1539,7 @@ function ScheduleApp() {
     return () => {
       clearTimeout(timeoutId);
     };
-  }, [isHydrated, tasks]);
+  }, [isHydrated, reportStorageWriteResult, tasks]);
 
   useEffect(() => {
     if (!isHydrated || loadFailuresRef.current.settings) {
@@ -1503,7 +1551,7 @@ function ScheduleApp() {
     }
 
     const timeoutId = setTimeout(() => {
-      void saveUserSettings(userSettings);
+      void reportStorageWriteResult('settings', saveUserSettings(userSettings));
     }, 500);
 
     settingsSaveTimeoutRef.current = timeoutId;
@@ -1511,7 +1559,7 @@ function ScheduleApp() {
     return () => {
       clearTimeout(timeoutId);
     };
-  }, [isHydrated, userSettings]);
+  }, [isHydrated, reportStorageWriteResult, userSettings]);
 
   useEffect(() => {
     if (!isHydrated || loadFailuresRef.current.history) {
@@ -1523,7 +1571,7 @@ function ScheduleApp() {
     }
 
     const timeoutId = setTimeout(() => {
-      void saveHistory(history);
+      void reportStorageWriteResult('history', saveHistory(history));
     }, 500);
 
     historySaveTimeoutRef.current = timeoutId;
@@ -1531,7 +1579,7 @@ function ScheduleApp() {
     return () => {
       clearTimeout(timeoutId);
     };
-  }, [history, isHydrated]);
+  }, [history, isHydrated, reportStorageWriteResult]);
 
   useEffect(() => {
     if (!isHydrated || loadFailuresRef.current.moods) {
@@ -1543,7 +1591,7 @@ function ScheduleApp() {
     }
 
     const timeoutId = setTimeout(() => {
-      void saveDayMoods(dayMoods);
+      void reportStorageWriteResult('moods', saveDayMoods(dayMoods));
     }, 500);
 
     dayMoodsSaveTimeoutRef.current = timeoutId;
@@ -1551,7 +1599,7 @@ function ScheduleApp() {
     return () => {
       clearTimeout(timeoutId);
     };
-  }, [dayMoods, isHydrated]);
+  }, [dayMoods, isHydrated, reportStorageWriteResult]);
 
   useEffect(() => {
     tasksRef.current = tasks;
@@ -1581,35 +1629,38 @@ function ScheduleApp() {
           ...task,
           repeat: normalizeRepeatConfig(task.repeat),
         }));
-        void saveTasks(normalizedTasks);
+        void reportStorageWriteResult('tasks', saveTasks(normalizedTasks));
       }
       if (!failures.settings && userSettingsRef.current) {
         if (settingsSaveTimeoutRef.current) {
           clearTimeout(settingsSaveTimeoutRef.current);
           settingsSaveTimeoutRef.current = null;
         }
-        void saveUserSettings(userSettingsRef.current);
+        void reportStorageWriteResult(
+          'settings',
+          saveUserSettings(userSettingsRef.current)
+        );
       }
       if (!failures.history && Array.isArray(historyRef.current)) {
         if (historySaveTimeoutRef.current) {
           clearTimeout(historySaveTimeoutRef.current);
           historySaveTimeoutRef.current = null;
         }
-        void saveHistory(historyRef.current);
+        void reportStorageWriteResult('history', saveHistory(historyRef.current));
       }
       if (!failures.moods && dayMoodsRef.current) {
         if (dayMoodsSaveTimeoutRef.current) {
           clearTimeout(dayMoodsSaveTimeoutRef.current);
           dayMoodsSaveTimeoutRef.current = null;
         }
-        void saveDayMoods(dayMoodsRef.current);
+        void reportStorageWriteResult('moods', saveDayMoods(dayMoodsRef.current));
       }
     });
 
     return () => {
       subscription.remove();
     };
-  }, []);
+  }, [reportStorageWriteResult]);
 
   const showDataProtectionAlert = useCallback(() => {
     Alert.alert(
@@ -1630,9 +1681,9 @@ function ScheduleApp() {
       };
 
       setCustomMonthImages(updatedImages);
-      await saveMonthImages(updatedImages);
+      await reportStorageWriteResult('images', saveMonthImages(updatedImages));
     },
-    [customMonthImages, showDataProtectionAlert]
+    [customMonthImages, reportStorageWriteResult, showDataProtectionAlert]
   );
 
   const handleExportBackup = useCallback(async () => {
@@ -1853,11 +1904,11 @@ function ScheduleApp() {
         } else {
           delete next[level];
         }
-        void saveMoodAppearance(next);
+        void reportStorageWriteResult('appearance', saveMoodAppearance(next));
         return next;
       });
     },
-    [showDataProtectionAlert]
+    [reportStorageWriteResult, showDataProtectionAlert]
   );
 
   const handleCloseCreateHabit = useCallback(() => {

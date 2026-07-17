@@ -44,6 +44,8 @@ const translations = {
     dataProtection: {
       loadErrorTitle: 'Your data was protected',
       loadErrorMessage: 'Some saved data could not be loaded. Automatic saving for that data was paused to avoid overwriting it. Export a backup from Settings before continuing.',
+      saveErrorTitle: 'Changes were not saved',
+      saveErrorMessage: 'Your changes are still visible, but could not be saved on this device. Check available storage and keep the app open. Export a backup from Settings if possible.',
     },
     privacy: {
       settingsLabel: 'Your data and privacy',
@@ -437,6 +439,8 @@ const translations = {
     dataProtection: {
       loadErrorTitle: 'Seus dados foram protegidos',
       loadErrorMessage: 'Parte dos dados salvos não pôde ser carregada. O salvamento automático desses dados foi pausado para evitar sobrescrita. Exporte um backup nas Configurações antes de continuar.',
+      saveErrorTitle: 'As alterações não foram salvas',
+      saveErrorMessage: 'As alterações ainda estão visíveis, mas não puderam ser salvas neste aparelho. Verifique o espaço disponível e mantenha o app aberto. Se possível, exporte um backup nas Configurações.',
     },
     privacy: {
       settingsLabel: 'Seus dados e privacidade',

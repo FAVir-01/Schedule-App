@@ -32,6 +32,21 @@ const hapticsMockState = {
   calls: [],
   shouldReject: false,
 };
+const asyncStorageMockState = {
+  calls: [],
+  shouldReject: false,
+};
+const asyncStorageMock = {
+  getItem: async () => null,
+  multiGet: async () => [],
+  multiRemove: async () => undefined,
+  setItem: async (key, value) => {
+    asyncStorageMockState.calls.push({ key, value });
+    if (asyncStorageMockState.shouldReject) {
+      throw new Error('storage unavailable');
+    }
+  },
+};
 const runHapticsMock = async (operation, value) => {
   hapticsMockState.calls.push({ operation, value });
   if (hapticsMockState.shouldReject) {
@@ -56,6 +71,9 @@ Module._load = function loadWithReactNativeMock(request, parent, isMain) {
       notificationAsync: (type) => runHapticsMock('notification', type),
       selectionAsync: () => runHapticsMock('selection'),
     };
+  }
+  if (request === '@react-native-async-storage/async-storage') {
+    return asyncStorageMock;
   }
   return originalModuleLoader.call(this, request, parent, isMain);
 };
@@ -112,6 +130,7 @@ const {
 } = require('../utils/notificationUtils');
 const { translations } = require('../constants/i18n');
 const { AppErrorBoundary } = require('../components/AppErrorBoundary');
+const { saveTasks } = require('../storage');
 
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
@@ -147,6 +166,26 @@ test('traduz rotulos de tarefa pela chave semantica atual', () => {
   );
 });
 
+test('informa sucesso ou falha ao gravar dados locais', async () => {
+  asyncStorageMockState.calls = [];
+  asyncStorageMockState.shouldReject = false;
+  assert.equal(await saveTasks([{ id: 'task-1' }]), true);
+  assert.deepEqual(asyncStorageMockState.calls.at(-1), {
+    key: '@schedule_app/tasks',
+    value: '[{"id":"task-1"}]',
+  });
+
+  const originalWarn = console.warn;
+  console.warn = () => undefined;
+  asyncStorageMockState.shouldReject = true;
+  try {
+    assert.equal(await saveTasks([]), false);
+  } finally {
+    asyncStorageMockState.shouldReject = false;
+    console.warn = originalWarn;
+  }
+});
+
 test('mantem acoes de tarefa completas nos dois idiomas', () => {
   assert.deepEqual(
     Object.keys(translations.pt.taskCard).sort(),
@@ -163,6 +202,10 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
   assert.deepEqual(
     Object.keys(translations.pt.reflection).sort(),
     Object.keys(translations.en.reflection).sort()
+  );
+  assert.deepEqual(
+    Object.keys(translations.pt.dataProtection).sort(),
+    Object.keys(translations.en.dataProtection).sort()
   );
   assert.deepEqual(
     Object.keys(translations.pt.developer).sort(),
@@ -197,6 +240,7 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
   assert.equal(translations.pt.profile.nextChartPoint, 'Próximo ponto do gráfico');
   assert.equal(translations.pt.calendar.openDayReport, 'Abre o relatório diário');
   assert.equal(translations.pt.reflection.removeConfirmTitle, 'Remover esta reflexão?');
+  assert.equal(translations.pt.dataProtection.saveErrorTitle, 'As alterações não foram salvas');
   assert.equal(
     translations.pt.taskModal.subtasksCompleted
       .replace('{completed}', '2')
