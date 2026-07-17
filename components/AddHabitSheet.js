@@ -1197,9 +1197,11 @@ export default function AddHabitSheet({
       },
       reminder: reminderOption,
       tag: selectedTagOption.key,
-      tagLabel: selectedTagOption.label,
+      tagLabel:
+        selectedTagOption.key === 'none' || taskDisplayText.tags[selectedTagOption.key]
+          ? undefined
+          : selectedTagOption.label,
       type: selectedTypeOption.key,
-      typeLabel: selectedTypeOption.label,
       quantum: selectedTypeOption.key === 'quantum' ? quantumPayload : null,
       subtasks,
     };

@@ -779,11 +779,11 @@ function ScheduleApp() {
       seen.add(key);
       options.push({
         key,
-        label: getTaskTagDisplayLabel(task) ?? 'Tag',
+        label: getTaskTagDisplayLabel(task, t.taskDisplay.tags) ?? 'Tag',
       });
       return options;
     }, []);
-  }, [tasks]);
+  }, [t.taskDisplay.tags, tasks]);
   const tagOptions = useMemo(() => {
     const seen = new Set();
     return tasksForSelectedDate.reduce((options, task) => {
@@ -794,11 +794,11 @@ function ScheduleApp() {
       seen.add(key);
       options.push({
         key,
-        label: getTaskTagDisplayLabel(task) ?? 'Tag',
+        label: getTaskTagDisplayLabel(task, t.taskDisplay.tags) ?? 'Tag',
       });
       return options;
     }, []);
-  }, [tasksForSelectedDate]);
+  }, [t.taskDisplay.tags, tasksForSelectedDate]);
   useEffect(() => {
     if (
       selectedTagFilter !== 'all' &&
@@ -2322,7 +2322,6 @@ function ScheduleApp() {
       tag: habit?.tag,
       tagLabel: habit?.tagLabel,
       type: habit?.type ?? 'default',
-      typeLabel: habit?.typeLabel,
       quantum: habit?.type === 'quantum' ? habit?.quantum : null,
       profileLocked: false,
       notificationIds: [],
@@ -2381,7 +2380,7 @@ function ScheduleApp() {
             tag: habit?.tag,
             tagLabel: habit?.tagLabel,
             type: nextType,
-            typeLabel: habit?.typeLabel,
+            typeLabel: undefined,
             completedDates: nextCompletedDates,
             quantum: mergedQuantum,
             date: nextDate,
@@ -2407,7 +2406,7 @@ function ScheduleApp() {
           tag: habit?.tag,
           tagLabel: habit?.tagLabel,
           type: nextType,
-          typeLabel: habit?.typeLabel,
+          typeLabel: undefined,
           completedDates: nextCompletedDates,
           quantum: mergedQuantum,
           date: nextDate,
