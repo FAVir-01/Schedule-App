@@ -159,6 +159,9 @@ const translations = {
       deleteTask: 'Delete task',
       deleteSelected: 'Delete selected',
       deleteSelectedAccessibility: 'Delete selected tasks',
+      deleteSelectedConfirmTitle: 'Delete selected tasks?',
+      deleteSelectedConfirmMessageOne: 'Delete the selected task? This cannot be undone.',
+      deleteSelectedConfirmMessageMany: 'Delete {count} selected tasks? This cannot be undone.',
     },
     taskDetails: {
       close: 'Close task details',
@@ -202,6 +205,8 @@ const translations = {
       customizeMessage: 'Change only how this mood looks. Your records and stats stay the same.',
       chooseImage: 'Choose image or GIF',
       resetIcon: 'Restore default',
+      removeConfirmTitle: 'Remove this reflection?',
+      removeConfirmMessage: 'Its note or photo will be permanently removed.',
     },
     discover: {
       title: 'DISCOVER',
@@ -547,6 +552,9 @@ const translations = {
       deleteTask: 'Excluir tarefa',
       deleteSelected: 'Excluir selecionadas',
       deleteSelectedAccessibility: 'Excluir tarefas selecionadas',
+      deleteSelectedConfirmTitle: 'Excluir tarefas selecionadas?',
+      deleteSelectedConfirmMessageOne: 'Excluir a tarefa selecionada? Esta ação não pode ser desfeita.',
+      deleteSelectedConfirmMessageMany: 'Excluir {count} tarefas selecionadas? Esta ação não pode ser desfeita.',
     },
     taskDetails: {
       close: 'Fechar detalhes da tarefa',
@@ -590,6 +598,8 @@ const translations = {
       customizeMessage: 'Muda só a aparência deste humor. Seus registros e estatísticas continuam iguais.',
       chooseImage: 'Escolher imagem ou GIF',
       resetIcon: 'Restaurar padrão',
+      removeConfirmTitle: 'Remover esta reflexão?',
+      removeConfirmMessage: 'A nota ou foto será removida permanentemente.',
     },
     discover: {
       title: 'DESCUBRA',
