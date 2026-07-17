@@ -337,7 +337,9 @@ function ScheduleApp() {
   // Marca quais stores falharam ao carregar, p/ não sobrescrever dado bom com estado vazio
   const loadFailuresRef = useRef({ ...INITIAL_STORAGE_LOAD_FAILURES });
   const storageProtectionAlertShownRef = useRef(false);
-  const failedStorageWritesRef = useRef(new Set());
+  const failedStorageWritesRef = useRef(new Map());
+  const storageWriteSequenceRef = useRef(0);
+  const latestStorageWriteSequenceRef = useRef(new Map());
   const pendingStorageWriteAlertRef = useRef(false);
   // Espelhos do estado mais recente p/ flush imediato quando o app vai pra background
   const tasksRef = useRef(null);
@@ -1472,17 +1474,46 @@ function ScheduleApp() {
   }, [normalizeStoredTasks]);
 
   const showStorageWriteAlert = useCallback(() => {
+    const retryFailedWrites = async () => {
+      const pendingWrites = Array.from(failedStorageWritesRef.current.entries());
+      await Promise.all(
+        pendingWrites.map(async ([storeKey, entry]) => {
+          const saved = await entry.operation();
+          if (saved && failedStorageWritesRef.current.get(storeKey) === entry) {
+            failedStorageWritesRef.current.delete(storeKey);
+          }
+        })
+      );
+      if (failedStorageWritesRef.current.size > 0) {
+        showStorageWriteAlert();
+      } else {
+        pendingStorageWriteAlertRef.current = false;
+      }
+    };
     Alert.alert(
       t.dataProtection.saveErrorTitle,
-      t.dataProtection.saveErrorMessage
+      t.dataProtection.saveErrorMessage,
+      [
+        { text: t.common.cancel, style: 'cancel' },
+        { text: t.common.retry, onPress: () => void retryFailedWrites() },
+      ]
     );
-  }, [t.dataProtection]);
+  }, [t.common.cancel, t.common.retry, t.dataProtection]);
 
   const reportStorageWriteResult = useCallback(
     async (storeKey, operation) => {
-      const saved = await operation;
+      const sequence = storageWriteSequenceRef.current + 1;
+      storageWriteSequenceRef.current = sequence;
+      latestStorageWriteSequenceRef.current.set(storeKey, sequence);
+      const saved = await operation();
+      if (latestStorageWriteSequenceRef.current.get(storeKey) !== sequence) {
+        return saved;
+      }
       if (saved) {
-        failedStorageWritesRef.current.delete(storeKey);
+        const failedEntry = failedStorageWritesRef.current.get(storeKey);
+        if (failedEntry && sequence >= failedEntry.sequence) {
+          failedStorageWritesRef.current.delete(storeKey);
+        }
         if (failedStorageWritesRef.current.size === 0) {
           pendingStorageWriteAlertRef.current = false;
         }
@@ -1490,7 +1521,10 @@ function ScheduleApp() {
       }
 
       const shouldNotify = failedStorageWritesRef.current.size === 0;
-      failedStorageWritesRef.current.add(storeKey);
+      const failedEntry = failedStorageWritesRef.current.get(storeKey);
+      if (!failedEntry || sequence >= failedEntry.sequence) {
+        failedStorageWritesRef.current.set(storeKey, { operation, sequence });
+      }
       if (shouldNotify) {
         if (AppState.currentState === 'active') {
           showStorageWriteAlert();
@@ -1531,7 +1565,7 @@ function ScheduleApp() {
         ...task,
         repeat: normalizeRepeatConfig(task.repeat),
       }));
-      void reportStorageWriteResult('tasks', saveTasks(normalizedTasks));
+      void reportStorageWriteResult('tasks', () => saveTasks(normalizedTasks));
     }, 500);
 
     saveTimeoutRef.current = timeoutId;
@@ -1551,7 +1585,7 @@ function ScheduleApp() {
     }
 
     const timeoutId = setTimeout(() => {
-      void reportStorageWriteResult('settings', saveUserSettings(userSettings));
+      void reportStorageWriteResult('settings', () => saveUserSettings(userSettings));
     }, 500);
 
     settingsSaveTimeoutRef.current = timeoutId;
@@ -1571,7 +1605,7 @@ function ScheduleApp() {
     }
 
     const timeoutId = setTimeout(() => {
-      void reportStorageWriteResult('history', saveHistory(history));
+      void reportStorageWriteResult('history', () => saveHistory(history));
     }, 500);
 
     historySaveTimeoutRef.current = timeoutId;
@@ -1591,7 +1625,7 @@ function ScheduleApp() {
     }
 
     const timeoutId = setTimeout(() => {
-      void reportStorageWriteResult('moods', saveDayMoods(dayMoods));
+      void reportStorageWriteResult('moods', () => saveDayMoods(dayMoods));
     }, 500);
 
     dayMoodsSaveTimeoutRef.current = timeoutId;
@@ -1629,7 +1663,7 @@ function ScheduleApp() {
           ...task,
           repeat: normalizeRepeatConfig(task.repeat),
         }));
-        void reportStorageWriteResult('tasks', saveTasks(normalizedTasks));
+        void reportStorageWriteResult('tasks', () => saveTasks(normalizedTasks));
       }
       if (!failures.settings && userSettingsRef.current) {
         if (settingsSaveTimeoutRef.current) {
@@ -1638,7 +1672,7 @@ function ScheduleApp() {
         }
         void reportStorageWriteResult(
           'settings',
-          saveUserSettings(userSettingsRef.current)
+          () => saveUserSettings(userSettingsRef.current)
         );
       }
       if (!failures.history && Array.isArray(historyRef.current)) {
@@ -1646,14 +1680,14 @@ function ScheduleApp() {
           clearTimeout(historySaveTimeoutRef.current);
           historySaveTimeoutRef.current = null;
         }
-        void reportStorageWriteResult('history', saveHistory(historyRef.current));
+        void reportStorageWriteResult('history', () => saveHistory(historyRef.current));
       }
       if (!failures.moods && dayMoodsRef.current) {
         if (dayMoodsSaveTimeoutRef.current) {
           clearTimeout(dayMoodsSaveTimeoutRef.current);
           dayMoodsSaveTimeoutRef.current = null;
         }
-        void reportStorageWriteResult('moods', saveDayMoods(dayMoodsRef.current));
+        void reportStorageWriteResult('moods', () => saveDayMoods(dayMoodsRef.current));
       }
     });
 
@@ -1681,7 +1715,7 @@ function ScheduleApp() {
       };
 
       setCustomMonthImages(updatedImages);
-      await reportStorageWriteResult('images', saveMonthImages(updatedImages));
+      await reportStorageWriteResult('images', () => saveMonthImages(updatedImages));
     },
     [customMonthImages, reportStorageWriteResult, showDataProtectionAlert]
   );
@@ -1904,7 +1938,7 @@ function ScheduleApp() {
         } else {
           delete next[level];
         }
-        void reportStorageWriteResult('appearance', saveMoodAppearance(next));
+        void reportStorageWriteResult('appearance', () => saveMoodAppearance(next));
         return next;
       });
     },
