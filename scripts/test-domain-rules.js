@@ -208,6 +208,10 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
     Object.keys(translations.en.dataProtection).sort()
   );
   assert.deepEqual(
+    Object.keys(translations.pt.common).sort(),
+    Object.keys(translations.en.common).sort()
+  );
+  assert.deepEqual(
     Object.keys(translations.pt.developer).sort(),
     Object.keys(translations.en.developer).sort()
   );
@@ -241,6 +245,7 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
   assert.equal(translations.pt.calendar.openDayReport, 'Abre o relatório diário');
   assert.equal(translations.pt.reflection.removeConfirmTitle, 'Remover esta reflexão?');
   assert.equal(translations.pt.dataProtection.saveErrorTitle, 'As alterações não foram salvas');
+  assert.equal(translations.pt.common.retry, 'Tentar novamente');
   assert.equal(
     translations.pt.taskModal.subtasksCompleted
       .replace('{completed}', '2')
