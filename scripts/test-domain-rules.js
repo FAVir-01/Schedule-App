@@ -144,8 +144,22 @@ test('traduz rotulos de tarefa pela chave semantica atual', () => {
     'Treino'
   );
   assert.equal(
+    getTaskTagDisplayLabel(
+      { tag: 'workout' },
+      { workout: 'Treino' }
+    ),
+    'Treino'
+  );
+  assert.equal(
     getTaskTypeDisplayLabel(
       { type: 'quantum', typeLabel: 'Goal' },
+      { default: 'Habito', quantum: 'Meta', reminder: 'Lembrete' }
+    ),
+    'Meta'
+  );
+  assert.equal(
+    getTaskTypeDisplayLabel(
+      { type: 'quantum' },
       { default: 'Habito', quantum: 'Meta', reminder: 'Lembrete' }
     ),
     'Meta'
