@@ -69,6 +69,7 @@ import {
   normalizeTaskTagKey,
   isPassiveTaskType,
   isReminderExpiredForDate,
+  reconcileQuantumCompletionState,
   reconcileTaskProgressOnEdit,
   restoreDeletedTaskAtIndex,
   shouldCountTaskTowardsCompletion,
@@ -131,7 +132,7 @@ import {
   prepareImportedBackupData,
   selectLatestAppBackupFromDirectory,
 } from './services/backupService';
-import { buildTemplateTasks } from './utils/templateUtils';
+import { buildTemplateTasks, migrateImportedTemplateTasks } from './utils/templateUtils';
 import { normalizePeriodGoal } from './utils/periodGoalUtils';
 
 
@@ -1354,7 +1355,7 @@ function ScheduleApp() {
       return value;
     };
 
-    return storedTasks.filter(Boolean).map((task) => {
+    return migrateImportedTemplateTasks(storedTasks).filter(Boolean).map((task) => {
       const baseDateKey = task.dateKey ?? (task.date ? getDateKey(task.date) : null);
       const completedDates = { ...normalizeCompletedDates(task.completedDates) };
 
@@ -1370,7 +1371,7 @@ function ScheduleApp() {
               !Array.isArray(task.quantum.progressByDate)
                 ? { ...task.quantum.progressByDate }
                 : {};
-            if (baseDateKey) {
+            if (baseDateKey && Object.keys(progressByDate).length === 0) {
               const legacyDoneSeconds = task.quantum.doneSeconds;
               const legacyDoneCount = task.quantum.doneCount;
               if (
@@ -1386,10 +1387,17 @@ function ScheduleApp() {
             }
             return {
               ...task.quantum,
+              animation: task.quantum.animation === 'defaut'
+                ? 'default'
+                : task.quantum.animation,
               progressByDate,
             };
           })()
         : task.quantum;
+
+      const reconciledQuantumState = task.type === 'quantum'
+        ? reconcileQuantumCompletionState(normalizedQuantum, completedDates)
+        : { quantum: normalizedQuantum, completedDates };
 
       const normalizedSubtasks = Array.isArray(task.subtasks)
         ? task.subtasks.map((subtask) => {
@@ -1413,11 +1421,11 @@ function ScheduleApp() {
       return {
         ...restTask,
         dateKey: baseDateKey,
-        completedDates,
+        completedDates: reconciledQuantumState.completedDates,
         subtasks: normalizedSubtasks,
         repeat: normalizeRepeatConfig(task.repeat),
         periodGoal: normalizePeriodGoal(task.periodGoal),
-        quantum: normalizedQuantum,
+        quantum: reconciledQuantumState.quantum,
         notificationIds,
         notificationId: notificationIds[0] ?? null,
         notificationScheduleMode:

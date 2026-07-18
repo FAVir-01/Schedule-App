@@ -1,4 +1,4 @@
-const TASK_TEMPLATE_VERSION = 1;
+const TASK_TEMPLATE_VERSION = 2;
 
 const TASK_TEMPLATE_COLLECTIONS = [
   {
@@ -26,12 +26,7 @@ const TASK_TEMPLATE_COLLECTIONS = [
         emoji: '🧘',
         color: '#d8f3dc',
         tag: 'morning_routine',
-        type: 'quantum',
-        quantum: {
-          mode: 'timer',
-          animation: 'defaut',
-          timer: { hours: 0, minutes: 5, seconds: 0 },
-        },
+        type: 'default',
       },
     ],
   },
@@ -49,8 +44,8 @@ const TASK_TEMPLATE_COLLECTIONS = [
         type: 'quantum',
         quantum: {
           mode: 'timer',
-          animation: 'defaut',
-          timer: { hours: 0, minutes: 25, seconds: 0 },
+          animation: 'default',
+          timer: { hours: 0, minutesPart: 25 },
         },
       },
       {
@@ -83,8 +78,8 @@ const TASK_TEMPLATE_COLLECTIONS = [
         type: 'quantum',
         quantum: {
           mode: 'timer',
-          animation: 'defaut',
-          timer: { hours: 0, minutes: 20, seconds: 0 },
+          animation: 'default',
+          timer: { hours: 0, minutesPart: 20 },
         },
       },
       {

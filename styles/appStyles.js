@@ -421,6 +421,18 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#ffffff',
   },
+  taskToggleGroup: {
+    minWidth: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  taskToggleStepLabel: {
+    marginTop: 3,
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: '700',
+    color: '#777d90',
+  },
   taskToggleCompleted: {
     backgroundColor: '#3dd598',
     borderColor: '#3dd598',
