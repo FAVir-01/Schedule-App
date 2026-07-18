@@ -151,6 +151,7 @@ const {
   calculatePeriodGoalProgress,
   normalizePeriodGoal,
 } = require('../utils/periodGoalUtils');
+const { buildLocalPeriodSummary } = require('../utils/localSummaryUtils');
 const {
   BACKUP_ERROR_CODES,
   parseAppBackupContents,
@@ -224,6 +225,64 @@ test('compara meta mensal respeitando o tamanho do mes anterior', () => {
   assert.equal(progress.percentage, 100);
   assert.equal(progress.reached, true);
   assert.equal(progress.previousEnd.getDate(), 28);
+});
+
+test('resume o periodo local sem misturar lembretes ou inferir causalidade', () => {
+  const dailyRepeat = { enabled: true, frequency: 'daily', interval: 1 };
+  const summary = buildLocalPeriodSummary({
+    tasks: [
+      {
+        id: 'task-a',
+        title: 'A',
+        type: 'default',
+        date: '2026-07-01',
+        repeat: dailyRepeat,
+        completedDates: {
+          '2026-07-06': true,
+          '2026-07-07': true,
+          '2026-07-13': true,
+          '2026-07-14': true,
+          '2026-07-15': true,
+        },
+      },
+      {
+        id: 'task-b',
+        title: 'B',
+        type: 'default',
+        date: '2026-07-01',
+        repeat: dailyRepeat,
+        completedDates: { '2026-07-08': true },
+      },
+      {
+        id: 'passive-reminder',
+        title: 'Reminder',
+        type: 'reminder',
+        date: '2026-07-01',
+        repeat: dailyRepeat,
+        completedDates: {},
+      },
+    ],
+    dayMoods: {
+      '2026-07-13': { level: 4, note: 'nota', photo: null },
+      '2026-07-14': { level: 2, note: '', photo: 'file://photo.jpg' },
+    },
+    period: 'weekly',
+    referenceDate: '2026-07-15',
+  });
+
+  assert.equal(summary.current.planned, 6);
+  assert.equal(summary.current.completed, 3);
+  assert.equal(summary.current.rate, 50);
+  assert.equal(summary.previous.planned, 6);
+  assert.equal(summary.previous.completed, 3);
+  assert.equal(summary.rateDelta, 0);
+  assert.equal(summary.current.mostCompletedTask.taskId, 'task-a');
+  assert.deepEqual(summary.current.noCompletionTasks.map((task) => task.taskId), ['task-b']);
+  assert.equal(summary.current.bestDay.date.getDate(), 13);
+  assert.equal(summary.current.reflections, 2);
+  assert.equal(summary.current.averageMood, 3);
+  assert.equal(summary.current.notes, 1);
+  assert.equal(summary.current.photos, 1);
 });
 
 test('mantem o catalogo de templates completo nos dois idiomas', () => {
@@ -503,6 +562,10 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
   assert.deepEqual(
     Object.keys(translations.pt.periodGoal).sort(),
     Object.keys(translations.en.periodGoal).sort()
+  );
+  assert.deepEqual(
+    Object.keys(translations.pt.localSummary).sort(),
+    Object.keys(translations.en.localSummary).sort()
   );
   assert.deepEqual(
     Object.keys(translations.pt.taskDetails).sort(),

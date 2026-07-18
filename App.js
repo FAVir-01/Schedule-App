@@ -108,6 +108,7 @@ import TaskDetailModal from './components/TaskDetailModal';
 import ProfileTaskDetailModal from './components/ProfileTaskDetailModal';
 import PeriodGoalModal, { PeriodGoalSummaryCard } from './components/PeriodGoal';
 import ActivityTimelineModal from './components/ActivityTimelineModal';
+import LocalSummaryModal from './components/LocalSummaryModal';
 import ProfileTasksModal from './components/ProfileTasksModal';
 import SwipeableTaskCard from './components/SwipeableTaskCard';
 import ReflectionSheet from './components/ReflectionSheet';
@@ -309,6 +310,7 @@ function ScheduleApp() {
   const [isCustomizeCalendarOpen, setCustomizeCalendarOpen] = useState(false);
   const [isProfileTasksOpen, setProfileTasksOpen] = useState(false);
   const [isActivityOpen, setActivityOpen] = useState(false);
+  const [isLocalSummaryOpen, setLocalSummaryOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -2553,6 +2555,7 @@ function ScheduleApp() {
       setReflectionDateKey(null);
       setProfileTasksOpen(false);
       setActivityOpen(false);
+      setLocalSummaryOpen(false);
       setSettingsOpen(false);
       Alert.alert(t.backup.restoreSuccessTitle, t.backup.restoreSuccessMessage);
     },
@@ -3448,6 +3451,28 @@ function ScheduleApp() {
                   </View>
                 </View>
 
+                <TouchableOpacity
+                  style={styles.profileSummaryActionCard}
+                  onPress={() => setLocalSummaryOpen(true)}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.localSummary.open}
+                  accessibilityHint={t.localSummary.openHint}
+                >
+                  <View style={styles.profileSummaryActionIcon}>
+                    <Ionicons name="reader-outline" size={22} color="#3c2ba7" />
+                  </View>
+                  <View style={styles.profileSummaryActionText}>
+                    <Text style={styles.profileSummaryActionTitle}>
+                      {t.localSummary.open}
+                    </Text>
+                    <Text style={styles.profileSummaryActionHint}>
+                      {t.localSummary.openHint}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={19} color="#9693a8" />
+                </TouchableOpacity>
+
                 {/* Ações rápidas: cards leves em vez de botões roxos empilhados */}
                 <View style={styles.profileActionsRow}>
                   <TouchableOpacity
@@ -3884,6 +3909,14 @@ function ScheduleApp() {
         tasks={tasks}
         onClose={() => setActivityOpen(false)}
         language={language}
+      />
+      <LocalSummaryModal
+        visible={isLocalSummaryOpen}
+        tasks={tasks}
+        dayMoods={dayMoods}
+        referenceDate={today}
+        language={language}
+        onClose={() => setLocalSummaryOpen(false)}
       />
       <ProfileTaskDetailModal
         language={language}
