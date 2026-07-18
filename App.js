@@ -106,6 +106,7 @@ import CustomizeCalendarModal from './components/CustomizeCalendarModal';
 import DayReportModal from './components/DayReportModal';
 import TaskDetailModal from './components/TaskDetailModal';
 import ProfileTaskDetailModal from './components/ProfileTaskDetailModal';
+import PeriodGoalModal, { PeriodGoalSummaryCard } from './components/PeriodGoal';
 import ActivityTimelineModal from './components/ActivityTimelineModal';
 import ProfileTasksModal from './components/ProfileTasksModal';
 import SwipeableTaskCard from './components/SwipeableTaskCard';
@@ -130,6 +131,7 @@ import {
   selectLatestAppBackupFromDirectory,
 } from './services/backupService';
 import { buildTemplateTasks } from './utils/templateUtils';
+import { normalizePeriodGoal } from './utils/periodGoalUtils';
 
 
 const habitImage = require('./assets/add-habit.png');
@@ -316,6 +318,7 @@ function ScheduleApp() {
   const [reportDate, setReportDate] = useState(null);
   const [activeTaskId, setActiveTaskId] = useState(null);
   const [activeProfileTaskId, setActiveProfileTaskId] = useState(null);
+  const [periodGoalTaskId, setPeriodGoalTaskId] = useState(null);
   const [pendingTaskDeletion, setPendingTaskDeletion] = useState(null);
   const [selectedTagFilter, setSelectedTagFilter] = useState(
     DEFAULT_USER_SETTINGS.selectedTagFilter
@@ -755,6 +758,26 @@ function ScheduleApp() {
     );
   }, []);
 
+  const handleSavePeriodGoal = useCallback(
+    (taskId, nextGoal) => {
+      const targetTask = (tasksRef.current ?? []).find((task) => task.id === taskId);
+      if (!targetTask) {
+        setPeriodGoalTaskId(null);
+        return;
+      }
+      const normalizedGoal = normalizePeriodGoal(nextGoal);
+      setTasks((previous) =>
+        previous.map((task) =>
+          task.id === taskId ? { ...task, periodGoal: normalizedGoal } : task
+        )
+      );
+      appendHistoryEntry('task_updated', createTaskHistoryDetails(targetTask));
+      setPeriodGoalTaskId(null);
+      triggerSelection();
+    },
+    [appendHistoryEntry]
+  );
+
   const loadMoreCalendarMonths = useCallback(() => {
     setCalendarMonths((previous) => {
       if (previous.length === 0) {
@@ -1062,6 +1085,10 @@ function ScheduleApp() {
   const activeProfileTask = useMemo(
     () => tasks.find((task) => task.id === activeProfileTaskId) ?? null,
     [activeProfileTaskId, tasks]
+  );
+  const periodGoalTask = useMemo(
+    () => tasks.find((task) => task.id === periodGoalTaskId) ?? null,
+    [periodGoalTaskId, tasks]
   );
   const profileFilterTask = useMemo(
     () => tasks.find((task) => task.id === profileFilterId) ?? null,
@@ -1387,6 +1414,7 @@ function ScheduleApp() {
         completedDates,
         subtasks: normalizedSubtasks,
         repeat: normalizeRepeatConfig(task.repeat),
+        periodGoal: normalizePeriodGoal(task.periodGoal),
         quantum: normalizedQuantum,
         notificationIds,
         notificationId: notificationIds[0] ?? null,
@@ -3317,6 +3345,15 @@ function ScheduleApp() {
                   selectedTask={profileFilterTask}
                 />
 
+                {profileFilterTask ? (
+                  <PeriodGoalSummaryCard
+                    task={profileFilterTask}
+                    language={language}
+                    referenceDate={today}
+                    onEdit={setPeriodGoalTaskId}
+                  />
+                ) : null}
+
                 <View style={styles.profileStatsSection}>
                   <Text style={styles.profileStatsTitle}>{t.profile.stats}</Text>
                   <View style={styles.profileStatsGrid}>
@@ -3854,6 +3891,17 @@ function ScheduleApp() {
         task={activeProfileTask}
         onClose={() => setActiveProfileTaskId(null)}
         onToggleLock={handleToggleProfileTaskLock}
+        onEditPeriodGoal={(taskId) => {
+          setActiveProfileTaskId(null);
+          setPeriodGoalTaskId(taskId);
+        }}
+      />
+      <PeriodGoalModal
+        visible={Boolean(periodGoalTask)}
+        task={periodGoalTask}
+        language={language}
+        onClose={() => setPeriodGoalTaskId(null)}
+        onSave={handleSavePeriodGoal}
       />
     </View>
   );

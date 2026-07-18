@@ -12,9 +12,17 @@ import {
   getTaskTypeDisplayLabel,
 } from '../utils/taskUtils';
 import { formatTaskTime } from '../utils/timeUtils';
+import { normalizePeriodGoal } from '../utils/periodGoalUtils';
 import { styles } from '../styles/appStyles';
 
-export default function ProfileTaskDetailModal({ visible, task, onClose, onToggleLock, language = 'en' }) {
+export default function ProfileTaskDetailModal({
+  visible,
+  task,
+  onClose,
+  onToggleLock,
+  onEditPeriodGoal,
+  language = 'en',
+}) {
   const [hasImageError, setHasImageError] = useState(false);
   const t = translations[language] ?? translations.en;
 
@@ -38,6 +46,17 @@ export default function ProfileTaskDetailModal({ visible, task, onClose, onToggl
     ?? t.taskDisplay.quantumModes.quantum;
   const repeatLabel = getTaskRepeatDisplayLabel(task.repeat, t.taskDisplay.repeats);
   const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
+  const periodGoal = normalizePeriodGoal(task.periodGoal);
+  const periodGoalLabel = periodGoal
+    ? (periodGoal.target === 1
+        ? periodGoal.period === 'weekly'
+          ? t.periodGoal.targetPerWeekOne
+          : t.periodGoal.targetPerMonthOne
+        : periodGoal.period === 'weekly'
+          ? t.periodGoal.targetPerWeek
+          : t.periodGoal.targetPerMonth
+      ).replace('{target}', String(periodGoal.target))
+    : t.common.notSet;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -86,6 +105,10 @@ export default function ProfileTaskDetailModal({ visible, task, onClose, onToggl
               <Text style={styles.profileDetailLabel}>{t.taskDetails.tag}</Text>
               <Text style={styles.profileDetailValue}>{tagLabel}</Text>
             </View>
+            <View style={styles.profileDetailRow}>
+              <Text style={styles.profileDetailLabel}>{t.taskDetails.periodGoal}</Text>
+              <Text style={styles.profileDetailValue}>{periodGoalLabel}</Text>
+            </View>
             {isQuantum ? (
               <View style={styles.profileDetailRow}>
                 <Text style={styles.profileDetailLabel}>{quantumModeLabel}</Text>
@@ -98,29 +121,42 @@ export default function ProfileTaskDetailModal({ visible, task, onClose, onToggl
               </View>
             )}
           </View>
-          <Pressable
-            style={[
-              styles.profileDetailLockButton,
-              task.profileLocked && styles.profileDetailLockButtonActive,
-            ]}
-            onPress={() => onToggleLock?.(task.id)}
-            accessibilityRole="button"
-            accessibilityLabel={task.profileLocked ? t.taskDetails.unlock : t.taskDetails.lock}
-          >
-            <Ionicons
-              name={task.profileLocked ? 'lock-closed' : 'lock-open'}
-              size={18}
-              color={task.profileLocked ? '#fff' : '#3c2ba7'}
-            />
-            <Text
-              style={[
-                styles.profileDetailLockButtonText,
-                task.profileLocked && styles.profileDetailLockButtonTextActive,
-              ]}
+          <View style={styles.profileDetailActions}>
+            <Pressable
+              style={styles.profileDetailGoalButton}
+              onPress={() => onEditPeriodGoal?.(task.id)}
+              accessibilityRole="button"
+              accessibilityLabel={periodGoal ? t.periodGoal.editGoal : t.periodGoal.setGoal}
             >
-              {task.profileLocked ? t.taskDetails.unlock : t.taskDetails.lock}
-            </Text>
-          </Pressable>
+              <Ionicons name="flag-outline" size={18} color="#3c2ba7" />
+              <Text style={styles.profileDetailGoalButtonText}>
+                {periodGoal ? t.periodGoal.editGoal : t.periodGoal.setGoal}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.profileDetailLockButton,
+                task.profileLocked && styles.profileDetailLockButtonActive,
+              ]}
+              onPress={() => onToggleLock?.(task.id)}
+              accessibilityRole="button"
+              accessibilityLabel={task.profileLocked ? t.taskDetails.unlock : t.taskDetails.lock}
+            >
+              <Ionicons
+                name={task.profileLocked ? 'lock-closed' : 'lock-open'}
+                size={18}
+                color={task.profileLocked ? '#fff' : '#3c2ba7'}
+              />
+              <Text
+                style={[
+                  styles.profileDetailLockButtonText,
+                  task.profileLocked && styles.profileDetailLockButtonTextActive,
+                ]}
+              >
+                {task.profileLocked ? t.taskDetails.unlock : t.taskDetails.lock}
+              </Text>
+            </Pressable>
+          </View>
         </View>
       </View>
     </Modal>
