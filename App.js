@@ -114,7 +114,9 @@ import SettingsSheet from './components/SettingsSheet';
 import PerformanceChart from './components/PerformanceChart';
 import AppErrorBoundary from './components/AppErrorBoundary';
 import UndoSnackbar from './components/UndoSnackbar';
+import DiscoverScreen, { FirstRunOnboarding } from './components/DiscoverScreen';
 import { CALENDAR_DAY_SIZE } from './constants/layout';
+import { getTaskTemplateCollection } from './constants/taskTemplates';
 import {
   cancelTaskReminders,
   getTaskNotificationIds,
@@ -127,6 +129,7 @@ import {
   prepareImportedBackupData,
   selectLatestAppBackupFromDirectory,
 } from './services/backupService';
+import { buildTemplateTasks } from './utils/templateUtils';
 
 
 const habitImage = require('./assets/add-habit.png');
@@ -329,6 +332,7 @@ function ScheduleApp() {
   // Filtro do Profile: null = visão geral; id de hábito = gráfico/stats dele.
   const [profileFilterId, setProfileFilterId] = useState(null);
   const [isSettingsOpen, setSettingsOpen] = useState(false);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   // Evita exibir movimento antes de a preferência de acessibilidade ser carregada.
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(true);
@@ -1472,13 +1476,23 @@ function ScheduleApp() {
           setTasks(normalizeStoredTasks(storedTasks));
         }
 
-        if (storedSettings) {
-          const mergedSettings = { ...DEFAULT_USER_SETTINGS, ...storedSettings };
+        if (storedSettings !== undefined) {
+          const mergedSettings = {
+            ...DEFAULT_USER_SETTINGS,
+            ...(storedSettings ?? {}),
+          };
           setUserSettings(mergedSettings);
           setActiveTab(mergedSettings.activeTab ?? DEFAULT_USER_SETTINGS.activeTab);
           setSelectedTagFilter(
             mergedSettings.selectedTagFilter ?? DEFAULT_USER_SETTINGS.selectedTagFilter
           );
+          if (
+            Array.isArray(storedTasks) &&
+            storedTasks.length === 0 &&
+            mergedSettings.onboardingCompleted !== true
+          ) {
+            setIsOnboardingOpen(true);
+          }
         }
 
         if (Array.isArray(storedHistory)) {
@@ -2021,6 +2035,29 @@ function ScheduleApp() {
     [applyNavigationBarThemeForTab, updateUserSettings]
   );
 
+  const completeOnboarding = useCallback(() => {
+    setIsOnboardingOpen(false);
+    updateUserSettings({ onboardingCompleted: true });
+  }, [updateUserSettings]);
+
+  const handleExploreTemplates = useCallback(() => {
+    completeOnboarding();
+    handleChangeTab('discover');
+  }, [completeOnboarding, handleChangeTab]);
+
+  const handleCreateFromOnboarding = useCallback(() => {
+    completeOnboarding();
+    handleAddHabit();
+  }, [completeOnboarding, handleAddHabit]);
+
+  const handleSkipOnboarding = useCallback(() => {
+    completeOnboarding();
+  }, [completeOnboarding]);
+
+  const handleViewToday = useCallback(() => {
+    handleChangeTab('today');
+  }, [handleChangeTab]);
+
   const handleSelectTagFilter = useCallback(
     (filterKey) => {
       setSelectedTagFilter(filterKey);
@@ -2406,6 +2443,7 @@ function ScheduleApp() {
             ? rawSettings.selectedTagFilter
             : DEFAULT_USER_SETTINGS.selectedTagFilter,
         privateNotificationContent: rawSettings.privateNotificationContent !== false,
+        onboardingCompleted: rawSettings.onboardingCompleted === true,
       };
       const normalizedTasks = normalizeStoredTasks(
         importedData.tasks.map((task) =>
@@ -2587,6 +2625,52 @@ function ScheduleApp() {
       dateKey: newTask.dateKey,
     });
   }, [appendHistoryEntry, convertSubtasks, getUniqueTitle, refreshTaskReminder]);
+
+  const handleImportTemplate = useCallback(
+    (templateId, selectedTaskIds) => {
+      const template = getTaskTemplateCollection(templateId);
+      const localizedTemplate = t.discover.templates?.[templateId];
+      if (!template || !localizedTemplate) {
+        return 0;
+      }
+
+      const importedTasks = buildTemplateTasks({
+        template,
+        selectedTaskIds,
+        localizedTemplate,
+        existingTasks: tasks,
+        startDate: today,
+        fallbackTitle: t.common.untitledTask,
+      });
+      if (importedTasks.length === 0) {
+        return 0;
+      }
+
+      setTasks((previous) => [...previous, ...importedTasks]);
+      importedTasks.forEach((task) => {
+        void refreshTaskReminder(task, null, { notifyOnFailure: true });
+        appendHistoryEntry('task_created', {
+          taskId: task.id,
+          title: task.title,
+          dateKey: task.dateKey,
+        });
+      });
+      setSelectedDate(new Date(today));
+      setIsOnboardingOpen(false);
+      updateUserSettings({ onboardingCompleted: true });
+      triggerImpact(Haptics.ImpactFeedbackStyle.Light);
+      return importedTasks.length;
+    },
+    [
+      appendHistoryEntry,
+      refreshTaskReminder,
+      t.common.untitledTask,
+      t.discover.templates,
+      tasks,
+      today,
+      updateUserSettings,
+    ]
+  );
 
   const handleUpdateHabit = useCallback(
     (taskId, habit) => {
@@ -3348,29 +3432,13 @@ function ScheduleApp() {
                 </View>
              </ScrollView>
           ) : (
-            <View style={styles.placeholderContainer}>
-              <View style={styles.placeholderIconWrapper}>
-                <Ionicons
-                  name={
-                    activeTab === 'discover'
-                      ? 'planet-outline'
-                      : 'person-circle-outline'
-                  }
-                  size={48}
-                  color="#3c2ba7"
-                />
-              </View>
-              <Text style={styles.heading}>
-                {activeTab === 'discover'
-                  ? t.discover.title
-                  : t.tabs.profile}
-              </Text>
-              <Text style={[styles.description, dynamicStyles.description, styles.placeholderDescription]}>
-                {activeTab === 'discover'
-                  ? t.discover.description
-                  : t.placeholders.profileDescription}
-              </Text>
-            </View>
+            <DiscoverScreen
+              language={language}
+              tasks={tasks}
+              onImportTemplate={handleImportTemplate}
+              onCreateTask={handleAddHabit}
+              onViewToday={handleViewToday}
+            />
           )}
           {(hasMountedCalendar || isCalendarTabActive) ? (
             <View
@@ -3715,6 +3783,13 @@ function ScheduleApp() {
         language={language}
         moodAppearance={moodAppearance}
         onSetAppearance={handleSetMoodAppearance}
+      />
+      <FirstRunOnboarding
+        visible={isOnboardingOpen}
+        language={language}
+        onExploreTemplates={handleExploreTemplates}
+        onCreateTask={handleCreateFromOnboarding}
+        onSkip={handleSkipOnboarding}
       />
       <AddHabitSheet
         visible={isHabitSheetOpen}

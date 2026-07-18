@@ -3,6 +3,7 @@ const DEFAULT_USER_SETTINGS = {
   selectedTagFilter: 'all',
   language: 'en',
   privateNotificationContent: true,
+  onboardingCompleted: false,
 };
 
 export { DEFAULT_USER_SETTINGS };

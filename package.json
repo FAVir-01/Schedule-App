@@ -37,7 +37,7 @@
     "start": "npx expo start",
     "start:clear": "npx expo start --clear",
     "start:dev": "npx expo start --dev-client",
-    "android": "npx expo run:android",
+    "android": "npx expo run:android --app-id com.favit.dev",
     "ios": "npx expo run:ios",
     "prebuild": "npx expo prebuild",
     "check:android-config": "node scripts/check-android-config.js",
