@@ -140,6 +140,14 @@ const {
 } = require('../utils/notificationUtils');
 const { translations } = require('../constants/i18n');
 const {
+  TASK_TEMPLATE_COLLECTIONS,
+  getTaskTemplateCollection,
+} = require('../constants/taskTemplates');
+const {
+  buildTemplateTasks,
+  getImportedTemplateTaskKeys,
+} = require('../utils/templateUtils');
+const {
   BACKUP_ERROR_CODES,
   parseAppBackupContents,
 } = require('../utils/backupUtils');
@@ -148,6 +156,62 @@ const { replaceStoredAppData, saveTasks } = require('../storage');
 
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
+
+test('mantem o catalogo de templates completo nos dois idiomas', () => {
+  assert.equal(TASK_TEMPLATE_COLLECTIONS.length, 3);
+  TASK_TEMPLATE_COLLECTIONS.forEach((template) => {
+    ['en', 'pt'].forEach((language) => {
+      const localized = translations[language].discover.templates[template.id];
+      assert.ok(localized?.title);
+      assert.ok(localized?.description);
+      template.tasks.forEach((task) => {
+        assert.ok(localized.tasks[task.id]?.title);
+        assert.ok(localized.tasks[task.id]?.description);
+      });
+    });
+  });
+});
+
+test('cria somente tarefas selecionadas e ainda nao importadas do template', () => {
+  const template = getTaskTemplateCollection('morningReset');
+  const localizedTemplate = translations.pt.discover.templates.morningReset;
+  const existingTasks = [
+    {
+      id: 'existing-template-task',
+      title: 'Beber um copo de água',
+      templateSource: { templateId: 'morningReset', taskId: 'hydrate', version: 1 },
+    },
+    { id: 'existing-title', title: 'Escolher as prioridades de hoje' },
+  ];
+  const tasks = buildTemplateTasks({
+    template,
+    selectedTaskIds: ['hydrate', 'priorities', 'stretch'],
+    localizedTemplate,
+    existingTasks,
+    startDate: '2026-07-17',
+    fallbackTitle: 'Sem titulo',
+    createTaskId: (templateId, taskId) => `${templateId}-${taskId}`,
+  });
+
+  assert.equal(tasks.length, 2);
+  assert.deepEqual(tasks.map((task) => task.templateSource.taskId), ['priorities', 'stretch']);
+  assert.equal(tasks[0].title, 'Escolher as prioridades de hoje 1');
+  assert.equal(tasks[0].dateKey, '2026-07-17');
+  assert.equal(tasks[0].repeat.frequency, 'daily');
+  assert.equal(tasks[0].completedDates['2026-07-17'], undefined);
+  assert.equal(tasks[1].quantum.timer.minutes, 5);
+  assert.deepEqual(tasks[1].quantum.progressByDate, {});
+  assert.equal(template.tasks[2].quantum.progressByDate, undefined);
+});
+
+test('reconhece fontes importadas sem confundir tarefas comuns', () => {
+  const keys = getImportedTemplateTaskKeys([
+    { id: 'ordinary', title: 'Tarefa comum' },
+    { templateSource: { templateId: 'focusFlow', taskId: 'focusBlock' } },
+    { templateSource: { templateId: 'focusFlow' } },
+  ]);
+  assert.deepEqual([...keys], ['focusFlow:focusBlock']);
+});
 
 test('traduz rotulos de tarefa pela chave semantica atual', () => {
   assert.equal(
