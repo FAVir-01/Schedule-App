@@ -59,14 +59,35 @@ const getQuantumProgressValues = (task, dateKey) => {
   }
   if (dateKey) {
     const progressByDate = task.quantum.progressByDate;
+    const completed = Boolean(task.completedDates?.[dateKey]);
     if (progressByDate && typeof progressByDate === 'object' && !Array.isArray(progressByDate)) {
       const entry = progressByDate[dateKey];
       if (entry && typeof entry === 'object') {
+        const timerLimit = task.quantum.mode === 'timer'
+          ? getTimerTotalSeconds(task.quantum.timer)
+          : 0;
+        const countLimit = task.quantum.mode === 'count'
+          ? Number(task.quantum.count?.value) || 0
+          : 0;
         return {
-          doneSeconds: typeof entry.doneSeconds === 'number' ? entry.doneSeconds : 0,
-          doneCount: typeof entry.doneCount === 'number' ? entry.doneCount : 0,
+          doneSeconds: completed
+            ? Math.max(Number(entry.doneSeconds) || 0, timerLimit)
+            : Number(entry.doneSeconds) || 0,
+          doneCount: completed
+            ? Math.max(Number(entry.doneCount) || 0, countLimit)
+            : Number(entry.doneCount) || 0,
         };
       }
+    }
+    if (completed) {
+      return {
+        doneSeconds: task.quantum.mode === 'timer'
+          ? getTimerTotalSeconds(task.quantum.timer)
+          : 0,
+        doneCount: task.quantum.mode === 'count'
+          ? Number(task.quantum.count?.value) || 0
+          : 0,
+      };
     }
     return { doneSeconds: 0, doneCount: 0 };
   }
@@ -133,6 +154,80 @@ const getQuantumProgressPercent = (task, dateKey) => {
   }
 
   return 0;
+};
+
+const getQuantumStepLabel = (task, amount) => {
+  const step = Math.max(0, Math.round(Number(amount) || 0));
+  if (!step || task?.type !== 'quantum') {
+    return null;
+  }
+  if (task.quantum?.mode === 'timer') {
+    const hours = Math.floor(step / 3600);
+    const minutes = Math.floor((step % 3600) / 60);
+    const seconds = step % 60;
+    if (hours && !minutes && !seconds) {
+      return `${hours}h`;
+    }
+    if (hours) {
+      return `${hours}h ${minutes}m`;
+    }
+    if (minutes && !seconds) {
+      return `${minutes}m`;
+    }
+    return `${step}s`;
+  }
+  const unit = `${task.quantum?.count?.unit ?? ''}`.trim();
+  return `${step}${unit ? ` ${unit}` : ''}`;
+};
+
+const reconcileQuantumCompletionState = (quantum, completedDates) => {
+  const normalizedCompletedDates =
+    completedDates && typeof completedDates === 'object' && !Array.isArray(completedDates)
+      ? { ...completedDates }
+      : {};
+  if (!quantum || (quantum.mode !== 'timer' && quantum.mode !== 'count')) {
+    return { quantum, completedDates: normalizedCompletedDates };
+  }
+
+  const progressByDate =
+    quantum.progressByDate &&
+    typeof quantum.progressByDate === 'object' &&
+    !Array.isArray(quantum.progressByDate)
+      ? { ...quantum.progressByDate }
+      : {};
+  const limit = quantum.mode === 'timer'
+    ? getTimerTotalSeconds(quantum.timer)
+    : Number(quantum.count?.value) || 0;
+  if (limit <= 0) {
+    return {
+      quantum: { ...quantum, progressByDate },
+      completedDates: normalizedCompletedDates,
+    };
+  }
+
+  Object.entries(normalizedCompletedDates).forEach(([dateKey, completed]) => {
+    if (!completed) {
+      return;
+    }
+    const entry = progressByDate[dateKey] ?? {};
+    progressByDate[dateKey] = quantum.mode === 'timer'
+      ? { ...entry, doneSeconds: Math.max(Number(entry.doneSeconds) || 0, limit) }
+      : { ...entry, doneCount: Math.max(Number(entry.doneCount) || 0, limit) };
+  });
+
+  Object.entries(progressByDate).forEach(([dateKey, entry]) => {
+    const value = quantum.mode === 'timer'
+      ? Number(entry?.doneSeconds) || 0
+      : Number(entry?.doneCount) || 0;
+    if (value >= limit) {
+      normalizedCompletedDates[dateKey] = true;
+    }
+  });
+
+  return {
+    quantum: { ...quantum, progressByDate },
+    completedDates: normalizedCompletedDates,
+  };
 };
 
 const normalizeTaskBehaviorType = (type) => {
@@ -325,6 +420,7 @@ const getTaskTypeDisplayLabel = (task, localizedLabels = {}) => {
 export {
   getQuantumProgressLabel,
   getQuantumProgressPercent,
+  getQuantumStepLabel,
   hasTaskProgress,
   isValidQuantumDefinition,
   reconcileTaskProgressOnEdit,
@@ -333,6 +429,7 @@ export {
   getTaskTagDisplayLabel,
   getTaskTypeDisplayLabel,
   normalizeTaskTagKey,
+  reconcileQuantumCompletionState,
   restoreDeletedTaskAtIndex,
   shouldResetTaskProgress,
 };

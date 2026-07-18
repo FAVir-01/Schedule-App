@@ -60,10 +60,16 @@ const toTimerSeconds = (hours, minutes) => {
   return safeHours * 3600 + safeMinutes * 60;
 };
 
+// Timers antigos usavam `minutes`/`seconds` para representar horas/minutos.
+// O formato atual usa `hours`/`minutesPart`, mas a leitura continua compatível.
+const getTimerParts = (timer) => ({
+  hours: Number.parseInt(timer?.hours ?? timer?.minutes ?? 0, 10) || 0,
+  minutes: Number.parseInt(timer?.minutesPart ?? timer?.seconds ?? 0, 10) || 0,
+});
+
 const getTimerTotalSeconds = (timer) => {
-  const timerHours = Number.parseInt(timer?.hours ?? timer?.minutes ?? 0, 10) || 0;
-  const timerMinutes = Number.parseInt(timer?.minutesPart ?? timer?.seconds ?? 0, 10) || 0;
-  return toTimerSeconds(timerHours, timerMinutes);
+  const { hours, minutes } = getTimerParts(timer);
+  return toTimerSeconds(hours, minutes);
 };
 
 export {
@@ -71,6 +77,7 @@ export {
   formatNumber,
   formatTaskTime,
   formatTimeValue,
+  getTimerParts,
   getTimerTotalSeconds,
   toMinutes,
   toTimerSeconds,

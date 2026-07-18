@@ -96,7 +96,10 @@ const {
   getTaskRepeatDisplayLabel,
   getTaskTagDisplayLabel,
   getTaskTypeDisplayLabel,
+  getQuantumProgressLabel,
+  getQuantumStepLabel,
   isValidQuantumDefinition,
+  reconcileQuantumCompletionState,
   reconcileTaskProgressOnEdit,
   restoreDeletedTaskAtIndex,
   shouldResetTaskProgress,
@@ -141,12 +144,15 @@ const {
 const { translations } = require('../constants/i18n');
 const {
   TASK_TEMPLATE_COLLECTIONS,
+  TASK_TEMPLATE_VERSION,
   getTaskTemplateCollection,
 } = require('../constants/taskTemplates');
 const {
   buildTemplateTasks,
   getImportedTemplateTaskKeys,
+  migrateImportedTemplateTasks,
 } = require('../utils/templateUtils');
+const { getTimerParts, getTimerTotalSeconds } = require('../utils/timeUtils');
 const {
   calculatePeriodGoalProgress,
   normalizePeriodGoal,
@@ -295,6 +301,10 @@ test('mantem o catalogo de templates completo nos dois idiomas', () => {
       template.tasks.forEach((task) => {
         assert.ok(localized.tasks[task.id]?.title);
         assert.ok(localized.tasks[task.id]?.description);
+        if (task.type === 'quantum') {
+          assert.equal(isValidQuantumDefinition(task.quantum), true);
+          assert.notEqual(task.quantum.animation, 'defaut');
+        }
       });
     });
   });
@@ -327,9 +337,96 @@ test('cria somente tarefas selecionadas e ainda nao importadas do template', () 
   assert.equal(tasks[0].dateKey, '2026-07-17');
   assert.equal(tasks[0].repeat.frequency, 'daily');
   assert.equal(tasks[0].completedDates['2026-07-17'], undefined);
-  assert.equal(tasks[1].quantum.timer.minutes, 5);
-  assert.deepEqual(tasks[1].quantum.progressByDate, {});
-  assert.equal(template.tasks[2].quantum.progressByDate, undefined);
+  assert.equal(tasks[1].type, 'default');
+  assert.equal(tasks[1].quantum, null);
+  assert.equal(tasks[1].templateSource.version, TASK_TEMPLATE_VERSION);
+});
+
+test('preserva minutos dos templates quantitativos ao criar e editar', () => {
+  const template = getTaskTemplateCollection('focusFlow');
+  const tasks = buildTemplateTasks({
+    template,
+    selectedTaskIds: ['focusBlock'],
+    localizedTemplate: translations.en.discover.templates.focusFlow,
+    startDate: '2026-07-18',
+    createTaskId: () => 'focus-task',
+  });
+
+  assert.equal(tasks.length, 1);
+  assert.deepEqual(getTimerParts(tasks[0].quantum.timer), { hours: 0, minutes: 25 });
+  assert.equal(getTimerTotalSeconds(tasks[0].quantum.timer), 25 * 60);
+  assert.equal(getQuantumStepLabel(tasks[0], 900), '15m');
+});
+
+test('migra imports com duracao incorreta sem alterar tarefas manuais', () => {
+  const migrated = migrateImportedTemplateTasks([
+    {
+      id: 'stretch',
+      type: 'quantum',
+      completedDates: {},
+      quantum: { mode: 'timer', timer: { hours: 0, minutes: 5, seconds: 0 } },
+      templateSource: { templateId: 'morningReset', taskId: 'stretch', version: 1 },
+    },
+    {
+      id: 'focus',
+      type: 'quantum',
+      quantum: { mode: 'timer', timer: { hours: 0, minutes: 25, seconds: 0 } },
+      templateSource: { templateId: 'focusFlow', taskId: 'focusBlock', version: 1 },
+    },
+    {
+      id: 'manual',
+      type: 'quantum',
+      quantum: { mode: 'timer', timer: { minutes: 5, seconds: 0 } },
+    },
+  ]);
+
+  assert.equal(migrated[0].type, 'default');
+  assert.equal(migrated[0].quantum, null);
+  assert.equal(migrated[0].templateSource.version, TASK_TEMPLATE_VERSION);
+  assert.deepEqual(migrated[1].quantum.timer, { hours: 0, minutesPart: 25 });
+  assert.equal(getTimerTotalSeconds(migrated[1].quantum.timer), 25 * 60);
+  assert.equal(migrated[2].quantum.timer.minutes, 5);
+  assert.equal(migrated[2].templateSource, undefined);
+});
+
+test('mantem progresso quantum e conclusao coerentes em dados antigos', () => {
+  const completedWithoutProgress = reconcileQuantumCompletionState(
+    {
+      mode: 'count',
+      count: { value: 1, unit: 'cup' },
+      progressByDate: { '2026-07-18': { doneCount: 0 } },
+    },
+    { '2026-07-18': true }
+  );
+  assert.equal(
+    completedWithoutProgress.quantum.progressByDate['2026-07-18'].doneCount,
+    1
+  );
+
+  const progressWithoutCompletion = reconcileQuantumCompletionState(
+    {
+      mode: 'timer',
+      timer: { hours: 0, minutesPart: 20 },
+      progressByDate: { '2026-07-18': { doneSeconds: 1200 } },
+    },
+    {}
+  );
+  assert.equal(progressWithoutCompletion.completedDates['2026-07-18'], true);
+  assert.equal(
+    getQuantumProgressLabel(
+      {
+        type: 'quantum',
+        completedDates: { '2026-07-18': true },
+        quantum: {
+          mode: 'count',
+          count: { value: 1, unit: 'cup' },
+          progressByDate: { '2026-07-18': { doneCount: 0 } },
+        },
+      },
+      '2026-07-18'
+    ),
+    '1/1 cup'
+  );
 });
 
 test('reconhece fontes importadas sem confundir tarefas comuns', () => {

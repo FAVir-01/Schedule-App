@@ -24,7 +24,7 @@ import Svg, { Path } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { formatTaskTime, toTimerSeconds } from '../utils/timeUtils';
+import { formatTaskTime, getTimerParts, toTimerSeconds } from '../utils/timeUtils';
 import { isValidDateRange } from '../utils/dateUtils';
 import {
   getQuantumProgressLabel,
@@ -120,8 +120,8 @@ const QUANTUM_MODES = [
 ];
 
 const QUANTUM_ANIMATIONS = [
-  { key: 'defaut', label: 'defaut' },
-  { key: 'water', label: 'water' },
+  { key: 'default' },
+  { key: 'water' },
 ];
 
 const createTagKey = (label, existingKeys) => {
@@ -928,11 +928,14 @@ export default function AddHabitSheet({
     const resolvedTypeKey = initialHabit.type ?? DEFAULT_TYPE_OPTIONS[0].key;
     const resolvedQuantumMode = initialHabit.quantum?.mode ?? QUANTUM_MODES[0].key;
     const resolvedQuantumAnimation =
-      initialHabit.quantum?.animation ?? QUANTUM_ANIMATIONS[0].key;
+      initialHabit.quantum?.animation === 'defaut'
+        ? 'default'
+        : initialHabit.quantum?.animation ?? QUANTUM_ANIMATIONS[0].key;
     const resolvedQuantumTimer = initialHabit.quantum?.timer ?? {};
+    const resolvedQuantumTimerParts = getTimerParts(resolvedQuantumTimer);
     const resolvedQuantumCount = initialHabit.quantum?.count ?? {};
-    const resolvedQuantumTimerMinutes = `${resolvedQuantumTimer.minutes ?? '0'}`;
-    const resolvedQuantumTimerSeconds = `${resolvedQuantumTimer.seconds ?? '0'}`;
+    const resolvedQuantumTimerMinutes = `${resolvedQuantumTimerParts.hours}`;
+    const resolvedQuantumTimerSeconds = `${resolvedQuantumTimerParts.minutes}`;
     const resolvedQuantumCountValue = `${resolvedQuantumCount.value ?? '1'}`;
     const resolvedQuantumCountUnit = resolvedQuantumCount.unit ?? '';
     const resolvedSubtasks = Array.isArray(initialHabit.subtasks) ? initialHabit.subtasks : [];
@@ -1148,8 +1151,8 @@ export default function AddHabitSheet({
       mode: quantumMode,
       animation: quantumAnimation,
       timer: {
-        minutes: Number.parseInt(quantumTimerMinutes, 10) || 0,
-        seconds: Number.parseInt(quantumTimerSeconds, 10) || 0,
+        hours: Number.parseInt(quantumTimerMinutes, 10) || 0,
+        minutesPart: Number.parseInt(quantumTimerSeconds, 10) || 0,
       },
       count: {
         value: Number.parseInt(quantumCountValue, 10) || 0,
@@ -1447,8 +1450,8 @@ export default function AddHabitSheet({
       mode: pendingQuantumMode,
       animation: pendingQuantumAnimation,
       timer: {
-        minutes,
-        seconds,
+        hours: minutes,
+        minutesPart: seconds,
       },
       count: {
         value: limitValue,
@@ -2450,7 +2453,7 @@ function QuantumPanel({
                       isSelected && styles.quantumModeButtonTextSelected,
                     ]}
                   >
-                    {option.label}
+                    {labels.quantumAnimations?.[option.key] ?? option.key}
                   </Text>
                 </Pressable>
               );

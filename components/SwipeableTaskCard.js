@@ -13,7 +13,11 @@ import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
 import { translations } from '../constants/i18n';
 import { FALLBACK_EMOJI, USE_NATIVE_DRIVER } from '../constants/app';
-import { getQuantumProgressLabel, getQuantumProgressPercent } from '../utils/taskUtils';
+import {
+  getQuantumProgressLabel,
+  getQuantumProgressPercent,
+  getQuantumStepLabel,
+} from '../utils/taskUtils';
 import { formatTaskTime, getTimerTotalSeconds } from '../utils/timeUtils';
 import { buildRepeatingWavePath } from '../utils/waveUtils';
 import { triggerSelection } from '../utils/feedbackUtils';
@@ -277,6 +281,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
       )
     : Math.max(task.quantum?.lastAdjustCount || 1, 1);
   const quantumStep = adjustStep ?? defaultStep;
+  const quantumStepLabel = getQuantumStepLabel(task, quantumStep);
   const stepOptions = useMemo(() => {
     if (!isQuantum) {
       return [];
@@ -462,34 +467,41 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
           </View>
         )}
         {!isReminder && (
-          <Pressable
-            onPress={handleTogglePress}
-            onLongPress={handleToggleLongPress}
-            delayLongPress={350}
-            style={[
-              styles.taskToggle,
-              (isQuantumComplete || (!isQuantum && task.completed)) && styles.taskToggleCompleted,
-            ]}
-            accessibilityRole={isQuantum ? 'button' : 'checkbox'}
-            accessibilityLabel={
-              isQuantum
-                ? t.taskCard.addQuantumProgress
-                : task.completed
-                ? t.taskModal.markTaskIncomplete
-                : t.taskModal.markTaskComplete
-            }
-            accessibilityState={isQuantum ? undefined : { checked: task.completed }}
-          >
-            {isQuantum ? (
-              isQuantumComplete ? (
-                <Ionicons name="checkmark" size={18} color="#ffffff" />
+          <View style={styles.taskToggleGroup}>
+            <Pressable
+              onPress={handleTogglePress}
+              onLongPress={handleToggleLongPress}
+              delayLongPress={350}
+              style={[
+                styles.taskToggle,
+                (isQuantumComplete || (!isQuantum && task.completed)) && styles.taskToggleCompleted,
+              ]}
+              accessibilityRole={isQuantum ? 'button' : 'checkbox'}
+              accessibilityLabel={
+                isQuantum && quantumStepLabel
+                  ? t.taskCard.addQuantumProgressStep.replace('{step}', quantumStepLabel)
+                  : isQuantum
+                  ? t.taskCard.addQuantumProgress
+                  : task.completed
+                  ? t.taskModal.markTaskIncomplete
+                  : t.taskModal.markTaskComplete
+              }
+              accessibilityState={isQuantum ? undefined : { checked: task.completed }}
+            >
+              {isQuantum ? (
+                isQuantumComplete ? (
+                  <Ionicons name="checkmark" size={18} color="#ffffff" />
+                ) : (
+                  <Ionicons name="add" size={18} color="#1F2742" />
+                )
               ) : (
-                <Ionicons name="add" size={18} color="#1F2742" />
-              )
-            ) : (
-              task.completed && <Ionicons name="checkmark" size={18} color="#ffffff" />
-            )}
-          </Pressable>
+                task.completed && <Ionicons name="checkmark" size={18} color="#ffffff" />
+              )}
+            </Pressable>
+            {isQuantum && !isQuantumComplete && quantumStepLabel ? (
+              <Text style={styles.taskToggleStepLabel}>+{quantumStepLabel}</Text>
+            ) : null}
+          </View>
         )}
         </View>
         {isQuantum && isAdjustOpen && (
