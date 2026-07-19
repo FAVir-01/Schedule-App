@@ -369,6 +369,17 @@ export const styles = StyleSheet.create({
     flex: 1,
     paddingRight: 12,
   },
+  taskActionMenuButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(26, 26, 46, 0.12)',
+  },
   taskEmoji: {
     fontSize: 34,
   },
@@ -427,11 +438,21 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   taskToggleStepLabel: {
-    marginTop: 3,
     fontSize: 9,
     lineHeight: 11,
     fontWeight: '700',
     color: '#777d90',
+  },
+  taskToggleStepButton: {
+    marginTop: 3,
+    minHeight: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.65)',
   },
   taskToggleCompleted: {
     backgroundColor: '#3dd598',
@@ -1379,7 +1400,23 @@ export const styles = StyleSheet.create({
   reflectionHint: {
     fontSize: 11,
     color: '#9a96b8',
+    marginBottom: 8,
+  },
+  reflectionCustomizeButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     marginBottom: 18,
+    backgroundColor: '#efeaff',
+  },
+  reflectionCustomizeButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#3c2ba7',
   },
   reflectionTagRow: {
     flexDirection: 'row',
@@ -2224,6 +2261,8 @@ export const styles = StyleSheet.create({
   profileTaskCard: {
     borderWidth: 1,
     borderRadius: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   profileTaskCardSelected: {
     borderColor: '#3c2ba7',
@@ -2234,10 +2273,32 @@ export const styles = StyleSheet.create({
     elevation: 4,
   },
   profileTaskCardContent: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingLeft: 16,
+    paddingRight: 8,
+  },
+  profileTaskVisibleActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingRight: 10,
+  },
+  profileTaskVisibleAction: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(26, 26, 46, 0.12)',
+  },
+  profileTaskVisibleActionSelected: {
+    backgroundColor: '#3c2ba7',
+    borderColor: '#3c2ba7',
   },
   profileTaskIcon: {
     width: 42,
