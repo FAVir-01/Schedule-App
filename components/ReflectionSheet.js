@@ -21,7 +21,12 @@ import { translations } from '../constants/i18n';
 import { persistPickedImage } from '../services/imagePersistenceService';
 import { styles } from '../styles/appStyles';
 import { IMAGE_LIMITS, getImageErrorMessage } from '../utils/imageUtils';
-import { DEFAULT_MOOD_EMOJIS, MOOD_LEVELS, MOOD_TAG_KEYS } from '../utils/moodUtils';
+import {
+  DEFAULT_MOOD_EMOJIS,
+  MOOD_LEVELS,
+  MOOD_TAG_KEYS,
+  hasReflectionContent,
+} from '../utils/moodUtils';
 
 // Folha de reflexão do dia: humor em escala de 1-5 (registro rápido), tags de
 // sentimento, nota e foto opcionais. A aparência de cada nível é personalizável
@@ -120,12 +125,14 @@ function ReflectionSheet({
   });
 
   // Registros antigos guardavam emoji/imagem em vez do nível; seguem editáveis.
-  const legacyMarker = !mood?.level && (mood?.emoji || mood?.image);
-  const canSave =
-    Boolean(selectedLevel) ||
-    Boolean(legacyMarker) ||
-    Boolean(photo) ||
-    note.trim().length > 0;
+  const canSave = hasReflectionContent({
+    level: selectedLevel,
+    tags: selectedTags,
+    note,
+    photo,
+    emoji: selectedLevel ? null : mood?.emoji,
+    image: selectedLevel ? null : mood?.image,
+  });
   const hasExisting = Boolean(mood);
   // A janela pode encolher ANTES do evento do teclado chegar; por isso a base
   // é a maior altura já vista, não a altura no momento do evento.
@@ -156,10 +163,6 @@ function ReflectionSheet({
 
   const handleRemove = () => {
     const removeReflection = () => onSave(dateKey, null);
-    if (!note.trim() && !photo) {
-      removeReflection();
-      return;
-    }
     Alert.alert(t.reflection.removeConfirmTitle, t.reflection.removeConfirmMessage, [
       { text: t.reflection.cancel, style: 'cancel' },
       { text: t.reflection.remove, style: 'destructive', onPress: removeReflection },
@@ -421,6 +424,8 @@ function ReflectionSheet({
                   style={styles.reflectionRemoveButton}
                   onPress={handleRemove}
                   activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.reflection.remove}
                 >
                   <Ionicons name="trash-outline" size={18} color="#d64550" />
                   <Text style={styles.reflectionRemoveText}>{t.reflection.remove}</Text>

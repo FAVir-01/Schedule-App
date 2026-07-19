@@ -142,6 +142,7 @@ const {
   scheduledReminderContentMatches,
 } = require('../utils/notificationUtils');
 const { translations } = require('../constants/i18n');
+const { hasReflectionContent } = require('../utils/moodUtils');
 const {
   TASK_TEMPLATE_COLLECTIONS,
   TASK_TEMPLATE_VERSION,
@@ -617,6 +618,37 @@ test('tenta rollback quando a substituicao restaurada falha', async () => {
     asyncStorageMockState.calls.some((call) => call.operation === 'multiRemove'),
     true
   );
+});
+
+const collectTranslationLeafPaths = (value, prefix = '') =>
+  Object.entries(value).flatMap(([key, entry]) => {
+    const path = prefix ? `${prefix}.${key}` : key;
+    return entry && typeof entry === 'object'
+      ? collectTranslationLeafPaths(entry, path)
+      : [path];
+  });
+
+const getTranslationValue = (language, path) =>
+  path.split('.').reduce((value, key) => value?.[key], translations[language]);
+
+test('mantem toda a arvore de traducoes completa nos dois idiomas', () => {
+  const portuguesePaths = collectTranslationLeafPaths(translations.pt).sort();
+  const englishPaths = collectTranslationLeafPaths(translations.en).sort();
+  assert.deepEqual(portuguesePaths, englishPaths);
+
+  englishPaths.forEach((path) => {
+    const englishTokens = `${getTranslationValue('en', path)}`.match(/\{[^}]+\}/g) ?? [];
+    const portugueseTokens = `${getTranslationValue('pt', path)}`.match(/\{[^}]+\}/g) ?? [];
+    assert.deepEqual(portugueseTokens.sort(), englishTokens.sort(), path);
+  });
+});
+
+test('permite salvar reflexoes com qualquer conteudo significativo', () => {
+  assert.equal(hasReflectionContent({ tags: ['calm'] }), true);
+  assert.equal(hasReflectionContent({ note: '   ' }), false);
+  assert.equal(hasReflectionContent({ level: 4 }), true);
+  assert.equal(hasReflectionContent({ emoji: 'legacy' }), true);
+  assert.equal(hasReflectionContent({}), false);
 });
 
 test('mantem acoes de tarefa completas nos dois idiomas', () => {

@@ -271,7 +271,7 @@ const translations = {
       addHabit: 'Add habit',
       addHabitDescription: 'Add a new routine\nto your life',
       addReflection: 'Add reflection',
-      addReflectionDescription: 'Reflect on your day\nwith your mood and feelings',
+      addReflectionDescription: 'Capture your mood\nand thoughts',
       addReflectionIllustration: 'Illustration of adding a reflection',
     },
     reflection: {
@@ -866,7 +866,7 @@ const translations = {
       addHabit: 'Adicionar hábito',
       addHabitDescription: 'Adicione uma nova rotina\nna sua vida',
       addReflection: 'Adicionar reflexão',
-      addReflectionDescription: 'Reflita sobre seu dia\ncom seu humor e sentimentos',
+      addReflectionDescription: 'Registre seu humor\ne pensamentos',
       addReflectionIllustration: 'Ilustração para adicionar uma reflexão',
     },
     reflection: {
