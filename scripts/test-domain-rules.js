@@ -123,6 +123,11 @@ const {
   normalizeTimelineSearchText,
 } = require('../utils/timelineUtils');
 const {
+  getChartEmptyStateKey,
+  getChartMetricKey,
+  getChartSeriesMetricKey,
+} = require('../utils/chartSemanticsUtils');
+const {
   shouldTriggerCompletionCelebration,
   willProgressReachCompletion,
 } = require('../utils/celebrationUtils');
@@ -1292,6 +1297,40 @@ test('filtra a linha do tempo por período, humor e conteúdo', () => {
   assert.equal(result.length, 1);
   assert.equal(result[0].dateKey, '2026-07-18');
   assert.equal(result[0].source, 'reflection');
+});
+
+test('diferencia o resumo do período das métricas desenhadas no gráfico', () => {
+  assert.equal(
+    getChartMetricKey({ mode: 'percent', chartType: 'line', isFocused: false }),
+    'periodRate'
+  );
+  assert.equal(
+    getChartMetricKey({ mode: 'values', chartType: 'bars', isFocused: false }),
+    'periodCompletions'
+  );
+  assert.equal(
+    getChartSeriesMetricKey({ mode: 'percent', chartType: 'line' }),
+    'movingAverage'
+  );
+  assert.equal(
+    getChartSeriesMetricKey({ mode: 'percent', chartType: 'bars' }),
+    'intervalRate'
+  );
+  assert.equal(
+    getChartSeriesMetricKey({ mode: 'values', chartType: 'line' }),
+    'dailyCompletions'
+  );
+  assert.equal(
+    getChartSeriesMetricKey({ mode: 'values', chartType: 'bars' }),
+    'intervalCompletions'
+  );
+  assert.equal(
+    getChartSeriesMetricKey({ mode: 'accum', chartType: 'line' }),
+    'cumulativeCompletions'
+  );
+  assert.equal(getChartEmptyStateKey('percent'), 'percent');
+  assert.equal(getChartEmptyStateKey('values'), 'values');
+  assert.equal(getChartEmptyStateKey('accum'), 'accum');
 });
 
 test('valida tamanho, dimensoes e tipo das imagens selecionadas', () => {

@@ -23,6 +23,11 @@ import {
 } from '../utils/dateUtils';
 import { buildDailyCompletionSeries } from '../utils/profileStatsUtils';
 import { measureSynchronous } from '../utils/performanceUtils';
+import {
+  getChartEmptyStateKey,
+  getChartMetricKey,
+  getChartSeriesMetricKey,
+} from '../utils/chartSemanticsUtils';
 import { FALLBACK_EMOJI } from '../constants/app';
 import { translations } from '../constants/i18n';
 import { styles } from '../styles/appStyles';
@@ -96,6 +101,7 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
   const [mode, setMode] = useState('percent');
   const [chartType, setChartType] = useState('line');
   const [isModeMenuOpen, setModeMenuOpen] = useState(false);
+  const [isHelpOpen, setHelpOpen] = useState(false);
   const [chartWidth, setChartWidth] = useState(0);
   const [activeIndex, setActiveIndex] = useState(null);
   const chartWidthRef = useRef(0);
@@ -473,14 +479,22 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
   const currentValue = formatValue(
     activeIndex != null ? displaySerie[focusedIndex] : periodSummary.value
   );
-  const currentModeLabel = modeOptions.find((option) => option.key === mode)?.label ?? '';
+  const chartMetricKey = getChartMetricKey({
+    mode,
+    chartType,
+    isFocused: activeIndex != null,
+  });
+  const seriesMetricKey = getChartSeriesMetricKey({ mode, chartType });
+  const chartMetricLabel = t.profile.chartMetrics[chartMetricKey];
+  const chartSeriesDescription = t.profile.chartSeriesDescriptions[seriesMetricKey];
+  const emptyStateText = t.profile.chartEmptyStates[getChartEmptyStateKey(mode)];
   const chartAccessibilityLabel = showChart
     ? t.profile.chartSummary
         .replace('{title}', chartTitle)
-        .replace('{mode}', currentModeLabel)
+        .replace('{mode}', chartMetricLabel)
         .replace('{range}', activeIndex != null ? focusedDateLabel : periodRangeLabel)
         .replace('{value}', currentValue)
-    : `${chartTitle}. ${t.profile.noChartData}`;
+    : `${chartTitle}. ${emptyStateText}`;
   const handleChartAccessibilityAction = ({ nativeEvent }) => {
     if (!showChart || displaySerie.length === 0) {
       return;
@@ -537,11 +551,26 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
               </View>
             ) : null}
           </View>
+          <Text style={styles.perfMetricLabel}>{chartMetricLabel}</Text>
           <Text style={styles.perfDateLabel}>
             {activeIndex != null ? focusedDateLabel : periodRangeLabel}
           </Text>
         </View>
         <View style={styles.perfControlsRow}>
+          <TouchableOpacity
+            style={[
+              styles.perfMenuButton,
+              isHelpOpen && styles.perfMenuButtonActive,
+            ]}
+            onPress={() => setHelpOpen((previous) => !previous)}
+            activeOpacity={0.75}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={t.profile.chartHelp}
+            accessibilityState={{ expanded: isHelpOpen }}
+          >
+            <Ionicons name="help-circle-outline" size={17} color="#6f7a86" />
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.perfMenuButton}
             onPress={() => {
@@ -590,6 +619,7 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
                 style={styles.perfMenuItem}
                 onPress={() => {
                   setMode(option.key);
+                  setActiveIndex(null);
                   setModeMenuOpen(false);
                 }}
                 activeOpacity={0.7}
@@ -613,6 +643,19 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
             ))}
           </View>
         </>
+      ) : null}
+
+      <View style={styles.perfMetricDescriptor}>
+        <Ionicons name="analytics-outline" size={14} color="#3c2ba7" />
+        <Text style={styles.perfMetricDescriptorText}>{chartSeriesDescription}</Text>
+      </View>
+
+      {isHelpOpen ? (
+        <View style={styles.perfHelpPanel}>
+          <Text style={styles.perfHelpTitle}>{t.profile.chartHelpTitle}</Text>
+          <Text style={styles.perfHelpText}>{t.profile.chartHelpSummary}</Text>
+          <Text style={styles.perfHelpModeText}>{t.profile.chartHelpModes[mode]}</Text>
+        </View>
       ) : null}
 
       {/* Área de plotagem */}
@@ -752,7 +795,7 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
           </Svg>
         ) : (
           <View style={styles.perfEmptyState}>
-            <Text style={styles.perfEmptyText}>{t.profile.noChartData}</Text>
+            <Text style={styles.perfEmptyText}>{emptyStateText}</Text>
           </View>
         )}
 
