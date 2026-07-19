@@ -442,8 +442,6 @@ const translations = {
       showTasksTagged: 'Show tasks tagged {tag}',
       missed: 'Missed',
       backToToday: 'Back to today',
-      openDayReport: 'Daily report',
-      openDayReportHint: 'Opens the report for the selected day',
     },
     calendar: {
       today: 'Today',
@@ -1097,8 +1095,6 @@ const translations = {
       showTasksTagged: 'Mostrar tarefas com o rótulo {tag}',
       missed: 'Perdido',
       backToToday: 'Voltar para hoje',
-      openDayReport: 'Relatório do dia',
-      openDayReportHint: 'Abre o relatório do dia selecionado',
     },
     calendar: {
       today: 'Hoje',

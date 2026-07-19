@@ -134,11 +134,6 @@ export const styles = StyleSheet.create({
     borderColor: '#3c2ba7',
     backgroundColor: '#3c2ba7',
   },
-  todayTemporalButtonText: {
-    color: '#3c2ba7',
-    fontSize: 12,
-    fontWeight: '700',
-  },
   todayTemporalButtonPrimaryText: {
     color: '#ffffff',
     fontSize: 12,
