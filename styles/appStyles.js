@@ -1012,11 +1012,12 @@ export const styles = StyleSheet.create({
   },
   fabCardBackground: {
     flex: 1,
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   fabCardContent: {
     flex: 1,
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
     alignItems: 'center',
   },
   fabCardTitle: {

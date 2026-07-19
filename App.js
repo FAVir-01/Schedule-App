@@ -402,10 +402,11 @@ function ScheduleApp() {
   const bottomBarPadding = useMemo(() => Math.max(16, horizontalPadding * 0.75), [horizontalPadding]);
   const iconSize = isCompact ? 18 : 20;
   const cardSize = isCompact ? 136 : 152;
-  const cardIconSize = Math.round(cardSize * 0.75);
+  const cardHeight = isCompact ? 192 : 208;
+  const cardIconSize = isCompact ? 60 : 72;
   const cardSpacing = isCompact ? 16 : 24;
   const cardBorderRadius = isCompact ? 30 : 34;
-  const cardVerticalOffset = isCompact ? 200 : 230;
+  const cardVerticalOffset = isCompact ? 150 : 174;
   const fabHaloSize = fabSize + (isCompact ? 26 : 30);
   const fabBaseSize = fabSize + (isCompact ? 14 : 18);
   const fabIconSize = isCompact ? 28 : 30;
@@ -3662,7 +3663,7 @@ function ScheduleApp() {
                   styles.fabCard,
                   {
                     width: cardSize,
-                    height: cardSize,
+                    height: cardHeight,
                     borderRadius: cardBorderRadius,
                     marginHorizontal: cardSpacing / 2,
                     transform: [{ rotate: '-7deg' }],
@@ -3683,8 +3684,8 @@ function ScheduleApp() {
                     styles.fabCardBackground,
                     {
                       borderRadius: cardBorderRadius,
-                      paddingHorizontal: cardSize * 0.14,
-                      paddingVertical: isCompact ? 18 : 22,
+                      paddingHorizontal: isCompact ? 14 : 18,
+                      paddingVertical: isCompact ? 12 : 16,
                     },
                   ]}
                 >
@@ -3696,7 +3697,7 @@ function ScheduleApp() {
                         {
                           width: cardIconSize,
                           height: cardIconSize,
-                          marginBottom: isCompact ? 12 : 14,
+                          marginBottom: isCompact ? 8 : 10,
                         },
                       ]}
                       resizeMode="contain"
@@ -3708,9 +3709,11 @@ function ScheduleApp() {
                         styles.fabCardTitle,
                         {
                           fontSize: isCompact ? 16 : 17,
-                          marginBottom: isCompact ? 6 : 8,
+                          lineHeight: isCompact ? 19 : 21,
+                          marginBottom: isCompact ? 4 : 6,
                         },
                       ]}
+                      numberOfLines={2}
                     >
                       {t.fab.addHabit}
                     </Text>
@@ -3718,10 +3721,11 @@ function ScheduleApp() {
                       style={[
                         styles.fabCardSubtitle,
                         {
-                          fontSize: isCompact ? 12 : 13,
-                          lineHeight: isCompact ? 18 : 20,
+                          fontSize: isCompact ? 11 : 12,
+                          lineHeight: isCompact ? 15 : 17,
                         },
                       ]}
+                      numberOfLines={3}
                     >
                       {t.fab.addHabitDescription}
                     </Text>
@@ -3733,7 +3737,7 @@ function ScheduleApp() {
                   styles.fabCard,
                   {
                     width: cardSize,
-                    height: cardSize,
+                    height: cardHeight,
                     borderRadius: cardBorderRadius,
                     marginHorizontal: cardSpacing / 2,
                     transform: [{ rotate: '7deg' }],
@@ -3754,8 +3758,8 @@ function ScheduleApp() {
                     styles.fabCardBackground,
                     {
                       borderRadius: cardBorderRadius,
-                      paddingHorizontal: cardSize * 0.14,
-                      paddingVertical: isCompact ? 18 : 22,
+                      paddingHorizontal: isCompact ? 14 : 18,
+                      paddingVertical: isCompact ? 12 : 16,
                     },
                   ]}
                 >
@@ -3767,7 +3771,7 @@ function ScheduleApp() {
                         {
                           width: cardIconSize,
                           height: cardIconSize,
-                          marginBottom: isCompact ? 12 : 14,
+                          marginBottom: isCompact ? 8 : 10,
                         },
                       ]}
                       resizeMode="contain"
@@ -3779,9 +3783,11 @@ function ScheduleApp() {
                         styles.fabCardTitle,
                         {
                           fontSize: isCompact ? 16 : 17,
-                          marginBottom: isCompact ? 6 : 8,
+                          lineHeight: isCompact ? 19 : 21,
+                          marginBottom: isCompact ? 4 : 6,
                         },
                       ]}
+                      numberOfLines={2}
                     >
                       {t.fab.addReflection}
                     </Text>
@@ -3789,10 +3795,11 @@ function ScheduleApp() {
                       style={[
                         styles.fabCardSubtitle,
                         {
-                          fontSize: isCompact ? 12 : 13,
-                          lineHeight: isCompact ? 18 : 20,
+                          fontSize: isCompact ? 11 : 12,
+                          lineHeight: isCompact ? 15 : 17,
                         },
                       ]}
+                      numberOfLines={3}
                     >
                       {t.fab.addReflectionDescription}
                     </Text>

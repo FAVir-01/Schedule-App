@@ -24,7 +24,7 @@ import Svg, { Path } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { formatTaskTime, getTimerParts, toTimerSeconds } from '../utils/timeUtils';
+import { formatTaskTime, getTimerParts } from '../utils/timeUtils';
 import { isValidDateRange } from '../utils/dateUtils';
 import {
   getQuantumProgressLabel,
@@ -1441,10 +1441,7 @@ export default function AddHabitSheet({
   const previewQuantum = useMemo(() => {
     const minutes = Number.parseInt(pendingQuantumTimerMinutes, 10) || 0;
     const seconds = Number.parseInt(pendingQuantumTimerSeconds, 10) || 0;
-    const totalSeconds = toTimerSeconds(minutes, seconds);
     const limitValue = Number.parseInt(pendingQuantumCountValue, 10) || 0;
-    const halfSeconds = totalSeconds ? Math.max(1, Math.floor(totalSeconds / 2)) : 0;
-    const halfCount = limitValue ? Math.max(1, Math.floor(limitValue / 2)) : 0;
 
     return {
       mode: pendingQuantumMode,
@@ -1457,8 +1454,8 @@ export default function AddHabitSheet({
         value: limitValue,
         unit: pendingQuantumCountUnit.trim(),
       },
-      doneSeconds: pendingQuantumMode === 'timer' ? halfSeconds : 0,
-      doneCount: pendingQuantumMode === 'count' ? halfCount : 0,
+      doneSeconds: 0,
+      doneCount: 0,
     };
   }, [
     pendingQuantumAnimation,

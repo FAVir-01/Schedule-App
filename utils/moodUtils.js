@@ -12,6 +12,17 @@ export const DEFAULT_MOOD_EMOJIS = {
 
 export const MOOD_TAG_KEYS = ['anxious', 'tired', 'calm', 'excited', 'stressed', 'focused'];
 
+export function hasReflectionContent(reflection) {
+  return Boolean(
+    reflection?.level ||
+      reflection?.emoji ||
+      reflection?.image ||
+      reflection?.photo ||
+      `${reflection?.note ?? ''}`.trim() ||
+      (Array.isArray(reflection?.tags) && reflection.tags.length > 0)
+  );
+}
+
 // Resolve o que desenhar para um registro de humor: registros novos usam o
 // nível (com aparência personalizável); registros antigos guardavam o próprio
 // emoji/imagem e continuam mostrando o que foi salvo.
