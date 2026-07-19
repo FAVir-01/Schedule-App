@@ -56,20 +56,6 @@ export default function ProfileSwipeTaskCard({
     }).start(() => setIsOpen(false));
   }, [translateX]);
 
-  const toggleActions = useCallback(() => {
-    const shouldOpen = !isOpen;
-    setIsOpen(shouldOpen);
-    const targetValue = shouldOpen ? -actionWidth : 0;
-    currentOffsetRef.current = targetValue;
-    Animated.spring(translateX, {
-      toValue: targetValue,
-      damping: 20,
-      stiffness: 220,
-      mass: 0.9,
-      useNativeDriver: USE_NATIVE_DRIVER,
-    }).start();
-  }, [actionWidth, isOpen, translateX]);
-
   const handlePanRelease = useCallback(() => {
     const clampedValue = Math.min(0, Math.max(-actionWidth, currentOffsetRef.current));
     const shouldOpen = clampedValue <= -actionWidth * 0.5;
@@ -224,22 +210,6 @@ export default function ProfileSwipeTaskCard({
               name={isSelected ? 'checkbox' : 'square-outline'}
               size={18}
               color={isSelected ? '#ffffff' : '#656d7e'}
-            />
-          </Pressable>
-          <Pressable
-            style={styles.profileTaskVisibleAction}
-            onPress={toggleActions}
-            accessibilityRole="button"
-            accessibilityLabel={
-              isOpen ? t.profileTasks.hideActions : t.profileTasks.showActions
-            }
-            accessibilityState={{ expanded: isOpen }}
-            hitSlop={4}
-          >
-            <Ionicons
-              name={isOpen ? 'chevron-forward' : 'ellipsis-horizontal'}
-              size={18}
-              color="#656d7e"
             />
           </Pressable>
         </View>

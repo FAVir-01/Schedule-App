@@ -88,6 +88,8 @@ Module._load = function loadWithReactNativeMock(request, parent, isMain) {
 };
 
 const {
+  createCenteredWeekDates,
+  getDateKey,
   isValidDateRange,
   normalizeDateValue,
   shouldTaskAppearOnDate,
@@ -1041,6 +1043,25 @@ test('rejeita datas de calendário inexistentes', () => {
   assert.equal(normalizeDateValue('2026-02-29'), null);
   assert.equal(normalizeDateValue('2026-02-31'), null);
   assert.equal(normalizeDateValue('2024-02-29')?.getDate(), 29);
+});
+
+test('mantem a data selecionada no centro da faixa de sete dias', () => {
+  const julyDates = createCenteredWeekDates('2026-07-19').map(getDateKey);
+  assert.deepEqual(julyDates, [
+    '2026-07-16',
+    '2026-07-17',
+    '2026-07-18',
+    '2026-07-19',
+    '2026-07-20',
+    '2026-07-21',
+    '2026-07-22',
+  ]);
+
+  const yearBoundaryDates = createCenteredWeekDates('2026-01-01').map(getDateKey);
+  assert.equal(yearBoundaryDates[0], '2025-12-29');
+  assert.equal(yearBoundaryDates[3], '2026-01-01');
+  assert.equal(yearBoundaryDates[6], '2026-01-04');
+  assert.deepEqual(createCenteredWeekDates('2026-02-29'), []);
 });
 
 test('aceita somente data final igual ou posterior ao início', () => {

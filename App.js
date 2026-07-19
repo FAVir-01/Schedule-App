@@ -55,6 +55,7 @@ import { getNavigationBarThemeForTab } from './constants/navigation';
 import { lightenColor } from './utils/colorUtils';
 import { getMoodMarker } from './utils/moodUtils';
 import {
+  createCenteredWeekDates,
   getDateKey,
   getMonthId,
   getMonthStart,
@@ -530,11 +531,7 @@ function ScheduleApp() {
     });
   }, [selectedDate]);
   const weekDays = useMemo(() => {
-    const base = new Date(today);
-    return Array.from({ length: 7 }, (_, index) => {
-      const offset = index - 3;
-      const date = new Date(base);
-      date.setDate(base.getDate() + offset);
+    return createCenteredWeekDates(selectedDate).map((date) => {
       const key = getDateKey(date);
       const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, date));
       const scoredTasks = dayTasks.filter(shouldCountTaskTowardsCompletion);
@@ -546,10 +543,14 @@ function ScheduleApp() {
         key,
         label: getWeekdayInitials(language)[date.getDay()],
         dayNumber: date.getDate(),
+        accessibilityLabel: date.toLocaleDateString(
+          language === 'pt' ? 'pt-BR' : 'en-US',
+          { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }
+        ),
         allCompleted,
       };
     });
-  }, [language, tasks, today]);
+  }, [language, selectedDate, tasks]);
   // Calcula somente os meses visíveis e seus vizinhos. A primeira abertura
   // antes percorria 25 meses × dias × tarefas de forma síncrona, bloqueando a UI.
   const calendarStatusStoreRef = useRef({
@@ -2059,17 +2060,13 @@ function ScheduleApp() {
   }, []);
 
   const handleSelectDate = useCallback((date) => {
+    const normalized = normalizeDateValue(date);
+    if (!normalized) {
+      return;
+    }
     triggerSelection();
-    const normalized = new Date(date);
-    normalized.setHours(0, 0, 0, 0);
     setSelectedDate(normalized);
   }, []);
-  const handleSelectCalendarDate = useCallback(
-    (date) => {
-      handleSelectDate(date);
-    },
-    [handleSelectDate]
-  );
 
   const handleChangeTab = useCallback(
     (tabKey) => {
@@ -2101,8 +2098,13 @@ function ScheduleApp() {
   }, [completeOnboarding]);
 
   const handleViewToday = useCallback(() => {
+    handleSelectDate(today);
     handleChangeTab('today');
-  }, [handleChangeTab]);
+  }, [handleChangeTab, handleSelectDate, today]);
+
+  const handleReturnToToday = useCallback(() => {
+    handleSelectDate(today);
+  }, [handleSelectDate, today]);
 
   const handleSelectTagFilter = useCallback(
     (filterKey) => {
@@ -3147,7 +3149,7 @@ function ScheduleApp() {
                       style={styles.dayItem}
                       onPress={() => handleSelectDate(day.date)}
                       accessibilityRole="button"
-                      accessibilityLabel={`${day.label} ${day.dayNumber}`}
+                      accessibilityLabel={day.accessibilityLabel}
                       accessibilityState={{ selected: isSelected }}
                     >
                       <Text style={[styles.dayLabel, isSelected && styles.dayLabelSelected]}>
@@ -3160,6 +3162,39 @@ function ScheduleApp() {
                     </Pressable>
                   );
                 })}
+              </View>
+
+              <View style={styles.todayTemporalActions}>
+                {!isSelectedToday ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.todayTemporalButton,
+                      styles.todayTemporalButtonPrimary,
+                    ]}
+                    onPress={handleReturnToToday}
+                    activeOpacity={0.75}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.today.backToToday}
+                  >
+                    <Ionicons name="return-up-back" size={16} color="#ffffff" />
+                    <Text style={styles.todayTemporalButtonPrimaryText}>
+                      {t.today.backToToday}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
+                  style={styles.todayTemporalButton}
+                  onPress={() => handleOpenReport(selectedDate)}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.today.openDayReport}
+                  accessibilityHint={t.today.openDayReportHint}
+                >
+                  <Ionicons name="document-text-outline" size={16} color="#3c2ba7" />
+                  <Text style={styles.todayTemporalButtonText}>
+                    {t.today.openDayReport}
+                  </Text>
+                </TouchableOpacity>
               </View>
 
               {tagOptions.length > 0 && (

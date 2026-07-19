@@ -86,6 +86,19 @@ const normalizeDateValue = (value) => {
   return date;
 };
 
+const createCenteredWeekDates = (centerDate) => {
+  const normalizedCenter = normalizeDateValue(centerDate);
+  if (!normalizedCenter) {
+    return [];
+  }
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(normalizedCenter);
+    date.setDate(normalizedCenter.getDate() + index - 3);
+    return date;
+  });
+};
+
 const normalizeRepeatCollection = (value) => {
   if (!value) {
     return [];
@@ -259,6 +272,7 @@ const shouldTaskAppearOnDate = (task, targetDate) => {
 
 export {
   calculateWeeksInMonth,
+  createCenteredWeekDates,
   createTaskScheduleMatcher,
   getDateKey,
   getMonthId,

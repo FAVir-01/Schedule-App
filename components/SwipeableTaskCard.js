@@ -74,20 +74,6 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     }).start(() => setIsOpen(false));
   }, [translateX]);
 
-  const toggleActions = useCallback(() => {
-    const shouldOpen = !isOpen;
-    setIsOpen(shouldOpen);
-    const targetValue = shouldOpen ? -actionWidth : 0;
-    currentOffsetRef.current = targetValue;
-    Animated.spring(translateX, {
-      toValue: targetValue,
-      damping: 20,
-      stiffness: 220,
-      mass: 0.9,
-      useNativeDriver: USE_NATIVE_DRIVER,
-    }).start();
-  }, [actionWidth, isOpen, translateX]);
-
   const handlePanRelease = useCallback(() => {
     const clampedValue = Math.min(0, Math.max(-actionWidth, currentOffsetRef.current));
     const shouldOpen = clampedValue <= -actionWidth * 0.5;
@@ -480,22 +466,6 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
             </Text>
           </View>
         )}
-        <Pressable
-          style={styles.taskActionMenuButton}
-          onPress={toggleActions}
-          accessibilityRole="button"
-          accessibilityLabel={
-            isOpen ? t.taskCard.hideActions : t.taskCard.showActions
-          }
-          accessibilityState={{ expanded: isOpen }}
-          hitSlop={6}
-        >
-          <Ionicons
-            name={isOpen ? 'chevron-forward' : 'ellipsis-horizontal'}
-            size={17}
-            color="#656d7e"
-          />
-        </Pressable>
         {!isReminder && (
           <View style={styles.taskToggleGroup}>
             <Pressable
