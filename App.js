@@ -79,7 +79,7 @@ import { getTimerTotalSeconds, toMinutes } from './utils/timeUtils';
 import {
   backfillTaskTitlesInHistory,
   createTaskHistoryDetails,
-  MAX_RECENT_ACTIVITY_ENTRIES,
+  prependHistoryEntry,
 } from './utils/historyUtils';
 import { getWeekdayInitials, translations } from './constants/i18n';
 import { styles } from './styles/appStyles';
@@ -668,9 +668,7 @@ function ScheduleApp() {
       timestamp: new Date().toISOString(),
       details,
     };
-    setHistory((previous) =>
-      [entry, ...previous].slice(0, MAX_RECENT_ACTIVITY_ENTRIES)
-    );
+    setHistory((previous) => prependHistoryEntry(previous, entry));
     return entry.id;
   }, []);
 
@@ -2005,6 +2003,15 @@ function ScheduleApp() {
     setReflectionDateKey(dateKey);
   }, []);
 
+  const handleSelectTimelineReflection = useCallback((dateKey) => {
+    const date = normalizeDateValue(dateKey);
+    if (date) {
+      setSelectedDate(date);
+    }
+    setActivityOpen(false);
+    setReflectionDateKey(dateKey);
+  }, []);
+
   const handleCloseReflection = useCallback(() => {
     setReflectionDateKey(null);
   }, []);
@@ -2499,7 +2506,7 @@ function ScheduleApp() {
           notificationScheduleMode: null,
         };
       });
-      const nextHistory = importedData.history.slice(0, MAX_RECENT_ACTIVITY_ENTRIES);
+      const nextHistory = importedData.history.slice();
       const replacementData = {
         tasks: normalizedTasks,
         userSettings: nextSettings,
@@ -3921,8 +3928,10 @@ function ScheduleApp() {
       <ActivityTimelineModal
         visible={isActivityOpen}
         history={history}
+        dayMoods={dayMoods}
         tasks={tasks}
         onClose={() => setActivityOpen(false)}
+        onSelectReflection={handleSelectTimelineReflection}
         language={language}
       />
       <LocalSummaryModal

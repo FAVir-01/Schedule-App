@@ -1,7 +1,12 @@
-export const MAX_RECENT_ACTIVITY_ENTRIES = 200;
-
 const getNonEmptyTitle = (value) =>
   typeof value === 'string' && value.trim() ? value : null;
+
+// O histórico alimenta a linha do tempo pesquisável. Não limite essa coleção
+// aqui: a interface pagina os resultados sem descartar eventos antigos.
+export const prependHistoryEntry = (history, entry) => [
+  entry,
+  ...(Array.isArray(history) ? history : []),
+];
 
 export const createTaskHistoryDetails = (task, details = {}) => {
   const taskId = details.taskId ?? task?.id;

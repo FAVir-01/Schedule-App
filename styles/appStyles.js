@@ -2006,6 +2006,10 @@ export const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 16,
   },
+  activityHeaderText: {
+    flex: 1,
+    paddingRight: 16,
+  },
   profileTasksTitle: {
     fontSize: 20,
     fontWeight: '700',
@@ -2052,14 +2056,62 @@ export const styles = StyleSheet.create({
     marginRight: 10,
   },
   activityRowLabel: {
-    flex: 1,
     fontSize: 14,
     color: '#1F2742',
+  },
+  activityRowContent: {
+    flex: 1,
+  },
+  activityRowMeta: {
+    marginTop: 3,
+    fontSize: 12,
+    color: '#7f8998',
+  },
+  activityReflectionMeta: {
+    marginLeft: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  activityMoodEmoji: {
+    fontSize: 16,
   },
   activityRowTime: {
     marginLeft: 8,
     fontSize: 12,
     color: '#9aa5b5',
+  },
+  activitySearchArea: {
+    gap: 9,
+    marginBottom: 12,
+  },
+  activityResultsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  activityResultsText: {
+    fontSize: 12,
+    color: '#7f8998',
+  },
+  activityClearFilters: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#3c2ba7',
+  },
+  activityShowMore: {
+    alignSelf: 'center',
+    borderRadius: 18,
+    backgroundColor: '#edefff',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    marginTop: 10,
+  },
+  activityShowMoreText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#3c2ba7',
   },
   profileTasksFilters: {
     gap: 12,

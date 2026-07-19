@@ -115,8 +115,13 @@ const {
 const {
   backfillTaskTitlesInHistory,
   createTaskHistoryDetails,
+  prependHistoryEntry,
   pruneSelectedTaskIds,
 } = require('../utils/historyUtils');
+const {
+  buildSearchableTimelineItems,
+  normalizeTimelineSearchText,
+} = require('../utils/timelineUtils');
 const {
   shouldTriggerCompletionCelebration,
   willProgressReachCompletion,
@@ -1197,6 +1202,96 @@ test('remove da seleção em massa IDs de tarefas que não existem mais', () => 
     pruneSelectedTaskIds(unchangedSelection, tasks),
     unchangedSelection
   );
+});
+
+test('preserva todo o histórico que alimenta a linha do tempo', () => {
+  const existingHistory = Array.from({ length: 250 }, (_, index) => ({
+    id: `event-${index}`,
+  }));
+  const newEntry = { id: 'new-event' };
+  const result = prependHistoryEntry(existingHistory, newEntry);
+
+  assert.equal(result.length, 251);
+  assert.strictEqual(result[0], newEntry);
+  assert.equal(result.at(-1).id, 'event-249');
+});
+
+test('combina reflexões e ações em uma linha do tempo pesquisável', () => {
+  const result = buildSearchableTimelineItems({
+    history: [
+      {
+        id: 'activity-1',
+        type: 'task_completion_toggled',
+        timestamp: '2026-07-18T10:00:00.000Z',
+        details: { taskId: 'task-1', completed: true },
+      },
+    ],
+    tasks: [{ id: 'task-1', title: 'Ler um livro' }],
+    dayMoods: {
+      '2026-07-17': {
+        level: 4,
+        tags: ['focused'],
+        note: 'Meditação antes do trabalho',
+      },
+    },
+    now: new Date(2026, 6, 19, 12),
+    tagLabels: { focused: 'Focado' },
+  });
+
+  assert.equal(result.length, 2);
+  assert.equal(result[0].source, 'activity');
+  assert.equal(result[1].source, 'reflection');
+  assert.equal(result[1].dateKey, '2026-07-17');
+});
+
+test('busca notas e rótulos sem diferenciar acentos', () => {
+  const base = {
+    history: [],
+    dayMoods: {
+      '2026-07-18': {
+        level: 5,
+        tags: ['focused'],
+        note: 'Meditação concluída',
+      },
+    },
+    now: new Date(2026, 6, 19, 12),
+    tagLabels: { focused: 'Focado' },
+  };
+
+  assert.equal(normalizeTimelineSearchText('Meditação'), 'meditacao');
+  assert.equal(buildSearchableTimelineItems({ ...base, query: 'meditacao' }).length, 1);
+  assert.equal(buildSearchableTimelineItems({ ...base, query: 'focado' }).length, 1);
+  assert.equal(buildSearchableTimelineItems({ ...base, query: 'ansioso' }).length, 0);
+});
+
+test('filtra a linha do tempo por período, humor e conteúdo', () => {
+  const base = {
+    history: [
+      {
+        id: 'old-activity',
+        type: 'task_created',
+        timestamp: new Date(2026, 5, 1, 10).toISOString(),
+        details: { title: 'Evento antigo' },
+      },
+    ],
+    dayMoods: {
+      '2026-07-18': { level: 4, note: 'Dia produtivo', photo: 'file://photo.jpg' },
+      '2026-07-17': { level: 2, note: 'Dia difícil' },
+      '2026-06-01': { level: 5, note: 'Fora do período', photo: 'file://old.jpg' },
+    },
+    now: new Date(2026, 6, 19, 12),
+  };
+  const result = buildSearchableTimelineItems({
+    ...base,
+    period: '7',
+    mood: 'positive',
+    requireNote: true,
+    requirePhoto: true,
+  });
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].dateKey, '2026-07-18');
+  assert.equal(result[0].source, 'reflection');
 });
 
 test('valida tamanho, dimensoes e tipo das imagens selecionadas', () => {
