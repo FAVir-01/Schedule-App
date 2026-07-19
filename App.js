@@ -3164,8 +3164,8 @@ function ScheduleApp() {
                 })}
               </View>
 
-              <View style={styles.todayTemporalActions}>
-                {!isSelectedToday ? (
+              {!isSelectedToday ? (
+                <View style={styles.todayTemporalActions}>
                   <TouchableOpacity
                     style={[
                       styles.todayTemporalButton,
@@ -3181,21 +3181,8 @@ function ScheduleApp() {
                       {t.today.backToToday}
                     </Text>
                   </TouchableOpacity>
-                ) : null}
-                <TouchableOpacity
-                  style={styles.todayTemporalButton}
-                  onPress={() => handleOpenReport(selectedDate)}
-                  activeOpacity={0.75}
-                  accessibilityRole="button"
-                  accessibilityLabel={t.today.openDayReport}
-                  accessibilityHint={t.today.openDayReportHint}
-                >
-                  <Ionicons name="document-text-outline" size={16} color="#3c2ba7" />
-                  <Text style={styles.todayTemporalButtonText}>
-                    {t.today.openDayReport}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+                </View>
+              ) : null}
 
               {tagOptions.length > 0 && (
                 <View style={styles.tagFilterContainer}>
