@@ -340,6 +340,25 @@ function ReflectionSheet({
               })}
             </View>
             <Text style={styles.reflectionHint}>{t.reflection.customizeHint}</Text>
+            {selectedLevel ? (
+              <Pressable
+                style={styles.reflectionCustomizeButton}
+                onPress={() => handleCustomizeLevel(selectedLevel)}
+                accessibilityRole="button"
+                accessibilityLabel={t.reflection.customizeSelected.replace(
+                  '{mood}',
+                  t.reflection.levels[selectedLevel]
+                )}
+              >
+                <Ionicons name="color-wand-outline" size={16} color="#3c2ba7" />
+                <Text style={styles.reflectionCustomizeButtonText}>
+                  {t.reflection.customizeSelected.replace(
+                    '{mood}',
+                    t.reflection.levels[selectedLevel]
+                  )}
+                </Text>
+              </Pressable>
+            ) : null}
 
             <Text style={styles.reflectionQuestion}>{t.reflection.tagsQuestion}</Text>
             <View style={styles.reflectionTagRow}>
