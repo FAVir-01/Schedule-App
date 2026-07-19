@@ -1430,6 +1430,16 @@ test('formata mensagens localizadas com os limites aplicados', () => {
   );
 });
 
+test('mantem listas extensas virtualizadas na tela principal e no perfil', () => {
+  const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
+
+  assert.equal(appSource.includes('data={visibleTasksWithStats}'), true);
+  assert.equal(appSource.includes('renderItem={renderTodayTask}'), true);
+  assert.equal(appSource.includes('visibleTasksWithStats.map('), false);
+  assert.equal(appSource.includes('data={profileFilterItems}'), true);
+  assert.equal(appSource.includes('renderItem={renderProfileFilterChip}'), true);
+});
+
 const runTests = async () => {
   let failures = 0;
   for (const { name, run } of tests) {

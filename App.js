@@ -140,6 +140,7 @@ import { normalizePeriodGoal } from './utils/periodGoalUtils';
 const habitImage = require('./assets/add-habit.png');
 const reflectionImage = require('./assets/add-reflection.png');
 const TASK_DELETE_UNDO_DURATION_MS = 6000;
+const PROFILE_OVERALL_FILTER_ITEM = Object.freeze({ id: '__overall__' });
 
 const INITIAL_STORAGE_LOAD_FAILURES = {
   tasks: true,
@@ -1097,6 +1098,10 @@ function ScheduleApp() {
     () => tasks.find((task) => task.id === profileFilterId) ?? null,
     [profileFilterId, tasks]
   );
+  const profileFilterItems = useMemo(
+    () => [PROFILE_OVERALL_FILTER_ITEM, ...tasks],
+    [tasks]
+  );
   // Com um hábito filtrado, as stats passam a ser dele: dias desde a criação,
   // total de conclusões e sequências do próprio hábito.
   const profileStats = useMemo(
@@ -1741,6 +1746,7 @@ function ScheduleApp() {
     dayMoodsRef.current = dayMoods;
     isHydratedRef.current = isHydrated;
   });
+
 
   // Flush imediato ao ir pra background: sem isso, mudanças feitas nos últimos
   // 500ms (debounce) se perdem se o sistema matar o app.
@@ -2920,6 +2926,88 @@ function ScheduleApp() {
     [openHabitSheet]
   );
 
+  const renderTodayTask = useCallback(
+    ({ item: task, index }) => (
+      <Animated.View
+        onLayout={(event) => handleTaskLayout(task.id, event)}
+        style={[
+          index === 0 && styles.todayFirstTask,
+          { transform: [{ translateY: getTaskTranslateY(task.id) }] },
+        ]}
+      >
+        <SwipeableTaskCard
+          task={task}
+          backgroundColor={task.backgroundColor}
+          borderColor={task.borderColor}
+          dateKey={selectedDateKey}
+          totalSubtasks={task.totalSubtasks}
+          completedSubtasks={task.completedSubtasks}
+          onPress={handleCardPress}
+          onToggleCompletion={handleCardToggle}
+          onQuantumDelta={handleCardQuantumDelta}
+          onCopy={handleCardCopy}
+          onDelete={handleCardDelete}
+          language={language}
+          isVisible={activeTab === 'today'}
+          onEdit={handleCardEdit}
+        />
+      </Animated.View>
+    ),
+    [
+      activeTab,
+      getTaskTranslateY,
+      handleCardCopy,
+      handleCardDelete,
+      handleCardEdit,
+      handleCardPress,
+      handleCardQuantumDelta,
+      handleCardToggle,
+      handleTaskLayout,
+      language,
+      selectedDateKey,
+    ]
+  );
+
+  const renderProfileFilterChip = useCallback(
+    ({ item }) => {
+      const isOverall = item === PROFILE_OVERALL_FILTER_ITEM;
+      const isSelected = isOverall ? !profileFilterTask : item.id === profileFilterId;
+      const label = isOverall
+        ? t.profile.overallSeries
+        : item.customImage
+          ? item.title
+          : `${item.emoji ? `${item.emoji} ` : ''}${item.title}`;
+
+      return (
+        <TouchableOpacity
+          style={[
+            styles.profileFilterChip,
+            isSelected && styles.profileFilterChipSelected,
+          ]}
+          onPress={() => setProfileFilterId(isSelected || isOverall ? null : item.id)}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          accessibilityState={{ selected: isSelected }}
+        >
+          {!isOverall && item.customImage ? (
+            <Image source={{ uri: item.customImage }} style={styles.profileFilterChipImage} />
+          ) : null}
+          <Text
+            style={[
+              styles.profileFilterChipText,
+              isSelected && styles.profileFilterChipTextSelected,
+            ]}
+            numberOfLines={1}
+          >
+            {label}
+          </Text>
+        </TouchableOpacity>
+      );
+    },
+    [profileFilterId, profileFilterTask, t.profile.overallSeries]
+  );
+
   const closeTaskDetail = useCallback(() => {
     setActiveTaskId(null);
   }, []);
@@ -3077,10 +3165,19 @@ function ScheduleApp() {
           importantForAccessibility={isFabOpen ? 'no-hide-descendants' : 'auto'}
         >
           {activeTab === 'today' ? (
-            <ScrollView
+            <FlatList
+              data={visibleTasksWithStats}
+              renderItem={renderTodayTask}
+              keyExtractor={(task) => String(task.id)}
               contentContainerStyle={styles.todayContent}
               showsVerticalScrollIndicator={false}
-            >
+              initialNumToRender={6}
+              maxToRenderPerBatch={6}
+              updateCellsBatchingPeriod={16}
+              windowSize={5}
+              removeClippedSubviews={false}
+              ListHeaderComponent={
+                <>
               <View style={styles.todayHeader}>
                 <Text style={styles.todayDateEyebrow}>{selectedDateEyebrow}</Text>
                 <Text style={styles.todayTitle}>{selectedDateLabel}</Text>
@@ -3244,9 +3341,10 @@ function ScheduleApp() {
                   </ScrollView>
                 </View>
               )}
-
-              <View style={styles.tasksSection}>
-                {visibleTasksWithStats.length === 0 ? (
+                </>
+              }
+              ListEmptyComponent={
+                <View style={styles.tasksSection}>
                   <View style={styles.emptyStateContainer}>
                     <View
                       style={[styles.emptyStateIllustration, dynamicStyles.emptyStateIllustration]}
@@ -3260,36 +3358,9 @@ function ScheduleApp() {
                       {selectedTagFilter === 'all' ? t.today.emptyDay : t.today.emptyDayTag}
                     </Text>
                   </View>
-                ) : (
-                  <View style={styles.tasksList}>
-                    {visibleTasksWithStats.map((task) => (
-                      <Animated.View
-                        key={task.id}
-                        onLayout={(event) => handleTaskLayout(task.id, event)}
-                        style={{ transform: [{ translateY: getTaskTranslateY(task.id) }] }}
-                      >
-                        <SwipeableTaskCard
-                          task={task}
-                          backgroundColor={task.backgroundColor}
-                          borderColor={task.borderColor}
-                          dateKey={selectedDateKey}
-                          totalSubtasks={task.totalSubtasks}
-                          completedSubtasks={task.completedSubtasks}
-                          onPress={handleCardPress}
-                          onToggleCompletion={handleCardToggle}
-                          onQuantumDelta={handleCardQuantumDelta}
-                          onCopy={handleCardCopy}
-                          onDelete={handleCardDelete}
-                          language={language}
-                          isVisible={activeTab === 'today'}
-                          onEdit={handleCardEdit}
-                        />
-                      </Animated.View>
-                    ))}
-                  </View>
-                )}
-              </View>
-            </ScrollView>
+                </View>
+              }
+            />
           ) : activeTab === 'calendar' ? null : activeTab === 'profile' ? (
              <ScrollView
                style={{ flex: 1 }}
@@ -3322,62 +3393,23 @@ function ScheduleApp() {
 
                 {/* Filtro: geral ou um hábito específico — alimenta gráfico e stats */}
                 {tasks.length > 0 ? (
-                  <ScrollView
+                  <FlatList
                     horizontal
+                    data={profileFilterItems}
+                    renderItem={renderProfileFilterChip}
+                    keyExtractor={(item) =>
+                      item === PROFILE_OVERALL_FILTER_ITEM
+                        ? 'overall'
+                        : `task:${item.id}`
+                    }
                     showsHorizontalScrollIndicator={false}
                     style={styles.profileChipsScroll}
                     contentContainerStyle={styles.profileChipsContent}
-                  >
-                    <TouchableOpacity
-                      style={[
-                        styles.profileFilterChip,
-                        !profileFilterTask && styles.profileFilterChipSelected,
-                      ]}
-                      onPress={() => setProfileFilterId(null)}
-                      activeOpacity={0.75}
-                    >
-                      <Text
-                        style={[
-                          styles.profileFilterChipText,
-                          !profileFilterTask && styles.profileFilterChipTextSelected,
-                        ]}
-                      >
-                        {t.profile.overallSeries}
-                      </Text>
-                    </TouchableOpacity>
-                    {tasks.map((task) => {
-                      const isSelected = task.id === profileFilterId;
-                      return (
-                        <TouchableOpacity
-                          key={task.id}
-                          style={[
-                            styles.profileFilterChip,
-                            isSelected && styles.profileFilterChipSelected,
-                          ]}
-                          onPress={() => setProfileFilterId(isSelected ? null : task.id)}
-                          activeOpacity={0.75}
-                        >
-                          {task.customImage ? (
-                            <Image
-                              source={{ uri: task.customImage }}
-                              style={styles.profileFilterChipImage}
-                            />
-                          ) : null}
-                          <Text
-                            style={[
-                              styles.profileFilterChipText,
-                              isSelected && styles.profileFilterChipTextSelected,
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {task.customImage
-                              ? task.title
-                              : `${task.emoji ? `${task.emoji} ` : ''}${task.title}`}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
+                    initialNumToRender={8}
+                    maxToRenderPerBatch={8}
+                    windowSize={5}
+                    removeClippedSubviews={Platform.OS === 'android'}
+                  />
                 ) : null}
 
                 <PerformanceChart
