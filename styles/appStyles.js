@@ -225,8 +225,8 @@ export const styles = StyleSheet.create({
   tasksSection: {
     marginTop: 8,
   },
-  tasksList: {
-    paddingBottom: 4,
+  todayFirstTask: {
+    marginTop: 8,
   },
   emptyState: {
     fontSize: 15,
