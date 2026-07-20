@@ -119,7 +119,6 @@ import CustomizeCalendarModal from './components/CustomizeCalendarModal';
 import DayReportModal from './components/DayReportModal';
 import TaskDetailModal from './components/TaskDetailModal';
 import ProfileTaskDetailModal from './components/ProfileTaskDetailModal';
-import PeriodGoalModal, { PeriodGoalSummaryCard } from './components/PeriodGoal';
 import ActivityTimelineModal from './components/ActivityTimelineModal';
 import LocalSummaryModal from './components/LocalSummaryModal';
 import ProfileTasksModal from './components/ProfileTasksModal';
@@ -146,7 +145,6 @@ import {
   selectLatestAppBackupFromDirectory,
 } from './services/backupService';
 import { buildTemplateTasks, migrateImportedTemplateTasks } from './utils/templateUtils';
-import { normalizePeriodGoal } from './utils/periodGoalUtils';
 
 
 const habitImage = require('./assets/add-habit.png');
@@ -159,6 +157,8 @@ const TODAY_DATE_WINDOW_RADIUS = 45;
 const TODAY_DATE_TRANSITION_OUT_MS = 240;
 const TODAY_DATE_TRANSITION_IN_MS = 280;
 const TODAY_TASK_REORDER_MS = 420;
+// Pausa antes do card concluído viajar: deixa o check/água terminarem primeiro.
+const TODAY_TASK_REORDER_DELAY_MS = 240;
 
 const INITIAL_STORAGE_LOAD_FAILURES = {
   tasks: true,
@@ -356,7 +356,6 @@ function ScheduleApp() {
   const [reportDate, setReportDate] = useState(null);
   const [activeTaskId, setActiveTaskId] = useState(null);
   const [activeProfileTaskId, setActiveProfileTaskId] = useState(null);
-  const [periodGoalTaskId, setPeriodGoalTaskId] = useState(null);
   const [pendingTaskDeletion, setPendingTaskDeletion] = useState(null);
   // Undo do swipe "Arquivar" na aba Hoje (exclusão só existe em Arquivadas).
   const [pendingTaskArchive, setPendingTaskArchive] = useState(null);
@@ -853,26 +852,6 @@ function ScheduleApp() {
     );
   }, []);
 
-  const handleSavePeriodGoal = useCallback(
-    (taskId, nextGoal) => {
-      const targetTask = (tasksRef.current ?? []).find((task) => task.id === taskId);
-      if (!targetTask) {
-        setPeriodGoalTaskId(null);
-        return;
-      }
-      const normalizedGoal = normalizePeriodGoal(nextGoal);
-      setTasks((previous) =>
-        previous.map((task) =>
-          task.id === taskId ? { ...task, periodGoal: normalizedGoal } : task
-        )
-      );
-      appendHistoryEntry('task_updated', createTaskHistoryDetails(targetTask));
-      setPeriodGoalTaskId(null);
-      triggerSelection();
-    },
-    [appendHistoryEntry]
-  );
-
   const loadMoreCalendarMonths = useCallback(() => {
     setCalendarMonths((previous) => {
       if (previous.length === 0) {
@@ -1108,6 +1087,7 @@ function ScheduleApp() {
           toValue: 0,
           duration: TODAY_TASK_REORDER_MS,
           easing: Easing.inOut(Easing.cubic),
+          delay: TODAY_TASK_REORDER_DELAY_MS,
           useNativeDriver: USE_NATIVE_DRIVER,
         })
       );
@@ -1236,10 +1216,6 @@ function ScheduleApp() {
   const activeProfileTask = useMemo(
     () => tasks.find((task) => task.id === activeProfileTaskId) ?? null,
     [activeProfileTaskId, tasks]
-  );
-  const periodGoalTask = useMemo(
-    () => tasks.find((task) => task.id === periodGoalTaskId) ?? null,
-    [periodGoalTaskId, tasks]
   );
   const profileFilterTask = useMemo(
     () => tasks.find((task) => task.id === profileFilterId) ?? null,
@@ -1591,7 +1567,8 @@ function ScheduleApp() {
           })
         : task.subtasks;
 
-      const { completed, ...restTask } = task;
+      // `periodGoal` pertence ao recurso removido; omiti-lo também migra dados antigos.
+      const { completed, periodGoal: _removedPeriodGoal, ...restTask } = task;
       const notificationIds = getTaskNotificationIds(task);
 
       return {
@@ -1600,7 +1577,6 @@ function ScheduleApp() {
         completedDates: reconciledQuantumState.completedDates,
         subtasks: normalizedSubtasks,
         repeat: normalizeRepeatConfig(task.repeat),
-        periodGoal: normalizePeriodGoal(task.periodGoal),
         quantum: reconciledQuantumState.quantum,
         notificationIds,
         notificationId: notificationIds[0] ?? null,
@@ -3885,15 +3861,6 @@ function ScheduleApp() {
                   selectedTask={profileFilterTask}
                 />
 
-                {profileFilterTask ? (
-                  <PeriodGoalSummaryCard
-                    task={profileFilterTask}
-                    language={language}
-                    referenceDate={today}
-                    onEdit={setPeriodGoalTaskId}
-                  />
-                ) : null}
-
                 <View style={styles.profileStatsSection}>
                   <Text style={styles.profileStatsTitle}>{t.profile.stats}</Text>
                   <View style={styles.profileStatsGrid}>
@@ -4554,17 +4521,6 @@ function ScheduleApp() {
         onToggleArchive={handleToggleProfileTaskArchive}
         onTogglePin={handleToggleProfileTaskPin}
         onDelete={handleDeleteProfileTask}
-        onEditPeriodGoal={(taskId) => {
-          setActiveProfileTaskId(null);
-          setPeriodGoalTaskId(taskId);
-        }}
-      />
-      <PeriodGoalModal
-        visible={Boolean(periodGoalTask)}
-        task={periodGoalTask}
-        language={language}
-        onClose={() => setPeriodGoalTaskId(null)}
-        onSave={handleSavePeriodGoal}
       />
     </View>
   );
