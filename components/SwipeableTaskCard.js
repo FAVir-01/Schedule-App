@@ -238,12 +238,14 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     if (!isQuantum || !isWaterAnimation || !cardSize.height) {
       return;
     }
+    // Nível d'água anima só translateY → pode (e deve) rodar na thread nativa;
+    // na thread JS ele competia com o re-render da conclusão e engasgava.
     Animated.spring(waterLevelAnim, {
       toValue: waterPercent,
-      damping: 10,
-      stiffness: 140,
-      mass: 0.9,
-      useNativeDriver: false,
+      damping: 14,
+      stiffness: 120,
+      mass: 1,
+      useNativeDriver: USE_NATIVE_DRIVER,
     }).start();
   }, [cardSize.height, isQuantum, isWaterAnimation, waterLevelAnim, waterPercent]);
 
@@ -330,8 +332,8 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     }
     const animation = Animated.timing(adjustPanelProgress, {
       toValue: isAdjustOpen ? 1 : 0,
-      duration: isAdjustOpen ? 220 : 180,
-      easing: isAdjustOpen ? Easing.out(Easing.cubic) : Easing.in(Easing.quad),
+      duration: isAdjustOpen ? 300 : 200,
+      easing: isAdjustOpen ? Easing.bezier(0.16, 1, 0.3, 1) : Easing.in(Easing.quad),
       useNativeDriver: false,
     });
     animation.start();
@@ -356,14 +358,6 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     },
     [onQuantumDelta, quantumStep, task]
   );
-  const handleTogglePress = useCallback(() => {
-    if (isQuantum) {
-      closeActions();
-      applyQuantumStep(1);
-      return;
-    }
-    handleAction(() => onToggleCompletion?.(task));
-  }, [applyQuantumStep, closeActions, handleAction, isQuantum, onToggleCompletion, task]);
   const handleToggleLongPress = useCallback(() => {
     if (!isQuantum) {
       return;
@@ -379,6 +373,29 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
       return willOpen;
     });
   }, [bumpAdjustClose, isQuantum]);
+  const handleTogglePress = useCallback(() => {
+    if (isQuantum) {
+      closeActions();
+      if (isQuantumComplete) {
+        // Meta cheia: somar seria clampado (nada acontecia). Tap abre o
+        // painel p/ decrescer ou ajustar.
+        handleToggleLongPress();
+        return;
+      }
+      applyQuantumStep(1);
+      return;
+    }
+    handleAction(() => onToggleCompletion?.(task));
+  }, [
+    applyQuantumStep,
+    closeActions,
+    handleAction,
+    handleToggleLongPress,
+    isQuantum,
+    isQuantumComplete,
+    onToggleCompletion,
+    task,
+  ]);
 
   return (
     <View style={[styles.swipeableWrapper, { zIndex: isOpen ? 10 : 1 }]}>
@@ -518,7 +535,9 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
               ]}
               accessibilityRole={isQuantum ? 'button' : 'checkbox'}
               accessibilityLabel={
-                isQuantum && quantumStepLabel
+                isQuantumComplete
+                  ? t.taskCard.adjustProgress
+                  : isQuantum && quantumStepLabel
                   ? t.taskCard.addQuantumProgressStep.replace('{step}', quantumStepLabel)
                   : isQuantum
                   ? t.taskCard.addQuantumProgress
@@ -554,7 +573,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
           </View>
         )}
         </View>
-        {isQuantum && !isQuantumComplete && (
+        {isQuantum && (
           <Animated.View
             pointerEvents={isAdjustOpen ? 'auto' : 'none'}
             importantForAccessibility={isAdjustOpen ? 'auto' : 'no-hide-descendants'}
