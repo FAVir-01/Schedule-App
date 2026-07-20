@@ -1506,18 +1506,36 @@ test('mantem a troca de dias do Today animada e sensivel a reduzir movimento', (
   assert.equal(appSource.includes('setPendingTodayDateKey(targetDateKey)'), true);
 });
 
-test('mantem a crista da agua opaca para nao marcar a emenda do gradiente', () => {
+test('desenha crista e corpo da agua no mesmo gradiente sem emenda', () => {
   const taskCardSource = fs.readFileSync(
     path.join(root, 'components/SwipeableTaskCard.js'),
     'utf8'
   );
 
   assert.equal(taskCardSource.includes('const waveHeight = 19;'), true);
-  assert.equal(taskCardSource.includes('fill="rgb(153, 199, 252)"'), true);
-  assert.equal(
-    taskCardSource.includes('fill="rgba(96, 165, 250, 0.55)"'),
-    false
+  assert.equal(taskCardSource.includes('<SvgLinearGradient'), true);
+  assert.equal(taskCardSource.includes('stopColor="rgb(153, 199, 252)"'), true);
+  assert.equal(taskCardSource.includes('stopColor="rgb(100, 158, 248)"'), true);
+  assert.equal(taskCardSource.includes('fill={`url(#${waterGradientId})`}'), true);
+  assert.equal(taskCardSource.includes('AnimatedLinearGradient'), false);
+  assert.equal(taskCardSource.includes('waterSurfaceBridge'), false);
+});
+
+test('anima o painel quantum e a reordenacao de tarefas concluidas', () => {
+  const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
+  const taskCardSource = fs.readFileSync(
+    path.join(root, 'components/SwipeableTaskCard.js'),
+    'utf8'
   );
+
+  assert.equal(appSource.includes('useLayoutEffect(() => {'), true);
+  assert.equal(appSource.includes('taskOrderSnapshotRef'), true);
+  assert.equal(appSource.includes('duration: TODAY_TASK_REORDER_MS'), true);
+  assert.equal(appSource.includes('easing: Easing.inOut(Easing.cubic)'), true);
+  assert.equal(appSource.includes('CellRendererComponent={renderTodayCell}'), true);
+  assert.equal(taskCardSource.includes('Animated.timing(adjustPanelProgress'), true);
+  assert.equal(taskCardSource.includes("pointerEvents={isAdjustOpen ? 'auto' : 'none'}"), true);
+  assert.equal(taskCardSource.includes('outputRange: [0, 47]'), true);
 });
 
 const runTests = async () => {
