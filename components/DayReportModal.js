@@ -111,7 +111,7 @@ function DayReportModal({
   return (
     <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
       <View style={styles.reportOverlay}>
-        <Pressable style={styles.reportBackdrop} onPress={onClose} />
+        <Pressable style={styles.reportBackdrop} onPress={onClose} accessible={false} />
 
         <View style={[styles.reportSheet, { maxHeight: height * 0.9 }]}>
           <ImageBackground
@@ -126,7 +126,12 @@ function DayReportModal({
               <Text style={styles.reportYear}>{format(date, 'yyyy')}</Text>
             </View>
 
-            <Pressable onPress={onClose} style={styles.reportCloseButton}>
+            <Pressable
+              onPress={onClose}
+              style={styles.reportCloseButton}
+              accessibilityRole="button"
+              accessibilityLabel={t.report.close}
+            >
               <Ionicons name="close-circle" size={32} color="rgba(255,255,255,0.8)" />
             </Pressable>
           </ImageBackground>
@@ -163,6 +168,7 @@ function DayReportModal({
                   <Pressable
                     onPress={() => onEditReflection?.(dateKey)}
                     hitSlop={12}
+                    accessibilityRole="button"
                     accessibilityLabel={t.reflection.editReflection}
                   >
                     <Ionicons name="pencil" size={18} color="#8a86a8" />
@@ -172,8 +178,16 @@ function DayReportModal({
                   <Text style={styles.reportMoodNote}>{mood.note}</Text>
                 ) : null}
                 {mood.photo ? (
-                  <Pressable onPress={() => setIsPhotoOpen(true)}>
-                    <Image source={{ uri: mood.photo }} style={styles.reportMoodPhoto} />
+                  <Pressable
+                    onPress={() => setIsPhotoOpen(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.reflection.openPhoto}
+                  >
+                    <Image
+                      source={{ uri: mood.photo }}
+                      style={styles.reportMoodPhoto}
+                      accessible={false}
+                    />
                   </Pressable>
                 ) : null}
                 {mood.photo ? (
@@ -186,11 +200,14 @@ function DayReportModal({
                     <Pressable
                       style={styles.reportPhotoViewerOverlay}
                       onPress={() => setIsPhotoOpen(false)}
+                      accessibilityRole="button"
+                      accessibilityLabel={t.reflection.closePhoto}
                     >
                       <Image
                         source={{ uri: mood.photo }}
                         style={styles.reportPhotoViewerImage}
                         resizeMode="contain"
+                        accessible={false}
                       />
                     </Pressable>
                   </Modal>
@@ -200,6 +217,8 @@ function DayReportModal({
               <Pressable
                 style={styles.reportAddMoodButton}
                 onPress={() => onEditReflection?.(dateKey)}
+                accessibilityRole="button"
+                accessibilityLabel={t.reflection.addReflection}
               >
                 <Ionicons name="happy-outline" size={18} color="#3c2ba7" />
                 <Text style={styles.reportAddMoodText}>{t.reflection.addReflection}</Text>

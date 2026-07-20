@@ -3126,8 +3126,9 @@ function ScheduleApp() {
         key={key}
         style={styles.tabButton}
         onPress={() => handleChangeTab(key)}
-        accessibilityRole="button"
+        accessibilityRole="tab"
         accessibilityLabel={t.common.tabAccessibility.replace('{label}', label)}
+        accessibilityState={{ selected: isActive, disabled: isFabOpen }}
         disabled={isFabOpen}
       >
         <Ionicons
@@ -3407,6 +3408,7 @@ function ScheduleApp() {
                     onPress={() => setSettingsOpen(true)}
                     hitSlop={8}
                     activeOpacity={0.75}
+                    accessibilityRole="button"
                     accessibilityLabel={t.profile.settings}
                   >
                     <Ionicons name="settings-outline" size={20} color="#1a1a2e" />
