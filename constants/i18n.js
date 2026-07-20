@@ -448,6 +448,11 @@ const translations = {
       completed: 'All scheduled habits completed',
       moodRecorded: 'Mood recorded',
       openDayReport: 'Opens the daily report',
+      viewCalendar: 'Calendar',
+      viewFeed: 'Feed',
+      feedEmptyTitle: 'No reflections yet',
+      feedEmptyText: 'Days with a saved reflection show up here as posts.',
+      feedAddToday: "Add today's reflection",
     },
     report: {
       noHabits: 'No habits scheduled for this day.',
@@ -1101,6 +1106,11 @@ const translations = {
       completed: 'Todos os hábitos programados foram concluídos',
       moodRecorded: 'Humor registrado',
       openDayReport: 'Abre o relatório diário',
+      viewCalendar: 'Calendário',
+      viewFeed: 'Feed',
+      feedEmptyTitle: 'Nenhuma reflexão ainda',
+      feedEmptyText: 'Dias com reflexão registrada aparecem aqui como posts.',
+      feedAddToday: 'Adicionar reflexão de hoje',
     },
     report: {
       noHabits: 'Nenhum hábito agendado para este dia.',

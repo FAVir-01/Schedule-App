@@ -104,6 +104,7 @@ import { AnimatedPressable } from './components/animatedComponents';
 import ConfettiOverlay from './components/ConfettiOverlay';
 import StickyMonthHeader from './components/StickyMonthHeader';
 import CalendarMonthItem from './components/CalendarMonthItem';
+import ReflectionFeed from './components/ReflectionFeed';
 import CustomizeCalendarModal from './components/CustomizeCalendarModal';
 import DayReportModal from './components/DayReportModal';
 import TaskDetailModal from './components/TaskDetailModal';
@@ -119,7 +120,7 @@ import PerformanceChart from './components/PerformanceChart';
 import AppErrorBoundary from './components/AppErrorBoundary';
 import UndoSnackbar from './components/UndoSnackbar';
 import DiscoverScreen, { FirstRunOnboarding } from './components/DiscoverScreen';
-import { CALENDAR_DAY_SIZE } from './constants/layout';
+import { CALENDAR_DAY_SIZE, WEEKDAY_ROW_HEIGHT } from './constants/layout';
 import { getTaskTemplateCollection } from './constants/taskTemplates';
 import {
   cancelTaskReminders,
@@ -305,6 +306,9 @@ function ScheduleApp() {
   const [hasMountedCalendar, setHasMountedCalendar] = useState(
     DEFAULT_USER_SETTINGS.activeTab === 'calendar'
   );
+  // Aba calendar tem dois modos: grade de meses ou feed de reflexões.
+  const [calendarViewMode, setCalendarViewMode] = useState('calendar');
+  const [hasMountedFeed, setHasMountedFeed] = useState(false);
   const [isFabOpen, setIsFabOpen] = useState(false);
   const [isFabMenuMounted, setIsFabMenuMounted] = useState(false);
   const [isHabitSheetOpen, setIsHabitSheetOpen] = useState(false);
@@ -417,8 +421,9 @@ function ScheduleApp() {
   // Espaço real ocupado fora da grade: 10 do cabeçalho e 32 do container.
   // Antes, 12 desses pontos vinham do `gap` da lista e não eram incluídos no
   // getItemLayout, então o initialScrollIndex parava antes do mês atual.
+  // A linha de iniciais dos dias da semana também conta p/ o getItemLayout.
   const MARGINS = 42;
-  const BASE_HEIGHT = HEADER_HEIGHT + MARGINS;
+  const BASE_HEIGHT = HEADER_HEIGHT + MARGINS + WEEKDAY_ROW_HEIGHT;
   const buildMonthLayouts = useCallback((months) => {
     let currentOffset = 0;
     const layouts = months.map((month, index) => {
@@ -708,6 +713,15 @@ function ScheduleApp() {
 
   const handleOpenReport = useCallback((date) => {
     setReportDate(date);
+  }, []);
+  const handleOpenFeedDay = useCallback((dateKey) => {
+    setReportDate(normalizeDateValue(dateKey));
+  }, []);
+  const handleSelectCalendarViewMode = useCallback((mode) => {
+    if (mode === 'feed') {
+      setHasMountedFeed(true);
+    }
+    setCalendarViewMode(mode);
   }, []);
   const handleOpenProfileTasks = useCallback(() => {
     setProfileTasksOpen(true);
@@ -1302,10 +1316,6 @@ function ScheduleApp() {
   const actionsScale = useRef(new Animated.Value(0.85)).current;
   const actionsOpacity = useRef(new Animated.Value(0)).current;
   const actionsTranslateY = useRef(new Animated.Value(12)).current;
-  const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 50,
-    waitForInteraction: false,
-  }).current;
   const calendarListRef = useRef(null);
   const calendarScrollRetryTimerRef = useRef(null);
   const calendarScrollRetryIndexRef = useRef(null);
@@ -1338,20 +1348,31 @@ function ScheduleApp() {
     },
     []
   );
-  const onViewableItemsChanged = useRef(({ viewableItems }) => {
-    if (viewableItems && viewableItems.length > 0) {
-      const topItem = viewableItems[0];
-      if (topItem && topItem.item && topItem.item.date) {
-        const topMonthId = topItem.item.monthId;
-        setVisibleCalendarMonthIds((previous) =>
-          previous.size === 1 && previous.has(topMonthId)
-            ? previous
-            : new Set([topMonthId])
-        );
-        setVisibleCalendarDate(topItem.item.date);
+  // A faixa do topo mostra o mês que está fisicamente sob ela: o mês cujo bloco
+  // contém o offset atual de scroll. A viewability (50% visível) trocava de mês
+  // cedo demais — a faixa dizia "julho" com as últimas semanas de junho na tela.
+  const visibleCalendarMonthIdRef = useRef(getMonthId(new Date()));
+  const handleCalendarScroll = useCallback(
+    (event) => {
+      const offsetY = event.nativeEvent.contentOffset.y;
+      const layouts = monthLayoutsRef.current;
+      let index = 0;
+      for (let i = 0; i < layouts.length; i += 1) {
+        if (layouts[i].offset <= offsetY + 1) {
+          index = i;
+        } else {
+          break;
+        }
       }
-    }
-  }).current;
+      const month = calendarMonths[index];
+      if (month && visibleCalendarMonthIdRef.current !== month.monthId) {
+        visibleCalendarMonthIdRef.current = month.monthId;
+        setVisibleCalendarMonthIds(new Set([month.monthId]));
+        setVisibleCalendarDate(month.date);
+      }
+    },
+    [calendarMonths]
+  );
   const emptyStateIconSize = isCompact ? 98 : 112;
   const normalizeStoredTasks = useCallback((storedTasks) => {
     const normalizeCompletedDates = (value) => {
@@ -3582,39 +3603,106 @@ function ScheduleApp() {
               pointerEvents={isCalendarTabActive ? 'auto' : 'none'}
               importantForAccessibility={isCalendarTabActive ? 'auto' : 'no-hide-descendants'}
             >
-              <StickyMonthHeader
-                date={visibleCalendarDate}
-                customImages={customMonthImages}
-                language={language}
-              />
+              {/* Seletor Calendário/Feed: pílula centralizada no topo */}
+              <View style={styles.calendarViewSwitcherWrapper}>
+                <View style={styles.calendarViewSwitcher} accessibilityRole="tablist">
+                  {[
+                    { key: 'calendar', label: t.calendar.viewCalendar, icon: 'calendar-clear' },
+                    { key: 'feed', label: t.calendar.viewFeed, icon: 'newspaper' },
+                  ].map((segment) => {
+                    const isActive = calendarViewMode === segment.key;
+                    return (
+                      <Pressable
+                        key={segment.key}
+                        style={[
+                          styles.calendarViewSwitcherSegment,
+                          isActive && styles.calendarViewSwitcherSegmentActive,
+                        ]}
+                        onPress={() => handleSelectCalendarViewMode(segment.key)}
+                        accessibilityRole="tab"
+                        accessibilityState={{ selected: isActive }}
+                      >
+                        <Ionicons
+                          name={isActive ? segment.icon : `${segment.icon}-outline`}
+                          size={14}
+                          color={isActive ? '#ffffff' : '#6f7a86'}
+                        />
+                        <Text
+                          style={[
+                            styles.calendarViewSwitcherText,
+                            isActive && styles.calendarViewSwitcherTextActive,
+                          ]}
+                        >
+                          {segment.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
 
-              <FlatList
-                ref={calendarListRef}
-                data={calendarMonths}
-                renderItem={renderCalendarMonth}
-                keyExtractor={(item) => item.id.toString()}
-                showsVerticalScrollIndicator={false}
-                removeClippedSubviews={Platform.OS === 'android'}
-                maxToRenderPerBatch={3}
-                windowSize={5}
-                initialScrollIndex={initialCalendarIndex !== -1 ? initialCalendarIndex : 12}
-                initialNumToRender={2}
-                updateCellsBatchingPeriod={16}
-                onViewableItemsChanged={onViewableItemsChanged}
-                viewabilityConfig={viewabilityConfig}
-                getItemLayout={getItemLayout}
-                onScrollToIndexFailed={handleCalendarScrollToIndexFailed}
-                contentContainerStyle={[
-                  styles.calendarListContent,
-                  {
-                    paddingTop: 0,
-                    paddingBottom: isCompact ? 56 : 72,
-                    paddingHorizontal: 0,
-                  },
-                ]}
-                onEndReached={loadMoreCalendarMonths}
-                onEndReachedThreshold={0.5}
-              />
+              {/* display:none preserva a posição de scroll ao alternar */}
+              <View
+                style={[{ flex: 1 }, calendarViewMode !== 'calendar' && { display: 'none' }]}
+                pointerEvents={calendarViewMode === 'calendar' ? 'auto' : 'none'}
+                importantForAccessibility={
+                  calendarViewMode === 'calendar' ? 'auto' : 'no-hide-descendants'
+                }
+              >
+                <StickyMonthHeader
+                  date={visibleCalendarDate}
+                  customImages={customMonthImages}
+                  language={language}
+                />
+
+                <FlatList
+                  ref={calendarListRef}
+                  data={calendarMonths}
+                  renderItem={renderCalendarMonth}
+                  keyExtractor={(item) => item.id.toString()}
+                  showsVerticalScrollIndicator={false}
+                  removeClippedSubviews={Platform.OS === 'android'}
+                  maxToRenderPerBatch={3}
+                  windowSize={5}
+                  initialScrollIndex={initialCalendarIndex !== -1 ? initialCalendarIndex : 12}
+                  initialNumToRender={2}
+                  updateCellsBatchingPeriod={16}
+                  onScroll={handleCalendarScroll}
+                  scrollEventThrottle={48}
+                  getItemLayout={getItemLayout}
+                  onScrollToIndexFailed={handleCalendarScrollToIndexFailed}
+                  contentContainerStyle={[
+                    styles.calendarListContent,
+                    {
+                      paddingTop: 0,
+                      paddingBottom: isCompact ? 56 : 72,
+                      paddingHorizontal: 0,
+                    },
+                  ]}
+                  onEndReached={loadMoreCalendarMonths}
+                  onEndReachedThreshold={0.5}
+                />
+              </View>
+
+              {hasMountedFeed ? (
+                <View
+                  style={[{ flex: 1 }, calendarViewMode !== 'feed' && { display: 'none' }]}
+                  pointerEvents={calendarViewMode === 'feed' ? 'auto' : 'none'}
+                  importantForAccessibility={
+                    calendarViewMode === 'feed' ? 'auto' : 'no-hide-descendants'
+                  }
+                >
+                  <ReflectionFeed
+                    dayMoods={dayMoods}
+                    moodAppearance={moodAppearance}
+                    language={language}
+                    todayKey={todayKey}
+                    onOpenDay={handleOpenFeedDay}
+                    onEditReflection={handleEditReflectionForDate}
+                    bottomPadding={isCompact ? 56 : 72}
+                  />
+                </View>
+              ) : null}
             </View>
           ) : null}
         </View>
