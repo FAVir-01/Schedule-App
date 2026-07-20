@@ -376,8 +376,8 @@ export const styles = StyleSheet.create({
   swipeActionCopy: {
     backgroundColor: '#eef1ff',
   },
-  swipeActionDelete: {
-    backgroundColor: '#ff6b6b',
+  swipeActionArchive: {
+    backgroundColor: '#3c2ba7',
   },
   swipeActionText: {
     fontSize: 12,
@@ -386,7 +386,7 @@ export const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginTop: 4,
   },
-  swipeActionTextDelete: {
+  swipeActionTextArchive: {
     color: '#ffffff',
   },
   swipeActionButtonDisabled: {
@@ -2083,6 +2083,74 @@ export const styles = StyleSheet.create({
   profileFilterChipTextSelected: {
     color: '#ffffff',
   },
+  profileFilterSheetOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  profileFilterSheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(26, 26, 46, 0.45)',
+  },
+  profileFilterSheetCard: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 28,
+    maxHeight: '70%',
+  },
+  profileFilterSheetHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#d8dbe8',
+    marginBottom: 14,
+  },
+  profileFilterSheetTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a2e',
+    marginBottom: 8,
+  },
+  profileFilterSheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  profileFilterSheetOverallIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: '#edefff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileFilterSheetIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    resizeMode: 'cover',
+  },
+  profileFilterSheetEmoji: {
+    fontSize: 22,
+    width: 30,
+    textAlign: 'center',
+  },
+  profileFilterSheetRowText: {
+    flex: 1,
+    fontSize: 15,
+    color: '#1a1a2e',
+  },
+  profileFilterSheetRowTextSelected: {
+    fontWeight: '700',
+    color: '#3c2ba7',
+  },
+  profileFilterSheetPinButton: {
+    padding: 4,
+  },
   profileActionsRow: {
     alignSelf: 'stretch',
     flexDirection: 'row',
@@ -2210,7 +2278,7 @@ export const styles = StyleSheet.create({
   },
   profileTasksContainer: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#f6f6fb',
     paddingTop: 20,
     paddingHorizontal: 20,
     paddingBottom: 28,
@@ -2221,12 +2289,22 @@ export const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 16,
   },
+  profileTasksCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e4e8f2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   activityHeaderText: {
     flex: 1,
     paddingRight: 16,
   },
   profileTasksTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
     color: '#1a1a2e',
   },
@@ -2246,6 +2324,45 @@ export const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6f7a86',
     textAlign: 'center',
+    marginTop: 12,
+  },
+  profileTasksTabsPill: {
+    flexDirection: 'row',
+    backgroundColor: '#e9eaf4',
+    borderRadius: 16,
+    padding: 4,
+    marginBottom: 16,
+  },
+  profileTasksTab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 11,
+  },
+  profileTasksTabActive: {
+    backgroundColor: '#ffffff',
+    shadowColor: '#1a1a2e',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  profileTasksTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6f7a86',
+  },
+  profileTasksTabTextActive: {
+    color: '#3c2ba7',
+  },
+  profileTasksSectionHeader: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6f7a86',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginTop: 12,
+    marginBottom: 8,
   },
   activityDayHeader: {
     fontSize: 13,
@@ -2336,10 +2453,12 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#f4f6fb',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e4e8f2',
     borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingVertical: 11,
   },
   profileTasksSearchInput: {
     flex: 1,
@@ -2351,17 +2470,20 @@ export const styles = StyleSheet.create({
   },
   profileTasksFilterPill: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 7,
     borderRadius: 16,
-    backgroundColor: '#edefff',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e4e8f2',
   },
   profileTasksFilterPillActive: {
     backgroundColor: '#3c2ba7',
+    borderColor: '#3c2ba7',
   },
   profileTasksFilterText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#3c2ba7',
+    color: '#4a5364',
   },
   profileTasksFilterTextActive: {
     color: '#ffffff',
@@ -2404,79 +2526,77 @@ export const styles = StyleSheet.create({
     color: '#ffffff',
     textTransform: 'uppercase',
   },
-  profileSwipeWrapper: {
-    marginBottom: 12,
-  },
-  profileSwipeActions: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
-    width: 92,
+  profileTasksBulkButtons: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 18,
-    backgroundColor: '#f5f5fb',
+    gap: 8,
   },
-  profileSwipeDelete: {
+  profileTasksBulkAction: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ff6b6b',
-    paddingVertical: 12,
-    paddingHorizontal: 10,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 14,
-    gap: 4,
+    backgroundColor: '#edefff',
   },
-  profileSwipeDeleteDisabled: {
-    opacity: 0.55,
-  },
-  profileSwipeDeleteText: {
-    fontSize: 11,
-    color: '#ffffff',
+  profileTasksBulkActionText: {
+    fontSize: 12,
     fontWeight: '700',
+    color: '#3c2ba7',
     textTransform: 'uppercase',
   },
-  profileTaskCard: {
+  profileTaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
     borderWidth: 1,
+    borderColor: '#eceef6',
     borderRadius: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    marginBottom: 10,
+    shadowColor: '#1a1a2e',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
   },
-  profileTaskCardSelected: {
+  profileTaskRowSelected: {
     borderColor: '#3c2ba7',
-    shadowColor: '#3c2ba7',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 4,
+    backgroundColor: '#f7f6ff',
   },
-  profileTaskCardContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingLeft: 16,
-    paddingRight: 8,
+  profileTaskTitleArchived: {
+    color: '#6f7a86',
   },
-  profileTaskVisibleActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingRight: 10,
-  },
-  profileTaskVisibleAction: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+  profileTaskSelectCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#c5cadb',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.72)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(26, 26, 46, 0.12)',
+    marginLeft: 10,
   },
-  profileTaskVisibleActionSelected: {
+  profileTaskSelectCircleActive: {
     backgroundColor: '#3c2ba7',
     borderColor: '#3c2ba7',
+  },
+  profileTaskStreakBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#fff4e6',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginLeft: 10,
+  },
+  profileTaskStreakText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#e8590c',
   },
   profileTaskIcon: {
     width: 42,
@@ -2519,10 +2639,11 @@ export const styles = StyleSheet.create({
     gap: 8,
     marginTop: 6,
   },
-  profileTaskTime: {
+  profileTaskMetaText: {
     fontSize: 12,
     color: '#6f7a86',
     fontWeight: '500',
+    flexShrink: 1,
   },
   profileTaskTag: {
     backgroundColor: '#ffffff',
@@ -2559,6 +2680,11 @@ export const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 8,
   },
+  profileDetailHeaderButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
   profileDetailHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2570,17 +2696,25 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
+  profileDetailIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
   profileDetailEmoji: {
-    fontSize: 34,
+    fontSize: 30,
   },
   profileDetailEmojiImage: {
-    width: 46,
-    height: 46,
+    width: 52,
+    height: 52,
     borderRadius: 16,
     resizeMode: 'cover',
   },
   profileDetailTitleBlock: {
-    marginLeft: 12,
+    marginLeft: 14,
     flex: 1,
   },
   profileDetailTitle: {
@@ -2593,13 +2727,34 @@ export const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6f7a86',
   },
-  profileDetailBody: {
-    gap: 12,
+  profileDetailArchivedBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: '#eef0f6',
+  },
+  profileDetailArchivedBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6f7a86',
+  },
+  profileDetailInfoCard: {
+    backgroundColor: '#f7f8fc',
+    borderRadius: 16,
+    paddingHorizontal: 14,
   },
   profileDetailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e6e8f2',
+  },
+  profileDetailRowLast: {
+    borderBottomWidth: 0,
   },
   profileDetailLabel: {
     fontSize: 13,
@@ -2661,6 +2816,45 @@ export const styles = StyleSheet.create({
   },
   profileDetailLockButtonTextActive: {
     color: '#ffffff',
+  },
+  profileDetailActionsSecondary: {
+    marginTop: 8,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  profileDetailArchiveButton: {
+    flex: 1,
+    minHeight: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#d9d5ed',
+    gap: 7,
+  },
+  profileDetailArchiveButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#3c2ba7',
+  },
+  profileDetailDeleteButton: {
+    flex: 1,
+    minHeight: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#ffd4d4',
+    gap: 7,
+  },
+  profileDetailDeleteButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#e03131',
   },
   
   // Customize Modal Styles

@@ -79,6 +79,7 @@ import {
   normalizeTaskTagKey,
   isPassiveTaskType,
   isReminderExpiredForDate,
+  isTaskArchived,
   reconcileQuantumCompletionState,
   reconcileTaskProgressOnEdit,
   restoreDeletedTaskAtIndex,
@@ -122,6 +123,7 @@ import PeriodGoalModal, { PeriodGoalSummaryCard } from './components/PeriodGoal'
 import ActivityTimelineModal from './components/ActivityTimelineModal';
 import LocalSummaryModal from './components/LocalSummaryModal';
 import ProfileTasksModal from './components/ProfileTasksModal';
+import ProfileFilterSheet from './components/ProfileFilterSheet';
 import SwipeableTaskCard from './components/SwipeableTaskCard';
 import ReflectionSheet from './components/ReflectionSheet';
 import SettingsSheet from './components/SettingsSheet';
@@ -151,6 +153,7 @@ const habitImage = require('./assets/add-habit.png');
 const reflectionImage = require('./assets/add-reflection.png');
 const TASK_DELETE_UNDO_DURATION_MS = 6000;
 const PROFILE_OVERALL_FILTER_ITEM = Object.freeze({ id: '__overall__' });
+const PROFILE_FILTER_MORE_ITEM = Object.freeze({ id: '__more__' });
 const TODAY_VISIBLE_DATE_RADIUS = 3;
 const TODAY_DATE_WINDOW_RADIUS = 45;
 const TODAY_DATE_TRANSITION_OUT_MS = 240;
@@ -355,6 +358,8 @@ function ScheduleApp() {
   const [activeProfileTaskId, setActiveProfileTaskId] = useState(null);
   const [periodGoalTaskId, setPeriodGoalTaskId] = useState(null);
   const [pendingTaskDeletion, setPendingTaskDeletion] = useState(null);
+  // Undo do swipe "Arquivar" na aba Hoje (exclusão só existe em Arquivadas).
+  const [pendingTaskArchive, setPendingTaskArchive] = useState(null);
   const [selectedTagFilter, setSelectedTagFilter] = useState(
     DEFAULT_USER_SETTINGS.selectedTagFilter
   );
@@ -369,6 +374,7 @@ function ScheduleApp() {
   const [reflectionDateKey, setReflectionDateKey] = useState(null);
   // Filtro do Profile: null = visão geral; id de hábito = gráfico/stats dele.
   const [profileFilterId, setProfileFilterId] = useState(null);
+  const [isProfileFilterSheetOpen, setProfileFilterSheetOpen] = useState(false);
   const [isSettingsOpen, setSettingsOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
@@ -386,6 +392,7 @@ function ScheduleApp() {
   const historySaveTimeoutRef = useRef(null);
   const dayMoodsSaveTimeoutRef = useRef(null);
   const taskDeleteUndoTimeoutRef = useRef(null);
+  const taskArchiveUndoTimeoutRef = useRef(null);
   // Marca quais stores falharam ao carregar, p/ não sobrescrever dado bom com estado vazio
   const loadFailuresRef = useRef({ ...INITIAL_STORAGE_LOAD_FAILURES });
   const storageProtectionAlertShownRef = useRef(false);
@@ -772,6 +779,9 @@ function ScheduleApp() {
     () => () => {
       if (taskDeleteUndoTimeoutRef.current) {
         clearTimeout(taskDeleteUndoTimeoutRef.current);
+      }
+      if (taskArchiveUndoTimeoutRef.current) {
+        clearTimeout(taskArchiveUndoTimeoutRef.current);
       }
     },
     []
@@ -1235,10 +1245,27 @@ function ScheduleApp() {
     () => tasks.find((task) => task.id === profileFilterId) ?? null,
     [profileFilterId, tasks]
   );
-  const profileFilterItems = useMemo(
-    () => [PROFILE_OVERALL_FILTER_ITEM, ...tasks],
-    [tasks]
-  );
+  // Ativas x arquivadas alimentam as abas de "Suas tarefas" e o sheet de filtro.
+  const { profileActiveTasks, profileArchivedTasks } = useMemo(() => {
+    const active = [];
+    const archived = [];
+    tasks.forEach((task) => {
+      (isTaskArchived(task, todayKey) ? archived : active).push(task);
+    });
+    return { profileActiveTasks: active, profileArchivedTasks: archived };
+  }, [tasks, todayKey]);
+  // Chips do gráfico: Geral + hábitos ativos fixados (📌) + "⋯" abre o sheet.
+  // Hábito filtrado mas não fixado ganha chip temporário para a seleção ficar visível.
+  const profileFilterItems = useMemo(() => {
+    const chips = profileActiveTasks.filter((task) => task.profilePinned);
+    if (
+      profileFilterTask &&
+      !chips.some((task) => task.id === profileFilterTask.id)
+    ) {
+      chips.unshift(profileFilterTask);
+    }
+    return [PROFILE_OVERALL_FILTER_ITEM, ...chips, PROFILE_FILTER_MORE_ITEM];
+  }, [profileActiveTasks, profileFilterTask]);
   // Com um hábito filtrado, as stats passam a ser dele: dias desde a criação,
   // total de conclusões e sequências do próprio hábito.
   const profileStats = useMemo(
@@ -2609,10 +2636,102 @@ function ScheduleApp() {
     AccessibilityInfo.announceForAccessibility(t.taskCard.restoredTask);
   }, [pendingTaskDeletion, refreshTaskReminder, t.taskCard.restoredTask]);
 
+  // Arquivar tira a tarefa da agenda a partir de hoje, preservando o histórico.
+  const handleArchiveProfileTasks = useCallback(
+    (taskIds) => {
+      const idSet = new Set(taskIds);
+      tasks.forEach((task) => {
+        if (idSet.has(task.id) && !task.archived) {
+          void cancelTaskReminders(task);
+        }
+      });
+      setTasks((previous) =>
+        previous.map((task) =>
+          idSet.has(task.id) && !task.archived
+            ? {
+                ...task,
+                archived: true,
+                archivedAt: todayKey,
+                notificationIds: [],
+                notificationId: null,
+                notificationScheduleMode: null,
+              }
+            : task
+        )
+      );
+    },
+    [tasks, todayKey]
+  );
+
+  // Reativar limpa o arquivamento; tarefa avulsa com data passada volta para hoje.
+  const handleUnarchiveProfileTasks = useCallback(
+    (taskIds) => {
+      const idSet = new Set(taskIds);
+      const updatedById = new Map();
+      tasks.forEach((task) => {
+        if (!idSet.has(task.id)) {
+          return;
+        }
+        const next = { ...task, archived: false, archivedAt: null };
+        if (!normalizeRepeatConfig(task.repeat).enabled) {
+          const startDate = normalizeDateValue(task.dateKey ?? task.date);
+          if (startDate && getDateKey(startDate) < todayKey) {
+            next.date = today;
+            next.dateKey = todayKey;
+          }
+        }
+        updatedById.set(task.id, next);
+      });
+      if (updatedById.size === 0) {
+        return;
+      }
+      setTasks((previous) =>
+        previous.map((task) => updatedById.get(task.id) ?? task)
+      );
+      updatedById.forEach((task) => {
+        void refreshTaskReminder(task, null, { notifyOnFailure: false });
+      });
+    },
+    [refreshTaskReminder, tasks, today, todayKey]
+  );
+
+  const handleToggleProfileTaskArchive = useCallback(
+    (taskId) => {
+      const task = tasks.find((current) => current.id === taskId);
+      if (!task) {
+        return;
+      }
+      // Mesmo critério do modal: avulsa com data passada conta como arquivada,
+      // então "Reativar" nela move a data para hoje.
+      if (isTaskArchived(task, todayKey)) {
+        handleUnarchiveProfileTasks([taskId]);
+      } else {
+        handleArchiveProfileTasks([taskId]);
+      }
+    },
+    [handleArchiveProfileTasks, handleUnarchiveProfileTasks, tasks, todayKey]
+  );
+
+  const handleToggleProfileTaskPin = useCallback((taskId) => {
+    setTasks((previous) =>
+      previous.map((task) =>
+        task.id === taskId
+          ? { ...task, profilePinned: !task.profilePinned }
+          : task
+      )
+    );
+  }, []);
+
   const pendingTaskDeletionMessage = pendingTaskDeletion
     ? t.taskCard.deletedTask.replace(
         '{title}',
         pendingTaskDeletion.task.title ?? t.common.untitledTask
+      )
+    : null;
+  const pendingTaskArchiveMessage = pendingTaskArchive
+    ? t.taskCard.archivedTask.replace(
+        '{title}',
+        pendingTaskArchive.title ?? t.common.untitledTask
       )
     : null;
 
@@ -3158,25 +3277,38 @@ function ScheduleApp() {
     },
     [openHabitSheet]
   );
-  const handleCardDelete = useCallback(
+  // Swipe na aba Hoje arquiva (não exclui): reversível pelo snackbar ou
+  // pela aba Arquivadas de "Suas tarefas".
+  const handleCardArchive = useCallback(
     (task) => {
       if (task.profileLocked) {
         return;
       }
-      const originalIndex = (tasksRef.current ?? []).findIndex(
-        (current) => current.id === task.id
-      );
-      void cancelTaskReminders(task);
-      preserveTaskTitlesInHistory([task]);
-      setTasks((previous) => previous.filter((current) => current.id !== task.id));
-      const historyEntryId = appendHistoryEntry(
-        'task_deleted',
-        createTaskHistoryDetails(task)
-      );
-      queueTaskDeletionUndo(task, originalIndex, historyEntryId);
+      handleArchiveProfileTasks([task.id]);
+      if (taskArchiveUndoTimeoutRef.current) {
+        clearTimeout(taskArchiveUndoTimeoutRef.current);
+      }
+      setPendingTaskArchive({ taskId: task.id, title: task.title });
+      taskArchiveUndoTimeoutRef.current = setTimeout(() => {
+        setPendingTaskArchive((current) =>
+          current?.taskId === task.id ? null : current
+        );
+        taskArchiveUndoTimeoutRef.current = null;
+      }, TASK_DELETE_UNDO_DURATION_MS);
     },
-    [appendHistoryEntry, preserveTaskTitlesInHistory, queueTaskDeletionUndo]
+    [handleArchiveProfileTasks]
   );
+  const handleUndoTaskArchive = useCallback(() => {
+    if (!pendingTaskArchive) {
+      return;
+    }
+    if (taskArchiveUndoTimeoutRef.current) {
+      clearTimeout(taskArchiveUndoTimeoutRef.current);
+      taskArchiveUndoTimeoutRef.current = null;
+    }
+    handleUnarchiveProfileTasks([pendingTaskArchive.taskId]);
+    setPendingTaskArchive(null);
+  }, [handleUnarchiveProfileTasks, pendingTaskArchive]);
   const handleCardEdit = useCallback(
     (task) => {
       openHabitSheet('edit', {
@@ -3201,7 +3333,7 @@ function ScheduleApp() {
         onToggleCompletion={handleCardToggle}
         onQuantumDelta={handleCardQuantumDelta}
         onCopy={handleCardCopy}
-        onDelete={handleCardDelete}
+        onArchive={handleCardArchive}
         language={language}
         isVisible={activeTab === 'today'}
         reduceMotion={prefersReducedMotion}
@@ -3210,8 +3342,8 @@ function ScheduleApp() {
     ),
     [
       activeTab,
+      handleCardArchive,
       handleCardCopy,
-      handleCardDelete,
       handleCardEdit,
       handleCardPress,
       handleCardQuantumDelta,
@@ -3249,6 +3381,19 @@ function ScheduleApp() {
 
   const renderProfileFilterChip = useCallback(
     ({ item }) => {
+      if (item === PROFILE_FILTER_MORE_ITEM) {
+        return (
+          <TouchableOpacity
+            style={styles.profileFilterChip}
+            onPress={() => setProfileFilterSheetOpen(true)}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel={t.profile.filterMoreAccessibility}
+          >
+            <Ionicons name="ellipsis-horizontal" size={16} color="#3c2ba7" />
+          </TouchableOpacity>
+        );
+      }
       const isOverall = item === PROFILE_OVERALL_FILTER_ITEM;
       const isSelected = isOverall ? !profileFilterTask : item.id === profileFilterId;
       const label = isOverall
@@ -3284,7 +3429,12 @@ function ScheduleApp() {
         </TouchableOpacity>
       );
     },
-    [profileFilterId, profileFilterTask, t.profile.overallSeries]
+    [
+      profileFilterId,
+      profileFilterTask,
+      t.profile.filterMoreAccessibility,
+      t.profile.overallSeries,
+    ]
   );
 
   const closeTaskDetail = useCallback(() => {
@@ -3714,7 +3864,9 @@ function ScheduleApp() {
                     keyExtractor={(item) =>
                       item === PROFILE_OVERALL_FILTER_ITEM
                         ? 'overall'
-                        : `task:${item.id}`
+                        : item === PROFILE_FILTER_MORE_ITEM
+                          ? 'more'
+                          : `task:${item.id}`
                     }
                     showsHorizontalScrollIndicator={false}
                     style={styles.profileChipsScroll}
@@ -4256,9 +4408,11 @@ function ScheduleApp() {
       </View>
       {!isProfileTasksOpen ? (
         <UndoSnackbar
-          message={pendingTaskDeletionMessage}
+          message={pendingTaskDeletionMessage ?? pendingTaskArchiveMessage}
           actionLabel={t.common.undo}
-          onAction={handleUndoTaskDeletion}
+          onAction={
+            pendingTaskDeletion ? handleUndoTaskDeletion : handleUndoTaskArchive
+          }
           bottom={insets.bottom + 112}
         />
       ) : null}
@@ -4353,13 +4507,25 @@ function ScheduleApp() {
       <ProfileTasksModal
         visible={isProfileTasksOpen}
         tasks={profileTasks}
+        todayKey={todayKey}
         onClose={handleCloseProfileTasks}
         onSelectTask={(taskId) => setActiveProfileTaskId(taskId)}
-        onDeleteTask={handleDeleteProfileTask}
         onDeleteSelected={handleDeleteProfileTasks}
+        onArchiveSelected={handleArchiveProfileTasks}
+        onUnarchiveSelected={handleUnarchiveProfileTasks}
         undoMessage={pendingTaskDeletionMessage}
         undoActionLabel={t.common.undo}
         onUndoDelete={handleUndoTaskDeletion}
+        language={language}
+      />
+      <ProfileFilterSheet
+        visible={isProfileFilterSheetOpen}
+        activeTasks={profileActiveTasks}
+        archivedTasks={profileArchivedTasks}
+        selectedId={profileFilterId}
+        onSelect={setProfileFilterId}
+        onTogglePin={handleToggleProfileTaskPin}
+        onClose={() => setProfileFilterSheetOpen(false)}
         language={language}
       />
       <ActivityTimelineModal
@@ -4385,6 +4551,9 @@ function ScheduleApp() {
         task={activeProfileTask}
         onClose={() => setActiveProfileTaskId(null)}
         onToggleLock={handleToggleProfileTaskLock}
+        onToggleArchive={handleToggleProfileTaskArchive}
+        onTogglePin={handleToggleProfileTaskPin}
+        onDelete={handleDeleteProfileTask}
         onEditPeriodGoal={(taskId) => {
           setActiveProfileTaskId(null);
           setPeriodGoalTaskId(taskId);

@@ -12,28 +12,48 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { translations } from '../constants/i18n';
 import {
+  getTaskLastCompletionDateKey,
+  getTaskRepeatDisplayLabel,
+  getTaskStreak,
   getTaskTagDisplayLabel,
+  isTaskArchived,
   normalizeRepeatConfig,
   normalizeTaskTagKey,
 } from '../utils/taskUtils';
 import { pruneSelectedTaskIds } from '../utils/historyUtils';
-import ProfileSwipeTaskCard from './ProfileSwipeTaskCard';
+import ProfileTaskRow, { formatTaskRowDate } from './ProfileTaskRow';
 import UndoSnackbar from './UndoSnackbar';
 import { styles } from '../styles/appStyles';
+
+// Seções fixas por tipo: Hábitos (default), Metas (quantum), Lembretes (reminder).
+const getTaskSection = (task) => {
+  if (task.type === 'quantum') {
+    return 'goals';
+  }
+  if (task.type === 'reminder') {
+    return 'reminders';
+  }
+  return 'habits';
+};
+
+const SECTION_ORDER = ['habits', 'goals', 'reminders'];
 
 export default function ProfileTasksModal({
   visible,
   tasks,
+  todayKey,
   onClose,
   onSelectTask,
-  onDeleteTask,
   onDeleteSelected,
+  onArchiveSelected,
+  onUnarchiveSelected,
   undoMessage,
   undoActionLabel,
   onUndoDelete,
   language = 'en',
 }) {
   const t = translations[language] ?? translations.en;
+  const [viewTab, setViewTab] = useState('active');
   const [searchValue, setSearchValue] = useState('');
   const [selectedTag, setSelectedTag] = useState('all');
   const [selectedRepeat, setSelectedRepeat] = useState('all');
@@ -41,6 +61,7 @@ export default function ProfileTasksModal({
 
   useEffect(() => {
     if (!visible) {
+      setViewTab('active');
       setSearchValue('');
       setSelectedTag('all');
       setSelectedRepeat('all');
@@ -52,9 +73,25 @@ export default function ProfileTasksModal({
     setSelectedTaskIds((previous) => pruneSelectedTaskIds(previous, tasks));
   }, [tasks]);
 
+  const { activeTasks, archivedTasks } = useMemo(() => {
+    const active = [];
+    const archived = [];
+    tasks.forEach((task) => {
+      (isTaskArchived(task, todayKey) ? archived : active).push(task);
+    });
+    return { activeTasks: active, archivedTasks: archived };
+  }, [tasks, todayKey]);
+
+  const tabTasks = viewTab === 'active' ? activeTasks : archivedTasks;
+
+  const handleSelectTab = useCallback((tab) => {
+    setViewTab(tab);
+    setSelectedTaskIds([]);
+  }, []);
+
   const tagOptions = useMemo(() => {
     const seen = new Map();
-    tasks.forEach((task) => {
+    tabTasks.forEach((task) => {
       const key = normalizeTaskTagKey(task);
       if (!key || seen.has(key)) {
         return;
@@ -62,21 +99,20 @@ export default function ProfileTasksModal({
       seen.set(key, getTaskTagDisplayLabel(task, t.taskDisplay.tags) ?? t.taskDetails.tag);
     });
     return Array.from(seen.entries()).map(([key, label]) => ({ key, label }));
-  }, [t.taskDetails.tag, t.taskDisplay.tags, tasks]);
+  }, [t.taskDetails.tag, t.taskDisplay.tags, tabTasks]);
 
   const repeatOptions = useMemo(() => {
     const seen = new Set();
-    tasks.forEach((task) => {
+    tabTasks.forEach((task) => {
       const repeatConfig = normalizeRepeatConfig(task.repeat);
       if (!repeatConfig.enabled) {
         seen.add('one-time');
         return;
       }
-      const frequency = repeatConfig.frequency ?? repeatConfig.option ?? 'daily';
-      seen.add(frequency);
+      seen.add(repeatConfig.frequency ?? 'daily');
     });
     return Array.from(seen);
-  }, [tasks]);
+  }, [tabTasks]);
 
   const repeatLabels = useMemo(
     () => ({
@@ -92,7 +128,7 @@ export default function ProfileTasksModal({
 
   const filteredTasks = useMemo(() => {
     const normalizedSearch = searchValue.trim().toLowerCase();
-    return tasks.filter((task) => {
+    return tabTasks.filter((task) => {
       if (
         normalizedSearch &&
         !(task.title || '').toLowerCase().includes(normalizedSearch)
@@ -107,14 +143,70 @@ export default function ProfileTasksModal({
         if (!repeatConfig.enabled) {
           return selectedRepeat === 'one-time';
         }
-        const frequency = repeatConfig.frequency ?? repeatConfig.option ?? 'daily';
-        if (frequency !== selectedRepeat) {
+        if ((repeatConfig.frequency ?? 'daily') !== selectedRepeat) {
           return false;
         }
       }
       return true;
     });
-  }, [searchValue, selectedTag, selectedRepeat, tasks]);
+  }, [searchValue, selectedTag, selectedRepeat, tabTasks]);
+
+  // Lista com cabeçalhos de seção intercalados + metadados prontos por card
+  // (streak/última conclusão calculados uma vez por render, não por card).
+  const listItems = useMemo(() => {
+    const sectionLabels = {
+      habits: t.profileTasks.sectionHabits,
+      goals: t.profileTasks.sectionGoals,
+      reminders: t.profileTasks.sectionReminders,
+    };
+    const grouped = { habits: [], goals: [], reminders: [] };
+    filteredTasks.forEach((task) => {
+      grouped[getTaskSection(task)].push(task);
+    });
+
+    const items = [];
+    SECTION_ORDER.forEach((section) => {
+      if (grouped[section].length === 0) {
+        return;
+      }
+      items.push({
+        type: 'header',
+        key: `header-${section}`,
+        label: `${sectionLabels[section]} · ${grouped[section].length}`,
+      });
+      grouped[section].forEach((task) => {
+        const repeatConfig = normalizeRepeatConfig(task.repeat);
+        let metaText = null;
+        let streak = 0;
+        if (viewTab === 'archived') {
+          metaText = task.archived && task.archivedAt
+            ? t.profileTasks.archivedOn.replace(
+                '{date}',
+                formatTaskRowDate(task.archivedAt, language) ?? task.archivedAt
+              )
+            : formatTaskRowDate(task.dateKey ?? task.date, language);
+        } else if (!repeatConfig.enabled || task.type === 'reminder') {
+          metaText = formatTaskRowDate(task.dateKey ?? task.date, language);
+        } else {
+          streak = getTaskStreak(task);
+          const lastKey = getTaskLastCompletionDateKey(task);
+          const lastText = lastKey
+            ? t.profileTasks.lastDone.replace(
+                '{date}',
+                formatTaskRowDate(lastKey, language) ?? lastKey
+              )
+            : t.profileTasks.neverDone;
+          const repeatLabel = getTaskRepeatDisplayLabel(
+            task.repeat,
+            t.taskDisplay.repeats
+          );
+          metaText = repeatLabel ? `${repeatLabel} · ${lastText}` : lastText;
+        }
+        items.push({ type: 'task', key: task.id, task, metaText, streak });
+      });
+    });
+    return items;
+  }, [filteredTasks, language, t.profileTasks, t.taskDisplay.repeats, viewTab]);
 
   const toggleSelectedTask = useCallback((taskId) => {
     setSelectedTaskIds((previous) =>
@@ -125,6 +217,7 @@ export default function ProfileTasksModal({
   }, []);
 
   const selectionMode = selectedTaskIds.length > 0;
+
   const handleBulkDelete = useCallback(() => {
     const deletableIds = selectedTaskIds.filter((taskId) =>
       tasks.some((task) => task.id === taskId && !task.profileLocked)
@@ -140,46 +233,101 @@ export default function ProfileTasksModal({
             '{count}',
             String(deletableIds.length)
           );
-    Alert.alert(
-      t.profileTasks.deleteSelectedConfirmTitle,
-      confirmMessage,
-      [
-        { text: t.common.cancel, style: 'cancel' },
-        {
-          text: t.profileTasks.deleteSelected,
-          style: 'destructive',
-          onPress: () => {
-            onDeleteSelected?.(deletableIds);
-            setSelectedTaskIds([]);
-          },
+    Alert.alert(t.profileTasks.deleteSelectedConfirmTitle, confirmMessage, [
+      { text: t.common.cancel, style: 'cancel' },
+      {
+        text: t.profileTasks.delete,
+        style: 'destructive',
+        onPress: () => {
+          onDeleteSelected?.(deletableIds);
+          setSelectedTaskIds([]);
         },
-      ]
-    );
+      },
+    ]);
   }, [onDeleteSelected, selectedTaskIds, t.common.cancel, t.profileTasks, tasks]);
+
+  const handleBulkArchive = useCallback(() => {
+    onArchiveSelected?.(selectedTaskIds);
+    setSelectedTaskIds([]);
+  }, [onArchiveSelected, selectedTaskIds]);
+
+  const handleBulkUnarchive = useCallback(() => {
+    onUnarchiveSelected?.(selectedTaskIds);
+    setSelectedTaskIds([]);
+  }, [onUnarchiveSelected, selectedTaskIds]);
+
+  const renderItem = useCallback(
+    ({ item }) => {
+      if (item.type === 'header') {
+        return <Text style={styles.profileTasksSectionHeader}>{item.label}</Text>;
+      }
+      return (
+        <ProfileTaskRow
+          task={item.task}
+          metaText={item.metaText}
+          streak={item.streak}
+          isArchivedView={viewTab === 'archived'}
+          onPress={onSelectTask}
+          onToggleSelect={toggleSelectedTask}
+          isSelected={selectedTaskIds.includes(item.task.id)}
+          selectionMode={selectionMode}
+          language={language}
+        />
+      );
+    },
+    [language, onSelectTask, selectedTaskIds, selectionMode, toggleSelectedTask, viewTab]
+  );
 
   if (!visible) {
     return null;
   }
 
+  const isFilteringEmpty = tabTasks.length > 0 && filteredTasks.length === 0;
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={styles.profileTasksContainer}>
         <View style={styles.profileTasksHeader}>
-          <View>
-            <Text style={styles.profileTasksTitle}>{t.profileTasks.title}</Text>
-            <Text style={styles.profileTasksSubtitle}>
-              {t.profileTasks.subtitle}
-            </Text>
-          </View>
+          <Text style={styles.profileTasksTitle}>{t.profileTasks.title}</Text>
           <Pressable
+            style={styles.profileTasksCloseButton}
             onPress={onClose}
             accessibilityRole="button"
             accessibilityLabel={t.profileTasks.close}
             hitSlop={8}
           >
-            <Ionicons name="close" size={20} color="#1F2742" />
+            <Ionicons name="close" size={20} color="#1a1a2e" />
           </Pressable>
         </View>
+
+        <View style={styles.profileTasksTabsPill}>
+          {[
+            { key: 'active', label: t.profileTasks.tabActive, count: activeTasks.length },
+            { key: 'archived', label: t.profileTasks.tabArchived, count: archivedTasks.length },
+          ].map((tab) => {
+            const isActive = viewTab === tab.key;
+            return (
+              <Pressable
+                key={tab.key}
+                style={[styles.profileTasksTab, isActive && styles.profileTasksTabActive]}
+                onPress={() => handleSelectTab(tab.key)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
+              >
+                <Text
+                  style={[
+                    styles.profileTasksTabText,
+                    isActive && styles.profileTasksTabTextActive,
+                  ]}
+                >
+                  {tab.label}
+                  {tab.count > 0 ? ` (${tab.count})` : ''}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
         <View style={styles.profileTasksFilters}>
           <View style={styles.profileTasksSearchRow}>
             <Ionicons name="search-outline" size={18} color="#9aa5b5" />
@@ -191,114 +339,91 @@ export default function ProfileTasksModal({
               placeholderTextColor="#9aa5b5"
             />
           </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.profileTasksFilterRow}
-          >
-            <Pressable
-              style={[
-                styles.profileTasksFilterPill,
-                selectedTag === 'all' && styles.profileTasksFilterPillActive,
-              ]}
-              onPress={() => setSelectedTag('all')}
+          {tagOptions.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.profileTasksFilterRow}
             >
-              <Text
-                style={[
-                  styles.profileTasksFilterText,
-                  selectedTag === 'all' && styles.profileTasksFilterTextActive,
-                ]}
-              >
-                {t.profileTasks.allTags}
-              </Text>
-            </Pressable>
-            {tagOptions.map((option) => (
-              <Pressable
-                key={option.key}
-                style={[
-                  styles.profileTasksFilterPill,
-                  selectedTag === option.key && styles.profileTasksFilterPillActive,
-                ]}
-                onPress={() => setSelectedTag(option.key)}
-              >
-                <Text
+              {[{ key: 'all', label: t.profileTasks.allTags }, ...tagOptions].map((option) => (
+                <Pressable
+                  key={option.key}
                   style={[
-                    styles.profileTasksFilterText,
-                    selectedTag === option.key && styles.profileTasksFilterTextActive,
+                    styles.profileTasksFilterPill,
+                    selectedTag === option.key && styles.profileTasksFilterPillActive,
                   ]}
+                  onPress={() => setSelectedTag(option.key)}
                 >
-                  {option.label}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.profileTasksFilterRow}
-          >
-            <Pressable
-              style={[
-                styles.profileTasksFilterPill,
-                selectedRepeat === 'all' && styles.profileTasksFilterPillActive,
-              ]}
-              onPress={() => setSelectedRepeat('all')}
+                  <Text
+                    style={[
+                      styles.profileTasksFilterText,
+                      selectedTag === option.key && styles.profileTasksFilterTextActive,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : null}
+          {repeatOptions.length > 1 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.profileTasksFilterRow}
             >
-              <Text
-                style={[
-                  styles.profileTasksFilterText,
-                  selectedRepeat === 'all' && styles.profileTasksFilterTextActive,
-                ]}
-              >
-                {t.profileTasks.allRepeats}
-              </Text>
-            </Pressable>
-            {repeatOptions.map((option) => (
-              <Pressable
-                key={option}
-                style={[
-                  styles.profileTasksFilterPill,
-                  selectedRepeat === option && styles.profileTasksFilterPillActive,
-                ]}
-                onPress={() => setSelectedRepeat(option)}
-              >
-                <Text
+              {['all', ...repeatOptions].map((option) => (
+                <Pressable
+                  key={option}
                   style={[
-                    styles.profileTasksFilterText,
-                    selectedRepeat === option && styles.profileTasksFilterTextActive,
+                    styles.profileTasksFilterPill,
+                    selectedRepeat === option && styles.profileTasksFilterPillActive,
                   ]}
+                  onPress={() => setSelectedRepeat(option)}
                 >
-                  {repeatLabels[option] ?? option}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+                  <Text
+                    style={[
+                      styles.profileTasksFilterText,
+                      selectedRepeat === option && styles.profileTasksFilterTextActive,
+                    ]}
+                  >
+                    {option === 'all'
+                      ? t.profileTasks.allRepeats
+                      : repeatLabels[option] ?? option}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : null}
         </View>
-        {filteredTasks.length === 0 ? (
+
+        {listItems.length === 0 ? (
           <View style={styles.profileTasksEmpty}>
+            <Ionicons
+              name={viewTab === 'archived' ? 'archive-outline' : 'leaf-outline'}
+              size={40}
+              color="#c5cadb"
+            />
             <Text style={styles.profileTasksEmptyText}>
-              {t.profileTasks.empty}
+              {isFilteringEmpty
+                ? t.profileTasks.empty
+                : viewTab === 'archived'
+                  ? t.profileTasks.emptyArchived
+                  : t.profileTasks.emptyActive}
             </Text>
           </View>
         ) : (
           <FlatList
-            data={filteredTasks}
-            keyExtractor={(task) => task.id}
-            renderItem={({ item }) => (
-              <ProfileSwipeTaskCard
-                task={item}
-                onPress={() => onSelectTask?.(item.id)}
-                onDelete={onDeleteTask}
-                onToggleSelect={toggleSelectedTask}
-                isSelected={selectedTaskIds.includes(item.id)}
-                selectionMode={selectionMode}
-                language={language}
-              />
-            )}
+            data={listItems}
+            keyExtractor={(item) => item.key}
+            renderItem={renderItem}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.profileTasksList}
+            initialNumToRender={10}
+            windowSize={7}
           />
         )}
+
         {selectionMode ? (
           <View style={styles.profileTasksBulkBar}>
             <Text style={styles.profileTasksBulkText}>
@@ -307,15 +432,47 @@ export default function ProfileTasksModal({
                 : t.profileTasks.selectedMany
               ).replace('{count}', String(selectedTaskIds.length))}
             </Text>
-            <Pressable
-              style={styles.profileTasksBulkDelete}
-              onPress={handleBulkDelete}
-              accessibilityRole="button"
-              accessibilityLabel={t.profileTasks.deleteSelectedAccessibility}
-            >
-              <Ionicons name="trash-outline" size={18} color="#fff" />
-              <Text style={styles.profileTasksBulkDeleteText}>{t.profileTasks.deleteSelected}</Text>
-            </Pressable>
+            <View style={styles.profileTasksBulkButtons}>
+              {viewTab === 'active' ? (
+                // Ativas só podem ser arquivadas; excluir exige arquivar antes.
+                <Pressable
+                  style={styles.profileTasksBulkAction}
+                  onPress={handleBulkArchive}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.profileTasks.archiveSelectedAccessibility}
+                >
+                  <Ionicons name="archive-outline" size={16} color="#3c2ba7" />
+                  <Text style={styles.profileTasksBulkActionText}>
+                    {t.profileTasks.archive}
+                  </Text>
+                </Pressable>
+              ) : (
+                <>
+                  <Pressable
+                    style={styles.profileTasksBulkAction}
+                    onPress={handleBulkUnarchive}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.profileTasks.unarchiveSelectedAccessibility}
+                  >
+                    <Ionicons name="refresh-outline" size={16} color="#3c2ba7" />
+                    <Text style={styles.profileTasksBulkActionText}>
+                      {t.profileTasks.unarchive}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.profileTasksBulkDelete}
+                    onPress={handleBulkDelete}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.profileTasks.deleteSelectedAccessibility}
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#fff" />
+                    <Text style={styles.profileTasksBulkDeleteText}>
+                      {t.profileTasks.delete}
+                    </Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
           </View>
         ) : null}
         <UndoSnackbar
