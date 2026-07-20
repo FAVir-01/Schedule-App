@@ -11,7 +11,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { G, Line } from 'react-native-svg';
 import { format } from 'date-fns';
 import { getMonthImageSource } from '../constants/months';
 import { translations } from '../constants/i18n';
@@ -82,13 +82,15 @@ function DayReportModal({
     }
   }, [visible, targetSuccessRate, progressAnim]);
 
-  // Configurações do Círculo
-  const radius = 60; // Raio do círculo
-  const strokeWidth = 14; // Espessura da barra
-  const circleSize = radius * 2 + strokeWidth;
-  const circumference = 2 * Math.PI * radius;
-  // Calcula o offset do traço baseado na porcentagem (inverso porque strokeDashoffset esconde o traço)
-  const strokeDashoffset = circumference - (displayRate / 100) * circumference;
+  // Gauge de ticks: arco aberto embaixo, estilo velocímetro.
+  const TICK_COUNT = 45;
+  const ARC_DEGREES = 210;
+  const START_ANGLE = -105; // 0 = topo; arco vai de -105° a +105°
+  const R_OUTER = 68;
+  const R_INNER = 52;
+  const TICK_WIDTH = 3;
+  const GAUGE_SIZE = 144;
+  const gaugeCenter = GAUGE_SIZE / 2;
 
   if (!visible || !date) return null;
 
@@ -210,44 +212,46 @@ function DayReportModal({
               <View style={styles.gaugeContainer}>
                 <View
                   style={{
-                    width: circleSize,
-                    height: circleSize,
+                    width: GAUGE_SIZE,
+                    height: GAUGE_SIZE,
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <Svg width={circleSize} height={circleSize} viewBox={`0 0 ${circleSize} ${circleSize}`}>
-                    <Circle
-                      cx={circleSize / 2}
-                      cy={circleSize / 2}
-                      r={radius}
-                      stroke="#f0efff"
-                      strokeWidth={strokeWidth}
-                      fill="transparent"
-                    />
-                    <Circle
-                      cx={circleSize / 2}
-                      cy={circleSize / 2}
-                      r={radius}
-                      stroke="#3c2ba7"
-                      strokeWidth={strokeWidth}
-                      fill="transparent"
-                      strokeDasharray={circumference}
-                      strokeDashoffset={strokeDashoffset}
-                      strokeLinecap="round"
-                      rotation="-90"
-                      origin={`${circleSize / 2}, ${circleSize / 2}`}
-                    />
+                  <Svg width={GAUGE_SIZE} height={GAUGE_SIZE} viewBox={`0 0 ${GAUGE_SIZE} ${GAUGE_SIZE}`}>
+                    {Array.from({ length: TICK_COUNT }, (_, i) => {
+                      const angle = START_ANGLE + (i / (TICK_COUNT - 1)) * ARC_DEGREES;
+                      const isFilled =
+                        displayRate > 0 && (i / (TICK_COUNT - 1)) * 100 <= displayRate;
+                      return (
+                        <G key={i} rotation={angle} origin={`${gaugeCenter}, ${gaugeCenter}`}>
+                          <Line
+                            x1={gaugeCenter}
+                            y1={gaugeCenter - R_OUTER}
+                            x2={gaugeCenter}
+                            y2={gaugeCenter - R_INNER}
+                            stroke={isFilled ? '#1f9d6d' : '#e8eaf0'}
+                            strokeWidth={TICK_WIDTH}
+                            strokeLinecap="round"
+                          />
+                        </G>
+                      );
+                    })}
                   </Svg>
 
                   <View
                     style={{
                       position: 'absolute',
+                      top: '36%',
+                      left: 0,
+                      right: 0,
                       alignItems: 'center',
-                      justifyContent: 'center',
                     }}
                   >
-                    <Text style={styles.gaugePercentage}>{displayRate}</Text>
+                    <View style={styles.gaugeValueRow}>
+                      <Text style={styles.gaugePercentage}>{displayRate}</Text>
+                      <Text style={styles.gaugePercentSign}>%</Text>
+                    </View>
                     <Text style={styles.gaugeLabel}>{t.report.successRate}</Text>
                   </View>
                 </View>
@@ -258,14 +262,18 @@ function DayReportModal({
                   <Text style={styles.statLabel}>{t.report.committed}</Text>
                   <View style={styles.statValueRow}>
                     <Text style={styles.statNumber}>{totalTasks}</Text>
-                    <Text style={{ fontSize: 20 }}>✍️</Text>
+                    <View style={[styles.statIconChip, { backgroundColor: '#efecfb' }]}>
+                      <Ionicons name="create-outline" size={16} color="#3c2ba7" />
+                    </View>
                   </View>
                 </View>
                 <View style={styles.statBox}>
                   <Text style={styles.statLabel}>{t.report.completed}</Text>
                   <View style={styles.statValueRow}>
                     <Text style={styles.statNumber}>{completedTasks}</Text>
-                    <Ionicons name="checkbox" size={24} color="#3dd598" />
+                    <View style={[styles.statIconChip, { backgroundColor: '#d9f2e5' }]}>
+                      <Ionicons name="checkmark" size={16} color="#1f9d6d" />
+                    </View>
                   </View>
                 </View>
               </View>
