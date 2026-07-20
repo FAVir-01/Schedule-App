@@ -236,6 +236,9 @@ export const styles = StyleSheet.create({
   todayFirstTask: {
     marginTop: 8,
   },
+  todayTaskCell: {
+    overflow: 'visible',
+  },
   emptyState: {
     fontSize: 15,
     color: '#6f7a86',
@@ -273,25 +276,16 @@ export const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     borderRadius: 18,
     overflow: 'hidden',
-    alignItems: 'stretch',
-    justifyContent: 'flex-end',
   },
-  waterFill: {
-    width: '100%',
-    position: 'relative',
-  },
-  waterCrest: {
+  waterLevelLayer: {
     position: 'absolute',
-    top: -18,
     left: 0,
-    right: 0,
-    height: 19,
+    bottom: 0,
   },
-  waterCrestLayer: {
+  waterWaveLayer: {
     position: 'absolute',
     left: 0,
     top: 0,
-    height: 19,
   },
   taskCardMain: {
     flexDirection: 'row',
@@ -306,6 +300,9 @@ export const styles = StyleSheet.create({
     paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(26, 26, 46, 0.15)',
+  },
+  quantumStepperAnimated: {
+    overflow: 'hidden',
   },
   quantumStepperButton: {
     width: 36,

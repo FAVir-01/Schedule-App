@@ -10,7 +10,12 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Path } from 'react-native-svg';
+import Svg, {
+  Defs,
+  LinearGradient as SvgLinearGradient,
+  Path,
+  Stop,
+} from 'react-native-svg';
 import { translations } from '../constants/i18n';
 import { FALLBACK_EMOJI, USE_NATIVE_DRIVER } from '../constants/app';
 import {
@@ -21,7 +26,6 @@ import {
 import { formatTaskTime, getTimerTotalSeconds } from '../utils/timeUtils';
 import { buildRepeatingWavePath } from '../utils/waveUtils';
 import { triggerSelection } from '../utils/feedbackUtils';
-import { AnimatedLinearGradient } from './animatedComponents';
 import { styles } from '../styles/appStyles';
 
 const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
@@ -39,6 +43,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
   onEdit,
   language = 'en',
   isVisible = true,
+  reduceMotion = false,
 }) {
   const t = translations[language] ?? translations.en;
   const translateX = useRef(new Animated.Value(0)).current;
@@ -150,15 +155,12 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     () => getQuantumProgressPercent(task, dateKey),
     [dateKey, task]
   );
-  // Um ponto extra mantém a crista sobre o início do gradiente. Como a crista
-  // é opaca, essa sobreposição cobre a fresta subpixel sem formar faixa escura.
   const waveHeight = 19;
-  // Geometria estática: o caminho SVG é gerado uma única vez por largura de
-  // card. O movimento vem de transforms nativos (translateX), não de regeneração
-  // de path em JS a cada frame como era antes. Uma única onda com a MESMA cor do
-  // topo do gradiente: crista e corpo d'água viram uma forma contínua, sem faixas.
+  const waterLayerHeight = cardSize.height ? cardSize.height + waveHeight : 0;
+  // Onda e corpo são um único path com um único gradiente. Isso elimina a
+  // junção horizontal que aparecia quando duas superfícies nativas se cruzavam.
   const waveGeometry = useMemo(() => {
-    if (!cardSize.width) {
+    if (!cardSize.width || !waterLayerHeight) {
       return null;
     }
     const wavelength = Math.max(120, cardSize.width * 0.65);
@@ -169,32 +171,21 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
       frontPath: buildRepeatingWavePath({
         totalWidth,
         wavelength,
-        height: waveHeight,
+        height: waterLayerHeight,
         amplitude: 4,
       }),
     };
-  }, [cardSize.width, waveHeight]);
-  const waterFillHeight = useMemo(() => {
+  }, [cardSize.width, waterLayerHeight]);
+  const waterLayerTranslateY = useMemo(() => {
     if (!cardSize.height) {
       return 0;
     }
     return waterLevelAnim.interpolate({
       inputRange: [0, 1],
-      outputRange: [0, cardSize.height],
+      outputRange: [waterLayerHeight, 0],
       extrapolate: 'clamp',
     });
-  }, [cardSize.height, waterLevelAnim]);
-  // Perto de 100% a crista some suavemente: água cheia vira superfície lisa,
-  // sem a onda cortada no topo do card.
-  const crestOpacity = useMemo(
-    () =>
-      waterLevelAnim.interpolate({
-        inputRange: [0.86, 0.97],
-        outputRange: [1, 0],
-        extrapolate: 'clamp',
-      }),
-    [waterLevelAnim]
-  );
+  }, [cardSize.height, waterLayerHeight, waterLevelAnim]);
   const waveFrontShift = useMemo(
     () =>
       waveGeometry
@@ -204,6 +195,19 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
           })
         : 0,
     [waveGeometry, waveShiftAnim]
+  );
+  const wavePulseShift = useMemo(
+    () =>
+      waveIntensityAnim.interpolate({
+        inputRange: [1, 1.6],
+        outputRange: [0, -10],
+        extrapolate: 'clamp',
+      }),
+    [waveIntensityAnim]
+  );
+  const waterGradientId = useMemo(
+    () => `water-gradient-${String(task.id).replace(/[^a-zA-Z0-9_-]/g, '')}`,
+    [task.id]
   );
 
 
@@ -273,6 +277,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
   // long-press abre o painel com −/+, presets e OK.
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
   const [adjustStep, setAdjustStep] = useState(null);
+  const adjustPanelProgress = useRef(new Animated.Value(0)).current;
   const isTimerMode = task.quantum?.mode === 'timer';
   const timerLimitSeconds = isTimerMode ? getTimerTotalSeconds(task.quantum?.timer) : 0;
   const countLimit = task.quantum?.count?.value ?? 0;
@@ -317,7 +322,33 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     }
     adjustCloseTimerRef.current = setTimeout(() => setIsAdjustOpen(false), 4000);
   }, []);
-  useEffect(() => () => clearTimeout(adjustCloseTimerRef.current), []);
+  useEffect(() => {
+    adjustPanelProgress.stopAnimation();
+    if (reduceMotion) {
+      adjustPanelProgress.setValue(isAdjustOpen ? 1 : 0);
+      return undefined;
+    }
+    const animation = Animated.timing(adjustPanelProgress, {
+      toValue: isAdjustOpen ? 1 : 0,
+      duration: isAdjustOpen ? 220 : 180,
+      easing: isAdjustOpen ? Easing.out(Easing.cubic) : Easing.in(Easing.quad),
+      useNativeDriver: false,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [adjustPanelProgress, isAdjustOpen, reduceMotion]);
+  useEffect(() => {
+    if (isQuantumComplete) {
+      setIsAdjustOpen(false);
+    }
+  }, [isQuantumComplete]);
+  useEffect(
+    () => () => {
+      clearTimeout(adjustCloseTimerRef.current);
+      adjustPanelProgress.stopAnimation();
+    },
+    [adjustPanelProgress]
+  );
   const applyQuantumStep = useCallback(
     (direction) => {
       triggerSelection();
@@ -339,10 +370,13 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     }
     triggerSelection();
     setIsAdjustOpen((previous) => {
-      if (!previous) {
+      const willOpen = !previous;
+      if (willOpen) {
         bumpAdjustClose();
+      } else if (adjustCloseTimerRef.current) {
+        clearTimeout(adjustCloseTimerRef.current);
       }
-      return !previous;
+      return willOpen;
     });
   }, [bumpAdjustClose, isQuantum]);
 
@@ -399,40 +433,42 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
       >
         {isQuantum && isWaterAnimation && (
           <View pointerEvents="none" style={styles.waterFillContainer}>
-            <AnimatedLinearGradient
-              colors={['rgba(96, 165, 250, 0.55)', 'rgba(59, 130, 246, 0.75)']}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 1 }}
-              style={[styles.waterFill, { height: waterFillHeight }]}
-            >
-              {waveGeometry && (
-                <Animated.View style={[styles.waterCrest, { opacity: crestOpacity }]}>
-                  <Animated.View
-                    style={[
-                      styles.waterCrestLayer,
-                      {
-                        width: waveGeometry.totalWidth,
-                        // scaleY ancorado na borda INFERIOR (sanduíche de translateY):
-                        // a base da crista fica colada no corpo d'água durante o pulso,
-                        // sem linha escura (sobreposição) nem vão branco (rebote da mola).
-                        transform: [
-                          { translateX: waveFrontShift },
-                          { translateY: waveHeight / 2 },
-                          { scaleY: waveIntensityAnim },
-                          { translateY: -waveHeight / 2 },
-                        ],
-                      },
-                    ]}
-                  >
-                    <Svg width={waveGeometry.totalWidth} height={waveHeight}>
-                      {/* Cor já composta sobre o fundo do card. Mantê-la opaca evita que
-                          o último pixel da crista escureça ao tocar o gradiente. */}
-                      <Path d={waveGeometry.frontPath} fill="rgb(153, 199, 252)" />
-                    </Svg>
-                  </Animated.View>
+            {waveGeometry && (
+              <Animated.View
+                style={[
+                  styles.waterLevelLayer,
+                  {
+                    width: waveGeometry.totalWidth,
+                    height: waterLayerHeight,
+                    transform: [{ translateY: waterLayerTranslateY }],
+                  },
+                ]}
+              >
+                <Animated.View
+                  style={[
+                    styles.waterWaveLayer,
+                    {
+                      width: waveGeometry.totalWidth,
+                      height: waterLayerHeight,
+                      transform: [
+                        { translateX: waveFrontShift },
+                        { translateX: wavePulseShift },
+                      ],
+                    },
+                  ]}
+                >
+                  <Svg width={waveGeometry.totalWidth} height={waterLayerHeight}>
+                    <Defs>
+                      <SvgLinearGradient id={waterGradientId} x1="0%" y1="0%" x2="0%" y2="100%">
+                        <Stop offset="0%" stopColor="rgb(153, 199, 252)" />
+                        <Stop offset="100%" stopColor="rgb(100, 158, 248)" />
+                      </SvgLinearGradient>
+                    </Defs>
+                    <Path d={waveGeometry.frontPath} fill={`url(#${waterGradientId})`} />
+                  </Svg>
                 </Animated.View>
-              )}
-            </AnimatedLinearGradient>
+              </Animated.View>
+            )}
           </View>
         )}
         <View style={styles.taskCardMain}>
@@ -518,8 +554,34 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
           </View>
         )}
         </View>
-        {isQuantum && isAdjustOpen && (
-          <View style={styles.quantumStepper}>
+        {isQuantum && !isQuantumComplete && (
+          <Animated.View
+            pointerEvents={isAdjustOpen ? 'auto' : 'none'}
+            importantForAccessibility={isAdjustOpen ? 'auto' : 'no-hide-descendants'}
+            style={[
+              styles.quantumStepper,
+              styles.quantumStepperAnimated,
+              {
+                opacity: adjustPanelProgress,
+                height: adjustPanelProgress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 47],
+                }),
+                marginTop: adjustPanelProgress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 12],
+                }),
+                transform: [
+                  {
+                    translateY: adjustPanelProgress.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-4, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
             <Pressable
               style={styles.quantumStepperButton}
               onPress={() => {
@@ -569,7 +631,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
             >
               <Ionicons name="add" size={18} color="#ffffff" />
             </Pressable>
-          </View>
+          </Animated.View>
         )}
       </Animated.View>
     </View>

@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Alert,
   AccessibilityInfo,
@@ -8,7 +15,6 @@ import {
   Easing,
   Platform,
   Image,
-  LayoutAnimation,
   FlatList,
   Pressable,
   ScrollView,
@@ -149,6 +155,7 @@ const TODAY_VISIBLE_DATE_RADIUS = 3;
 const TODAY_DATE_WINDOW_RADIUS = 45;
 const TODAY_DATE_TRANSITION_OUT_MS = 240;
 const TODAY_DATE_TRANSITION_IN_MS = 280;
+const TODAY_TASK_REORDER_MS = 420;
 
 const INITIAL_STORAGE_LOAD_FAILURES = {
   tasks: true,
@@ -398,8 +405,9 @@ function ScheduleApp() {
   const didInitialReminderReconciliationRef = useRef(false);
   const reminderContentSignatureRef = useRef(null);
   const pendingCompletionActionDateRef = useRef(null);
-  const taskPositionsRef = useRef(new Map());
+  const taskHeightsRef = useRef(new Map());
   const taskAnimationsRef = useRef(new Map());
+  const taskOrderSnapshotRef = useRef({ context: null, order: [] });
   const [calendarMonths, setCalendarMonths] = useState(() => {
     const today = new Date();
     const months = [];
@@ -1005,23 +1013,9 @@ function ScheduleApp() {
   );
   const handleTaskLayout = useCallback(
     (taskId, event) => {
-      const { y } = event.nativeEvent.layout;
-      const previousY = taskPositionsRef.current.get(taskId);
-      taskPositionsRef.current.set(taskId, y);
-      if (previousY === undefined || previousY === y) {
-        return;
-      }
-      const translateY = getTaskTranslateY(taskId);
-      translateY.stopAnimation();
-      translateY.setValue(previousY - y);
-      Animated.timing(translateY, {
-        toValue: 0,
-        duration: 280,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: USE_NATIVE_DRIVER,
-      }).start();
+      taskHeightsRef.current.set(taskId, event.nativeEvent.layout.height);
     },
-    [getTaskTranslateY]
+    []
   );
   // Cache de identidade: tasks não alteradas devolvem o MESMO objeto de stats
   // entre renders, permitindo que o React.memo dos cards pule o re-render.
@@ -1050,6 +1044,76 @@ function ScheduleApp() {
       }),
     [selectedDateKey, sortedVisibleTasksForSelectedDay]
   );
+  const visibleTaskOrder = useMemo(
+    () => sortedVisibleTasksForSelectedDay.map((task) => task.id),
+    [sortedVisibleTasksForSelectedDay]
+  );
+  const visibleTaskOrderKey = visibleTaskOrder.join(':');
+  const visibleTaskOrderContext = `${selectedDateKey}:${selectedTagFilter}`;
+
+  useLayoutEffect(() => {
+    const nextOrder = visibleTaskOrder;
+    const previousSnapshot = taskOrderSnapshotRef.current;
+    taskOrderSnapshotRef.current = {
+      context: visibleTaskOrderContext,
+      order: nextOrder,
+    };
+
+    if (
+      activeTab !== 'today' ||
+      prefersReducedMotion ||
+      previousSnapshot.context !== visibleTaskOrderContext ||
+      previousSnapshot.order.length === 0
+    ) {
+      nextOrder.forEach((taskId) => getTaskTranslateY(taskId).setValue(0));
+      return;
+    }
+
+    const buildOffsets = (order) => {
+      const offsets = new Map();
+      let offset = 0;
+      order.forEach((taskId) => {
+        offsets.set(taskId, offset);
+        offset += taskHeightsRef.current.get(taskId) ?? 0;
+      });
+      return offsets;
+    };
+    const previousOffsets = buildOffsets(previousSnapshot.order);
+    const nextOffsets = buildOffsets(nextOrder);
+    const animations = [];
+
+    nextOrder.forEach((taskId) => {
+      if (!previousOffsets.has(taskId)) {
+        return;
+      }
+      const delta = previousOffsets.get(taskId) - nextOffsets.get(taskId);
+      if (!delta) {
+        return;
+      }
+      const translateY = getTaskTranslateY(taskId);
+      translateY.stopAnimation();
+      translateY.setValue(delta);
+      animations.push(
+        Animated.timing(translateY, {
+          toValue: 0,
+          duration: TODAY_TASK_REORDER_MS,
+          easing: Easing.inOut(Easing.cubic),
+          useNativeDriver: USE_NATIVE_DRIVER,
+        })
+      );
+    });
+
+    if (animations.length > 0) {
+      Animated.parallel(animations).start();
+    }
+  }, [
+    activeTab,
+    getTaskTranslateY,
+    prefersReducedMotion,
+    visibleTaskOrderContext,
+    visibleTaskOrderKey,
+    visibleTaskOrder,
+  ]);
   const profileTasks = useMemo(() => {
     const getSortDate = (task) => {
       const normalized = normalizeDateValue(task.date ?? task.dateKey);
@@ -2337,7 +2401,6 @@ function ScheduleApp() {
       pendingCompletionActionDateRef.current = !wasCompleted ? resolvedDateKey : null;
 
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setTasks((previous) =>
         previous.map((task) => {
           if (task.id !== taskId) {
@@ -3126,51 +3189,62 @@ function ScheduleApp() {
   );
 
   const renderTodayTask = useCallback(
-    ({ item: task, index }) => (
-      <Animated.View
-        onLayout={(event) => handleTaskLayout(task.id, event)}
-        style={[
-          index === 0 && styles.todayFirstTask,
-          {
-            transform: [
-              { translateX: todayPageTranslateX },
-              { translateY: getTaskTranslateY(task.id) },
-            ],
-          },
-        ]}
-      >
-        <SwipeableTaskCard
-          task={task}
-          backgroundColor={task.backgroundColor}
-          borderColor={task.borderColor}
-          dateKey={selectedDateKey}
-          totalSubtasks={task.totalSubtasks}
-          completedSubtasks={task.completedSubtasks}
-          onPress={handleCardPress}
-          onToggleCompletion={handleCardToggle}
-          onQuantumDelta={handleCardQuantumDelta}
-          onCopy={handleCardCopy}
-          onDelete={handleCardDelete}
-          language={language}
-          isVisible={activeTab === 'today'}
-          onEdit={handleCardEdit}
-        />
-      </Animated.View>
+    ({ item: task }) => (
+      <SwipeableTaskCard
+        task={task}
+        backgroundColor={task.backgroundColor}
+        borderColor={task.borderColor}
+        dateKey={selectedDateKey}
+        totalSubtasks={task.totalSubtasks}
+        completedSubtasks={task.completedSubtasks}
+        onPress={handleCardPress}
+        onToggleCompletion={handleCardToggle}
+        onQuantumDelta={handleCardQuantumDelta}
+        onCopy={handleCardCopy}
+        onDelete={handleCardDelete}
+        language={language}
+        isVisible={activeTab === 'today'}
+        reduceMotion={prefersReducedMotion}
+        onEdit={handleCardEdit}
+      />
     ),
     [
       activeTab,
-      getTaskTranslateY,
       handleCardCopy,
       handleCardDelete,
       handleCardEdit,
       handleCardPress,
       handleCardQuantumDelta,
       handleCardToggle,
-      handleTaskLayout,
       language,
+      prefersReducedMotion,
       selectedDateKey,
-      todayPageTranslateX,
     ]
+  );
+  const renderTodayCell = useCallback(
+    ({ children, index, item, onFocusCapture, onLayout, style }) => (
+      <Animated.View
+        onFocusCapture={onFocusCapture}
+        onLayout={(event) => {
+          onLayout?.(event);
+          handleTaskLayout(item.id, event);
+        }}
+        style={[
+          style,
+          styles.todayTaskCell,
+          index === 0 && styles.todayFirstTask,
+          {
+            transform: [
+              { translateX: todayPageTranslateX },
+              { translateY: getTaskTranslateY(item.id) },
+            ],
+          },
+        ]}
+      >
+        {children}
+      </Animated.View>
+    ),
+    [getTaskTranslateY, handleTaskLayout, todayPageTranslateX]
   );
 
   const renderProfileFilterChip = useCallback(
@@ -3379,6 +3453,7 @@ function ScheduleApp() {
             <FlatList
               data={visibleTasksWithStats}
               renderItem={renderTodayTask}
+              CellRendererComponent={renderTodayCell}
               keyExtractor={(task) => String(task.id)}
               contentContainerStyle={styles.todayContent}
               showsVerticalScrollIndicator={false}
