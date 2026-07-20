@@ -150,7 +150,9 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     () => getQuantumProgressPercent(task, dateKey),
     [dateKey, task]
   );
-  const waveHeight = 18;
+  // Um ponto extra mantém a crista sobre o início do gradiente. Como a crista
+  // é opaca, essa sobreposição cobre a fresta subpixel sem formar faixa escura.
+  const waveHeight = 19;
   // Geometria estática: o caminho SVG é gerado uma única vez por largura de
   // card. O movimento vem de transforms nativos (translateX), não de regeneração
   // de path em JS a cada frame como era antes. Uma única onda com a MESMA cor do
@@ -423,7 +425,9 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
                     ]}
                   >
                     <Svg width={waveGeometry.totalWidth} height={waveHeight}>
-                      <Path d={waveGeometry.frontPath} fill="rgba(96, 165, 250, 0.55)" />
+                      {/* Cor já composta sobre o fundo do card. Mantê-la opaca evita que
+                          o último pixel da crista escureça ao tocar o gradiente. */}
+                      <Path d={waveGeometry.frontPath} fill="rgb(153, 199, 252)" />
                     </Svg>
                   </Animated.View>
                 </Animated.View>

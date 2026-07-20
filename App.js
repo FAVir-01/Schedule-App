@@ -55,13 +55,16 @@ import { getNavigationBarThemeForTab } from './constants/navigation';
 import { lightenColor } from './utils/colorUtils';
 import { getMoodMarker } from './utils/moodUtils';
 import {
-  createCenteredWeekDates,
   getDateKey,
   getMonthId,
   getMonthStart,
   normalizeDateValue,
   shouldTaskAppearOnDate,
 } from './utils/dateUtils';
+import {
+  createCenteredDateWindow,
+  getCalendarDayOffset,
+} from './utils/todayNavigationUtils';
 import { clampValue } from './utils/mathUtils';
 import {
   getSubtaskCompletionStatus,
@@ -142,6 +145,10 @@ const habitImage = require('./assets/add-habit.png');
 const reflectionImage = require('./assets/add-reflection.png');
 const TASK_DELETE_UNDO_DURATION_MS = 6000;
 const PROFILE_OVERALL_FILTER_ITEM = Object.freeze({ id: '__overall__' });
+const TODAY_VISIBLE_DATE_RADIUS = 3;
+const TODAY_DATE_WINDOW_RADIUS = 45;
+const TODAY_DATE_TRANSITION_OUT_MS = 240;
+const TODAY_DATE_TRANSITION_IN_MS = 280;
 
 const INITIAL_STORAGE_LOAD_FAILURES = {
   tasks: true,
@@ -323,6 +330,18 @@ function ScheduleApp() {
     now.setHours(0, 0, 0, 0);
     return now;
   });
+  const [todayDateWindowAnchor, setTodayDateWindowAnchor] = useState(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return now;
+  });
+  const [pendingTodayDateKey, setPendingTodayDateKey] = useState(null);
+  const [isTodayDateTransitioning, setIsTodayDateTransitioning] = useState(false);
+  const todayDateTransitioningRef = useRef(false);
+  const todayDateTransitionSequenceRef = useRef(0);
+  const todayDayStripRef = useRef(null);
+  const todayPageTranslateX = useRef(new Animated.Value(0)).current;
+  const todayPageOpacity = useRef(new Animated.Value(1)).current;
   const [tasks, setTasks] = useState([]);
   const [reportDate, setReportDate] = useState(null);
   const [activeTaskId, setActiveTaskId] = useState(null);
@@ -406,6 +425,12 @@ function ScheduleApp() {
   const fabSize = isCompact ? 48 : 56;
   const centerGap = isCompact ? fabSize * 0.8 : fabSize * 0.95;
   const horizontalPadding = useMemo(() => Math.max(16, Math.min(32, width * 0.06)), [width]);
+  const todayDayItemWidth = Math.max(
+    1,
+    (width - insets.left - insets.right - horizontalPadding * 2) /
+      (TODAY_VISIBLE_DATE_RADIUS * 2 + 1)
+  );
+  const todayPageTravelDistance = Math.max(28, Math.min(72, width * 0.16));
   const bottomBarPadding = useMemo(() => Math.max(16, horizontalPadding * 0.75), [horizontalPadding]);
   const iconSize = isCompact ? 18 : 20;
   const cardSize = isCompact ? 136 : 152;
@@ -538,7 +563,7 @@ function ScheduleApp() {
     });
   }, [selectedDate]);
   const weekDays = useMemo(() => {
-    return createCenteredWeekDates(selectedDate).map((date) => {
+    return createCenteredDateWindow(todayDateWindowAnchor, TODAY_DATE_WINDOW_RADIUS).map((date) => {
       const key = getDateKey(date);
       const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, date));
       const scoredTasks = dayTasks.filter(shouldCountTaskTowardsCompletion);
@@ -557,7 +582,40 @@ function ScheduleApp() {
         allCompleted,
       };
     });
-  }, [language, selectedDate, tasks]);
+  }, [language, tasks, todayDateWindowAnchor]);
+  const selectedDateOffsetFromWindow = getCalendarDayOffset(
+    todayDateWindowAnchor,
+    selectedDate
+  );
+  const selectedDateWindowIndex = clampValue(
+    TODAY_DATE_WINDOW_RADIUS + selectedDateOffsetFromWindow,
+    TODAY_VISIBLE_DATE_RADIUS,
+    weekDays.length - TODAY_VISIBLE_DATE_RADIUS - 1
+  );
+  const selectedDateWindowOffset =
+    (selectedDateWindowIndex - TODAY_VISIBLE_DATE_RADIUS) * todayDayItemWidth;
+
+  useEffect(() => {
+    if (isTodayDateTransitioning) {
+      return;
+    }
+    if (
+      Math.abs(selectedDateOffsetFromWindow) >
+      TODAY_DATE_WINDOW_RADIUS - TODAY_VISIBLE_DATE_RADIUS
+    ) {
+      setTodayDateWindowAnchor(new Date(selectedDate));
+      return;
+    }
+    todayDayStripRef.current?.scrollToOffset({
+      offset: selectedDateWindowOffset,
+      animated: false,
+    });
+  }, [
+    isTodayDateTransitioning,
+    selectedDate,
+    selectedDateOffsetFromWindow,
+    selectedDateWindowOffset,
+  ]);
   // Calcula somente os meses visíveis e seus vizinhos. A primeira abertura
   // antes percorria 25 meses × dias × tarefas de forma síncrona, bloqueando a UI.
   const calendarStatusStoreRef = useRef({
@@ -2087,14 +2145,133 @@ function ScheduleApp() {
     setHabitSheetInitialTask(null);
   }, []);
 
-  const handleSelectDate = useCallback((date) => {
-    const normalized = normalizeDateValue(date);
-    if (!normalized) {
-      return;
-    }
-    triggerSelection();
-    setSelectedDate(normalized);
-  }, []);
+  const handleSelectDate = useCallback(
+    (date) => {
+      const normalized = normalizeDateValue(date);
+      const targetDateKey = normalized ? getDateKey(normalized) : null;
+      if (
+        !normalized ||
+        !targetDateKey ||
+        targetDateKey === selectedDateKey ||
+        todayDateTransitioningRef.current
+      ) {
+        return;
+      }
+
+      triggerSelection();
+      const dayOffset = getCalendarDayOffset(selectedDate, normalized);
+      const shouldAnimate = activeTab === 'today' && !prefersReducedMotion && dayOffset !== 0;
+
+      if (!shouldAnimate) {
+        todayDateTransitionSequenceRef.current += 1;
+        todayPageTranslateX.stopAnimation();
+        todayPageOpacity.stopAnimation();
+        todayPageTranslateX.setValue(0);
+        todayPageOpacity.setValue(1);
+        setPendingTodayDateKey(null);
+        if (
+          Math.abs(getCalendarDayOffset(todayDateWindowAnchor, normalized)) >
+          TODAY_DATE_WINDOW_RADIUS - TODAY_VISIBLE_DATE_RADIUS
+        ) {
+          setTodayDateWindowAnchor(new Date(normalized));
+        }
+        setSelectedDate(normalized);
+        return;
+      }
+
+      const direction = dayOffset > 0 ? 1 : -1;
+      const targetDateOffsetFromWindow = getCalendarDayOffset(
+        todayDateWindowAnchor,
+        normalized
+      );
+      const canCenterTarget =
+        Math.abs(targetDateOffsetFromWindow) <=
+        TODAY_DATE_WINDOW_RADIUS - TODAY_VISIBLE_DATE_RADIUS;
+      const transitionSequence = todayDateTransitionSequenceRef.current + 1;
+      todayDateTransitionSequenceRef.current = transitionSequence;
+      todayDateTransitioningRef.current = true;
+      setIsTodayDateTransitioning(true);
+      setPendingTodayDateKey(targetDateKey);
+
+      if (canCenterTarget) {
+        const targetIndex = TODAY_DATE_WINDOW_RADIUS + targetDateOffsetFromWindow;
+        todayDayStripRef.current?.scrollToOffset({
+          offset: (targetIndex - TODAY_VISIBLE_DATE_RADIUS) * todayDayItemWidth,
+          animated: true,
+        });
+      }
+
+      Animated.parallel([
+        Animated.timing(todayPageTranslateX, {
+          toValue: -direction * todayPageTravelDistance,
+          duration: TODAY_DATE_TRANSITION_OUT_MS,
+          easing: Easing.in(Easing.cubic),
+          useNativeDriver: USE_NATIVE_DRIVER,
+        }),
+        Animated.timing(todayPageOpacity, {
+          toValue: 0,
+          duration: TODAY_DATE_TRANSITION_OUT_MS,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: USE_NATIVE_DRIVER,
+        }),
+      ]).start(({ finished }) => {
+        if (!finished || transitionSequence !== todayDateTransitionSequenceRef.current) {
+          todayDateTransitioningRef.current = false;
+          setIsTodayDateTransitioning(false);
+          setPendingTodayDateKey(null);
+          return;
+        }
+
+        if (!canCenterTarget) {
+          setTodayDateWindowAnchor(new Date(normalized));
+        }
+        setSelectedDate(normalized);
+        setPendingTodayDateKey(null);
+        todayPageTranslateX.setValue(direction * todayPageTravelDistance);
+        todayPageOpacity.setValue(0);
+
+        requestAnimationFrame(() => {
+          if (transitionSequence !== todayDateTransitionSequenceRef.current) {
+            return;
+          }
+          Animated.parallel([
+            Animated.timing(todayPageTranslateX, {
+              toValue: 0,
+              duration: TODAY_DATE_TRANSITION_IN_MS,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: USE_NATIVE_DRIVER,
+            }),
+            Animated.timing(todayPageOpacity, {
+              toValue: 1,
+              duration: TODAY_DATE_TRANSITION_IN_MS,
+              easing: Easing.out(Easing.quad),
+              useNativeDriver: USE_NATIVE_DRIVER,
+            }),
+          ]).start(({ finished: didFinishEntering }) => {
+            if (transitionSequence === todayDateTransitionSequenceRef.current) {
+              if (!didFinishEntering) {
+                todayPageTranslateX.setValue(0);
+                todayPageOpacity.setValue(1);
+              }
+              todayDateTransitioningRef.current = false;
+              setIsTodayDateTransitioning(false);
+            }
+          });
+        });
+      });
+    },
+    [
+      activeTab,
+      prefersReducedMotion,
+      selectedDate,
+      selectedDateKey,
+      todayDayItemWidth,
+      todayDateWindowAnchor,
+      todayPageOpacity,
+      todayPageTranslateX,
+      todayPageTravelDistance,
+    ]
+  );
 
   const handleChangeTab = useCallback(
     (tabKey) => {
@@ -2954,7 +3131,12 @@ function ScheduleApp() {
         onLayout={(event) => handleTaskLayout(task.id, event)}
         style={[
           index === 0 && styles.todayFirstTask,
-          { transform: [{ translateY: getTaskTranslateY(task.id) }] },
+          {
+            transform: [
+              { translateX: todayPageTranslateX },
+              { translateY: getTaskTranslateY(task.id) },
+            ],
+          },
         ]}
       >
         <SwipeableTaskCard
@@ -2987,6 +3169,7 @@ function ScheduleApp() {
       handleTaskLayout,
       language,
       selectedDateKey,
+      todayPageTranslateX,
     ]
   );
 
@@ -3153,6 +3336,11 @@ function ScheduleApp() {
     scorableTasksForSelectedDate.length > 0
       ? Math.round((completedTaskCount / scorableTasksForSelectedDate.length) * 100)
       : 0;
+  const displayedTodayDateKey = pendingTodayDateKey ?? selectedDateKey;
+  const todayPageTransitionStyle = {
+    opacity: todayPageOpacity,
+    transform: [{ translateX: todayPageTranslateX }],
+  };
 
   return (
     <View
@@ -3201,7 +3389,7 @@ function ScheduleApp() {
               removeClippedSubviews={false}
               ListHeaderComponent={
                 <>
-              <View style={styles.todayHeader}>
+              <Animated.View style={[styles.todayHeader, todayPageTransitionStyle]}>
                 <Text style={styles.todayDateEyebrow}>{selectedDateEyebrow}</Text>
                 <Text style={styles.todayTitle}>{selectedDateLabel}</Text>
                 {scorableTasksForSelectedDate.length > 0 && (
@@ -3243,49 +3431,74 @@ function ScheduleApp() {
                     </View>
                   </>
                 )}
-              </View>
+              </Animated.View>
 
               <View style={styles.daySelector}>
-                {weekDays.map((day) => {
-                  const isSelected = day.key === selectedDateKey;
-                  const isToday = day.key === todayKey;
-                  const dayContainerStyles = [styles.dayNumber];
-                  const dayTextStyles = [styles.dayNumberText];
-                  if (day.allCompleted) {
-                    dayContainerStyles.push(styles.dayNumberCompleted);
-                    dayTextStyles.push(styles.dayNumberTextCompleted);
-                  }
-                  if (isSelected) {
-                    dayContainerStyles.push(styles.dayNumberSelected);
-                    dayTextStyles.push(styles.dayNumberTextSelected);
-                  }
-                  const indicatorStyles = [styles.todayIndicator];
-                  if (isSelected) {
-                    indicatorStyles.push(styles.todayIndicatorOnSelected);
-                  }
-                  return (
-                    <Pressable
-                      key={day.key}
-                      style={styles.dayItem}
-                      onPress={() => handleSelectDate(day.date)}
-                      accessibilityRole="button"
-                      accessibilityLabel={day.accessibilityLabel}
-                      accessibilityState={{ selected: isSelected }}
-                    >
-                      <Text style={[styles.dayLabel, isSelected && styles.dayLabelSelected]}>
-                        {day.label}
-                      </Text>
-                      <View style={dayContainerStyles}>
-                        <Text style={dayTextStyles}>{day.dayNumber}</Text>
-                        {isToday && <View style={indicatorStyles} />}
-                      </View>
-                    </Pressable>
-                  );
-                })}
+                <FlatList
+                  ref={todayDayStripRef}
+                  horizontal
+                  data={weekDays}
+                  renderItem={({ item: day }) => {
+                    const isSelected = day.key === displayedTodayDateKey;
+                    const isToday = day.key === todayKey;
+                    const dayContainerStyles = [styles.dayNumber];
+                    const dayTextStyles = [styles.dayNumberText];
+                    if (day.allCompleted) {
+                      dayContainerStyles.push(styles.dayNumberCompleted);
+                      dayTextStyles.push(styles.dayNumberTextCompleted);
+                    }
+                    if (isSelected) {
+                      dayContainerStyles.push(styles.dayNumberSelected);
+                      dayTextStyles.push(styles.dayNumberTextSelected);
+                    }
+                    const indicatorStyles = [styles.todayIndicator];
+                    if (isSelected) {
+                      indicatorStyles.push(styles.todayIndicatorOnSelected);
+                    }
+                    return (
+                      <Pressable
+                        style={[styles.dayItem, { width: todayDayItemWidth }]}
+                        onPress={() => handleSelectDate(day.date)}
+                        disabled={isTodayDateTransitioning}
+                        accessibilityRole="button"
+                        accessibilityLabel={day.accessibilityLabel}
+                        accessibilityState={{
+                          selected: isSelected,
+                          disabled: isTodayDateTransitioning,
+                        }}
+                      >
+                        <Text style={[styles.dayLabel, isSelected && styles.dayLabelSelected]}>
+                          {day.label}
+                        </Text>
+                        <View style={dayContainerStyles}>
+                          <Text style={dayTextStyles}>{day.dayNumber}</Text>
+                          {isToday && <View style={indicatorStyles} />}
+                        </View>
+                      </Pressable>
+                    );
+                  }}
+                  keyExtractor={(day) => day.key}
+                  extraData={`${displayedTodayDateKey}:${isTodayDateTransitioning}`}
+                  initialScrollIndex={selectedDateWindowIndex - TODAY_VISIBLE_DATE_RADIUS}
+                  getItemLayout={(_, index) => ({
+                    length: todayDayItemWidth,
+                    offset: todayDayItemWidth * index,
+                    index,
+                  })}
+                  scrollEnabled={false}
+                  showsHorizontalScrollIndicator={false}
+                  initialNumToRender={9}
+                  maxToRenderPerBatch={9}
+                  windowSize={3}
+                  removeClippedSubviews={Platform.OS === 'android'}
+                  style={styles.daySelectorList}
+                />
               </View>
 
               {!isSelectedToday ? (
-                <View style={styles.todayTemporalActions}>
+                <Animated.View
+                  style={[styles.todayTemporalActions, todayPageTransitionStyle]}
+                >
                   <TouchableOpacity
                     style={[
                       styles.todayTemporalButton,
@@ -3301,11 +3514,13 @@ function ScheduleApp() {
                       {t.today.backToToday}
                     </Text>
                   </TouchableOpacity>
-                </View>
+                </Animated.View>
               ) : null}
 
               {tagOptions.length > 0 && (
-                <View style={styles.tagFilterContainer}>
+                <Animated.View
+                  style={[styles.tagFilterContainer, todayPageTransitionStyle]}
+                >
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
@@ -3362,12 +3577,12 @@ function ScheduleApp() {
                       );
                     })}
                   </ScrollView>
-                </View>
+                </Animated.View>
               )}
                 </>
               }
               ListEmptyComponent={
-                <View style={styles.tasksSection}>
+                <Animated.View style={[styles.tasksSection, todayPageTransitionStyle]}>
                   <View style={styles.emptyStateContainer}>
                     <View
                       style={[styles.emptyStateIllustration, dynamicStyles.emptyStateIllustration]}
@@ -3381,7 +3596,7 @@ function ScheduleApp() {
                       {selectedTagFilter === 'all' ? t.today.emptyDay : t.today.emptyDayTag}
                     </Text>
                   </View>
-                </View>
+                </Animated.View>
               }
             />
           ) : activeTab === 'calendar' ? null : activeTab === 'profile' ? (

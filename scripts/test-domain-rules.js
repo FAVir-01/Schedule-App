@@ -95,6 +95,10 @@ const {
   shouldTaskAppearOnDate,
 } = require('../utils/dateUtils');
 const {
+  createCenteredDateWindow,
+  getCalendarDayOffset,
+} = require('../utils/todayNavigationUtils');
+const {
   getTaskRepeatDisplayLabel,
   getTaskTagDisplayLabel,
   getTaskTypeDisplayLabel,
@@ -1070,6 +1074,19 @@ test('mantem a data selecionada no centro da faixa de sete dias', () => {
   assert.deepEqual(createCenteredWeekDates('2026-02-29'), []);
 });
 
+test('prepara datas laterais para centralizacao animada do Today', () => {
+  const dates = createCenteredDateWindow('2026-07-19', 6).map(getDateKey);
+
+  assert.equal(dates.length, 13);
+  assert.equal(dates[0], '2026-07-13');
+  assert.equal(dates[6], '2026-07-19');
+  assert.equal(dates[12], '2026-07-25');
+  assert.deepEqual(createCenteredDateWindow('2026-02-29', 6), []);
+  assert.deepEqual(createCenteredDateWindow('2026-07-19', -1), []);
+  assert.equal(getCalendarDayOffset('2026-07-19', '2026-07-22'), 3);
+  assert.equal(getCalendarDayOffset('2026-01-01', '2025-12-29'), -3);
+});
+
 test('aceita somente data final igual ou posterior ao início', () => {
   assert.equal(isValidDateRange('2026-07-13', '2026-07-13'), true);
   assert.equal(isValidDateRange('2026-07-13', '2026-07-14'), true);
@@ -1474,6 +1491,33 @@ test('expoe abas e acoes de reflexao ao leitor de tela', () => {
   assert.equal(feedSource.includes('accessibilityLabel={t.reflection.closePhoto}'), true);
   assert.equal(reportSource.includes('accessibilityLabel={t.report.close}'), true);
   assert.equal(reportSource.includes('accessibilityLabel={t.reflection.openPhoto}'), true);
+});
+
+test('mantem a troca de dias do Today animada e sensivel a reduzir movimento', () => {
+  const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
+
+  assert.equal(appSource.includes('todayDayStripRef.current?.scrollToOffset'), true);
+  assert.equal(appSource.includes('animated: true'), true);
+  assert.equal(appSource.includes('Animated.timing(todayPageTranslateX'), true);
+  assert.equal(
+    appSource.includes("activeTab === 'today' && !prefersReducedMotion && dayOffset !== 0"),
+    true
+  );
+  assert.equal(appSource.includes('setPendingTodayDateKey(targetDateKey)'), true);
+});
+
+test('mantem a crista da agua opaca para nao marcar a emenda do gradiente', () => {
+  const taskCardSource = fs.readFileSync(
+    path.join(root, 'components/SwipeableTaskCard.js'),
+    'utf8'
+  );
+
+  assert.equal(taskCardSource.includes('const waveHeight = 19;'), true);
+  assert.equal(taskCardSource.includes('fill="rgb(153, 199, 252)"'), true);
+  assert.equal(
+    taskCardSource.includes('fill="rgba(96, 165, 250, 0.55)"'),
+    false
+  );
 });
 
 const runTests = async () => {

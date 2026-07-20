@@ -109,10 +109,14 @@ export const styles = StyleSheet.create({
     backgroundColor: '#2f9e44',
   },
   daySelector: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
+    width: '100%',
+    alignSelf: 'stretch',
     marginBottom: 12,
+    overflow: 'hidden',
+  },
+  daySelectorList: {
+    width: '100%',
+    flexGrow: 0,
   },
   todayTemporalActions: {
     flexDirection: 'row',
@@ -171,7 +175,6 @@ export const styles = StyleSheet.create({
     color: '#ffffff',
   },
   dayItem: {
-    flex: 1,
     alignItems: 'center',
   },
   dayLabel: {
@@ -282,13 +285,13 @@ export const styles = StyleSheet.create({
     top: -18,
     left: 0,
     right: 0,
-    height: 18,
+    height: 19,
   },
   waterCrestLayer: {
     position: 'absolute',
     left: 0,
     top: 0,
-    height: 18,
+    height: 19,
   },
   taskCardMain: {
     flexDirection: 'row',
