@@ -158,6 +158,11 @@ const createTaskScheduleMatcher = (
   const configuredEndDate = normalizeDateValue(task.repeat?.endDate);
   const startTime = startDay.getTime();
   const configuredEndTime = configuredEndDate?.getTime() ?? null;
+  // Tarefa arquivada some da agenda a partir da data do arquivamento,
+  // mas as ocorrências anteriores (histórico/calendário) continuam valendo.
+  const archivedTime = task.archived
+    ? normalizeDateValue(task.archivedAt)?.getTime() ?? null
+    : null;
   const startDayOrdinal = getCalendarDayOrdinal(startDay);
   const isQuantumTask = task.type === 'quantum';
   let repeat = task.repeat;
@@ -200,6 +205,9 @@ const createTaskScheduleMatcher = (
     }
     const targetTime = targetDay.getTime();
     if (configuredEndTime != null && configuredEndTime < targetTime) {
+      return false;
+    }
+    if (archivedTime != null && targetTime >= archivedTime) {
       return false;
     }
 

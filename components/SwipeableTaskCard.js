@@ -39,7 +39,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
   onToggleCompletion,
   onQuantumDelta,
   onCopy,
-  onDelete,
+  onArchive,
   onEdit,
   language = 'en',
   isVisible = true,
@@ -395,23 +395,23 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
         <TouchableOpacity
           style={[
             styles.swipeActionButton,
-            styles.swipeActionDelete,
+            styles.swipeActionArchive,
             task.profileLocked && styles.swipeActionButtonDisabled,
           ]}
-          onPress={() => handleAction(() => onDelete?.(task))}
+          onPress={() => handleAction(() => onArchive?.(task))}
           accessibilityRole="button"
-          accessibilityLabel={t.taskCard.deleteTask}
+          accessibilityLabel={t.taskCard.archiveTask}
           disabled={task.profileLocked}
         >
-          <Ionicons name="trash-outline" size={18} color="#fff" />
+          <Ionicons name="archive-outline" size={18} color="#fff" />
           <Text
             style={[
               styles.swipeActionText,
-              styles.swipeActionTextDelete,
+              styles.swipeActionTextArchive,
               task.profileLocked && styles.swipeActionTextDisabled,
             ]}
           >
-            {t.taskCard.delete}
+            {t.taskCard.archive}
           </Text>
         </TouchableOpacity>
       </View>

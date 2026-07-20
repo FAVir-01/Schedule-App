@@ -434,6 +434,39 @@ export {
   shouldResetTaskProgress,
 };
 
+// "Arquivada" cobre dois casos: arquivamento manual (task.archived) e tarefas
+// de uma vez só cuja data já passou — essas viram inativas automaticamente.
+export const isTaskArchived = (task, todayKey) => {
+  if (!task) {
+    return false;
+  }
+  if (task.archived) {
+    return true;
+  }
+  if (!todayKey) {
+    return false;
+  }
+  const repeatConfig = normalizeRepeatConfig(task.repeat);
+  if (repeatConfig.enabled) {
+    return false;
+  }
+  const startDate = normalizeDateValue(task.dateKey ?? task.date);
+  return startDate ? getDateKey(startDate) < todayKey : false;
+};
+
+export const getTaskLastCompletionDateKey = (task) => {
+  if (!task?.completedDates || typeof task.completedDates !== 'object') {
+    return null;
+  }
+  let latest = null;
+  Object.entries(task.completedDates).forEach(([dateKey, completed]) => {
+    if (completed && (!latest || dateKey > latest)) {
+      latest = dateKey;
+    }
+  });
+  return latest;
+};
+
 export const isPassiveTaskType = (task) => {
   const type = task?.type;
   return type === 'reminder';
