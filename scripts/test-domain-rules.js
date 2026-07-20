@@ -1440,6 +1440,21 @@ test('mantem listas extensas virtualizadas na tela principal e no perfil', () =>
   assert.equal(appSource.includes('renderItem={renderProfileFilterChip}'), true);
 });
 
+test('mantem o corpo do perfil com margens horizontais simetricas', () => {
+  const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
+  const stylesSource = fs.readFileSync(path.join(root, 'styles/appStyles.js'), 'utf8');
+
+  assert.equal(
+    appSource.includes('const profileContentWidth = Math.max(0, width - 48);'),
+    true
+  );
+  assert.equal(
+    appSource.includes('style={[styles.profileBody, { width: profileContentWidth }]}'),
+    true
+  );
+  assert.match(stylesSource, /profileBody:\s*\{\s*alignSelf: 'center'/);
+});
+
 const runTests = async () => {
   let failures = 0;
   for (const { name, run } of tests) {

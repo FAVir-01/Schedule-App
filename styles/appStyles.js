@@ -1807,10 +1807,12 @@ export const styles = StyleSheet.create({
   },
   // --- STYLES FOR PROFILE & CUSTOMIZE CALENDAR ---
   profileScrollContent: {
-    alignItems: 'center',
-    paddingHorizontal: 24,
+    alignItems: 'stretch',
     paddingTop: 16,
     paddingBottom: 36,
+  },
+  profileBody: {
+    alignSelf: 'center',
   },
   profileMoodSection: {
     alignSelf: 'stretch',
@@ -1921,7 +1923,7 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
   },
   profileHeaderRow: {
-    alignSelf: 'stretch',
+    alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1948,7 +1950,6 @@ export const styles = StyleSheet.create({
   profileChipsScroll: {
     alignSelf: 'stretch',
     marginBottom: 16,
-    marginHorizontal: -24,
   },
   profileChipsContent: {
     paddingHorizontal: 24,
