@@ -398,6 +398,7 @@ function ScheduleApp() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isCompact = width < 360;
+  const profileContentWidth = Math.max(0, width - 48);
   const fabSize = isCompact ? 48 : 56;
   const centerGap = isCompact ? fabSize * 0.8 : fabSize * 0.95;
   const horizontalPadding = useMemo(() => Math.max(16, Math.min(32, width * 0.06)), [width]);
@@ -3368,7 +3369,7 @@ function ScheduleApp() {
                showsVerticalScrollIndicator={false}
              >
                 {/* Cabeçalho compacto: título + data e atalho pras configurações */}
-                <View style={styles.profileHeaderRow}>
+                <View style={[styles.profileHeaderRow, { width: profileContentWidth }]}>
                   <View>
                     <Text style={styles.todayDateEyebrow}>
                       {today
@@ -3412,6 +3413,7 @@ function ScheduleApp() {
                   />
                 ) : null}
 
+                <View style={[styles.profileBody, { width: profileContentWidth }]}>
                 <PerformanceChart
                   tasks={tasks}
                   language={language}
@@ -3561,6 +3563,7 @@ function ScheduleApp() {
                     <Ionicons name="time-outline" size={20} color="#3c2ba7" />
                     <Text style={styles.profileActionText}>{t.profile.activity}</Text>
                   </TouchableOpacity>
+                </View>
                 </View>
              </ScrollView>
           ) : (
