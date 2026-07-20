@@ -39,7 +39,8 @@ const FeedPostCard = React.memo(({ dateKey, mood, moodAppearance, language, t, o
         <Pressable
           onPress={() => onEditReflection(dateKey)}
           hitSlop={12}
-          accessibilityLabel={t.reflection.editReflection}
+          accessibilityRole="button"
+          accessibilityLabel={`${t.reflection.editReflection}. ${dateLabel}`}
         >
           <Ionicons name="pencil" size={18} color="#8a86a8" />
         </Pressable>
@@ -55,8 +56,16 @@ const FeedPostCard = React.memo(({ dateKey, mood, moodAppearance, language, t, o
       ) : null}
       {mood.note ? <Text style={styles.feedPostNote}>{mood.note}</Text> : null}
       {mood.photo ? (
-        <Pressable onPress={() => onOpenPhoto(mood.photo)}>
-          <Image source={{ uri: mood.photo }} style={styles.feedPostPhoto} />
+        <Pressable
+          onPress={() => onOpenPhoto(mood.photo)}
+          accessibilityRole="button"
+          accessibilityLabel={`${t.reflection.openPhoto}. ${dateLabel}`}
+        >
+          <Image
+            source={{ uri: mood.photo }}
+            style={styles.feedPostPhoto}
+            accessible={false}
+          />
         </Pressable>
       ) : null}
     </Pressable>
@@ -163,11 +172,17 @@ function ReflectionFeed({
         animationType="fade"
         onRequestClose={() => setOpenPhoto(null)}
       >
-        <Pressable style={styles.reportPhotoViewerOverlay} onPress={() => setOpenPhoto(null)}>
+        <Pressable
+          style={styles.reportPhotoViewerOverlay}
+          onPress={() => setOpenPhoto(null)}
+          accessibilityRole="button"
+          accessibilityLabel={t.reflection.closePhoto}
+        >
           <Image
             source={{ uri: openPhoto }}
             style={styles.reportPhotoViewerImage}
             resizeMode="contain"
+            accessible={false}
           />
         </Pressable>
       </Modal>

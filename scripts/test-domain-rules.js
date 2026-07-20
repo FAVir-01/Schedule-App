@@ -681,6 +681,10 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
     Object.keys(translations.en.reflection).sort()
   );
   assert.deepEqual(
+    Object.keys(translations.pt.report).sort(),
+    Object.keys(translations.en.report).sort()
+  );
+  assert.deepEqual(
     Object.keys(translations.pt.dataProtection).sort(),
     Object.keys(translations.en.dataProtection).sort()
   );
@@ -750,6 +754,8 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
   assert.equal(translations.pt.calendar.openDayReport, 'Abre o relatório diário');
   assert.equal(translations.pt.today.showAllTags, 'Mostrar todos os rótulos');
   assert.equal(translations.pt.reflection.removeConfirmTitle, 'Remover esta reflexão?');
+  assert.equal(translations.pt.reflection.openPhoto, 'Abrir foto da reflexão');
+  assert.equal(translations.pt.report.close, 'Fechar relatório diário');
   assert.equal(translations.pt.dataProtection.saveErrorTitle, 'As alterações não foram salvas');
   assert.equal(translations.pt.backup.importLabel, 'Restaurar backup');
   assert.equal(translations.pt.backup.restoreConfirm, 'Restaurar');
@@ -1453,6 +1459,21 @@ test('mantem o corpo do perfil com margens horizontais simetricas', () => {
     true
   );
   assert.match(stylesSource, /profileBody:\s*\{\s*alignSelf: 'center'/);
+});
+
+test('expoe abas e acoes de reflexao ao leitor de tela', () => {
+  const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
+  const feedSource = fs.readFileSync(path.join(root, 'components/ReflectionFeed.js'), 'utf8');
+  const reportSource = fs.readFileSync(path.join(root, 'components/DayReportModal.js'), 'utf8');
+
+  assert.equal(appSource.includes('accessibilityRole="tab"'), true);
+  assert.equal(
+    appSource.includes('accessibilityState={{ selected: isActive, disabled: isFabOpen }}'),
+    true
+  );
+  assert.equal(feedSource.includes('accessibilityLabel={t.reflection.closePhoto}'), true);
+  assert.equal(reportSource.includes('accessibilityLabel={t.report.close}'), true);
+  assert.equal(reportSource.includes('accessibilityLabel={t.reflection.openPhoto}'), true);
 });
 
 const runTests = async () => {
