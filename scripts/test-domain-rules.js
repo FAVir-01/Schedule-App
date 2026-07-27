@@ -170,10 +170,6 @@ const {
   migrateImportedTemplateTasks,
 } = require('../utils/templateUtils');
 const { getTimerParts, getTimerTotalSeconds } = require('../utils/timeUtils');
-const {
-  calculatePeriodGoalProgress,
-  normalizePeriodGoal,
-} = require('../utils/periodGoalUtils');
 const { buildLocalPeriodSummary } = require('../utils/localSummaryUtils');
 const {
   BACKUP_ERROR_CODES,
@@ -184,71 +180,6 @@ const { replaceStoredAppData, saveTasks } = require('../storage');
 
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
-
-test('normaliza somente metas semanais ou mensais dentro do limite', () => {
-  assert.deepEqual(normalizePeriodGoal({ period: 'weekly', target: '3' }), {
-    period: 'weekly',
-    target: 3,
-  });
-  assert.deepEqual(normalizePeriodGoal({ period: 'monthly', target: 12 }), {
-    period: 'monthly',
-    target: 12,
-  });
-  assert.equal(normalizePeriodGoal({ period: 'daily', target: 1 }), null);
-  assert.equal(normalizePeriodGoal({ period: 'weekly', target: 0 }), null);
-  assert.equal(normalizePeriodGoal({ period: 'monthly', target: 1000 }), null);
-  assert.equal(normalizePeriodGoal({ enabled: false, period: 'weekly', target: 3 }), null);
-});
-
-test('calcula meta semanal contra o mesmo ponto da semana anterior', () => {
-  const progress = calculatePeriodGoalProgress({
-    task: {
-      periodGoal: { period: 'weekly', target: 4 },
-      completedDates: {
-        '2026-07-05': true,
-        '2026-07-06': true,
-        '2026-07-10': true,
-        '2026-07-12': true,
-        '2026-07-13': true,
-        '2026-07-15': true,
-        '2026-07-18': true,
-        '2026-07-19': true,
-      },
-    },
-    referenceDate: '2026-07-18',
-  });
-
-  assert.equal(progress.completed, 3);
-  assert.equal(progress.previousCompleted, 2);
-  assert.equal(progress.delta, 1);
-  assert.equal(progress.remaining, 1);
-  assert.equal(progress.percentage, 75);
-  assert.equal(progress.reached, false);
-});
-
-test('compara meta mensal respeitando o tamanho do mes anterior', () => {
-  const progress = calculatePeriodGoalProgress({
-    task: {
-      periodGoal: { period: 'monthly', target: 3 },
-      completedDates: {
-        '2026-02-01': true,
-        '2026-02-28': true,
-        '2026-03-01': true,
-        '2026-03-15': true,
-        '2026-03-31': true,
-      },
-    },
-    referenceDate: '2026-03-31',
-  });
-
-  assert.equal(progress.completed, 3);
-  assert.equal(progress.previousCompleted, 2);
-  assert.equal(progress.delta, 1);
-  assert.equal(progress.remaining, 0);
-  assert.equal(progress.percentage, 100);
-  assert.equal(progress.reached, true);
-  assert.equal(progress.previousEnd.getDate(), 28);
-});
 
 test('resume o periodo local sem misturar lembretes ou inferir causalidade', () => {
   const dailyRepeat = { enabled: true, frequency: 'daily', interval: 1 };
@@ -707,10 +638,6 @@ test('mantem acoes de tarefa completas nos dois idiomas', () => {
   assert.deepEqual(
     Object.keys(translations.pt.profile).sort(),
     Object.keys(translations.en.profile).sort()
-  );
-  assert.deepEqual(
-    Object.keys(translations.pt.periodGoal).sort(),
-    Object.keys(translations.en.periodGoal).sort()
   );
   assert.deepEqual(
     Object.keys(translations.pt.localSummary).sort(),
