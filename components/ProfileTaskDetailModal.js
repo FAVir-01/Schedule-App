@@ -14,7 +14,6 @@ import {
 } from '../utils/taskUtils';
 import { formatTaskTime } from '../utils/timeUtils';
 import { lightenColor } from '../utils/colorUtils';
-import { normalizePeriodGoal } from '../utils/periodGoalUtils';
 import { styles } from '../styles/appStyles';
 
 export default function ProfileTaskDetailModal({
@@ -25,7 +24,6 @@ export default function ProfileTaskDetailModal({
   onToggleArchive,
   onTogglePin,
   onDelete,
-  onEditPeriodGoal,
   language = 'en',
 }) {
   const [hasImageError, setHasImageError] = useState(false);
@@ -53,17 +51,6 @@ export default function ProfileTaskDetailModal({
     ?? t.taskDisplay.quantumModes.quantum;
   const repeatLabel = getTaskRepeatDisplayLabel(task.repeat, t.taskDisplay.repeats);
   const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
-  const periodGoal = normalizePeriodGoal(task.periodGoal);
-  const periodGoalLabel = periodGoal
-    ? (periodGoal.target === 1
-        ? periodGoal.period === 'weekly'
-          ? t.periodGoal.targetPerWeekOne
-          : t.periodGoal.targetPerMonthOne
-        : periodGoal.period === 'weekly'
-          ? t.periodGoal.targetPerWeek
-          : t.periodGoal.targetPerMonth
-      ).replace('{target}', String(periodGoal.target))
-    : t.common.notSet;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -145,10 +132,6 @@ export default function ProfileTaskDetailModal({
               <Text style={styles.profileDetailLabel}>{t.taskDetails.tag}</Text>
               <Text style={styles.profileDetailValue}>{tagLabel}</Text>
             </View>
-            <View style={styles.profileDetailRow}>
-              <Text style={styles.profileDetailLabel}>{t.taskDetails.periodGoal}</Text>
-              <Text style={styles.profileDetailValue}>{periodGoalLabel}</Text>
-            </View>
             {isQuantum ? (
               <View style={[styles.profileDetailRow, styles.profileDetailRowLast]}>
                 <Text style={styles.profileDetailLabel}>{quantumModeLabel}</Text>
@@ -162,17 +145,6 @@ export default function ProfileTaskDetailModal({
             )}
           </View>
           <View style={styles.profileDetailActions}>
-            <Pressable
-              style={styles.profileDetailGoalButton}
-              onPress={() => onEditPeriodGoal?.(task.id)}
-              accessibilityRole="button"
-              accessibilityLabel={periodGoal ? t.periodGoal.editGoal : t.periodGoal.setGoal}
-            >
-              <Ionicons name="flag-outline" size={18} color="#3c2ba7" />
-              <Text style={styles.profileDetailGoalButtonText}>
-                {periodGoal ? t.periodGoal.editGoal : t.periodGoal.setGoal}
-              </Text>
-            </Pressable>
             <Pressable
               style={[
                 styles.profileDetailLockButton,

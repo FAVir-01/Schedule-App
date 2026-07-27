@@ -1,10 +1,45 @@
-import { eachDayOfInterval } from 'date-fns';
-import { createTaskScheduleMatcher, getDateKey } from './dateUtils';
+import {
+  addDays,
+  addMonths,
+  differenceInCalendarDays,
+  eachDayOfInterval,
+  endOfMonth,
+  startOfMonth,
+  startOfWeek,
+} from 'date-fns';
+import {
+  createTaskScheduleMatcher,
+  getDateKey,
+  normalizeDateValue,
+} from './dateUtils';
 import {
   getTaskCompletionStatus,
   shouldCountTaskTowardsCompletion,
 } from './taskUtils';
-import { getPeriodBounds } from './periodGoalUtils';
+
+const getPeriodBounds = (period, referenceDate) => {
+  const normalizedReference = normalizeDateValue(referenceDate) ?? normalizeDateValue(new Date());
+  const currentStart = period === 'weekly'
+    ? startOfWeek(normalizedReference, { weekStartsOn: 1 })
+    : startOfMonth(normalizedReference);
+  const previousStart = period === 'weekly'
+    ? addDays(currentStart, -7)
+    : startOfMonth(addMonths(currentStart, -1));
+  const elapsedDays = differenceInCalendarDays(normalizedReference, currentStart);
+  const previousPeriodEnd = period === 'weekly'
+    ? addDays(previousStart, 6)
+    : endOfMonth(previousStart);
+  const samePointInPreviousPeriod = addDays(previousStart, elapsedDays);
+
+  return {
+    currentStart,
+    currentEnd: normalizedReference,
+    previousStart,
+    previousEnd: samePointInPreviousPeriod < previousPeriodEnd
+      ? samePointInPreviousPeriod
+      : previousPeriodEnd,
+  };
+};
 
 const summarizeRange = ({ preparedTasks, dayMoods, startDate, endDate }) => {
   const dates = startDate <= endDate
