@@ -330,13 +330,13 @@ export default function ProfileTasksModal({
 
         <View style={styles.profileTasksFilters}>
           <View style={styles.profileTasksSearchRow}>
-            <Ionicons name="search-outline" size={18} color="#9aa5b5" />
+            <Ionicons name="search-outline" size={18} color="#626b78" />
             <TextInput
               style={styles.profileTasksSearchInput}
               value={searchValue}
               onChangeText={setSearchValue}
               placeholder={t.profileTasks.searchPlaceholder}
-              placeholderTextColor="#9aa5b5"
+              placeholderTextColor="#626b78"
             />
           </View>
           {tagOptions.length > 0 ? (
@@ -402,7 +402,7 @@ export default function ProfileTasksModal({
             <Ionicons
               name={viewTab === 'archived' ? 'archive-outline' : 'leaf-outline'}
               size={40}
-              color="#c5cadb"
+              color="#767c8f"
             />
             <Text style={styles.profileTasksEmptyText}>
               {isFilteringEmpty

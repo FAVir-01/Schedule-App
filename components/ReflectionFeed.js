@@ -42,7 +42,7 @@ const FeedPostCard = React.memo(({ dateKey, mood, moodAppearance, language, t, o
           accessibilityRole="button"
           accessibilityLabel={`${t.reflection.editReflection}. ${dateLabel}`}
         >
-          <Ionicons name="pencil" size={18} color="#8a86a8" />
+          <Ionicons name="pencil" size={18} color="#625f79" />
         </Pressable>
       </View>
       {mood.tags?.length ? (
@@ -140,7 +140,7 @@ function ReflectionFeed({
   if (!hasPosts) {
     return (
       <View style={styles.feedEmptyContainer}>
-        <Ionicons name="journal-outline" size={44} color="#c5cadb" />
+        <Ionicons name="journal-outline" size={44} color="#767c8f" />
         <Text style={styles.feedEmptyTitle}>{t.calendar.feedEmptyTitle}</Text>
         <Text style={styles.feedEmptyText}>{t.calendar.feedEmptyText}</Text>
         <Pressable

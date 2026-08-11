@@ -68,16 +68,16 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
   },
   todaySubtitleSuccess: {
-    color: '#2f9e44',
+    color: '#217a34',
   },
   todaySubtitleInProgress: {
-    color: '#6f7a86',
+    color: '#59636f',
   },
   todayDateEyebrow: {
     fontSize: 12,
     fontWeight: '600',
     letterSpacing: 1.2,
-    color: '#8a8fa3',
+    color: '#616779',
     marginBottom: 4,
   },
   todayProgressRow: {
@@ -181,7 +181,7 @@ export const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     letterSpacing: 0.6,
-    color: '#9ba0b0',
+    color: '#626979',
     marginBottom: 10,
     textTransform: 'uppercase',
   },
@@ -217,7 +217,7 @@ export const styles = StyleSheet.create({
     color: '#ffffff',
   },
   dayNumberTextCompleted: {
-    color: '#1f9d6d',
+    color: '#166b49',
   },
   todayIndicator: {
     position: 'absolute',
@@ -241,7 +241,7 @@ export const styles = StyleSheet.create({
   },
   emptyState: {
     fontSize: 15,
-    color: '#6f7a86',
+    color: '#59636f',
     textAlign: 'center',
     paddingHorizontal: 12,
   },
@@ -423,13 +423,13 @@ export const styles = StyleSheet.create({
     color: '#1a1a2e',
   },
   taskTitleCompleted: {
-    color: '#6f7a86',
+    color: '#59636f',
     textDecorationLine: 'line-through',
   },
   taskTime: {
     marginTop: 4,
     fontSize: 13,
-    color: '#6f7a86',
+    color: '#59636f',
   },
   taskSubtaskSummary: {
     marginTop: 6,
@@ -451,7 +451,7 @@ export const styles = StyleSheet.create({
     height: 32,
     borderRadius: 16,
     borderWidth: 2,
-    borderColor: '#c5cadb',
+    borderColor: '#767c8f',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#ffffff',
@@ -465,7 +465,7 @@ export const styles = StyleSheet.create({
     fontSize: 9,
     lineHeight: 11,
     fontWeight: '700',
-    color: '#777d90',
+    color: '#666b7d',
   },
   taskToggleStepButton: {
     marginTop: 3,
@@ -496,7 +496,7 @@ export const styles = StyleSheet.create({
   missedBadgeText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#6f7a86',
+    color: '#59636f',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
@@ -582,7 +582,7 @@ export const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     borderWidth: 2,
-    borderColor: '#c5cadb',
+    borderColor: '#767c8f',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#ffffff',
@@ -599,7 +599,7 @@ export const styles = StyleSheet.create({
   },
   detailEmptySubtasks: {
     fontSize: 14,
-    color: '#6f7a86',
+    color: '#59636f',
   },
   timerWheelArea: {
     position: 'relative',
@@ -655,7 +655,7 @@ export const styles = StyleSheet.create({
   timerWheelItemText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#A3AEC1',
+    color: '#636d7c',
   },
   timerWheelItemTextActive: {
     fontSize: 22,
@@ -674,7 +674,7 @@ export const styles = StyleSheet.create({
     height: 26,
     borderRadius: 13,
     borderWidth: 2,
-    borderColor: '#c5cadb',
+    borderColor: '#767c8f',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
@@ -690,7 +690,7 @@ export const styles = StyleSheet.create({
     color: '#1a1a2e',
   },
   detailSubtaskTextCompleted: {
-    color: '#6f7a86',
+    color: '#59636f',
     textDecorationLine: 'line-through',
   },
   detailEditLink: {
@@ -745,7 +745,7 @@ export const styles = StyleSheet.create({
   calendarViewSwitcherText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#6f7a86',
+    color: '#59636f',
   },
   calendarViewSwitcherTextActive: {
     color: '#ffffff',
@@ -761,7 +761,7 @@ export const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 11,
     fontWeight: '700',
-    color: '#6f7a86',
+    color: '#59636f',
   },
   calendarMonthYear: {
     color: 'rgba(255, 255, 255, 0.85)',
@@ -773,7 +773,7 @@ export const styles = StyleSheet.create({
     textShadowRadius: 4,
   },
   calendarWeekdayTextWeekend: {
-    color: '#b3a9e0',
+    color: '#655b92',
   },
   calendarMonthContainer: {
     marginBottom: 32,
@@ -833,7 +833,7 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
   },
   calendarDayTextPast: {
-    color: '#9aa1ad',
+    color: '#646d7a',
   },
   // Adicione estes estilos para o dia atual:
   calendarTodayCircle: {
@@ -919,7 +919,7 @@ export const styles = StyleSheet.create({
   feedPostDate: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#6f7a86',
+    color: '#59636f',
     marginTop: 1,
     textTransform: 'capitalize',
   },
@@ -928,7 +928,7 @@ export const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 1.5,
     textTransform: 'uppercase',
-    color: '#6f7a86',
+    color: '#59636f',
     marginHorizontal: 24,
     marginTop: 8,
     marginBottom: 10,
@@ -978,7 +978,7 @@ export const styles = StyleSheet.create({
   },
   feedEmptyText: {
     fontSize: 14,
-    color: '#6f7a86',
+    color: '#59636f',
     lineHeight: 20,
     marginTop: 6,
     textAlign: 'center',
@@ -1027,10 +1027,16 @@ export const styles = StyleSheet.create({
   },
   tabButton: {
     flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     paddingVertical: 2,
   },
+  tabButtonWide: {
+    flex: 1.5,
+  },
   tabLabel: {
+    width: '100%',
+    textAlign: 'center',
     letterSpacing: 0.2,
     fontWeight: '600',
   },
@@ -1038,7 +1044,7 @@ export const styles = StyleSheet.create({
     color: '#3c2ba7',
   },
   inactiveColor: {
-    color: '#6f7a86',
+    color: '#59636f',
   },
   addButton: {
     position: 'absolute',
@@ -1152,6 +1158,11 @@ export const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.8)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
+  },
+  fabCardTextOnLight: {
+    color: '#3b2a02',
+    textShadowColor: 'transparent',
+    textShadowRadius: 0,
   },
   fabCardIcon: {
     alignSelf: 'center',
@@ -1280,7 +1291,7 @@ export const styles = StyleSheet.create({
   reportMoodTags: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#6f7a86',
+    color: '#59636f',
     marginTop: 1,
   },
   reportMoodNote: {
@@ -1354,7 +1365,7 @@ export const styles = StyleSheet.create({
   gaugePercentSign: {
     fontSize: 17,
     fontWeight: '800',
-    color: '#6f7a86',
+    color: '#59636f',
     marginBottom: 6,
     marginLeft: 1,
   },
@@ -1363,7 +1374,7 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1.2,
     textTransform: 'uppercase',
-    color: '#9aa1ad',
+    color: '#646d7a',
     marginTop: 2,
     textAlign: 'center',
   },
@@ -1379,7 +1390,7 @@ export const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 13,
-    color: '#6f7a86',
+    color: '#59636f',
     fontWeight: '600',
     marginBottom: 8,
   },
@@ -1454,7 +1465,7 @@ export const styles = StyleSheet.create({
   reflectionDate: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#8a86a8',
+    color: '#625f79',
     marginTop: 2,
     textTransform: 'capitalize',
   },
@@ -1508,7 +1519,7 @@ export const styles = StyleSheet.create({
   reflectionMoodLabel: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#6f7a86',
+    color: '#59636f',
     marginTop: 6,
   },
   reflectionMoodLabelSelected: {
@@ -1517,7 +1528,7 @@ export const styles = StyleSheet.create({
   },
   reflectionHint: {
     fontSize: 11,
-    color: '#9a96b8',
+    color: '#68637f',
     marginBottom: 8,
   },
   reflectionCustomizeButton: {
@@ -1557,7 +1568,7 @@ export const styles = StyleSheet.create({
   reflectionTagText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#6f7a86',
+    color: '#59636f',
   },
   reflectionTagTextSelected: {
     color: '#3c2ba7',
@@ -1629,7 +1640,7 @@ export const styles = StyleSheet.create({
   reflectionRemoveText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#d64550',
+    color: '#b82f3b',
   },
   reflectionSaveButton: {
     flex: 1,
@@ -1680,7 +1691,7 @@ export const styles = StyleSheet.create({
   perfTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#8a86a8',
+    color: '#625f79',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginBottom: 4,
@@ -1767,15 +1778,15 @@ export const styles = StyleSheet.create({
     fontWeight: '800',
   },
   perfDeltaTextUp: {
-    color: '#1f9d6d',
+    color: '#166b49',
   },
   perfDeltaTextDown: {
-    color: '#d64550',
+    color: '#b82f3b',
   },
   perfDateLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#8a86a8',
+    color: '#625f79',
     marginTop: 2,
     textTransform: 'capitalize',
   },
@@ -1824,7 +1835,7 @@ export const styles = StyleSheet.create({
   perfHelpText: {
     fontSize: 11,
     lineHeight: 16,
-    color: '#6f7a86',
+    color: '#59636f',
   },
   perfHelpModeText: {
     fontSize: 11,
@@ -1848,7 +1859,7 @@ export const styles = StyleSheet.create({
   perfXLabel: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#9a96b8',
+    color: '#68637f',
     textTransform: 'capitalize',
   },
   perfEmptyState: {
@@ -1859,7 +1870,7 @@ export const styles = StyleSheet.create({
   },
   perfEmptyText: {
     fontSize: 13,
-    color: '#8a86a8',
+    color: '#625f79',
     textAlign: 'center',
     lineHeight: 19,
   },
@@ -1884,7 +1895,7 @@ export const styles = StyleSheet.create({
   perfPeriodText: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#6f7a86',
+    color: '#59636f',
   },
   perfPeriodTextActive: {
     color: '#3c2ba7',
@@ -1937,7 +1948,7 @@ export const styles = StyleSheet.create({
   profileMoodDayLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#8a86a8',
+    color: '#625f79',
   },
   profileMoodEmojiCircle: {
     width: 34,
@@ -2000,7 +2011,7 @@ export const styles = StyleSheet.create({
   },
   profileStatLabel: {
     fontSize: 11,
-    color: '#6f7a86',
+    color: '#59636f',
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
@@ -2018,7 +2029,7 @@ export const styles = StyleSheet.create({
   },
   profileStatUnit: {
     fontSize: 12,
-    color: '#6f7a86',
+    color: '#59636f',
     fontWeight: '600',
   },
   profileHeaderRow: {
@@ -2060,7 +2071,7 @@ export const styles = StyleSheet.create({
     gap: 6,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#e4e8f2',
+    borderColor: '#767c8f',
     backgroundColor: '#ffffff',
     paddingVertical: 8,
     paddingHorizontal: 14,
@@ -2195,7 +2206,7 @@ export const styles = StyleSheet.create({
     marginTop: 3,
     fontSize: 11,
     lineHeight: 15,
-    color: '#74788b',
+    color: '#676b7d',
   },
   profileActionCard: {
     flex: 1,
@@ -2295,7 +2306,7 @@ export const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: '#e4e8f2',
+    borderColor: '#767c8f',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2310,7 +2321,7 @@ export const styles = StyleSheet.create({
   },
   profileTasksSubtitle: {
     fontSize: 13,
-    color: '#6f7a86',
+    color: '#59636f',
     marginTop: 4,
   },
   profileTasksList: {
@@ -2322,7 +2333,7 @@ export const styles = StyleSheet.create({
   },
   profileTasksEmptyText: {
     fontSize: 14,
-    color: '#6f7a86',
+    color: '#59636f',
     textAlign: 'center',
     marginTop: 12,
   },
@@ -2350,7 +2361,7 @@ export const styles = StyleSheet.create({
   profileTasksTabText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#6f7a86',
+    color: '#59636f',
   },
   profileTasksTabTextActive: {
     color: '#3c2ba7',
@@ -2358,7 +2369,7 @@ export const styles = StyleSheet.create({
   profileTasksSectionHeader: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#6f7a86',
+    color: '#59636f',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginTop: 12,
@@ -2379,7 +2390,7 @@ export const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#e4e8f2',
+    borderColor: '#767c8f',
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 8,
@@ -2397,7 +2408,7 @@ export const styles = StyleSheet.create({
   activityRowMeta: {
     marginTop: 3,
     fontSize: 12,
-    color: '#7f8998',
+    color: '#626b78',
   },
   activityReflectionMeta: {
     marginLeft: 8,
@@ -2411,7 +2422,7 @@ export const styles = StyleSheet.create({
   activityRowTime: {
     marginLeft: 8,
     fontSize: 12,
-    color: '#9aa5b5',
+    color: '#626b78',
   },
   activitySearchArea: {
     gap: 9,
@@ -2425,7 +2436,7 @@ export const styles = StyleSheet.create({
   },
   activityResultsText: {
     fontSize: 12,
-    color: '#7f8998',
+    color: '#626b78',
   },
   activityClearFilters: {
     fontSize: 12,
@@ -2455,7 +2466,7 @@ export const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: '#e4e8f2',
+    borderColor: '#767c8f',
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 11,
@@ -2474,7 +2485,7 @@ export const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: '#e4e8f2',
+    borderColor: '#767c8f',
   },
   profileTasksFilterPillActive: {
     backgroundColor: '#3c2ba7',
@@ -2567,14 +2578,14 @@ export const styles = StyleSheet.create({
     backgroundColor: '#f7f6ff',
   },
   profileTaskTitleArchived: {
-    color: '#6f7a86',
+    color: '#59636f',
   },
   profileTaskSelectCircle: {
     width: 24,
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#c5cadb',
+    borderColor: '#767c8f',
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 10,
@@ -2596,7 +2607,7 @@ export const styles = StyleSheet.create({
   profileTaskStreakText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#e8590c',
+    color: '#b63d00',
   },
   profileTaskIcon: {
     width: 42,
@@ -2641,7 +2652,7 @@ export const styles = StyleSheet.create({
   },
   profileTaskMetaText: {
     fontSize: 12,
-    color: '#6f7a86',
+    color: '#59636f',
     fontWeight: '500',
     flexShrink: 1,
   },
@@ -2725,7 +2736,7 @@ export const styles = StyleSheet.create({
   profileDetailTime: {
     marginTop: 4,
     fontSize: 13,
-    color: '#6f7a86',
+    color: '#59636f',
   },
   profileDetailArchivedBadge: {
     alignSelf: 'flex-start',
@@ -2738,7 +2749,7 @@ export const styles = StyleSheet.create({
   profileDetailArchivedBadgeText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#6f7a86',
+    color: '#59636f',
   },
   profileDetailInfoCard: {
     backgroundColor: '#f7f8fc',
@@ -2758,7 +2769,7 @@ export const styles = StyleSheet.create({
   },
   profileDetailLabel: {
     fontSize: 13,
-    color: '#6f7a86',
+    color: '#59636f',
     fontWeight: '600',
     flexShrink: 0,
   },
@@ -2835,7 +2846,7 @@ export const styles = StyleSheet.create({
   profileDetailDeleteButtonText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#e03131',
+    color: '#c22929',
   },
   
   // Customize Modal Styles

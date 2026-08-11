@@ -98,6 +98,7 @@ const {
   createCenteredDateWindow,
   getCalendarDayOffset,
 } = require('../utils/todayNavigationUtils');
+const { getInterruptedTaskReorderOffset } = require('../utils/taskReorderUtils');
 const {
   getTaskRepeatDisplayLabel,
   getTaskTagDisplayLabel,
@@ -116,6 +117,7 @@ const {
   formatImageSizeLimit,
   getImageErrorMessage,
   getPickedImageExtension,
+  isGifImageUri,
   validatePickedImageAsset,
 } = require('../utils/imageUtils');
 const {
@@ -1355,6 +1357,13 @@ test('normaliza a extensao da imagem sem confiar apenas na URI', () => {
   assert.equal(getPickedImageExtension({ uri: 'content://gallery/14' }), 'jpg');
 });
 
+test('reconhece GIFs persistidos para respeitar reduzir movimento', () => {
+  assert.equal(isGifImageUri('file:///documents/custom_month_7.gif'), true);
+  assert.equal(isGifImageUri('file:///documents/custom_month_7.GIF?version=2'), true);
+  assert.equal(isGifImageUri('file:///documents/custom_month_7.png'), false);
+  assert.equal(isGifImageUri(null), false);
+});
+
 test('formata mensagens localizadas com os limites aplicados', () => {
   const strings = {
     genericError: 'erro',
@@ -1420,6 +1429,50 @@ test('expoe abas e acoes de reflexao ao leitor de tela', () => {
   assert.equal(reportSource.includes('accessibilityLabel={t.reflection.openPhoto}'), true);
 });
 
+test('mantem a barra inferior legivel com fonte ampliada em portugues', () => {
+  const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
+  const stylesSource = fs.readFileSync(path.join(root, 'styles/appStyles.js'), 'utf8');
+
+  assert.equal(appSource.includes('const { width, fontScale } = useWindowDimensions();'), true);
+  assert.equal(appSource.includes('const isBottomBarLargeText = fontScale >= 1.6;'), true);
+  assert.equal(appSource.includes('numberOfLines={isBottomBarLargeText ? 2 : 1}'), true);
+  assert.equal(appSource.includes('maxFontSizeMultiplier={2}'), true);
+  assert.equal(
+    appSource.includes("!isBottomBarLargeText &&\n            (key === 'calendar' || key === 'discover')"),
+    true
+  );
+  assert.match(stylesSource, /tabButtonWide:\s*\{\s*flex: 1\.5/);
+  assert.equal(stylesSource.includes("textAlign: 'center'"), true);
+  assert.equal(translations.pt.tabs.calendar, 'CALENDÁRIO');
+  assert.equal(translations.pt.tabs.discover, 'DESCUBRA');
+});
+
+test('substitui GIFs mensais por fundo estatico com reduzir movimento', () => {
+  const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
+  const monthsSource = fs.readFileSync(path.join(root, 'constants/months.js'), 'utf8');
+  const calendarSource = fs.readFileSync(
+    path.join(root, 'components/CalendarMonthItem.js'),
+    'utf8'
+  );
+  const stickyHeaderSource = fs.readFileSync(
+    path.join(root, 'components/StickyMonthHeader.js'),
+    'utf8'
+  );
+  const reportSource = fs.readFileSync(path.join(root, 'components/DayReportModal.js'), 'utf8');
+  const customizeSource = fs.readFileSync(
+    path.join(root, 'components/CustomizeCalendarModal.js'),
+    'utf8'
+  );
+
+  assert.equal(monthsSource.includes('reduceMotion && isGifImageUri(customImageUri)'), true);
+  assert.equal(monthsSource.includes('if (reduceMotion) {\n    return null;'), true);
+  assert.equal(calendarSource.includes('getMonthReducedMotionColor(item.monthIndex)'), true);
+  assert.equal(stickyHeaderSource.includes('getMonthReducedMotionColor(monthIndex)'), true);
+  assert.equal(reportSource.includes('getMonthReducedMotionColor(monthIndex)'), true);
+  assert.equal(customizeSource.includes('getMonthReducedMotionColor(index)'), true);
+  assert.equal((appSource.match(/reduceMotion=\{prefersReducedMotion\}/g)?.length ?? 0) >= 4, true);
+});
+
 test('mantem a troca de dias do Today animada e sensivel a reduzir movimento', () => {
   const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
 
@@ -1448,7 +1501,26 @@ test('desenha crista e corpo da agua no mesmo gradiente sem emenda', () => {
   assert.equal(taskCardSource.includes('waterSurfaceBridge'), false);
 });
 
-test('anima o painel quantum e a reordenacao de tarefas concluidas', () => {
+test('preserva a posicao visual quando uma reordenacao interrompe outra', () => {
+  assert.equal(
+    getInterruptedTaskReorderOffset({ previousY: 0, currentOffset: 0, nextY: 300 }),
+    -300
+  );
+  assert.equal(
+    getInterruptedTaskReorderOffset({
+      previousY: 300,
+      currentOffset: -180,
+      nextY: 0,
+    }),
+    120
+  );
+  assert.equal(
+    getInterruptedTaskReorderOffset({ previousY: NaN, currentOffset: 12, nextY: 4 }),
+    8
+  );
+});
+
+test('anima o painel quantum e reordena cards sem saltos interrompidos', () => {
   const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
   const taskCardSource = fs.readFileSync(
     path.join(root, 'components/SwipeableTaskCard.js'),
@@ -1456,11 +1528,17 @@ test('anima o painel quantum e a reordenacao de tarefas concluidas', () => {
   );
 
   assert.equal(appSource.includes('useLayoutEffect(() => {'), true);
-  assert.equal(appSource.includes('taskOrderSnapshotRef'), true);
+  assert.equal(appSource.includes('taskPositionsRef'), true);
+  assert.equal(appSource.includes('visibleTaskStateCacheRef'), true);
+  assert.equal(appSource.includes('translateY.stopAnimation((currentOffset) =>'), true);
+  assert.equal(appSource.includes('getInterruptedTaskReorderOffset({'), true);
   assert.equal(appSource.includes('duration: TODAY_TASK_REORDER_MS'), true);
-  assert.equal(appSource.includes('easing: Easing.inOut(Easing.cubic)'), true);
+  assert.equal(appSource.includes('easing: Easing.out(Easing.cubic)'), true);
+  assert.equal(appSource.includes('TODAY_TASK_REORDER_DELAY_MS'), false);
+  assert.equal(appSource.includes('zIndex: item.completed ? 0 : 1'), true);
   assert.equal(appSource.includes('CellRendererComponent={renderTodayCell}'), true);
   assert.equal(taskCardSource.includes('Animated.timing(adjustPanelProgress'), true);
+  assert.equal(taskCardSource.includes('previous.width === width && previous.height === height'), true);
   assert.equal(taskCardSource.includes("pointerEvents={isAdjustOpen ? 'auto' : 'none'}"), true);
   assert.equal(taskCardSource.includes('outputRange: [0, 47]'), true);
 });

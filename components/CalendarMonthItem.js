@@ -3,7 +3,7 @@ import { Image, ImageBackground, Pressable, StyleSheet, Text, View } from 'react
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { format } from 'date-fns';
-import { getMonthImageSource } from '../constants/months';
+import { getMonthImageSource, getMonthReducedMotionColor } from '../constants/months';
 import { getDateLocale, getWeekdayInitials, translations } from '../constants/i18n';
 import { getDateKey } from '../utils/dateUtils';
 import { getMoodMarker } from '../utils/moodUtils';
@@ -98,8 +98,10 @@ const CalendarMonthItem = React.memo(({
   dayMoods,
   moodAppearance,
   monthMoodSignature,
+  reduceMotion = false,
 }) => {
-  const imageSource = getMonthImageSource(item.monthIndex, customImages);
+  const imageSource = getMonthImageSource(item.monthIndex, customImages, { reduceMotion });
+  const reducedMotionColor = getMonthReducedMotionColor(item.monthIndex);
   const labels = (translations[language] ?? translations.en).calendar;
   const weekdayInitials = getWeekdayInitials(language);
 
@@ -107,7 +109,7 @@ const CalendarMonthItem = React.memo(({
     <View style={styles.calendarMonthContainer}>
       <ImageBackground
         source={imageSource}
-        style={styles.calendarMonthHeader}
+        style={[styles.calendarMonthHeader, { backgroundColor: reducedMotionColor }]}
         imageStyle={{ resizeMode: 'cover' }}
         resizeMethod="resize"
       >
@@ -181,6 +183,10 @@ const CalendarMonthItem = React.memo(({
   }
 
   if (prevProps.monthMoodSignature !== nextProps.monthMoodSignature) {
+    return false;
+  }
+
+  if (prevProps.reduceMotion !== nextProps.reduceMotion) {
     return false;
   }
 

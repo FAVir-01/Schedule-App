@@ -269,7 +269,7 @@ function ReflectionSheet({
               <Text style={styles.reflectionDate}>{dateLabel}</Text>
             </View>
             <Pressable onPress={onClose} hitSlop={12}>
-              <Ionicons name="close-circle" size={30} color="#c9c6dd" />
+              <Ionicons name="close-circle" size={30} color="#817b96" />
             </Pressable>
           </View>
 
@@ -399,7 +399,7 @@ function ReflectionSheet({
               }}
               onFocus={() => setTimeout(() => scrollToNote(true), 120)}
               placeholder={t.reflection.notePlaceholder}
-              placeholderTextColor="#9a96b8"
+              placeholderTextColor="#68637f"
               multiline
               maxLength={500}
               textAlignVertical="top"
@@ -446,7 +446,7 @@ function ReflectionSheet({
                   accessibilityRole="button"
                   accessibilityLabel={t.reflection.remove}
                 >
-                  <Ionicons name="trash-outline" size={18} color="#d64550" />
+                  <Ionicons name="trash-outline" size={18} color="#b82f3b" />
                   <Text style={styles.reflectionRemoveText}>{t.reflection.remove}</Text>
                 </TouchableOpacity>
               )}

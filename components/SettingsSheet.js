@@ -71,7 +71,7 @@ function SettingsSheet({
           <View style={styles.reflectionHeader}>
             <Text style={styles.reflectionTitle}>{t.profile.settings}</Text>
             <Pressable onPress={onClose} hitSlop={12}>
-              <Ionicons name="close-circle" size={30} color="#c9c6dd" />
+              <Ionicons name="close-circle" size={30} color="#817b96" />
             </Pressable>
           </View>
 
@@ -119,7 +119,7 @@ function SettingsSheet({
               <Switch
                 value={privateNotificationContent}
                 onValueChange={onChangePrivateNotificationContent}
-                trackColor={{ false: '#c9c6dd', true: '#7467c9' }}
+                trackColor={{ false: '#817b96', true: '#7467c9' }}
                 thumbColor={privateNotificationContent ? '#3c2ba7' : '#ffffff'}
                 accessibilityLabel={t.notifications.privateContentLabel}
                 accessibilityHint={t.notifications.privateContentHint}
@@ -136,7 +136,7 @@ function SettingsSheet({
             >
               <Ionicons name="images-outline" size={20} color="#3c2ba7" />
               <Text style={styles.settingsRowLabel}>{t.profile.customizeCalendar}</Text>
-              <Ionicons name="chevron-forward" size={18} color="#9a96b8" />
+              <Ionicons name="chevron-forward" size={18} color="#68637f" />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -149,7 +149,7 @@ function SettingsSheet({
             >
               <Ionicons name="shield-checkmark-outline" size={20} color="#3c2ba7" />
               <Text style={styles.settingsRowLabel}>{t.privacy.settingsLabel}</Text>
-              <Ionicons name="chevron-forward" size={18} color="#9a96b8" />
+              <Ionicons name="chevron-forward" size={18} color="#68637f" />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -169,7 +169,7 @@ function SettingsSheet({
               {isExporting ? (
                 <ActivityIndicator size="small" color="#3c2ba7" />
               ) : (
-                <Ionicons name="chevron-forward" size={18} color="#9a96b8" />
+                <Ionicons name="chevron-forward" size={18} color="#68637f" />
               )}
             </TouchableOpacity>
 
@@ -190,7 +190,7 @@ function SettingsSheet({
               {isImporting ? (
                 <ActivityIndicator size="small" color="#3c2ba7" />
               ) : (
-                <Ionicons name="chevron-forward" size={18} color="#9a96b8" />
+                <Ionicons name="chevron-forward" size={18} color="#68637f" />
               )}
             </TouchableOpacity>
 

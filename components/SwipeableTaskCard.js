@@ -445,7 +445,11 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
         ]}
         onLayout={(event) => {
           const { width, height } = event.nativeEvent.layout;
-          setCardSize({ width, height });
+          setCardSize((previous) =>
+            previous.width === width && previous.height === height
+              ? previous
+              : { width, height }
+          );
         }}
       >
         {isQuantum && isWaterAnimation && (
@@ -567,7 +571,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
                 hitSlop={4}
               >
                 <Text style={styles.taskToggleStepLabel}>+{quantumStepLabel}</Text>
-                <Ionicons name="options-outline" size={10} color="#777d90" />
+                <Ionicons name="options-outline" size={10} color="#666b7d" />
               </Pressable>
             ) : null}
           </View>

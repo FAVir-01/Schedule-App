@@ -1625,7 +1625,7 @@ export default function AddHabitSheet({
                 onPress={handleClose}
                 hitSlop={16}
               >
-                <Ionicons name="close" size={26} color="#6f7a86" />
+                <Ionicons name="close" size={26} color="#59636f" />
               </Pressable>
               <Pressable
                 style={[styles.createButton, isSubmitDisabled && styles.createButtonDisabled]}
@@ -2051,7 +2051,7 @@ export default function AddHabitSheet({
                       style={styles.infoIconButton}
                       hitSlop={8}
                     >
-                      <Ionicons name="help-circle-outline" size={14} color="#6f7a86" />
+                      <Ionicons name="help-circle-outline" size={14} color="#59636f" />
                     </Pressable>
                   </View>
                   {activeInfoKey === 'preview' ? (
@@ -2156,7 +2156,7 @@ function SheetRow({
             <Text style={styles.rowLabel}>{label}</Text>
             {infoText ? (
               <Pressable onPress={onPressInfo} style={styles.infoIconButton} hitSlop={8}>
-                <Ionicons name="help-circle-outline" size={14} color="#6f7a86" />
+                <Ionicons name="help-circle-outline" size={14} color="#59636f" />
               </Pressable>
             ) : null}
           </View>
@@ -2359,7 +2359,7 @@ function QuantumPanel({
           <Text style={styles.subtasksTitle}>{isTimer ? labels.timer : labels.count}</Text>
           {infoText ? (
             <Pressable onPress={onPressInfo} style={styles.infoIconButton} hitSlop={8}>
-              <Ionicons name="help-circle-outline" size={14} color="#6f7a86" />
+              <Ionicons name="help-circle-outline" size={14} color="#59636f" />
             </Pressable>
           ) : null}
           {isInfoVisible ? (
@@ -2381,7 +2381,7 @@ function QuantumPanel({
                 keyboardType="number-pad"
                 maxLength={2}
                 placeholder="00"
-                placeholderTextColor="#9AA5B5"
+                placeholderTextColor="#626B78"
                 accessibilityLabel={labels.timerHoursAccessibility}
               />
             </View>
@@ -2394,7 +2394,7 @@ function QuantumPanel({
                 keyboardType="number-pad"
                 maxLength={2}
                 placeholder="00"
-                placeholderTextColor="#9AA5B5"
+                placeholderTextColor="#626B78"
                 accessibilityLabel={labels.timerMinutesAccessibility}
               />
             </View>
@@ -2410,7 +2410,7 @@ function QuantumPanel({
                 keyboardType="number-pad"
                 maxLength={4}
                 placeholder="0"
-                placeholderTextColor="#9AA5B5"
+                placeholderTextColor="#626B78"
                 accessibilityLabel={labels.countValueAccessibility}
               />
             </View>
@@ -2422,7 +2422,7 @@ function QuantumPanel({
                 onChangeText={onChangeCountUnit}
                 maxLength={12}
                 placeholder={labels.unit}
-                placeholderTextColor="#9AA5B5"
+                placeholderTextColor="#626B78"
                 accessibilityLabel={labels.countUnitAccessibility}
               />
             </View>
@@ -2513,7 +2513,7 @@ function SubtasksPanel({
         <Text style={styles.subtasksTitle}>{titleLabel ?? labels.subtasks}</Text>
         {onPressInfo ? (
           <Pressable onPress={onPressInfo} style={styles.infoIconButton} hitSlop={8}>
-            <Ionicons name="help-circle-outline" size={14} color="#6f7a86" />
+            <Ionicons name="help-circle-outline" size={14} color="#59636f" />
           </Pressable>
         ) : null}
         {isInfoVisible ? (
@@ -2549,7 +2549,7 @@ function SubtasksPanel({
           <TextInput
             style={styles.subtaskComposerInput}
             placeholder={addLabel ?? labels.addSubtask}
-            placeholderTextColor="#9AA5B5"
+            placeholderTextColor="#626B78"
             value={draft}
             onChangeText={setDraft}
             onSubmitEditing={handleSubmitEditing}
@@ -3842,7 +3842,7 @@ const styles = StyleSheet.create({
   typePreviewTime: {
     marginTop: 4,
     fontSize: 13,
-    color: '#6f7a86',
+    color: '#59636f',
   },
   typePreviewSummary: {
     marginTop: 6,
@@ -3864,7 +3864,7 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 16,
     borderWidth: 2,
-    borderColor: '#c5cadb',
+    borderColor: '#767c8f',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#ffffff',
@@ -3938,7 +3938,7 @@ const styles = StyleSheet.create({
   },
   optionHint: {
     marginTop: 2,
-    color: '#6F7A86',
+    color: '#59636F',
     fontSize: 13,
   },
   radioOuter: {
@@ -4335,7 +4335,7 @@ const styles = StyleSheet.create({
   },
   wheelItemText: {
     fontSize: 18,
-    color: '#A3AEC1',
+    color: '#636d7c',
     fontWeight: '600',
   },
   wheelItemTextActive: {

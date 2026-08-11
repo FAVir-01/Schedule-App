@@ -1,21 +1,22 @@
 import React from 'react';
 import { ImageBackground, Text } from 'react-native';
 import { format } from 'date-fns';
-import { getMonthImageSource } from '../constants/months';
+import { getMonthImageSource, getMonthReducedMotionColor } from '../constants/months';
 import { getDateLocale } from '../constants/i18n';
 import { styles } from '../styles/appStyles';
 
 // --- COMPONENTE DA FAIXA DO TOPO ---
-const StickyMonthHeader = ({ date, customImages, language }) => {
+const StickyMonthHeader = ({ date, customImages, language, reduceMotion = false }) => {
   if (!date) return null;
 
   const monthIndex = date.getMonth();
-  const imageSource = getMonthImageSource(monthIndex, customImages);
+  const imageSource = getMonthImageSource(monthIndex, customImages, { reduceMotion });
+  const reducedMotionColor = getMonthReducedMotionColor(monthIndex);
 
   return (
     <ImageBackground
       source={imageSource}
-      style={styles.stickyHeader}
+      style={[styles.stickyHeader, { backgroundColor: reducedMotionColor }]}
       imageStyle={{ resizeMode: 'cover' }}
     >
       {/* Overlay removido aqui */}
