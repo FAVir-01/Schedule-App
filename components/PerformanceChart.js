@@ -569,7 +569,7 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
             accessibilityLabel={t.profile.chartHelp}
             accessibilityState={{ expanded: isHelpOpen }}
           >
-            <Ionicons name="help-circle-outline" size={17} color="#6f7a86" />
+            <Ionicons name="help-circle-outline" size={17} color="#59636f" />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.perfMenuButton}
@@ -587,7 +587,7 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
             <Ionicons
               name={chartType === 'line' ? 'bar-chart-outline' : 'analytics-outline'}
               size={16}
-              color="#6f7a86"
+              color="#59636f"
             />
           </TouchableOpacity>
           <TouchableOpacity
@@ -599,7 +599,7 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
             accessibilityLabel={t.profile.chartModeOptions}
             accessibilityState={{ expanded: isModeMenuOpen }}
           >
-            <Ionicons name="ellipsis-horizontal" size={16} color="#6f7a86" />
+            <Ionicons name="ellipsis-horizontal" size={16} color="#59636f" />
           </TouchableOpacity>
         </View>
       </View>
@@ -701,7 +701,7 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
                   y={tick.y + 3}
                   fontSize={9}
                   fontWeight="600"
-                  fill="#9a96b8"
+                  fill="#68637f"
                   textAnchor="end"
                 >
                   {tick.label}

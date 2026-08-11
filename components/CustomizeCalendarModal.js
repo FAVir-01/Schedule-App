@@ -14,14 +14,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { format } from 'date-fns';
-import { getMonthImageSource } from '../constants/months';
+import { getMonthImageSource, getMonthReducedMotionColor } from '../constants/months';
 import { getDateLocale, translations } from '../constants/i18n';
 import { persistPickedImage } from '../services/imagePersistenceService';
 import { styles } from '../styles/appStyles';
 import { IMAGE_LIMITS, getImageErrorMessage } from '../utils/imageUtils';
 
 // --- COMPONENTE CUSTOMIZE CALENDAR MODAL ---
-function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage, language = 'en' }) {
+function CustomizeCalendarModal({
+  visible,
+  onClose,
+  customImages,
+  onUpdateImage,
+  language = 'en',
+  reduceMotion = false,
+}) {
   const [loadingMonthIndex, setLoadingMonthIndex] = useState(null);
   const t = translations[language] ?? translations.en;
 
@@ -76,13 +83,14 @@ function CustomizeCalendarModal({ visible, onClose, customImages, onUpdateImage,
 
         <ScrollView contentContainerStyle={styles.customizeScrollContent} showsVerticalScrollIndicator={false}>
           {monthLabels.map((name, index) => {
-            const source = getMonthImageSource(index, customImages);
+            const source = getMonthImageSource(index, customImages, { reduceMotion });
+            const reducedMotionColor = getMonthReducedMotionColor(index);
 
             return (
               <View key={name} style={styles.customizeRow}>
                 <ImageBackground
                   source={source}
-                  style={styles.customizeCard}
+                  style={[styles.customizeCard, { backgroundColor: reducedMotionColor }]}
                   imageStyle={{ borderRadius: 16 }}
                 >
                   {/* Overlay removido aqui */}

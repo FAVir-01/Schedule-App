@@ -85,6 +85,8 @@ const extractExtension = (value) => {
   return SUPPORTED_EXTENSIONS.has(extension) ? extension : null;
 };
 
+const isGifImageUri = (uri) => extractExtension(uri) === 'gif';
+
 const getPickedImageExtension = (asset) => {
   const fileExtension = extractExtension(asset?.fileName);
   if (fileExtension) {
@@ -135,5 +137,6 @@ export {
   formatImageSizeLimit,
   getImageErrorMessage,
   getPickedImageExtension,
+  isGifImageUri,
   validatePickedImageAsset,
 };

@@ -41,9 +41,10 @@
     "ios": "npx expo run:ios",
     "prebuild": "npx expo prebuild",
     "check:android-config": "node scripts/check-android-config.js",
+    "check:contrast": "node scripts/check-color-contrast.js",
     "check:dependencies": "node scripts/check-dependency-audit.js",
     "check:project": "npm run test:domain && npm run check:android-config && npm run check:dependencies && npx --yes expo-doctor@1.20.1",
-    "test:domain": "node scripts/check-hook-declaration-order.js && node scripts/test-domain-rules.js",
+    "test:domain": "node scripts/check-hook-declaration-order.js && node scripts/test-domain-rules.js && node scripts/check-color-contrast.js",
     "update:preview": "npx eas update --channel preview",
     "update:production": "npx eas update --channel production"
   }

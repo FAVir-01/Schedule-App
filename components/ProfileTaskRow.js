@@ -127,7 +127,7 @@ function ProfileTaskRow({
             String(streak)
           )}
         >
-          <Ionicons name="flame" size={13} color="#e8590c" />
+          <Ionicons name="flame" size={13} color="#b63d00" />
           <Text style={styles.profileTaskStreakText}>{streak}</Text>
         </View>
       ) : null}

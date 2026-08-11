@@ -71,6 +71,7 @@ import {
   createCenteredDateWindow,
   getCalendarDayOffset,
 } from './utils/todayNavigationUtils';
+import { getInterruptedTaskReorderOffset } from './utils/taskReorderUtils';
 import { clampValue } from './utils/mathUtils';
 import {
   getSubtaskCompletionStatus,
@@ -156,9 +157,7 @@ const TODAY_VISIBLE_DATE_RADIUS = 3;
 const TODAY_DATE_WINDOW_RADIUS = 45;
 const TODAY_DATE_TRANSITION_OUT_MS = 240;
 const TODAY_DATE_TRANSITION_IN_MS = 280;
-const TODAY_TASK_REORDER_MS = 420;
-// Pausa antes do card concluído viajar: deixa o check/água terminarem primeiro.
-const TODAY_TASK_REORDER_DELAY_MS = 240;
+const TODAY_TASK_REORDER_MS = 300;
 
 const INITIAL_STORAGE_LOAD_FAILURES = {
   tasks: true,
@@ -411,9 +410,11 @@ function ScheduleApp() {
   const didInitialReminderReconciliationRef = useRef(false);
   const reminderContentSignatureRef = useRef(null);
   const pendingCompletionActionDateRef = useRef(null);
-  const taskHeightsRef = useRef(new Map());
+  const taskPositionsRef = useRef(new Map());
   const taskAnimationsRef = useRef(new Map());
-  const taskOrderSnapshotRef = useRef({ context: null, order: [] });
+  const taskReorderAnimationsRef = useRef(new Map());
+  const taskReorderGenerationsRef = useRef(new Map());
+  const taskPositionContextRef = useRef(null);
   const [calendarMonths, setCalendarMonths] = useState(() => {
     const today = new Date();
     const months = [];
@@ -432,12 +433,17 @@ function ScheduleApp() {
     const todayId = getMonthId(new Date());
     return calendarMonths.findIndex((month) => getMonthId(month.date) === todayId);
   }, [calendarMonths]);
-  const { width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isCompact = width < 360;
+  const isBottomBarLargeText = fontScale >= 1.6;
   const profileContentWidth = Math.max(0, width - 48);
   const fabSize = isCompact ? 48 : 56;
-  const centerGap = isCompact ? fabSize * 0.8 : fabSize * 0.95;
+  const centerGap = isBottomBarLargeText
+    ? fabSize * 0.72
+    : isCompact
+      ? fabSize * 0.8
+      : fabSize * 0.95;
   const horizontalPadding = useMemo(() => Math.max(16, Math.min(32, width * 0.06)), [width]);
   const todayDayItemWidth = Math.max(
     1,
@@ -445,7 +451,13 @@ function ScheduleApp() {
       (TODAY_VISIBLE_DATE_RADIUS * 2 + 1)
   );
   const todayPageTravelDistance = Math.max(28, Math.min(72, width * 0.16));
-  const bottomBarPadding = useMemo(() => Math.max(16, horizontalPadding * 0.75), [horizontalPadding]);
+  const bottomBarPadding = useMemo(
+    () =>
+      isBottomBarLargeText
+        ? Math.max(6, Math.min(10, width * 0.02))
+        : Math.max(16, horizontalPadding * 0.75),
+    [horizontalPadding, isBottomBarLargeText, width]
+  );
   const iconSize = isCompact ? 18 : 20;
   const cardSize = isCompact ? 136 : 152;
   const cardHeight = isCompact ? 192 : 208;
@@ -897,9 +909,10 @@ function ScheduleApp() {
         dayMoods={dayMoods}
         moodAppearance={moodAppearance}
         monthMoodSignature={calendarMonthMoodSignatureById[item.monthId]}
+        reduceMotion={prefersReducedMotion}
       />
     ),
-    [calendarDayStatusByKey, calendarMonthStatusSignatureById, calendarMonthMoodSignatureById, customMonthImages, dayMoods, handleOpenReport, language, moodAppearance, todayKey]
+    [calendarDayStatusByKey, calendarMonthStatusSignatureById, calendarMonthMoodSignatureById, customMonthImages, dayMoods, handleOpenReport, language, moodAppearance, prefersReducedMotion, todayKey]
   );
   const tasksForSelectedDate = useMemo(() => {
     const filtered = tasks.filter((task) => shouldTaskAppearOnDate(task, selectedDate));
@@ -963,17 +976,33 @@ function ScheduleApp() {
     }
     return tasksForSelectedDate.filter((task) => normalizeTaskTagKey(task) === selectedTagFilter);
   }, [selectedTagFilter, tasksForSelectedDate]);
+  // Preserva a identidade das tasks que não mudaram. Sem esse cache, o spread
+  // recriava todos os objetos a cada conclusão e anulava o React.memo dos cards.
+  const visibleTaskStateCacheRef = useRef(new WeakMap());
   const visibleTasksForSelectedDay = useMemo(
     () =>
       visibleTasks.map((task) => {
         // Lembrete expirado conta como "resolvido" para ordenação/progresso,
         // mas ganha a flag `missed` para o card mostrar o visual de perdido.
         const missed = isReminderExpiredForDate(task, selectedDate, currentTime);
-        return {
-          ...task,
-          completed: getTaskCompletionStatus(task, selectedDateKey) || missed,
+        const completed = getTaskCompletionStatus(task, selectedDateKey) || missed;
+        const cached = visibleTaskStateCacheRef.current.get(task);
+        if (
+          cached &&
+          cached.dateKey === selectedDateKey &&
+          cached.completed === completed &&
+          cached.missed === missed
+        ) {
+          return cached.value;
+        }
+        const value = { ...task, completed, missed };
+        visibleTaskStateCacheRef.current.set(task, {
+          dateKey: selectedDateKey,
+          completed,
           missed,
-        };
+          value,
+        });
+        return value;
       }),
     [currentTime, selectedDate, selectedDateKey, visibleTasks]
   );
@@ -1000,11 +1029,72 @@ function ScheduleApp() {
     },
     []
   );
+  const resetTaskReorderAnimation = useCallback((taskId) => {
+    const nextGeneration = (taskReorderGenerationsRef.current.get(taskId) ?? 0) + 1;
+    taskReorderGenerationsRef.current.set(taskId, nextGeneration);
+    taskReorderAnimationsRef.current.get(taskId)?.stop();
+    taskReorderAnimationsRef.current.delete(taskId);
+    const translateY = taskAnimationsRef.current.get(taskId);
+    if (translateY) {
+      translateY.stopAnimation();
+      translateY.setValue(0);
+    }
+  }, []);
   const handleTaskLayout = useCallback(
     (taskId, event) => {
-      taskHeightsRef.current.set(taskId, event.nativeEvent.layout.height);
+      const { height, y } = event.nativeEvent.layout;
+      const previousPosition = taskPositionsRef.current.get(taskId);
+      taskPositionsRef.current.set(taskId, { height, y });
+
+      if (
+        activeTab !== 'today' ||
+        prefersReducedMotion ||
+        !previousPosition ||
+        (previousPosition.y === y && previousPosition.height === height)
+      ) {
+        return;
+      }
+
+      const translateY = getTaskTranslateY(taskId);
+      const generation = (taskReorderGenerationsRef.current.get(taskId) ?? 0) + 1;
+      taskReorderGenerationsRef.current.set(taskId, generation);
+      taskReorderAnimationsRef.current.get(taskId)?.stop();
+      taskReorderAnimationsRef.current.delete(taskId);
+
+      // stopAnimation devolve o valor realmente apresentado pela thread nativa.
+      // Assim um segundo toque continua da posição visual atual, sem salto.
+      translateY.stopAnimation((currentOffset) => {
+        if (taskReorderGenerationsRef.current.get(taskId) !== generation) {
+          return;
+        }
+        const nextOffset = getInterruptedTaskReorderOffset({
+          previousY: previousPosition.y,
+          currentOffset,
+          nextY: y,
+        });
+        if (Math.abs(nextOffset) < 0.5) {
+          translateY.setValue(0);
+          return;
+        }
+
+        translateY.setValue(nextOffset);
+        const animation = Animated.timing(translateY, {
+          toValue: 0,
+          duration: TODAY_TASK_REORDER_MS,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: USE_NATIVE_DRIVER,
+        });
+        taskReorderAnimationsRef.current.set(taskId, animation);
+        animation.start(() => {
+          if (taskReorderGenerationsRef.current.get(taskId) !== generation) {
+            return;
+          }
+          taskReorderAnimationsRef.current.delete(taskId);
+          translateY.setValue(0);
+        });
+      });
     },
-    []
+    [activeTab, getTaskTranslateY, prefersReducedMotion]
   );
   // Cache de identidade: tasks não alteradas devolvem o MESMO objeto de stats
   // entre renders, permitindo que o React.memo dos cards pule o re-render.
@@ -1041,65 +1131,26 @@ function ScheduleApp() {
   const visibleTaskOrderContext = `${selectedDateKey}:${selectedTagFilter}`;
 
   useLayoutEffect(() => {
-    const nextOrder = visibleTaskOrder;
-    const previousSnapshot = taskOrderSnapshotRef.current;
-    taskOrderSnapshotRef.current = {
-      context: visibleTaskOrderContext,
-      order: nextOrder,
-    };
-
-    if (
-      activeTab !== 'today' ||
-      prefersReducedMotion ||
-      previousSnapshot.context !== visibleTaskOrderContext ||
-      previousSnapshot.order.length === 0
-    ) {
-      nextOrder.forEach((taskId) => getTaskTranslateY(taskId).setValue(0));
+    const contextChanged = taskPositionContextRef.current !== visibleTaskOrderContext;
+    const visibleIds = new Set(visibleTaskOrder);
+    if (activeTab !== 'today' || prefersReducedMotion || contextChanged) {
+      taskPositionsRef.current.clear();
+      taskAnimationsRef.current.forEach((_, taskId) => resetTaskReorderAnimation(taskId));
+      taskPositionContextRef.current =
+        activeTab === 'today' ? visibleTaskOrderContext : null;
       return;
     }
 
-    const buildOffsets = (order) => {
-      const offsets = new Map();
-      let offset = 0;
-      order.forEach((taskId) => {
-        offsets.set(taskId, offset);
-        offset += taskHeightsRef.current.get(taskId) ?? 0;
-      });
-      return offsets;
-    };
-    const previousOffsets = buildOffsets(previousSnapshot.order);
-    const nextOffsets = buildOffsets(nextOrder);
-    const animations = [];
-
-    nextOrder.forEach((taskId) => {
-      if (!previousOffsets.has(taskId)) {
-        return;
+    Array.from(taskPositionsRef.current.keys()).forEach((taskId) => {
+      if (!visibleIds.has(taskId)) {
+        taskPositionsRef.current.delete(taskId);
+        resetTaskReorderAnimation(taskId);
       }
-      const delta = previousOffsets.get(taskId) - nextOffsets.get(taskId);
-      if (!delta) {
-        return;
-      }
-      const translateY = getTaskTranslateY(taskId);
-      translateY.stopAnimation();
-      translateY.setValue(delta);
-      animations.push(
-        Animated.timing(translateY, {
-          toValue: 0,
-          duration: TODAY_TASK_REORDER_MS,
-          easing: Easing.inOut(Easing.cubic),
-          delay: TODAY_TASK_REORDER_DELAY_MS,
-          useNativeDriver: USE_NATIVE_DRIVER,
-        })
-      );
     });
-
-    if (animations.length > 0) {
-      Animated.parallel(animations).start();
-    }
   }, [
     activeTab,
-    getTaskTranslateY,
     prefersReducedMotion,
+    resetTaskReorderAnimation,
     visibleTaskOrderContext,
     visibleTaskOrderKey,
     visibleTaskOrder,
@@ -2074,19 +2125,26 @@ function ScheduleApp() {
       },
       bottomBar: {
         paddingHorizontal: bottomBarPadding,
-        paddingVertical: isCompact ? 8 : 10,
+        paddingVertical: isBottomBarLargeText ? 8 : isCompact ? 8 : 10,
       },
       tabLabel: {
         fontSize: isCompact ? 10 : 11,
-        marginTop: isCompact ? 2 : 4,
+        lineHeight: isCompact ? 12 : 14,
+        marginTop: isBottomBarLargeText || isCompact ? 2 : 4,
+      },
+      tabGroup: {
+        gap: isBottomBarLargeText ? 2 : 12,
+      },
+      tabButton: {
+        paddingHorizontal: isBottomBarLargeText ? 1 : 0,
       },
       tabGroupLeft: {
         paddingRight: centerGap / 2,
-        marginRight: centerGap / 4,
+        marginRight: isBottomBarLargeText ? 0 : centerGap / 4,
       },
       tabGroupRight: {
         paddingLeft: centerGap / 2,
-        marginLeft: centerGap / 4,
+        marginLeft: isBottomBarLargeText ? 0 : centerGap / 4,
       },
       addButton: {
         width: fabSize,
@@ -2101,6 +2159,7 @@ function ScheduleApp() {
       fabSize,
       horizontalPadding,
       insets.bottom,
+      isBottomBarLargeText,
       isCompact,
     ]
   );
@@ -3342,6 +3401,10 @@ function ScheduleApp() {
           styles.todayTaskCell,
           index === 0 && styles.todayFirstTask,
           {
+            // Durante a troca de ordem, cards incompletos ficam acima do card
+            // concluído que está descendo. Evita o efeito de duas superfícies
+            // disputando o mesmo plano enquanto os layouts se cruzam.
+            zIndex: item.completed ? 0 : 1,
             transform: [
               { translateX: todayPageTranslateX },
               { translateY: getTaskTranslateY(item.id) },
@@ -3507,7 +3570,13 @@ function ScheduleApp() {
     return (
       <TouchableOpacity
         key={key}
-        style={styles.tabButton}
+        style={[
+          styles.tabButton,
+          !isBottomBarLargeText &&
+            (key === 'calendar' || key === 'discover') &&
+            styles.tabButtonWide,
+          dynamicStyles.tabButton,
+        ]}
         onPress={() => handleChangeTab(key)}
         accessibilityRole="tab"
         accessibilityLabel={t.common.tabAccessibility.replace('{label}', label)}
@@ -3520,6 +3589,8 @@ function ScheduleApp() {
           color={isActive ? styles.activeColor.color : styles.inactiveColor.color}
         />
         <Text
+          numberOfLines={isBottomBarLargeText ? 2 : 1}
+          maxFontSizeMultiplier={2}
           style={[
             styles.tabLabel,
             dynamicStyles.tabLabel,
@@ -3867,7 +3938,7 @@ function ScheduleApp() {
                     <View style={styles.profileStatCard}>
                       <View style={styles.profileStatHeaderRow}>
                         <Text style={styles.profileStatLabel}>{t.profile.totalDays}</Text>
-                        <Ionicons name="calendar-outline" size={14} color="#8a86a8" />
+                        <Ionicons name="calendar-outline" size={14} color="#625f79" />
                       </View>
                       <View style={styles.profileStatValueRow}>
                         <Text style={styles.profileStatValue}>{profileStats.totalDays}</Text>
@@ -3882,7 +3953,7 @@ function ScheduleApp() {
                         <Ionicons
                           name={profileFilterTask ? 'checkmark-done-outline' : 'list-outline'}
                           size={14}
-                          color="#8a86a8"
+                          color="#625f79"
                         />
                       </View>
                       <View style={styles.profileStatValueRow}>
@@ -3907,7 +3978,7 @@ function ScheduleApp() {
                     <View style={styles.profileStatCard}>
                       <View style={styles.profileStatHeaderRow}>
                         <Text style={styles.profileStatLabel}>{t.profile.bestStreak}</Text>
-                        <Ionicons name="trophy-outline" size={14} color="#8a86a8" />
+                        <Ionicons name="trophy-outline" size={14} color="#625f79" />
                       </View>
                       <View style={styles.profileStatValueRow}>
                         <Text style={styles.profileStatValue}>{profileStats.bestStreak}</Text>
@@ -4036,7 +4107,7 @@ function ScheduleApp() {
                         <Ionicons
                           name={isActive ? segment.icon : `${segment.icon}-outline`}
                           size={14}
-                          color={isActive ? '#ffffff' : '#6f7a86'}
+                          color={isActive ? '#ffffff' : '#59636f'}
                         />
                         <Text
                           style={[
@@ -4064,6 +4135,7 @@ function ScheduleApp() {
                   date={visibleCalendarDate}
                   customImages={customMonthImages}
                   language={language}
+                  reduceMotion={prefersReducedMotion}
                 />
 
                 <FlatList
@@ -4129,13 +4201,13 @@ function ScheduleApp() {
               isFabOpen && styles.bottomBarDimmed,
             ]}
           >
-            <View style={[styles.tabGroup, dynamicStyles.tabGroupLeft]}>
+            <View style={[styles.tabGroup, dynamicStyles.tabGroup, dynamicStyles.tabGroupLeft]}>
               {[
                 { key: 'today', label: t.tabs.today, icon: 'time-outline' },
                 { key: 'calendar', label: t.tabs.calendar, icon: 'calendar-clear-outline' },
               ].map(renderTabButton)}
             </View>
-            <View style={[styles.tabGroup, dynamicStyles.tabGroupRight]}>
+            <View style={[styles.tabGroup, dynamicStyles.tabGroup, dynamicStyles.tabGroupRight]}>
               {[
                 { key: 'discover', label: t.tabs.discover, icon: 'compass-outline' },
                 { key: 'profile', label: t.tabs.profile, icon: 'person-outline' },
@@ -4344,6 +4416,7 @@ function ScheduleApp() {
                     <Text
                       style={[
                         styles.fabCardTitle,
+                        styles.fabCardTextOnLight,
                         {
                           fontSize: isCompact ? 16 : 17,
                           lineHeight: isCompact ? 19 : 21,
@@ -4357,6 +4430,7 @@ function ScheduleApp() {
                     <Text
                       style={[
                         styles.fabCardSubtitle,
+                        styles.fabCardTextOnLight,
                         {
                           fontSize: isCompact ? 11 : 12,
                           lineHeight: isCompact ? 15 : 17,
@@ -4415,6 +4489,7 @@ function ScheduleApp() {
         mood={reportDate ? dayMoods[getDateKey(reportDate)] ?? null : null}
         moodAppearance={moodAppearance}
         onEditReflection={handleEditReflectionForDate}
+        reduceMotion={prefersReducedMotion}
       />
       <ReflectionSheet
         visible={Boolean(reflectionDateKey)}
@@ -4470,6 +4545,7 @@ function ScheduleApp() {
         customImages={customMonthImages}
         onUpdateImage={handleUpdateMonthImage}
         language={language}
+        reduceMotion={prefersReducedMotion}
       />
       <ProfileTasksModal
         visible={isProfileTasksOpen}

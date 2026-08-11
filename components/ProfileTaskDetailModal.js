@@ -102,7 +102,7 @@ export default function ProfileTaskDetailModal({
                 <Ionicons
                   name={task.profilePinned ? 'pin' : 'pin-outline'}
                   size={20}
-                  color={task.profilePinned ? '#3c2ba7' : '#6f7a86'}
+                  color={task.profilePinned ? '#3c2ba7' : '#59636f'}
                 />
               </Pressable>
               <Pressable
@@ -199,7 +199,7 @@ export default function ProfileTaskDetailModal({
                 accessibilityRole="button"
                 accessibilityLabel={t.profileTasks.deleteTask}
               >
-                <Ionicons name="trash-outline" size={18} color="#e03131" />
+                <Ionicons name="trash-outline" size={18} color="#c22929" />
                 <Text style={styles.profileDetailDeleteButtonText}>
                   {t.profileTasks.delete}
                 </Text>

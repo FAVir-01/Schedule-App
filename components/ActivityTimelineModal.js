@@ -23,9 +23,9 @@ const ENTRY_ICONS = {
   task_updated: { name: 'create-outline', color: '#3c2ba7' },
   task_deleted: { name: 'trash-outline', color: '#e0574f' },
   task_completed: { name: 'checkmark-circle', color: '#3dd598' },
-  task_uncompleted: { name: 'ellipse-outline', color: '#9aa5b5' },
+  task_uncompleted: { name: 'ellipse-outline', color: '#626b78' },
   subtask_completed: { name: 'checkbox-outline', color: '#3dd598' },
-  subtask_uncompleted: { name: 'square-outline', color: '#9aa5b5' },
+  subtask_uncompleted: { name: 'square-outline', color: '#626b78' },
   reflection: { name: 'journal-outline', color: '#8f63d8' },
 };
 
@@ -248,7 +248,7 @@ export default function ActivityTimelineModal({
               value={query}
               onChangeText={setQuery}
               placeholder={t.searchPlaceholder}
-              placeholderTextColor="#9aa5b5"
+              placeholderTextColor="#626b78"
               style={styles.profileTasksSearchInput}
               returnKeyType="search"
               autoCapitalize="none"
@@ -261,7 +261,7 @@ export default function ActivityTimelineModal({
                 accessibilityLabel={t.clearSearch}
                 hitSlop={8}
               >
-                <Ionicons name="close-circle" size={18} color="#9aa5b5" />
+                <Ionicons name="close-circle" size={18} color="#626b78" />
               </Pressable>
             ) : null}
           </View>

@@ -70,7 +70,7 @@ export default function TaskDetailModal({
                   <Ionicons
                     name={task.profileLocked ? 'lock-closed' : 'lock-open-outline'}
                     size={14}
-                    color="#9aa5b5"
+                    color="#626b78"
                     style={styles.detailTitleLock}
                   />
                 </Text>

@@ -13,7 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { G, Line } from 'react-native-svg';
 import { format } from 'date-fns';
-import { getMonthImageSource } from '../constants/months';
+import { getMonthImageSource, getMonthReducedMotionColor } from '../constants/months';
 import { translations } from '../constants/i18n';
 import { getDateKey } from '../utils/dateUtils';
 import { lightenColor } from '../utils/colorUtils';
@@ -35,6 +35,7 @@ function DayReportModal({
   mood = null,
   moodAppearance = {},
   onEditReflection,
+  reduceMotion = false,
 }) {
   const { height } = useWindowDimensions();
   const [isPhotoOpen, setIsPhotoOpen] = useState(false);
@@ -45,7 +46,11 @@ function DayReportModal({
 
   // 2. Lógica para pegar o GIF do mês correto
   // Se 'date' for nulo, não quebra o app
-  const imageSource = date ? getMonthImageSource(date.getMonth(), customImages) : null;
+  const monthIndex = date?.getMonth() ?? 0;
+  const imageSource = date
+    ? getMonthImageSource(monthIndex, customImages, { reduceMotion })
+    : null;
+  const reducedMotionColor = getMonthReducedMotionColor(monthIndex);
 
   const scoredTasks = tasks.filter(shouldCountTaskTowardsCompletion);
   const totalTasks = scoredTasks.length;
@@ -116,7 +121,7 @@ function DayReportModal({
         <View style={[styles.reportSheet, { maxHeight: height * 0.9 }]}>
           <ImageBackground
             source={imageSource}
-            style={styles.reportHeaderImage}
+            style={[styles.reportHeaderImage, { backgroundColor: reducedMotionColor }]}
             imageStyle={{ resizeMode: 'cover' }}
           >
             {/* Overlay removido aqui */}
@@ -171,7 +176,7 @@ function DayReportModal({
                     accessibilityRole="button"
                     accessibilityLabel={t.reflection.editReflection}
                   >
-                    <Ionicons name="pencil" size={18} color="#8a86a8" />
+                    <Ionicons name="pencil" size={18} color="#625f79" />
                   </Pressable>
                 </View>
                 {mood.note ? (
