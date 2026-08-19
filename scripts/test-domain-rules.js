@@ -203,6 +203,17 @@ const {
 } = require('../utils/templateUtils');
 const { getTimerParts, getTimerTotalSeconds } = require('../utils/timeUtils');
 const { getWaterDisplayPercent, WATER_IDLE_FILL_PERCENT } = require('../utils/waveUtils');
+const {
+  createEmptyDraft,
+  draftFromTask,
+  draftToTask,
+  ensureValidPeriod,
+  getDraftError,
+  taskDraftReducer,
+  timeToMinutes,
+  validateDraft,
+} = require('../domain/taskDraft');
+const { doesDateRepeat } = require('../utils/calendarMath');
 const { buildLocalPeriodSummary } = require('../utils/localSummaryUtils');
 const {
   BACKUP_ERROR_CODES,
@@ -1631,6 +1642,10 @@ test('mantem agua visivel em progresso zero sem distorcer a conclusao', () => {
 });
 
 test('mantem a previa de agua nativa e limitada ao painel de tipo', () => {
+  const previewSource = fs.readFileSync(
+    path.join(root, 'components/taskEditor/TypePreviewCard.js'),
+    'utf8'
+  );
   const sheetSource = fs.readFileSync(
     path.join(root, 'components/AddHabitSheet.js'),
     'utf8'
@@ -1638,18 +1653,21 @@ test('mantem a previa de agua nativa e limitada ao painel de tipo', () => {
   const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
   const addHabitMarkup = appSource.match(/<AddHabitSheet[\s\S]*?\/>/)?.[0] ?? '';
 
-  assert.equal(sheetSource.includes('buildRepeatingWavePath'), true);
-  assert.equal(sheetSource.includes("activePanel !== 'type'"), true);
-  assert.equal(sheetSource.includes('previewWavePhaseAnim.addListener'), false);
-  assert.equal(sheetSource.includes('setPreviewWavePath'), false);
-  assert.equal(sheetSource.includes('Animated.loop('), true);
-  assert.equal(sheetSource.includes('const AnimatedPath = Animated.createAnimatedComponent(Path)'), true);
-  assert.equal(sheetSource.includes('translateX: previewWaveShift'), true);
-  assert.equal(sheetSource.includes('previewWaveGeometry.fillPath'), true);
-  assert.equal(sheetSource.includes('previewWaveGeometry.backPath'), true);
-  assert.equal(sheetSource.includes('previewWaveGeometry.frontPath'), true);
+  assert.equal(previewSource.includes('buildRepeatingWavePath'), true);
+  // A animacao so roda com o painel de tipo aberto: a folha informa isso pelo
+  // `isActive`, e o componente exige a flag antes de iniciar o loop.
+  assert.equal(sheetSource.includes("isActive={panel?.key === 'type'}"), true);
+  assert.equal(previewSource.includes('if (!isActive || !isWater || reduceMotion'), true);
+  assert.equal(previewSource.includes('previewWavePhaseAnim.addListener'), false);
+  assert.equal(previewSource.includes('setPreviewWavePath'), false);
+  assert.equal(previewSource.includes('Animated.loop('), true);
+  assert.equal(previewSource.includes('const AnimatedPath = Animated.createAnimatedComponent(Path)'), true);
+  assert.equal(previewSource.includes('translateX: previewWaveShift'), true);
+  assert.equal(previewSource.includes('previewWaveGeometry.fillPath'), true);
+  assert.equal(previewSource.includes('previewWaveGeometry.backPath'), true);
+  assert.equal(previewSource.includes('previewWaveGeometry.frontPath'), true);
   assert.equal(
-    sheetSource.includes('previous.width === width && previous.height === height'),
+    previewSource.includes('previous.width === width && previous.height === height'),
     true
   );
   assert.equal(addHabitMarkup.includes('reduceMotion={prefersReducedMotion}'), true);
@@ -1666,8 +1684,13 @@ test('mantem a folha editavel estavel e os paineis em modal nativo', () => {
   assert.equal(sheetSource.includes('titleInputRef.current.focus()'), false);
   assert.equal(sheetSource.includes("behavior={Platform.OS === 'ios' ? 'padding' : undefined}"), true);
   assert.equal(sheetSource.includes('Keyboard.dismiss();'), true);
-  assert.equal(sheetSource.includes('presentationStyle="overFullScreen"'), true);
-  assert.equal(sheetSource.includes('onRequestClose={onClose}'), true);
+
+  const partsSource = fs.readFileSync(
+    path.join(root, 'components/taskEditor/parts.js'),
+    'utf8'
+  );
+  assert.equal(partsSource.includes('presentationStyle="overFullScreen"'), true);
+  assert.equal(partsSource.includes('onRequestClose={onClose}'), true);
 });
 
 test('encerra animacoes decorativas e respeita reduzir movimento', () => {
@@ -1728,6 +1751,260 @@ test('anima o painel quantum e reordena cards sem saltos interrompidos', () => {
   assert.equal(taskCardSource.includes('previous.width === width && previous.height === height'), true);
   assert.equal(taskCardSource.includes("pointerEvents={isAdjustOpen ? 'auto' : 'none'}"), true);
   assert.equal(taskCardSource.includes('outputRange: [0, 47]'), true);
+});
+
+test('migra formatos antigos de tarefa ao abrir o editor', () => {
+  const today = new Date(2026, 7, 19);
+
+  const weekend = draftFromTask(
+    { title: 'x', startDate: today, repeat: { option: 'weekend' } },
+    { today }
+  );
+  assert.equal(weekend.repeat.enabled, true);
+  assert.equal(weekend.repeat.frequency, 'weekly');
+  assert.deepEqual(weekend.repeat.weekdays, ['sun', 'sat']);
+
+  const desligado = draftFromTask(
+    { title: 'x', startDate: today, repeat: { option: 'off' } },
+    { today }
+  );
+  assert.equal(desligado.repeat.enabled, false);
+
+  // O typo 'defaut' e o timer gravado como minutes/seconds continuam legiveis.
+  const meta = draftFromTask(
+    {
+      title: 'y',
+      type: 'quantum',
+      quantum: { mode: 'timer', animation: 'defaut', timer: { minutes: 2, seconds: 30 } },
+    },
+    { today }
+  );
+  assert.equal(meta.quantum.animation, 'default');
+  assert.equal(meta.quantum.timerHours, '2');
+  assert.equal(meta.quantum.timerMinutes, '30');
+
+  // Data final anterior ao inicio e dado inconsistente: colapsa no inicio.
+  const invertido = draftFromTask(
+    {
+      title: 'z',
+      startDate: today,
+      repeat: { enabled: true, frequency: 'daily', endDate: new Date(2026, 6, 1).toISOString() },
+    },
+    { today }
+  );
+  assert.equal(invertido.repeat.endDate.getTime(), invertido.startDate.getTime());
+});
+
+test('converte subtarefas persistidas em titulos antes de exibir', () => {
+  const today = new Date(2026, 7, 19);
+  const draft = draftFromTask(
+    {
+      title: 'Rotina',
+      subtasks: [
+        { id: 'a', title: 'Alongar', completedDates: { '2026-08-18': true } },
+        { id: 'b', title: '  ', completedDates: {} },
+        { id: 'c', title: 'Beber agua', completedDates: {} },
+      ],
+    },
+    { today }
+  );
+
+  // O painel desenha <Text>{item}</Text> e o App reconcilia por titulo, entao o
+  // editor precisa entregar texto puro nos dois sentidos.
+  assert.deepEqual(draft.subtasks, ['Alongar', 'Beber agua']);
+  assert.deepEqual(draftToTask(draft).subtasks, ['Alongar', 'Beber agua']);
+  assert.equal(draft.subtasks.every((item) => typeof item === 'string'), true);
+});
+
+test('valida o rascunho por campo em vez de um alerta generico', () => {
+  const today = new Date(2026, 7, 19);
+  let draft = createEmptyDraft({ today });
+
+  assert.equal(getDraftError(validateDraft(draft), 'title').code, 'titleRequired');
+
+  draft = taskDraftReducer(draft, { type: 'setTitle', value: 'Correr' });
+  assert.deepEqual(validateDraft(draft), []);
+
+  // Lembrete sem horario marca o campo; nada e desfeito em silencio.
+  draft = taskDraftReducer(draft, { type: 'patch', value: { reminder: '15m' } });
+  assert.equal(draft.reminder, '15m');
+  assert.equal(getDraftError(validateDraft(draft), 'reminder').code, 'reminderNeedsTime');
+
+  draft = taskDraftReducer(draft, { type: 'patchTime', value: { specified: true } });
+  assert.deepEqual(validateDraft(draft), []);
+
+  // Meta zerada nao passa.
+  draft = taskDraftReducer(draft, { type: 'patch', value: { type: 'quantum' } });
+  draft = taskDraftReducer(draft, {
+    type: 'patchQuantum',
+    value: { mode: 'timer', timerHours: '0', timerMinutes: '0' },
+  });
+  assert.equal(getDraftError(validateDraft(draft), 'quantum').code, 'invalidTimerTarget');
+
+  draft = taskDraftReducer(draft, { type: 'patchQuantum', value: { timerMinutes: '20' } });
+  assert.deepEqual(validateDraft(draft), []);
+
+  // Semana sem nenhum dia marcado tambem e sinalizado.
+  draft = taskDraftReducer(draft, {
+    type: 'patchRepeat',
+    value: { enabled: true, frequency: 'weekly' },
+  });
+  const semDias = draft.repeat.weekdays.reduce(
+    (current, weekday) => taskDraftReducer(current, { type: 'toggleWeekday', value: weekday }),
+    draft
+  );
+  assert.deepEqual(semDias.repeat.weekdays, []);
+  assert.equal(getDraftError(validateDraft(semDias), 'repeat').code, 'weekdayRequired');
+});
+
+test('mantem as invariantes do rascunho num lugar so', () => {
+  const today = new Date(2026, 7, 19);
+  let draft = taskDraftReducer(createEmptyDraft({ today }), {
+    type: 'setTitle',
+    value: 'Ler',
+  });
+
+  // Trocar para semanal semeia o dia da data de inicio em vez de ficar vazio.
+  draft = taskDraftReducer(draft, {
+    type: 'patchRepeat',
+    value: { enabled: true, frequency: 'weekly', weekdays: [] },
+  });
+  assert.deepEqual(draft.repeat.weekdays, ['wed']);
+
+  // Intervalo fora da faixa e limitado, nao aceito e quebrado depois.
+  assert.equal(
+    taskDraftReducer(draft, { type: 'patchRepeat', value: { interval: 500 } }).repeat.interval,
+    99
+  );
+  assert.equal(
+    taskDraftReducer(draft, { type: 'patchRepeat', value: { interval: 0 } }).repeat.interval,
+    1
+  );
+
+  // Adiar o inicio para depois do fim corrige o fim junto.
+  draft = taskDraftReducer(draft, {
+    type: 'patchRepeat',
+    value: { hasEndDate: true, endDate: new Date(2026, 7, 25) },
+  });
+  draft = taskDraftReducer(draft, { type: 'setStartDate', value: new Date(2026, 8, 10) });
+  assert.equal(draft.repeat.endDate.getTime(), draft.startDate.getTime());
+
+  // Desligar a data final zera o valor guardado.
+  draft = taskDraftReducer(draft, { type: 'patchRepeat', value: { hasEndDate: false } });
+  assert.equal(draft.repeat.endDate, null);
+
+  // Campo numerico vazio continua vazio: 0 forcado no meio da digitacao
+  // impedia apagar para digitar outro valor.
+  const vazio = taskDraftReducer(draft, { type: 'patchQuantum', value: { timerHours: '' } });
+  assert.equal(vazio.quantum.timerHours, '');
+  assert.equal(
+    taskDraftReducer(draft, { type: 'patchQuantum', value: { timerMinutes: '99' } }).quantum
+      .timerMinutes,
+    '59'
+  );
+});
+
+test('nao persiste configuracao quantum fora do tipo de meta', () => {
+  const today = new Date(2026, 7, 19);
+  let draft = taskDraftReducer(createEmptyDraft({ today }), { type: 'setTitle', value: 'Agua' });
+  draft = taskDraftReducer(draft, { type: 'patch', value: { type: 'quantum' } });
+  draft = taskDraftReducer(draft, {
+    type: 'patchQuantum',
+    value: { mode: 'count', countValue: '8', countUnit: 'copos' },
+  });
+  assert.equal(draftToTask(draft).quantum.count.value, 8);
+
+  // Trocar de tipo nao apaga o que foi digitado, mas tambem nao vai para o disco.
+  const comoHabito = taskDraftReducer(draft, { type: 'patch', value: { type: 'default' } });
+  assert.equal(comoHabito.quantum.countValue, '8');
+  assert.equal(draftToTask(comoHabito).quantum, null);
+});
+
+test('so persiste rotulo de tag criada pelo usuario', () => {
+  const today = new Date(2026, 7, 19);
+  const tagOptions = [
+    { key: 'workout', label: 'Treino' },
+    { key: 'leitura_noturna', label: 'Leitura noturna', isCustom: true },
+  ];
+  let draft = taskDraftReducer(createEmptyDraft({ today }), { type: 'setTitle', value: 'x' });
+
+  // Tags padrao sao resolvidas pelo idioma atual na exibicao; gravar o texto
+  // traduzido congelaria a tarefa no idioma da criacao.
+  draft = taskDraftReducer(draft, { type: 'patch', value: { tag: 'workout' } });
+  assert.equal(draftToTask(draft, { tagOptions }).tagLabel, undefined);
+
+  draft = taskDraftReducer(draft, { type: 'patch', value: { tag: 'leitura_noturna' } });
+  assert.equal(draftToTask(draft, { tagOptions }).tagLabel, 'Leitura noturna');
+});
+
+test('empurra o fim do periodo em vez de descartar a escolha', () => {
+  const corrigido = ensureValidPeriod({
+    start: { hour: 10, minute: 0, meridiem: 'AM' },
+    end: { hour: 9, minute: 0, meridiem: 'AM' },
+  });
+  assert.equal(timeToMinutes(corrigido.end) - timeToMinutes(corrigido.start), 60);
+
+  // Um periodo ja valido nao e mexido.
+  const intacto = ensureValidPeriod({
+    start: { hour: 9, minute: 0, meridiem: 'AM' },
+    end: { hour: 11, minute: 30, meridiem: 'AM' },
+  });
+  assert.deepEqual(intacto.end, { hour: 11, minute: 30, meridiem: 'AM' });
+});
+
+test('projeta a repeticao do calendario com listas em vez de Set', () => {
+  const start = new Date(2026, 7, 19); // quarta
+  const config = { enabled: true, frequency: 'weekly', interval: 1, weekdays: ['wed'] };
+
+  assert.equal(doesDateRepeat(new Date(2026, 7, 26), start, config), true);
+  assert.equal(doesDateRepeat(new Date(2026, 7, 27), start, config), false);
+  // Nada antes da data de inicio.
+  assert.equal(doesDateRepeat(new Date(2026, 7, 12), start, config), false);
+  // A data final fecha a projecao.
+  assert.equal(
+    doesDateRepeat(new Date(2026, 8, 2), start, { ...config, endDate: new Date(2026, 7, 26) }),
+    false
+  );
+  // Intervalo de duas semanas pula a semana intermediaria.
+  const quinzenal = { ...config, interval: 2 };
+  assert.equal(doesDateRepeat(new Date(2026, 7, 26), start, quinzenal), false);
+  assert.equal(doesDateRepeat(new Date(2026, 8, 2), start, quinzenal), true);
+});
+
+test('resolve idioma do editor pela prop, nao comparando texto traduzido', () => {
+  const sheetSource = fs.readFileSync(path.join(root, 'components/AddHabitSheet.js'), 'utf8');
+  const datePanelSource = fs.readFileSync(
+    path.join(root, 'components/taskEditor/DatePanel.js'),
+    'utf8'
+  );
+  const repeatPanelSource = fs.readFileSync(
+    path.join(root, 'components/taskEditor/RepeatPanel.js'),
+    'utf8'
+  );
+
+  // O idioma vinha de comparar um rotulo traduzido com a string 'Hoje', e a
+  // lista de dias da semana era uma constante fixa em ingles: o seletor de
+  // repeticao ficava em ingles mesmo com o app em portugues.
+  for (const source of [sheetSource, datePanelSource, repeatPanelSource]) {
+    assert.equal(source.includes("=== 'Hoje'"), false);
+    assert.equal(source.includes('WEEKDAYS_EN'), false);
+    assert.equal(source.includes('WEEKDAYS_PT'), false);
+  }
+
+  assert.equal(datePanelSource.includes("language === 'pt' ? 'pt-BR' : 'en-US'"), true);
+  assert.equal(datePanelSource.includes('resolvedLabels.weekdayShortLabels?.[weekdayKey]'), true);
+  assert.equal(repeatPanelSource.includes('labels.weekdayShortLabels?.[weekdayKey]'), true);
+  // O calendario da data final tambem precisa receber o idioma.
+  assert.equal(repeatPanelSource.includes('language={language}'), true);
+
+  // Os dois idiomas precisam ter os rotulos curtos e longos.
+  for (const language of ['en', 'pt']) {
+    const labels = translations[language].sheet;
+    assert.equal(Object.keys(labels.weekdayShortLabels).length, 7);
+    assert.equal(Object.keys(labels.weekdayFullLabels).length, 7);
+    assert.equal(typeof labels.weekdayRequiredMessage, 'string');
+    assert.equal(typeof labels.monthDayRequiredMessage, 'string');
+  }
 });
 
 const runTests = async () => {
