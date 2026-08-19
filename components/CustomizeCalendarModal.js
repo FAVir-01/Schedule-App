@@ -18,7 +18,12 @@ import { getMonthImageSource, getMonthReducedMotionColor } from '../constants/mo
 import { getDateLocale, translations } from '../constants/i18n';
 import { persistPickedImage } from '../services/imagePersistenceService';
 import { styles } from '../styles/appStyles';
-import { IMAGE_LIMITS, getImageErrorMessage } from '../utils/imageUtils';
+import {
+  IMAGE_ERROR_CODES,
+  IMAGE_LIMITS,
+  getImageErrorMessage,
+  isGifImageUri,
+} from '../utils/imageUtils';
 
 // --- COMPONENTE CUSTOMIZE CALENDAR MODAL ---
 function CustomizeCalendarModal({
@@ -49,6 +54,15 @@ function CustomizeCalendarModal({
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
+        if (
+          asset.mimeType?.toLowerCase() === 'image/gif' ||
+          isGifImageUri(asset.fileName) ||
+          isGifImageUri(asset.uri)
+        ) {
+          const unsupportedGifError = new Error('Animated calendar backgrounds are unsupported.');
+          unsupportedGifError.code = IMAGE_ERROR_CODES.UNSUPPORTED_TYPE;
+          throw unsupportedGifError;
+        }
         const persistentUri = await persistPickedImage(asset, {
           prefix: `custom_month_${index}`,
           limits: IMAGE_LIMITS.calendarBackground,

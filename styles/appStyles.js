@@ -272,17 +272,15 @@ export const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
-  waterFillContainer: {
-    ...StyleSheet.absoluteFillObject,
+  waterFallbackFill: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     borderRadius: 18,
     overflow: 'hidden',
   },
-  waterLevelLayer: {
-    position: 'absolute',
-    left: 0,
-    bottom: 0,
-  },
-  waterWaveLayer: {
+  waterFallbackWave: {
     position: 'absolute',
     left: 0,
     top: 0,

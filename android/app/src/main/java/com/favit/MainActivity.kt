@@ -1,4 +1,5 @@
 package com.favit
+import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build
 import android.os.Bundle
@@ -15,7 +16,10 @@ class MainActivity : ReactActivity() {
     // Set the theme to AppTheme BEFORE onCreate to support
     // coloring the background, status bar, and navigation bar.
     // This is required for expo-splash-screen.
-    setTheme(R.style.AppTheme);
+    // setTheme(R.style.AppTheme);
+    // @generated begin expo-splashscreen - expo prebuild (DO NOT MODIFY) sync-f3ff59a738c56c9a6119210cb55f0b613eb8b6af
+    SplashScreenManager.registerOnActivity(this)
+    // @generated end expo-splashscreen
     super.onCreate(null)
   }
 
@@ -41,10 +45,8 @@ class MainActivity : ReactActivity() {
   }
 
   override fun onUserLeaveHint() {
-    // The Expo development launcher can temporarily replace the activity delegate
-    // with a no-op delegate while redirecting between launcher and app. React Native
-    // 0.81 requires an initialized ReactDelegate here, so skip this debug-only event
-    // until the app delegate is ready. Release builds always keep the normal path.
+    // The development launcher can temporarily redirect before its React
+    // delegate is ready. ReactActivity assumes a non-null delegate here.
     if (BuildConfig.DEBUG && reactDelegate == null) {
       return
     }

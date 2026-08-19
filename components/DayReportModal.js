@@ -68,24 +68,33 @@ function DayReportModal({
 
   useEffect(() => {
     if (visible) {
+      progressAnim.stopAnimation();
+      if (reduceMotion) {
+        progressAnim.setValue(targetSuccessRate);
+        setDisplayRate(targetSuccessRate);
+        return undefined;
+      }
       progressAnim.setValue(0);
       setDisplayRate(0);
 
-      Animated.timing(progressAnim, {
+      const animation = Animated.timing(progressAnim, {
         toValue: targetSuccessRate,
         duration: 1000,
         useNativeDriver: false,
-      }).start();
+      });
 
       const listenerId = progressAnim.addListener(({ value }) => {
         setDisplayRate(Math.round(value));
       });
+      animation.start();
 
       return () => {
+        animation.stop();
         progressAnim.removeListener(listenerId);
       };
     }
-  }, [visible, targetSuccessRate, progressAnim]);
+    return undefined;
+  }, [visible, targetSuccessRate, progressAnim, reduceMotion]);
 
   // Gauge de ticks: arco aberto embaixo, estilo velocímetro.
   const TICK_COUNT = 45;

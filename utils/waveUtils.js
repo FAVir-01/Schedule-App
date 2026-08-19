@@ -17,9 +17,22 @@ const buildWavePath = ({ width, height, amplitude, phase }) => {
   return path;
 };
 
+// Mesmo com progresso zero, uma lâmina baixa deixa claro que o estilo "água"
+// está ativo. O restante da altura continua representando o progresso real.
+const WATER_IDLE_FILL_PERCENT = 0.16;
+
+const getWaterDisplayPercent = (progress) => {
+  const numericProgress = Number(progress);
+  const normalizedProgress = Number.isFinite(numericProgress)
+    ? Math.min(1, Math.max(0, numericProgress))
+    : 0;
+  return WATER_IDLE_FILL_PERCENT
+    + normalizedProgress * (1 - WATER_IDLE_FILL_PERCENT);
+};
+
 // Onda periódica "repetível": sen(x) completa ciclos inteiros a cada `wavelength`,
 // então transladar o SVG em exatamente 1 wavelength faz loop perfeito sem emenda.
-const buildRepeatingWavePath = ({ totalWidth, wavelength, height, amplitude }) => {
+const buildRepeatingWavePath = ({ totalWidth, wavelength, height, amplitude, phase = 0 }) => {
   if (!totalWidth || !wavelength || !height) {
     return '';
   }
@@ -29,7 +42,7 @@ const buildRepeatingWavePath = ({ totalWidth, wavelength, height, amplitude }) =
   let path = `M 0 ${center.toFixed(2)}`;
   for (let i = 0; i <= points; i += 1) {
     const x = step * i;
-    const theta = (x / wavelength) * Math.PI * 2;
+    const theta = (x / wavelength) * Math.PI * 2 + phase;
     const y = center + Math.sin(theta) * amplitude;
     path += ` L ${x.toFixed(2)} ${y.toFixed(2)}`;
   }
@@ -37,4 +50,9 @@ const buildRepeatingWavePath = ({ totalWidth, wavelength, height, amplitude }) =
   return path;
 };
 
-export { buildRepeatingWavePath, buildWavePath };
+export {
+  buildRepeatingWavePath,
+  buildWavePath,
+  getWaterDisplayPercent,
+  WATER_IDLE_FILL_PERCENT,
+};

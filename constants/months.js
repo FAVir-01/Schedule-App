@@ -1,18 +1,18 @@
 import { isGifImageUri } from '../utils/imageUtils';
 
 const MONTH_IMAGES = [
-  require('../assets/months/jan.gif'),
-  require('../assets/months/feb.gif'),
-  require('../assets/months/mar.gif'),
-  require('../assets/months/apr.gif'),
-  require('../assets/months/may.gif'),
-  require('../assets/months/jun.gif'),
-  require('../assets/months/jul.gif'),
-  require('../assets/months/aug.gif'),
-  require('../assets/months/sep.gif'),
-  require('../assets/months/oct.gif'),
-  require('../assets/months/nov.gif'),
-  require('../assets/months/dec.gif'),
+  require('../assets/months/static/jan.webp'),
+  require('../assets/months/static/feb.webp'),
+  require('../assets/months/static/mar.webp'),
+  require('../assets/months/static/apr.webp'),
+  require('../assets/months/static/may.webp'),
+  require('../assets/months/static/jun.webp'),
+  require('../assets/months/static/jul.webp'),
+  require('../assets/months/static/aug.webp'),
+  require('../assets/months/static/sep.webp'),
+  require('../assets/months/static/oct.webp'),
+  require('../assets/months/static/nov.webp'),
+  require('../assets/months/static/dec.webp'),
 ];
 
 const MONTH_REDUCED_MOTION_COLORS = [
@@ -58,11 +58,13 @@ const getMonthImageSource = (monthIndex, customImages, { reduceMotion = false } 
   const customImageUri = customImages?.[index];
 
   if (customImageUri) {
-    return reduceMotion && isGifImageUri(customImageUri) ? null : { uri: customImageUri };
+    // Fresco pode manter centenas de quadros decodificados no heap nativo.
+    // Imagens personalizadas animadas antigas usam a cor de fallback até serem substituídas.
+    return isGifImageUri(customImageUri) ? null : { uri: customImageUri };
   }
 
-  // Todos os fundos mensais empacotados são GIFs. Não os monta quando o
-  // sistema solicita menos movimento; os componentes usam a cor estática do mês.
+  // Os previews empacotados são o primeiro quadro dos GIFs antigos. Isso evita
+  // decodificar várias animações simultaneamente nas listas do calendário.
   if (reduceMotion) {
     return null;
   }

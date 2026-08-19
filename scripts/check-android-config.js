@@ -172,10 +172,25 @@ if (/release\s*\{[\s\S]*?signingConfig\s+signingConfigs\.debug/.test(gradle)) {
 
 const blockedPermissions = new Set(android.blockedPermissions ?? []);
 const releaseBlockedPermissions = [
+  'android.permission.CAMERA',
   'android.permission.READ_EXTERNAL_STORAGE',
+  'android.permission.RECORD_AUDIO',
   'android.permission.WRITE_EXTERNAL_STORAGE',
   'android.permission.SYSTEM_ALERT_WINDOW',
 ];
+
+const exactAlarmPermission = 'android.permission.SCHEDULE_EXACT_ALARM';
+const configuredPermissions = new Set(android.permissions ?? []);
+if (!configuredPermissions.has(exactAlarmPermission)) {
+  errors.push(`Expo deve declarar ${exactAlarmPermission} para lembretes pontuais.`);
+}
+if (
+  !/<uses-permission\s+android:name=["']android\.permission\.SCHEDULE_EXACT_ALARM["'][^>]*\/?>/.test(
+    mainManifest
+  )
+) {
+  errors.push(`Manifest principal deve declarar ${exactAlarmPermission}.`);
+}
 
 releaseBlockedPermissions.forEach((permission) => {
   if (!blockedPermissions.has(permission)) {
