@@ -243,6 +243,7 @@ export const getTaskReminderFingerprint = (task) => {
   const normalizedDate = normalizeDateValue(task?.date);
   return JSON.stringify({
     id: task?.id ?? null,
+    archived: task?.archived === true,
     date:
       task?.dateKey ??
       (isValidDate(normalizedDate) ? normalizedDate.toISOString() : null),
@@ -253,7 +254,7 @@ export const getTaskReminderFingerprint = (task) => {
 };
 
 export const getTaskReminderPlan = (task, now = new Date()) => {
-  if (!hasTaskReminder(task)) {
+  if (task?.archived === true || !hasTaskReminder(task)) {
     return { status: 'disabled', mode: null, triggers: [] };
   }
   if (!isValidTime(getReminderBaseTime(task?.time))) {

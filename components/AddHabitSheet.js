@@ -7,7 +7,9 @@ import {
   BackHandler,
   Easing,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -15,13 +17,18 @@ import {
   Switch,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Path } from 'react-native-svg';
-import { LinearGradient } from 'expo-linear-gradient';
+import Svg, {
+  Defs,
+  LinearGradient as SvgLinearGradient,
+  Path,
+  Stop,
+} from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { formatTaskTime, getTimerParts } from '../utils/timeUtils';
@@ -33,19 +40,19 @@ import {
   isValidQuantumDefinition,
   shouldResetTaskProgress,
 } from '../utils/taskUtils';
-import { buildWavePath } from '../utils/waveUtils';
+import { buildRepeatingWavePath, getWaterDisplayPercent } from '../utils/waveUtils';
 import { translations } from '../constants/i18n';
 import { persistPickedImage } from '../services/imagePersistenceService';
 import { requestReminderPermission } from '../services/reminderService';
 import { IMAGE_LIMITS, getImageErrorMessage } from '../utils/imageUtils';
+
+const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 const SHEET_OPEN_DURATION = 300;
 const SHEET_CLOSE_DURATION = 220;
 const BACKDROP_MAX_OPACITY = 0.5;
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 const HAPTICS_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
-const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
-
 const COLORS = ['#FFCF70', '#F7A6A1', '#B39DD6', '#79C3FF', '#A8E6CF', '#FDE2A6'];
 // Ícone do hábito: o usuário escolhe uma foto ou o sistema sorteia um emoji
 // desta lista curada (temas comuns de hábitos/rotina).
@@ -365,6 +372,7 @@ export default function AddHabitSheet({
   initialHabit,
   availableTagOptions = [],
   language = 'en',
+  reduceMotion = false,
 }) {
   const { height, width } = useWindowDimensions();
   const localePack = translations[language] ?? translations.en;
@@ -457,7 +465,6 @@ export default function AddHabitSheet({
   const [customImage, setCustomImage] = useState(null);
   const [isLoadingImage, setIsLoadingImage] = useState(false);
   const titleInputRef = useRef(null);
-  const translateY = useRef(new Animated.Value(sheetHeight || height)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const isClosingRef = useRef(false);
   const isRequestingNotificationPermissionRef = useRef(false);
@@ -606,6 +613,8 @@ export default function AddHabitSheet({
 
   const handleOpenPanel = useCallback(
     (panel) => {
+      titleInputRef.current?.blur();
+      Keyboard.dismiss();
       setActivePanel(panel);
       if (panel === 'date') {
         setCalendarMonthState(new Date(startDate.getFullYear(), startDate.getMonth(), 1));
@@ -1006,40 +1015,22 @@ export default function AddHabitSheet({
     if (visible) {
       setIsMounted(true);
       isClosingRef.current = false;
-      Animated.parallel([
-        Animated.timing(backdropOpacity, {
-          toValue: BACKDROP_MAX_OPACITY,
-          duration: SHEET_OPEN_DURATION,
-          useNativeDriver: USE_NATIVE_DRIVER,
-        }),
-        Animated.spring(translateY, {
-          toValue: 0,
-          damping: 18,
-          stiffness: 220,
-          mass: 0.9,
-          useNativeDriver: USE_NATIVE_DRIVER,
-        }),
-      ]).start(() => {
-        titleInputRef.current?.focus();
-      });
+      Animated.timing(backdropOpacity, {
+        toValue: BACKDROP_MAX_OPACITY,
+        duration: SHEET_OPEN_DURATION,
+        useNativeDriver: USE_NATIVE_DRIVER,
+      }).start();
       AccessibilityInfo.announceForAccessibility(accessibilityAnnouncement);
     } else if (isMounted) {
+      titleInputRef.current?.blur();
       isClosingRef.current = true;
-      Animated.parallel([
-        Animated.timing(backdropOpacity, {
-          toValue: 0,
-          duration: SHEET_CLOSE_DURATION,
-          useNativeDriver: USE_NATIVE_DRIVER,
-        }),
-        Animated.timing(translateY, {
-          toValue: sheetHeight || height,
-          duration: SHEET_CLOSE_DURATION,
-          useNativeDriver: USE_NATIVE_DRIVER,
-        }),
-      ]).start(() => {
+      Animated.timing(backdropOpacity, {
+        toValue: 0,
+        duration: SHEET_CLOSE_DURATION,
+        useNativeDriver: USE_NATIVE_DRIVER,
+      }).start(() => {
         if (isClosingRef.current) {
           setIsMounted(false);
-          translateY.setValue(sheetHeight || height);
           setTitle('');
           setSelectedColor(COLORS[0]);
           // Próxima criação já abre com um ícone sorteado.
@@ -1088,11 +1079,8 @@ export default function AddHabitSheet({
   }, [
     accessibilityAnnouncement,
     backdropOpacity,
-    height,
     isMounted,
     mergedDefaultTagOptions,
-    sheetHeight,
-    translateY,
     visible,
   ]);
 
@@ -1116,12 +1104,6 @@ export default function AddHabitSheet({
       subscription.remove();
     };
   }, [activePanel, closePanel, handleClose, visible]);
-
-  useEffect(() => {
-    if (!isMounted) {
-      translateY.setValue(sheetHeight || height);
-    }
-  }, [height, isMounted, sheetHeight, translateY]);
 
   const typeOptions = useMemo(
     () => [
@@ -1475,11 +1457,7 @@ export default function AddHabitSheet({
     return `0/${subtasks.length}`;
   }, [pendingType, previewQuantum, subtasks.length]);
   const [previewCardSize, setPreviewCardSize] = useState({ width: 0, height: 0 });
-  const previewWavePhaseAnim = useRef(new Animated.Value(0)).current;
-  const previewWaterLevelAnim = useRef(new Animated.Value(0)).current;
-  const previewWavePhaseRef = useRef(0);
-  const [previewWavePathFront, setPreviewWavePathFront] = useState('');
-  const [previewWavePathBack, setPreviewWavePathBack] = useState('');
+  const previewWaveShiftAnim = useRef(new Animated.Value(0)).current;
   const previewWaveHeight = 34;
   const isPreviewWater = pendingType === 'quantum' && pendingQuantumAnimation === 'water';
   const previewTask = useMemo(
@@ -1493,85 +1471,88 @@ export default function AddHabitSheet({
     () => getQuantumProgressPercent(previewTask),
     [previewTask]
   );
-  const previewWaterFillHeight = useMemo(() => {
-    if (!previewCardSize.height) {
+  const previewWaterDisplayPercent = useMemo(
+    () => getWaterDisplayPercent(previewWaterPercent),
+    [previewWaterPercent]
+  );
+  const previewWaterFillHeight = previewCardSize.height
+    ? Math.max(previewWaveHeight, previewCardSize.height * previewWaterDisplayPercent)
+    : 0;
+  const previewWaveGeometry = useMemo(() => {
+    if (!previewCardSize.width || !previewWaterFillHeight) {
+      return null;
+    }
+    const wavelength = Math.max(120, previewCardSize.width * 0.65);
+    const totalWidth = previewCardSize.width + wavelength;
+    return {
+      wavelength,
+      totalWidth,
+      fillPath: buildRepeatingWavePath({
+        totalWidth,
+        wavelength,
+        height: previewWaterFillHeight,
+        amplitude: 6,
+      }),
+      frontPath: buildRepeatingWavePath({
+        totalWidth,
+        wavelength,
+        height: previewWaveHeight,
+        amplitude: 6,
+      }),
+      backPath: buildRepeatingWavePath({
+        totalWidth,
+        wavelength,
+        height: previewWaveHeight,
+        amplitude: 4,
+        phase: Math.PI / 2,
+      }),
+    };
+  }, [previewCardSize.width, previewWaterFillHeight]);
+  const previewWaveShift = useMemo(() => {
+    if (!previewWaveGeometry) {
       return 0;
     }
-    return previewWaterLevelAnim.interpolate({
+    return previewWaveShiftAnim.interpolate({
       inputRange: [0, 1],
-      outputRange: [0, previewCardSize.height],
+      outputRange: [0, -previewWaveGeometry.wavelength],
     });
-  }, [previewCardSize.height, previewWaterLevelAnim]);
-  const updatePreviewWavePaths = useCallback(() => {
-    if (!previewCardSize.width) {
-      return;
-    }
-    const phaseValue = previewWavePhaseRef.current;
-    const frontPath = buildWavePath({
-      width: previewCardSize.width,
-      height: previewWaveHeight,
-      amplitude: 6,
-      phase: phaseValue,
-    });
-    const backPath = buildWavePath({
-      width: previewCardSize.width,
-      height: previewWaveHeight,
-      amplitude: 4,
-      phase: phaseValue + Math.PI / 2,
-    });
-    setPreviewWavePathFront(frontPath);
-    setPreviewWavePathBack(backPath);
-  }, [previewCardSize.width, previewWaveHeight]);
-
+  }, [previewWaveGeometry, previewWaveShiftAnim]);
   useEffect(() => {
-    if (!visible || !isPreviewWater) {
-      previewWavePhaseAnim.stopAnimation();
-      previewWavePhaseAnim.setValue(0);
+    if (
+      !visible ||
+      activePanel !== 'type' ||
+      !isPreviewWater ||
+      reduceMotion ||
+      !previewWaveGeometry
+    ) {
+      previewWaveShiftAnim.stopAnimation();
+      previewWaveShiftAnim.setValue(0);
       return undefined;
     }
-    const animationLoop = Animated.loop(
-      Animated.timing(previewWavePhaseAnim, {
-        toValue: Math.PI * 2,
+    const animation = Animated.loop(
+      Animated.timing(previewWaveShiftAnim, {
+        toValue: 1,
         duration: 3600,
         easing: Easing.inOut(Easing.sin),
+        // Fabric/Android deixa o SVG transparente quando um ancestral usa
+        // transform nativo. O driver JS move só a view pronta, sem reconstruir
+        // o path nem disparar render React a cada frame.
         useNativeDriver: false,
       })
     );
-    animationLoop.start();
+    animation.start();
     return () => {
-      animationLoop.stop();
-      previewWavePhaseAnim.setValue(0);
+      animation.stop();
+      previewWaveShiftAnim.setValue(0);
     };
-  }, [isPreviewWater, previewWavePhaseAnim, visible]);
-
-  useEffect(() => {
-    const id = previewWavePhaseAnim.addListener(({ value }) => {
-      previewWavePhaseRef.current = value;
-      updatePreviewWavePaths();
-    });
-    return () => {
-      previewWavePhaseAnim.removeListener(id);
-    };
-  }, [previewWavePhaseAnim, updatePreviewWavePaths]);
-
-  useEffect(() => {
-    updatePreviewWavePaths();
-  }, [previewCardSize.width, updatePreviewWavePaths]);
-
-  useEffect(() => {
-    if (!isPreviewWater || !previewCardSize.height) {
-      previewWaterLevelAnim.stopAnimation();
-      previewWaterLevelAnim.setValue(0);
-      return;
-    }
-    Animated.spring(previewWaterLevelAnim, {
-      toValue: previewWaterPercent,
-      damping: 10,
-      stiffness: 140,
-      mass: 0.9,
-      useNativeDriver: false,
-    }).start();
-  }, [isPreviewWater, previewCardSize.height, previewWaterLevelAnim, previewWaterPercent]);
+  }, [
+    activePanel,
+    isPreviewWater,
+    previewWaveGeometry,
+    previewWaveShiftAnim,
+    reduceMotion,
+    visible,
+  ]);
 
   if (!isMounted) {
     return null;
@@ -1586,12 +1567,11 @@ export default function AddHabitSheet({
       >
         <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
       </Animated.View>
-      <Animated.View
+      <View
         style={[
           styles.sheetContainer,
           {
             paddingBottom: Math.max(insets.bottom, 12),
-            transform: [{ translateY }],
             height: sheetHeight,
             backgroundColor: sheetBackgroundColor,
           },
@@ -1601,8 +1581,8 @@ export default function AddHabitSheet({
       >
         <KeyboardAvoidingView
           style={styles.keyboardAvoiding}
-          behavior="padding"
-          enabled
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          enabled={Platform.OS === 'ios'}
           keyboardVerticalOffset={insets.top}
         >
           <View
@@ -1628,7 +1608,11 @@ export default function AddHabitSheet({
                 <Ionicons name="close" size={26} color="#59636f" />
               </Pressable>
               <Pressable
-                style={[styles.createButton, isSubmitDisabled && styles.createButtonDisabled]}
+                style={[
+                  styles.createButton,
+                  __DEV__ && styles.createButtonDevToolsOffset,
+                  isSubmitDisabled && styles.createButtonDisabled,
+                ]}
                 accessibilityRole="button"
                 accessibilityState={{ disabled: isSubmitDisabled }}
                 onPress={handleSubmit}
@@ -2072,30 +2056,56 @@ export default function AddHabitSheet({
                     ]}
                     onLayout={(event) => {
                       const { width, height } = event.nativeEvent.layout;
-                      setPreviewCardSize({ width, height });
+                      setPreviewCardSize((previous) =>
+                        previous.width === width && previous.height === height
+                          ? previous
+                          : { width, height }
+                      );
                     }}
                   >
-                    {isPreviewWater && (
-                      <View pointerEvents="none" style={styles.typePreviewWaterFillContainer}>
-                        <AnimatedLinearGradient
-                          colors={['rgba(107, 190, 255, 0.6)', 'rgba(64, 148, 255, 0.9)']}
-                          start={{ x: 0.5, y: 0 }}
-                          end={{ x: 0.5, y: 1 }}
-                          style={[styles.typePreviewWaterFill, { height: previewWaterFillHeight }]}
+                    {isPreviewWater && previewWaveGeometry && (
+                      <View
+                        pointerEvents="none"
+                        style={[
+                          styles.typePreviewWaterFallbackFill,
+                          { height: previewWaterFillHeight },
+                        ]}
+                      >
+                        <Svg
+                          width={previewCardSize.width}
+                          height={previewWaterFillHeight}
+                          style={styles.typePreviewWaterWave}
                         >
-                          <Svg
-                            width={previewCardSize.width}
-                            height={previewWaveHeight}
-                            style={styles.typePreviewWaterWave}
-                          >
-                            {previewWavePathBack ? (
-                              <Path d={previewWavePathBack} fill="#e9f5ff" opacity={0.55} />
-                            ) : null}
-                            {previewWavePathFront ? (
-                              <Path d={previewWavePathFront} fill="#f4fbff" opacity={0.8} />
-                            ) : null}
-                          </Svg>
-                        </AnimatedLinearGradient>
+                          <Defs>
+                            <SvgLinearGradient
+                              id="type-preview-water-gradient"
+                              x1="0%"
+                              y1="0%"
+                              x2="0%"
+                              y2="100%"
+                            >
+                              <Stop offset="0%" stopColor="rgb(153, 199, 252)" />
+                              <Stop offset="100%" stopColor="rgb(100, 158, 248)" />
+                            </SvgLinearGradient>
+                          </Defs>
+                          <AnimatedPath
+                            d={previewWaveGeometry.fillPath}
+                            fill="url(#type-preview-water-gradient)"
+                            style={{ transform: [{ translateX: previewWaveShift }] }}
+                          />
+                          <AnimatedPath
+                            d={previewWaveGeometry.backPath}
+                            fill="#e9f5ff"
+                            opacity={0.55}
+                            style={{ transform: [{ translateX: previewWaveShift }] }}
+                          />
+                          <AnimatedPath
+                            d={previewWaveGeometry.frontPath}
+                            fill="#f4fbff"
+                            opacity={0.8}
+                            style={{ transform: [{ translateX: previewWaveShift }] }}
+                          />
+                        </Svg>
                       </View>
                     )}
                     <View style={styles.typePreviewInfo}>
@@ -2123,7 +2133,7 @@ export default function AddHabitSheet({
             )}
           </View>
         </KeyboardAvoidingView>
-      </Animated.View>
+      </View>
     </View>
   );
 }
@@ -2142,37 +2152,51 @@ function SheetRow({
   bubbleMaxWidth,
 }) {
   return (
-    <Pressable
+    <View
       style={[styles.row, isLast && styles.rowLast, disabled && styles.rowDisabled, isInfoVisible && styles.rowInfoVisible]}
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityState={{ selected: false, disabled }}
     >
-      <View style={styles.rowLeft}>
+      <TouchableOpacity
+        style={styles.rowLeft}
+        onPress={onPress}
+        disabled={disabled}
+        activeOpacity={0.72}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}, ${value}`}
+        accessibilityState={{ selected: false, disabled }}
+      >
         {icon}
-        <View style={[styles.rowLabelWithInfo, isInfoVisible && styles.rowLabelWithInfoVisible]}>
-          <View style={styles.infoLabelRow}>
-            <Text style={styles.rowLabel}>{label}</Text>
-            {infoText ? (
-              <Pressable onPress={onPressInfo} style={styles.infoIconButton} hitSlop={8}>
-                <Ionicons name="help-circle-outline" size={14} color="#59636f" />
-              </Pressable>
-            ) : null}
-          </View>
-          {isInfoVisible ? (
-            <View style={[styles.floatingInfoBubble, styles.rowFloatingInfoBubble, bubbleMaxWidth ? { maxWidth: bubbleMaxWidth } : null]}>
-              <Text style={styles.inlineInfoText}>{infoText}</Text>
-            </View>
-          ) : null}
-        </View>
-      </View>
+        <Text style={styles.rowLabel}>{label}</Text>
+      </TouchableOpacity>
 
-      <View style={styles.rowRight}>
+      {infoText ? (
+        <Pressable
+          onPress={onPressInfo}
+          style={styles.infoIconButton}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={infoText}
+        >
+          <Ionicons name="help-circle-outline" size={14} color="#59636f" />
+        </Pressable>
+      ) : null}
+
+      <TouchableOpacity
+        style={styles.rowRight}
+        onPress={onPress}
+        disabled={disabled}
+        activeOpacity={0.72}
+        accessible={false}
+      >
         <Text style={styles.rowValue}>{value}</Text>
         {showChevron && <Ionicons name="chevron-forward" size={18} color="#9aa0af" />}
-      </View>
-    </Pressable>
+      </TouchableOpacity>
+
+      {isInfoVisible ? (
+        <View style={[styles.floatingInfoBubble, styles.rowFloatingInfoBubble, bubbleMaxWidth ? { maxWidth: bubbleMaxWidth } : null]}>
+          <Text style={styles.inlineInfoText}>{infoText}</Text>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -2187,52 +2211,71 @@ function OptionOverlay({
   applyDisabled,
   scrollEnabled = true,
 }) {
+  const insets = useSafeAreaInsets();
+
   return (
-    <View style={styles.overlayContainer}>
-      <View style={styles.overlayCard}>
-        <View style={styles.overlayHeader}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={backLabel}
-            onPress={onClose}
-            hitSlop={12}
-          >
-            <Ionicons name="chevron-back" size={24} color="#1F2742" />
-          </Pressable>
-          <View style={styles.overlayTitleContainer}>
-            <Text style={styles.overlayTitle}>{title}</Text>
-            {subtitle ? <Text style={styles.overlaySubtitle}>{subtitle}</Text> : null}
-          </View>
-          <Pressable
-            style={styles.overlayApplyButton}
-            onPress={onApply}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: applyDisabled }}
-            disabled={applyDisabled}
-            hitSlop={12}
-          >
-            <Text
-              style={[styles.overlayApplyText, applyDisabled && styles.overlayApplyTextDisabled]}
+    <Modal
+      animationType="none"
+      presentationStyle="overFullScreen"
+      transparent
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View
+        style={[
+          styles.overlayContainer,
+          {
+            paddingTop: Math.max(insets.top, 12),
+            paddingBottom: Math.max(insets.bottom, 12),
+          },
+        ]}
+      >
+        <View style={styles.overlayCard}>
+          <View style={styles.overlayHeader}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={backLabel}
+              onPress={onClose}
+              hitSlop={12}
             >
-              {applyLabel}
-            </Text>
-          </Pressable>
+              <Ionicons name="chevron-back" size={24} color="#1F2742" />
+            </Pressable>
+            <View style={styles.overlayTitleContainer}>
+              <Text style={styles.overlayTitle}>{title}</Text>
+              {subtitle ? <Text style={styles.overlaySubtitle}>{subtitle}</Text> : null}
+            </View>
+            <Pressable
+              style={styles.overlayApplyButton}
+              onPress={onApply}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: applyDisabled }}
+              disabled={applyDisabled}
+              hitSlop={12}
+            >
+              <Text
+                style={[styles.overlayApplyText, applyDisabled && styles.overlayApplyTextDisabled]}
+              >
+                {applyLabel}
+              </Text>
+            </Pressable>
+          </View>
+          {scrollEnabled ? (
+            <ScrollView
+              style={styles.overlayScroll}
+              contentContainerStyle={styles.overlayScrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+            >
+              {children}
+            </ScrollView>
+          ) : (
+            <View style={[styles.overlayScroll, styles.overlayScrollContent]}>{children}</View>
+          )}
         </View>
-        {scrollEnabled ? (
-          <ScrollView
-            style={styles.overlayScroll}
-            contentContainerStyle={styles.overlayScrollContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            nestedScrollEnabled
-          >
-            {children}
-          </ScrollView>
-        ) : (
-          <View style={[styles.overlayScroll, styles.overlayScrollContent]}>{children}</View>
-        )}
       </View>
-    </View>
+    </Modal>
   );
 }
 
@@ -3430,6 +3473,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#1F2742',
   },
+  createButtonDevToolsOffset: {
+    marginRight: 56,
+  },
   createButtonDisabled: {
     backgroundColor: '#B7C2D6',
   },
@@ -3657,6 +3703,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    position: 'relative',
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(109, 125, 150, 0.16)',
@@ -3695,6 +3742,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   rowLabel: {
+    flexShrink: 1,
     fontSize: 16,
     color: '#1F2742',
     fontWeight: '600',
@@ -3710,9 +3758,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   overlayContainer: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
     backgroundColor: '#DDE9FF',
-    zIndex: 2,
   },
   overlayCard: {
     flex: 1,
@@ -3799,22 +3846,18 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
-  typePreviewWaterFillContainer: {
-    ...StyleSheet.absoluteFillObject,
+  typePreviewWaterFallbackFill: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     borderRadius: 18,
     overflow: 'hidden',
-    alignItems: 'stretch',
-    justifyContent: 'flex-end',
-  },
-  typePreviewWaterFill: {
-    width: '100%',
-    position: 'relative',
   },
   typePreviewWaterWave: {
     position: 'absolute',
-    top: -18,
     left: 0,
-    right: 0,
+    top: 0,
   },
   typePreviewInfo: {
     flexDirection: 'row',
@@ -4402,8 +4445,8 @@ const styles = StyleSheet.create({
     elevation: 40,
   },
   rowFloatingInfoBubble: {
-    left: -28,
-    right: -16,
+    left: 46,
+    right: 0,
   },
   previewFloatingInfoBubble: {
     left: 0,

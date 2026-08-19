@@ -306,7 +306,8 @@ const cleanupOrphanImageFiles = async (
 if (NOTIFICATIONS_SUPPORTED) {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
-      shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
       shouldPlaySound: true,
       shouldSetBadge: false,
     }),
@@ -319,9 +320,6 @@ if (NOTIFICATIONS_SUPPORTED) {
 function ScheduleApp() {
   const [userSettings, setUserSettings] = useState(DEFAULT_USER_SETTINGS);
   const [activeTab, setActiveTab] = useState(DEFAULT_USER_SETTINGS.activeTab);
-  const [hasMountedCalendar, setHasMountedCalendar] = useState(
-    DEFAULT_USER_SETTINGS.activeTab === 'calendar'
-  );
   // Aba calendar tem dois modos: grade de meses ou feed de reflexões.
   const [calendarViewMode, setCalendarViewMode] = useState('calendar');
   const [hasMountedFeed, setHasMountedFeed] = useState(false);
@@ -650,11 +648,6 @@ function ScheduleApp() {
     lastResult: { calendarDayStatusByKey: {}, calendarMonthStatusSignatureById: {} },
   });
   const isCalendarTabActive = activeTab === 'calendar';
-  useEffect(() => {
-    if (isCalendarTabActive) {
-      setHasMountedCalendar(true);
-    }
-  }, [isCalendarTabActive]);
   const calendarStatusMonths = useMemo(() => {
     if (!isCalendarTabActive || calendarMonths.length === 0) {
       return [];
@@ -4078,12 +4071,10 @@ function ScheduleApp() {
               onViewToday={handleViewToday}
             />
           )}
-          {(hasMountedCalendar || isCalendarTabActive) ? (
+          {isCalendarTabActive ? (
             <View
               key="calendar-tab"
-              style={[{ flex: 1, width: '100%' }, !isCalendarTabActive && { display: 'none' }]}
-              pointerEvents={isCalendarTabActive ? 'auto' : 'none'}
-              importantForAccessibility={isCalendarTabActive ? 'auto' : 'no-hide-descendants'}
+              style={{ flex: 1, width: '100%' }}
             >
               {/* Seletor Calendário/Feed: pílula centralizada no topo */}
               <View style={styles.calendarViewSwitcherWrapper}>
@@ -4145,8 +4136,8 @@ function ScheduleApp() {
                   keyExtractor={(item) => item.id.toString()}
                   showsVerticalScrollIndicator={false}
                   removeClippedSubviews={Platform.OS === 'android'}
-                  maxToRenderPerBatch={3}
-                  windowSize={5}
+                  maxToRenderPerBatch={2}
+                  windowSize={3}
                   initialScrollIndex={initialCalendarIndex !== -1 ? initialCalendarIndex : 12}
                   initialNumToRender={2}
                   updateCellsBatchingPeriod={16}
@@ -4525,6 +4516,7 @@ function ScheduleApp() {
         initialHabit={habitSheetInitialTask}
         availableTagOptions={availableTagOptions}
         language={language}
+        reduceMotion={prefersReducedMotion}
       />
       <SettingsSheet
         visible={isSettingsOpen}
@@ -4625,7 +4617,6 @@ export default function App() {
     void Notifications.setNotificationChannelAsync('default', {
       name: 'Default',
       importance: Notifications.AndroidImportance.HIGH,
-      sound: 'default',
       enableVibrate: true,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,
     });

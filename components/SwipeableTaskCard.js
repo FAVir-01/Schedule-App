@@ -24,9 +24,11 @@ import {
   getQuantumStepLabel,
 } from '../utils/taskUtils';
 import { formatTaskTime, getTimerTotalSeconds } from '../utils/timeUtils';
-import { buildRepeatingWavePath } from '../utils/waveUtils';
+import { buildRepeatingWavePath, getWaterDisplayPercent } from '../utils/waveUtils';
 import { triggerSelection } from '../utils/feedbackUtils';
 import { styles } from '../styles/appStyles';
+
+const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
   task,
@@ -53,7 +55,6 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
   const [isOpen, setIsOpen] = useState(false);
   const [cardSize, setCardSize] = useState({ width: 0, height: 0 });
   const [hasImageError, setHasImageError] = useState(false);
-  const waterLevelAnim = useRef(new Animated.Value(0)).current;
   const currentOffsetRef = useRef(0);
 
   useEffect(() => {
@@ -155,12 +156,18 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     () => getQuantumProgressPercent(task, dateKey),
     [dateKey, task]
   );
+  const waterDisplayPercent = useMemo(
+    () => getWaterDisplayPercent(waterPercent),
+    [waterPercent]
+  );
   const waveHeight = 19;
-  const waterLayerHeight = cardSize.height ? cardSize.height + waveHeight : 0;
+  const waterFillHeight = cardSize.height
+    ? Math.max(waveHeight, cardSize.height * waterDisplayPercent)
+    : 0;
   // Onda e corpo são um único path com um único gradiente. Isso elimina a
   // junção horizontal que aparecia quando duas superfícies nativas se cruzavam.
   const waveGeometry = useMemo(() => {
-    if (!cardSize.width || !waterLayerHeight) {
+    if (!cardSize.width || !waterFillHeight) {
       return null;
     }
     const wavelength = Math.max(120, cardSize.width * 0.65);
@@ -171,21 +178,11 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
       frontPath: buildRepeatingWavePath({
         totalWidth,
         wavelength,
-        height: waterLayerHeight,
+        height: waterFillHeight,
         amplitude: 4,
       }),
     };
-  }, [cardSize.width, waterLayerHeight]);
-  const waterLayerTranslateY = useMemo(() => {
-    if (!cardSize.height) {
-      return 0;
-    }
-    return waterLevelAnim.interpolate({
-      inputRange: [0, 1],
-      outputRange: [waterLayerHeight, 0],
-      extrapolate: 'clamp',
-    });
-  }, [cardSize.height, waterLayerHeight, waterLevelAnim]);
+  }, [cardSize.width, waterFillHeight]);
   const waveFrontShift = useMemo(
     () =>
       waveGeometry
@@ -205,6 +202,10 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
       }),
     [waveIntensityAnim]
   );
+  const waveCombinedShift = useMemo(
+    () => Animated.add(waveFrontShift, wavePulseShift),
+    [waveFrontShift, wavePulseShift]
+  );
   const waterGradientId = useMemo(
     () => `water-gradient-${String(task.id).replace(/[^a-zA-Z0-9_-]/g, '')}`,
     [task.id]
@@ -212,66 +213,71 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
 
 
   useEffect(() => {
-    if (!isQuantum || !isWaterAnimation || !isVisible) {
+    if (!isQuantum || !isWaterAnimation || !isVisible || reduceMotion) {
       waveShiftAnim.stopAnimation();
       waveShiftAnim.setValue(0);
       return undefined;
     }
 
-    const animationLoop = Animated.loop(
+    waveShiftAnim.stopAnimation();
+    waveShiftAnim.setValue(0);
+    const animation = Animated.loop(
       Animated.timing(waveShiftAnim, {
         toValue: 1,
         duration: 4500,
         easing: Easing.linear,
-        useNativeDriver: USE_NATIVE_DRIVER,
+        // Fabric/Android deixa filhos SVG transparentes com transform nativo.
+        // Aqui o JS altera apenas a transformação da view já desenhada.
+        useNativeDriver: false,
       })
     );
 
-    animationLoop.start();
+    animation.start();
     return () => {
-      animationLoop.stop();
+      animation.stop();
       waveShiftAnim.setValue(0);
     };
-  }, [isQuantum, isVisible, isWaterAnimation, waveShiftAnim]);
+  }, [
+    isQuantum,
+    isVisible,
+    isWaterAnimation,
+    reduceMotion,
+    waveShiftAnim,
+  ]);
 
   useEffect(() => {
-    if (!isQuantum || !isWaterAnimation || !cardSize.height) {
-      return;
-    }
-    // Nível d'água anima só translateY → pode (e deve) rodar na thread nativa;
-    // na thread JS ele competia com o re-render da conclusão e engasgava.
-    Animated.spring(waterLevelAnim, {
-      toValue: waterPercent,
-      damping: 14,
-      stiffness: 120,
-      mass: 1,
-      useNativeDriver: USE_NATIVE_DRIVER,
-    }).start();
-  }, [cardSize.height, isQuantum, isWaterAnimation, waterLevelAnim, waterPercent]);
-
-  useEffect(() => {
-    if (!isQuantum || !isWaterAnimation || !task.quantum?.wavePulse) {
-      return;
+    if (!isQuantum || !isWaterAnimation || !task.quantum?.wavePulse || reduceMotion) {
+      waveIntensityAnim.stopAnimation();
+      waveIntensityAnim.setValue(1);
+      return undefined;
     }
     waveIntensityAnim.stopAnimation();
     waveIntensityAnim.setValue(1);
-    Animated.sequence([
+    const animation = Animated.sequence([
       Animated.spring(waveIntensityAnim, {
         toValue: 1.6,
         damping: 7,
         stiffness: 180,
         mass: 0.6,
-        useNativeDriver: USE_NATIVE_DRIVER,
+        useNativeDriver: false,
       }),
       Animated.spring(waveIntensityAnim, {
         toValue: 1,
         damping: 8,
         stiffness: 120,
         mass: 0.8,
-        useNativeDriver: USE_NATIVE_DRIVER,
+        useNativeDriver: false,
       }),
-    ]).start();
-  }, [isQuantum, isWaterAnimation, task.quantum?.wavePulse, waveIntensityAnim]);
+    ]);
+    animation.start();
+    return () => animation.stop();
+  }, [
+    isQuantum,
+    isWaterAnimation,
+    reduceMotion,
+    task.quantum?.wavePulse,
+    waveIntensityAnim,
+  ]);
   const isQuantumComplete =
     isQuantum && getQuantumProgressLabel(task, dateKey) && task.completed;
 
@@ -452,46 +458,30 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
           );
         }}
       >
-        {isQuantum && isWaterAnimation && (
-          <View pointerEvents="none" style={styles.waterFillContainer}>
-            {waveGeometry && (
-              <Animated.View
-                style={[
-                  styles.waterLevelLayer,
-                  {
-                    width: waveGeometry.totalWidth,
-                    height: waterLayerHeight,
-                    transform: [{ translateY: waterLayerTranslateY }],
-                  },
-                ]}
-              >
-                <Animated.View
-                  style={[
-                    styles.waterWaveLayer,
-                    {
-                      width: waveGeometry.totalWidth,
-                      height: waterLayerHeight,
-                      transform: [
-                        { translateX: waveFrontShift },
-                        { translateX: wavePulseShift },
-                      ],
-                    },
-                  ]}
-                >
-                  <Svg width={waveGeometry.totalWidth} height={waterLayerHeight}>
-                    <Defs>
-                      <SvgLinearGradient id={waterGradientId} x1="0%" y1="0%" x2="0%" y2="100%">
-                        <Stop offset="0%" stopColor="rgb(153, 199, 252)" />
-                        <Stop offset="100%" stopColor="rgb(100, 158, 248)" />
-                      </SvgLinearGradient>
-                    </Defs>
-                    <Path d={waveGeometry.frontPath} fill={`url(#${waterGradientId})`} />
-                  </Svg>
-                </Animated.View>
-              </Animated.View>
-            )}
+        {isQuantum && isWaterAnimation && waveGeometry ? (
+          <View
+            pointerEvents="none"
+            style={[styles.waterFallbackFill, { height: waterFillHeight }]}
+          >
+            <Svg
+              width={cardSize.width}
+              height={waterFillHeight}
+              style={styles.waterFallbackWave}
+            >
+              <Defs>
+                <SvgLinearGradient id={waterGradientId} x1="0%" y1="0%" x2="0%" y2="100%">
+                  <Stop offset="0%" stopColor="rgb(153, 199, 252)" />
+                  <Stop offset="100%" stopColor="rgb(100, 158, 248)" />
+                </SvgLinearGradient>
+              </Defs>
+              <AnimatedPath
+                d={waveGeometry.frontPath}
+                fill={`url(#${waterGradientId})`}
+                style={{ transform: [{ translateX: waveCombinedShift }] }}
+              />
+            </Svg>
           </View>
-        )}
+        ) : null}
         <View style={styles.taskCardMain}>
         <Pressable style={styles.taskCardContent} onPress={handlePress}>
           <View style={styles.taskInfo}>

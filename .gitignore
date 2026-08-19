@@ -20,3 +20,11 @@ credentials.json
 *.jks
 *.keystore
 !android/app/debug.keystore
+
+# Diagnóstico e arquivos de trabalho fora do produto (L06)
+.claude/
+.tmp-*
+bugreport-*.zip
+preview.webp
+WhatsApp Image *
+209b5099031eabe366987fd82ff3f926.webp

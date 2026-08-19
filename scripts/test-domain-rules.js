@@ -56,6 +56,28 @@ const asyncStorageMock = {
     }
   },
 };
+const notificationsMockState = {
+  cancelledIds: [],
+  pendingRequests: [],
+  scheduledRequests: [],
+};
+const notificationsMock = {
+  SchedulableTriggerInputTypes: {
+    DATE: 'date',
+    DAILY: 'daily',
+    WEEKLY: 'weekly',
+    MONTHLY: 'monthly',
+  },
+  getPermissionsAsync: async () => ({ granted: true, status: 'granted' }),
+  getAllScheduledNotificationsAsync: async () => notificationsMockState.pendingRequests,
+  cancelScheduledNotificationAsync: async (notificationId) => {
+    notificationsMockState.cancelledIds.push(notificationId);
+  },
+  scheduleNotificationAsync: async (request) => {
+    notificationsMockState.scheduledRequests.push(request);
+    return `scheduled-${notificationsMockState.scheduledRequests.length}`;
+  },
+};
 const runHapticsMock = async (operation, value) => {
   hapticsMockState.calls.push({ operation, value });
   if (hapticsMockState.shouldReject) {
@@ -83,6 +105,9 @@ Module._load = function loadWithReactNativeMock(request, parent, isMain) {
   }
   if (request === '@react-native-async-storage/async-storage') {
     return asyncStorageMock;
+  }
+  if (request === 'expo-notifications') {
+    return notificationsMock;
   }
   return originalModuleLoader.call(this, request, parent, isMain);
 };
@@ -159,6 +184,11 @@ const {
   buildTaskReminderContent,
   scheduledReminderContentMatches,
 } = require('../utils/notificationUtils');
+const {
+  getTaskReminderFingerprint,
+  getTaskReminderPlan,
+  reconcileTaskReminderSchedules,
+} = require('../services/reminderService');
 const { translations } = require('../constants/i18n');
 const { hasReflectionContent } = require('../utils/moodUtils');
 const {
@@ -172,6 +202,7 @@ const {
   migrateImportedTemplateTasks,
 } = require('../utils/templateUtils');
 const { getTimerParts, getTimerTotalSeconds } = require('../utils/timeUtils');
+const { getWaterDisplayPercent, WATER_IDLE_FILL_PERCENT } = require('../utils/waveUtils');
 const { buildLocalPeriodSummary } = require('../utils/localSummaryUtils');
 const {
   BACKUP_ERROR_CODES,
@@ -728,6 +759,68 @@ test('oculta o titulo da tarefa em notificacoes privadas', () => {
   assert.equal(publicContent.body, 'Hora de: Consulta médica');
   assert.equal(scheduledReminderContentMatches(privateContent, privateContent), true);
   assert.equal(scheduledReminderContentMatches(publicContent, privateContent), false);
+});
+
+test('nao reagenda lembrete arquivado nem aceita resultado iniciado antes do arquivo', async () => {
+  const activeTask = {
+    id: 'task-reminder',
+    title: 'Lembrete recorrente',
+    date: '2026-08-11',
+    dateKey: '2026-08-11',
+    reminder: 'at_time',
+    time: {
+      specified: true,
+      mode: 'point',
+      point: { hour: 9, minute: 0, meridiem: 'AM' },
+    },
+    repeat: { enabled: true, frequency: 'daily', interval: 1 },
+    notificationIds: ['existing-notification'],
+    notificationId: 'existing-notification',
+    notificationScheduleMode: 'recurring',
+  };
+  const archivedTask = { ...activeTask, archived: true, archivedAt: '2026-08-11' };
+
+  assert.notEqual(
+    getTaskReminderFingerprint(activeTask),
+    getTaskReminderFingerprint(archivedTask)
+  );
+  assert.deepEqual(getTaskReminderPlan(archivedTask, new Date(2026, 7, 11, 8)), {
+    status: 'disabled',
+    mode: null,
+    triggers: [],
+  });
+
+  notificationsMockState.cancelledIds = [];
+  notificationsMockState.scheduledRequests = [];
+  notificationsMockState.pendingRequests = [
+    {
+      identifier: 'existing-notification',
+      content: { data: { scheduleAppTaskId: activeTask.id } },
+    },
+  ];
+  const result = await reconcileTaskReminderSchedules([archivedTask]);
+
+  assert.deepEqual(notificationsMockState.cancelledIds, ['existing-notification']);
+  assert.equal(notificationsMockState.scheduledRequests.length, 0);
+  assert.deepEqual(result.updates, [
+    {
+      taskId: activeTask.id,
+      fingerprint: getTaskReminderFingerprint(archivedTask),
+      notificationIds: [],
+      notificationId: null,
+      notificationScheduleMode: null,
+    },
+  ]);
+});
+
+test('usa o som padrao do Android sem trata-lo como arquivo customizado', () => {
+  const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
+  const channelStart = appSource.indexOf("setNotificationChannelAsync('default'");
+  const channelEnd = appSource.indexOf('});', channelStart);
+  const channelSource = appSource.slice(channelStart, channelEnd);
+
+  assert.notEqual(channelStart, -1);
+  assert.equal(channelSource.includes("sound: 'default'"), false);
 });
 
 test('celebra apenas uma nova conclusão causada pelo usuário na data visível', () => {
@@ -1447,7 +1540,7 @@ test('mantem a barra inferior legivel com fonte ampliada em portugues', () => {
   assert.equal(translations.pt.tabs.discover, 'DESCUBRA');
 });
 
-test('substitui GIFs mensais por fundo estatico com reduzir movimento', () => {
+test('usa previews mensais estaticos e desmonta o calendario fora da aba', () => {
   const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
   const monthsSource = fs.readFileSync(path.join(root, 'constants/months.js'), 'utf8');
   const calendarSource = fs.readFileSync(
@@ -1464,13 +1557,35 @@ test('substitui GIFs mensais por fundo estatico com reduzir movimento', () => {
     'utf8'
   );
 
-  assert.equal(monthsSource.includes('reduceMotion && isGifImageUri(customImageUri)'), true);
+  assert.equal(
+    monthsSource.match(/assets\/months\/static\/[a-z]{3}\.webp/g)?.length,
+    12
+  );
+  assert.equal(monthsSource.includes("require('../assets/months/jan.gif')"), false);
+  assert.equal(monthsSource.includes('return isGifImageUri(customImageUri) ? null'), true);
   assert.equal(monthsSource.includes('if (reduceMotion) {\n    return null;'), true);
   assert.equal(calendarSource.includes('getMonthReducedMotionColor(item.monthIndex)'), true);
   assert.equal(stickyHeaderSource.includes('getMonthReducedMotionColor(monthIndex)'), true);
   assert.equal(reportSource.includes('getMonthReducedMotionColor(monthIndex)'), true);
   assert.equal(customizeSource.includes('getMonthReducedMotionColor(index)'), true);
   assert.equal((appSource.match(/reduceMotion=\{prefersReducedMotion\}/g)?.length ?? 0) >= 4, true);
+  assert.equal(appSource.includes('hasMountedCalendar'), false);
+  assert.equal(appSource.includes('{isCalendarTabActive ? ('), true);
+  assert.equal(appSource.includes('windowSize={3}'), true);
+  assert.equal(customizeSource.includes('IMAGE_ERROR_CODES.UNSUPPORTED_TYPE'), true);
+});
+
+test('abre o teclado do titulo somente por interacao do usuario', () => {
+  const sheetSource = fs.readFileSync(
+    path.join(root, 'components/AddHabitSheet.js'),
+    'utf8'
+  );
+
+  assert.equal(sheetSource.includes('const handleTitleInputLayout = useCallback(() => {'), false);
+  assert.equal(sheetSource.includes('onLayout={handleTitleInputLayout}'), false);
+  assert.equal(sheetSource.includes('hasFocusedTitleRef.current = true;'), false);
+  assert.equal(sheetSource.includes('titleInputRef.current?.focus();'), false);
+  assert.equal(sheetSource.includes('ref={titleInputRef}'), true);
 });
 
 test('mantem a troca de dias do Today animada e sensivel a reduzir movimento', () => {
@@ -1486,7 +1601,7 @@ test('mantem a troca de dias do Today animada e sensivel a reduzir movimento', (
   assert.equal(appSource.includes('setPendingTodayDateKey(targetDateKey)'), true);
 });
 
-test('desenha crista e corpo da agua no mesmo gradiente sem emenda', () => {
+test('desenha crista e corpo da agua no mesmo path animado sem emenda', () => {
   const taskCardSource = fs.readFileSync(
     path.join(root, 'components/SwipeableTaskCard.js'),
     'utf8'
@@ -1497,8 +1612,80 @@ test('desenha crista e corpo da agua no mesmo gradiente sem emenda', () => {
   assert.equal(taskCardSource.includes('stopColor="rgb(153, 199, 252)"'), true);
   assert.equal(taskCardSource.includes('stopColor="rgb(100, 158, 248)"'), true);
   assert.equal(taskCardSource.includes('fill={`url(#${waterGradientId})`}'), true);
+  assert.equal(taskCardSource.includes('const AnimatedPath = Animated.createAnimatedComponent(Path)'), true);
+  assert.equal(taskCardSource.includes('styles.waterFallbackFill'), true);
+  assert.equal(taskCardSource.includes('waveCombinedShift'), true);
+  assert.equal(taskCardSource.includes('translateX: waveCombinedShift'), true);
+  assert.equal(taskCardSource.includes('styles.waterFallbackBody'), false);
   assert.equal(taskCardSource.includes('AnimatedLinearGradient'), false);
   assert.equal(taskCardSource.includes('waterSurfaceBridge'), false);
+});
+
+test('mantem agua visivel em progresso zero sem distorcer a conclusao', () => {
+  assert.equal(getWaterDisplayPercent(0), WATER_IDLE_FILL_PERCENT);
+  assert.equal(getWaterDisplayPercent(1), 1);
+  assert.equal(getWaterDisplayPercent(-1), WATER_IDLE_FILL_PERCENT);
+  assert.equal(getWaterDisplayPercent(2), 1);
+  assert.equal(getWaterDisplayPercent(Number.NaN), WATER_IDLE_FILL_PERCENT);
+  assert.equal(getWaterDisplayPercent(0.5), 0.58);
+});
+
+test('mantem a previa de agua nativa e limitada ao painel de tipo', () => {
+  const sheetSource = fs.readFileSync(
+    path.join(root, 'components/AddHabitSheet.js'),
+    'utf8'
+  );
+  const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
+  const addHabitMarkup = appSource.match(/<AddHabitSheet[\s\S]*?\/>/)?.[0] ?? '';
+
+  assert.equal(sheetSource.includes('buildRepeatingWavePath'), true);
+  assert.equal(sheetSource.includes("activePanel !== 'type'"), true);
+  assert.equal(sheetSource.includes('previewWavePhaseAnim.addListener'), false);
+  assert.equal(sheetSource.includes('setPreviewWavePath'), false);
+  assert.equal(sheetSource.includes('Animated.loop('), true);
+  assert.equal(sheetSource.includes('const AnimatedPath = Animated.createAnimatedComponent(Path)'), true);
+  assert.equal(sheetSource.includes('translateX: previewWaveShift'), true);
+  assert.equal(sheetSource.includes('previewWaveGeometry.fillPath'), true);
+  assert.equal(sheetSource.includes('previewWaveGeometry.backPath'), true);
+  assert.equal(sheetSource.includes('previewWaveGeometry.frontPath'), true);
+  assert.equal(
+    sheetSource.includes('previous.width === width && previous.height === height'),
+    true
+  );
+  assert.equal(addHabitMarkup.includes('reduceMotion={prefersReducedMotion}'), true);
+});
+
+test('mantem a folha editavel estavel e os paineis em modal nativo', () => {
+  const sheetSource = fs.readFileSync(
+    path.join(root, 'components/AddHabitSheet.js'),
+    'utf8'
+  );
+  assert.equal(sheetSource.includes('Animated.spring(translateY'), false);
+  assert.equal(sheetSource.includes('Animated.timing(translateY'), false);
+  assert.equal(sheetSource.includes('transform: [{ translateY }]'), false);
+  assert.equal(sheetSource.includes('titleInputRef.current.focus()'), false);
+  assert.equal(sheetSource.includes("behavior={Platform.OS === 'ios' ? 'padding' : undefined}"), true);
+  assert.equal(sheetSource.includes('Keyboard.dismiss();'), true);
+  assert.equal(sheetSource.includes('presentationStyle="overFullScreen"'), true);
+  assert.equal(sheetSource.includes('onRequestClose={onClose}'), true);
+});
+
+test('encerra animacoes decorativas e respeita reduzir movimento', () => {
+  const taskCardSource = fs.readFileSync(
+    path.join(root, 'components/SwipeableTaskCard.js'),
+    'utf8'
+  );
+  const reportSource = fs.readFileSync(
+    path.join(root, 'components/DayReportModal.js'),
+    'utf8'
+  );
+
+  assert.equal(taskCardSource.includes('Animated.loop('), true);
+  assert.equal(taskCardSource.includes('!isVisible || reduceMotion'), true);
+  assert.equal(taskCardSource.includes('waveShiftAnim.addListener'), false);
+  assert.equal(taskCardSource.includes('task.quantum?.wavePulse'), true);
+  assert.equal(reportSource.includes('progressAnim.stopAnimation();'), true);
+  assert.equal(reportSource.includes('if (reduceMotion) {'), true);
 });
 
 test('preserva a posicao visual quando uma reordenacao interrompe outra', () => {

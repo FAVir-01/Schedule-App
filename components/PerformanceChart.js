@@ -672,7 +672,7 @@ function PerformanceChart({ tasks, language = 'en', selectedTask = null }) {
         onLayout={(event) => {
           const { width } = event.nativeEvent.layout;
           chartWidthRef.current = width;
-          setChartWidth(width);
+          setChartWidth((previous) => (previous === width ? previous : width));
         }}
         {...panResponder.panHandlers}
       >
