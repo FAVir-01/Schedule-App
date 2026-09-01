@@ -20,6 +20,11 @@ const buildWavePath = ({ width, height, amplitude, phase }) => {
 // Mesmo com progresso zero, uma lâmina baixa deixa claro que o estilo "água"
 // está ativo. O restante da altura continua representando o progresso real.
 const WATER_IDLE_FILL_PERCENT = 0.16;
+const WATER_WAVE_MIN_FILL_HEIGHT = 19;
+const WATER_WAVE_AMPLITUDE = 4;
+const WATER_WAVE_DURATION_MS = 4500;
+const WATER_GRADIENT_TOP_COLOR = 'rgb(153, 199, 252)';
+const WATER_GRADIENT_BOTTOM_COLOR = 'rgb(100, 158, 248)';
 
 const getWaterDisplayPercent = (progress) => {
   const numericProgress = Number(progress);
@@ -54,5 +59,10 @@ export {
   buildRepeatingWavePath,
   buildWavePath,
   getWaterDisplayPercent,
+  WATER_GRADIENT_BOTTOM_COLOR,
+  WATER_GRADIENT_TOP_COLOR,
   WATER_IDLE_FILL_PERCENT,
+  WATER_WAVE_AMPLITUDE,
+  WATER_WAVE_DURATION_MS,
+  WATER_WAVE_MIN_FILL_HEIGHT,
 };

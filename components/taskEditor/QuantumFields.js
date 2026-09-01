@@ -1,7 +1,8 @@
 import React from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { QUANTUM_ANIMATIONS } from '../../domain/taskDraft';
+import { InlineInfo, SoftPressable } from './parts';
 import styles from './styles';
 
 function QuantumPanel({
@@ -30,17 +31,24 @@ function QuantumPanel({
         <View style={styles.sectionTitleRow}>
           <Text style={styles.subtasksTitle}>{isTimer ? labels.timer : labels.count}</Text>
           {infoText ? (
-            <Pressable onPress={onPressInfo} style={styles.infoIconButton} hitSlop={8}>
-              <Ionicons name="help-circle-outline" size={14} color="#59636f" />
-            </Pressable>
-          ) : null}
-          {isInfoVisible ? (
-            <View style={[styles.floatingInfoBubble, styles.sectionFloatingInfoBubble]}>
-              <Text style={styles.inlineInfoText}>{infoText}</Text>
-            </View>
+            <SoftPressable
+              onPress={onPressInfo}
+              style={styles.infoIconButton}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={infoText}
+              accessibilityState={{ expanded: isInfoVisible }}
+            >
+              <Ionicons
+                name="information-circle-outline"
+                size={17}
+                color={isInfoVisible ? '#665BC2' : '#9895A5'}
+              />
+            </SoftPressable>
           ) : null}
         </View>
       ) : null}
+      {showTitle ? <InlineInfo visible={isInfoVisible} text={infoText} /> : null}
       <View style={styles.subtasksCard}>
         {isTimer ? (
           <View style={styles.quantumTimerRow}>
@@ -106,7 +114,7 @@ function QuantumPanel({
             {QUANTUM_ANIMATIONS.map((animationKey) => {
               const isSelected = animation === animationKey;
               return (
-                <Pressable
+                <SoftPressable
                   key={animationKey}
                   style={[
                     styles.quantumModeButton,
@@ -124,7 +132,7 @@ function QuantumPanel({
                   >
                     {labels.quantumAnimations?.[animationKey] ?? animationKey}
                   </Text>
-                </Pressable>
+                </SoftPressable>
               );
             })}
           </View>

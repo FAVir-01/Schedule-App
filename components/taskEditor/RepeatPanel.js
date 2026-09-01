@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Platform, Pressable, Switch, Text, View } from 'react-native';
+import { Platform, Switch, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { normalizeDateValue as normalizeDate } from '../../utils/dateUtils';
 import { WEEKDAY_KEYS } from '../../domain/taskDraft';
 import { INTERVAL_VALUES } from './constants';
-import { SegmentedControlButton } from './parts';
+import { AnimatedReveal, SegmentedControlButton, SoftPressable } from './parts';
 import DatePanel from './DatePanel';
 import WheelColumn from './WheelColumn';
 import styles from './styles';
@@ -87,13 +87,13 @@ function RepeatPanel({
         <Switch
           value={isEnabled}
           onValueChange={onToggleEnabled}
-          trackColor={{ false: '#C8D4E6', true: '#A3B7D7' }}
-          thumbColor={isEnabled ? '#1F2742' : Platform.OS === 'android' ? '#f4f3f4' : undefined}
+          trackColor={{ false: '#D5D3DE', true: '#AFA5EA' }}
+          thumbColor={isEnabled ? '#3C2BA7' : Platform.OS === 'android' ? '#f4f3f4' : undefined}
         />
       </View>
 
       {isEnabled && (
-        <View style={styles.repeatContent}>
+        <AnimatedReveal style={styles.repeatContent}>
           <View style={styles.segmentedControl}>
             <SegmentedControlButton
               label={labels.daily}
@@ -113,13 +113,13 @@ function RepeatPanel({
           </View>
 
           {frequency === 'weekly' && (
-            <View style={styles.weekdayGrid}>
+            <AnimatedReveal key="weekly" style={styles.weekdayGrid}>
               {WEEKDAY_KEYS.map((weekdayKey) => {
                 const active = selectedWeekdays.includes(weekdayKey);
                 const shortLabel = labels.weekdayShortLabels?.[weekdayKey] ?? weekdayKey;
                 const fullLabel = labels.weekdayFullLabels?.[weekdayKey] ?? shortLabel;
                 return (
-                  <Pressable
+                  <SoftPressable
                     key={weekdayKey}
                     style={[styles.weekdayPill, active && styles.weekdayPillActive]}
                     onPress={() => onToggleWeekday(weekdayKey)}
@@ -130,18 +130,18 @@ function RepeatPanel({
                     <Text style={[styles.weekdayPillLabel, active && styles.weekdayPillLabelActive]}>
                       {shortLabel}
                     </Text>
-                  </Pressable>
+                  </SoftPressable>
                 );
               })}
-            </View>
+            </AnimatedReveal>
           )}
 
           {frequency === 'monthly' && (
-            <View style={styles.monthDayGrid}>
+            <AnimatedReveal key="monthly" style={styles.monthDayGrid}>
               {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => {
                 const active = selectedMonthDays.includes(day);
                 return (
-                  <Pressable
+                  <SoftPressable
                     key={day}
                     style={[styles.monthDayCell, active && styles.monthDayCellActive]}
                     onPress={() => onToggleMonthDay(day)}
@@ -150,14 +150,14 @@ function RepeatPanel({
                     accessibilityState={{ selected: active }}
                   >
                     <Text style={[styles.monthDayLabel, active && styles.monthDayLabelActive]}>{day}</Text>
-                  </Pressable>
+                  </SoftPressable>
                 );
               })}
-            </View>
+            </AnimatedReveal>
           )}
 
           <View style={styles.intervalSection}>
-            <Pressable
+            <SoftPressable
               style={styles.intervalRow}
               onPress={() => setShowIntervalPicker((prev) => !prev)}
               accessibilityRole="button"
@@ -173,9 +173,9 @@ function RepeatPanel({
                   style={styles.intervalChevron}
                 />
               </View>
-            </Pressable>
+            </SoftPressable>
             {showIntervalPicker && (
-              <View style={styles.wheelGroup}>
+              <AnimatedReveal style={styles.wheelGroup}>
                 <View style={styles.wheelLabelsRow}>
                   <Text style={styles.wheelLabel}>{labels.repeatEvery}</Text>
                   <Text style={styles.wheelLabel}>{labels.repeatUnit}</Text>
@@ -195,7 +195,7 @@ function RepeatPanel({
                     />
                   </View>
                 </View>
-              </View>
+              </AnimatedReveal>
             )}
           </View>
 
@@ -205,12 +205,12 @@ function RepeatPanel({
               <Switch
                 value={hasEndDate}
                 onValueChange={handleToggleEndDate}
-                trackColor={{ false: '#C8D4E6', true: '#A3B7D7' }}
-                thumbColor={hasEndDate ? '#1F2742' : Platform.OS === 'android' ? '#f4f3f4' : undefined}
+                trackColor={{ false: '#D5D3DE', true: '#AFA5EA' }}
+                thumbColor={hasEndDate ? '#3C2BA7' : Platform.OS === 'android' ? '#f4f3f4' : undefined}
               />
             </View>
             {hasEndDate && (
-              <View style={styles.endDatePickerContainer}>
+              <AnimatedReveal style={styles.endDatePickerContainer}>
                 <DatePanel
                   month={endDateMonth}
                   selectedDate={selectedEndDate}
@@ -221,10 +221,10 @@ function RepeatPanel({
                   labels={labels}
                   language={language}
                 />
-              </View>
+              </AnimatedReveal>
             )}
           </View>
-        </View>
+        </AnimatedReveal>
       )}
     </View>
   );

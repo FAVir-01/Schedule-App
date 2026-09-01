@@ -272,12 +272,17 @@ export const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
+  // Sem raio nos cantos DE CIMA: eles arredondavam a propria linha da agua, que
+  // encurvava pra dentro nas laterais em vez de encostar reta no card. O
+  // `taskCard` ja tem borderRadius com overflow hidden, entao a base segue
+  // recortada.
   waterFallbackFill: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    borderRadius: 18,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
     overflow: 'hidden',
   },
   waterFallbackWave: {
@@ -1164,6 +1169,13 @@ export const styles = StyleSheet.create({
   },
   fabCardIcon: {
     alignSelf: 'center',
+  },
+  // Mantem o calendario no mesmo lugar quando a faixa e ocultada sob o editor.
+  // A faixa tem elevation no Android e, se continuar montada, atravessa o
+  // backdrop do editor mesmo sendo renderizada antes dele.
+  calendarStickyHeaderSlot: {
+    width: '100%',
+    height: 50,
   },
   stickyHeader: {
     width: '100%',

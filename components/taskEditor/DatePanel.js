@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { isSameDay, normalizeDateValue as normalizeDate } from '../../utils/dateUtils';
 import { addMonths, doesDateRepeat, getMonthMetadata, isBeforeDay } from '../../utils/calendarMath';
 import { WEEKDAY_KEYS } from '../../domain/taskDraft';
+import { AnimatedReveal, SoftPressable } from './parts';
 import styles from './styles';
 
 function DatePanel({
@@ -136,7 +137,7 @@ function DatePanel({
   );
 
   return (
-    <View>
+    <View style={styles.datePanel}>
       <View style={styles.quickSelectRow}>
         <QuickSelectButton
           label={resolvedLabels.quickToday}
@@ -158,7 +159,8 @@ function DatePanel({
         />
       </View>
       <View style={styles.calendarHeader}>
-        <Pressable
+        <SoftPressable
+          style={styles.calendarNavButton}
           onPress={() => handleChangeMonth(previousMonth)}
           disabled={previousMonthDisabled}
           hitSlop={12}
@@ -171,16 +173,17 @@ function DatePanel({
             size={22}
             color={previousMonthDisabled ? '#B8C4D6' : '#1F2742'}
           />
-        </Pressable>
+        </SoftPressable>
         <Text style={styles.calendarHeaderText} accessibilityRole="header">{monthLabel}</Text>
-        <Pressable
+        <SoftPressable
+          style={styles.calendarNavButton}
           onPress={() => handleChangeMonth(nextMonth)}
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel={resolvedLabels.nextMonth}
         >
           <Ionicons name="chevron-forward" size={22} color="#1F2742" />
-        </Pressable>
+        </SoftPressable>
       </View>
       <View style={styles.weekdayHeader}>
         {WEEKDAY_KEYS.map((weekdayKey) => (
@@ -189,9 +192,10 @@ function DatePanel({
           </Text>
         ))}
       </View>
-      {daysMatrix.map((week, rowIndex) => (
-        <View key={`week-${rowIndex}`} style={styles.weekRow}>
-          {week.map((date, columnIndex) => {
+      <AnimatedReveal key={`${monthInfo.year}-${monthInfo.month}`}>
+        {daysMatrix.map((week, rowIndex) => (
+          <View key={`week-${rowIndex}`} style={styles.weekRow}>
+            {week.map((date, columnIndex) => {
             if (!date) {
               return <View key={`empty-${rowIndex}-${columnIndex}`} style={styles.dayCellEmpty} />;
             }
@@ -215,7 +219,7 @@ function DatePanel({
               .join('. ');
 
             return (
-              <Pressable
+              <SoftPressable
                 key={date.toISOString()}
                 style={[styles.dayCell, disabledStyle, selectedStyle, repeatingStyle]}
                 disabled={disabled}
@@ -225,18 +229,19 @@ function DatePanel({
                 accessibilityState={{ selected, disabled }}
               >
                 <Text style={[styles.dayCellText, disabled && styles.dayCellTextDisabled, selected && styles.dayCellTextSelected, repeating && styles.dayCellTextRepeating]}>{date.getDate()}</Text>
-              </Pressable>
+              </SoftPressable>
             );
-          })}
-        </View>
-      ))}
+            })}
+          </View>
+        ))}
+      </AnimatedReveal>
     </View>
   );
 }
 
 function QuickSelectButton({ label, active, disabled = false, onPress }) {
   return (
-    <Pressable
+    <SoftPressable
       style={[
         styles.quickSelectButton,
         active && styles.quickSelectButtonActive,
@@ -256,7 +261,7 @@ function QuickSelectButton({ label, active, disabled = false, onPress }) {
       >
         {label}
       </Text>
-    </Pressable>
+    </SoftPressable>
   );
 }
 

@@ -17,6 +17,7 @@ import {
   Alert,
   Animated,
   BackHandler,
+  Easing,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -31,9 +32,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { formatTaskTime, formatTimeValue } from '../utils/timeUtils';
+import { lightenColor } from '../utils/colorUtils';
 import {
   getQuantumProgressLabel,
   hasTaskProgress,
@@ -54,18 +55,20 @@ import {
   getDraftError,
   minutesToTime,
   parseDigits,
-  pickRandomEmoji,
   taskDraftReducer,
   timeToMinutes,
   validateDraft,
 } from '../domain/taskDraft';
 import {
+  AnimatedReveal,
+  InlineInfo,
   OptionList,
   OptionOverlay,
   SheetRow,
+  SoftPressable,
   TagPanel,
+  TaskEditorMotionProvider,
 } from './taskEditor/parts';
-import { HAPTICS_SUPPORTED } from './taskEditor/constants';
 import DatePanel from './taskEditor/DatePanel';
 import RepeatPanel from './taskEditor/RepeatPanel';
 import TimePanel from './taskEditor/TimePanel';
@@ -74,10 +77,12 @@ import SubtasksPanel from './taskEditor/SubtasksPanel';
 import TypePreviewCard from './taskEditor/TypePreviewCard';
 import styles from './taskEditor/styles';
 
-const SHEET_OPEN_DURATION = 300;
-const SHEET_CLOSE_DURATION = 220;
+const SHEET_OPEN_DURATION = 360;
+const SHEET_CLOSE_DURATION = 260;
 const BACKDROP_MAX_OPACITY = 0.5;
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
+// Mesma base lavanda-clara das folhas Reflection e Period summary.
+const EDITOR_BACKGROUND_COLOR = '#F6F6FB';
 
 const DEFAULT_TAG_KEYS = [
   'clean_room',
@@ -90,21 +95,9 @@ const DEFAULT_TAG_KEYS = [
 
 const REMINDER_ORDER = ['none', 'at_time', '5m', '15m', '30m', '1h'];
 
-const hexToRgb = (hex) => {
-  const normalized = hex.replace('#', '');
-  const value =
-    normalized.length === 3
-      ? normalized.split('').map((char) => char + char).join('')
-      : normalized;
-  const int = Number.parseInt(value, 16);
-  return { r: (int >> 16) & 255, g: (int >> 8) & 255, b: int & 255 };
-};
-
-const lightenColor = (hex, amount = 0.6) => {
-  const { r, g, b } = hexToRgb(hex);
-  const mix = (channel) => Math.round(channel + (255 - channel) * amount);
-  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
-};
+// O contador de caracteres do titulo so aparece perto do limite, em vez de
+// ocupar a capa o tempo todo.
+const TITLE_COUNTER_VISIBLE_FROM = 30;
 
 const createTagKey = (label, existingKeys) => {
   const sanitized = label
@@ -135,7 +128,7 @@ export default function AddHabitSheet({
   language = 'en',
   reduceMotion = false,
 }) {
-  const { height, width } = useWindowDimensions();
+  const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const localePack = translations[language] ?? translations.en;
   const t = localePack.sheet;
@@ -161,16 +154,19 @@ export default function AddHabitSheet({
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
 
   const titleInputRef = useRef(null);
-  const infoTimeoutRef = useRef(null);
   const isClosingRef = useRef(false);
   const isRequestingNotificationPermissionRef = useRef(false);
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheetTranslateY = useRef(new Animated.Value(height)).current;
 
-  const sheetHeight = height - insets.top;
-  const infoBubbleMaxWidth = useMemo(() => Math.max(220, width - 84), [width]);
-  const sheetBackgroundColor = useMemo(() => lightenColor(draft.color, 0.75), [draft.color]);
+  const sheetHeight = height;
+  const previewCardBackgroundColor = useMemo(
+    () => lightenColor(draft.color, 0.75),
+    [draft.color]
+  );
 
   const submitLabel = isEditMode ? common.save : common.create;
+  const editorTitle = isEditMode ? t.editTask : isCopyMode ? t.duplicateTask : t.newTask;
   const accessibilityAnnouncement = isEditMode
     ? t.editHabitAnnouncement
     : isCopyMode
@@ -192,7 +188,7 @@ export default function AddHabitSheet({
     // interrompida, a próxima abertura ainda começa limpa.
     const nextDraft = initialHabit
       ? draftFromTask(initialHabit)
-      : createEmptyDraft({ emoji: pickRandomEmoji() });
+      : createEmptyDraft();
     dispatch({ type: 'hydrate', draft: nextDraft });
     setPanel(null);
     setShowErrors(false);
@@ -204,13 +200,35 @@ export default function AddHabitSheet({
 
   useEffect(() => {
     if (visible) {
+      if (!isMounted) {
+        backdropOpacity.setValue(0);
+        sheetTranslateY.setValue(sheetHeight);
+        setIsMounted(true);
+        return;
+      }
       setIsMounted(true);
       isClosingRef.current = false;
-      Animated.timing(backdropOpacity, {
-        toValue: BACKDROP_MAX_OPACITY,
-        duration: SHEET_OPEN_DURATION,
-        useNativeDriver: USE_NATIVE_DRIVER,
-      }).start();
+      backdropOpacity.stopAnimation();
+      sheetTranslateY.stopAnimation();
+      if (reduceMotion) {
+        backdropOpacity.setValue(BACKDROP_MAX_OPACITY);
+        sheetTranslateY.setValue(0);
+      } else {
+        Animated.parallel([
+          Animated.timing(backdropOpacity, {
+            toValue: BACKDROP_MAX_OPACITY,
+            duration: SHEET_OPEN_DURATION,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: USE_NATIVE_DRIVER,
+          }),
+          Animated.timing(sheetTranslateY, {
+            toValue: 0,
+            duration: SHEET_OPEN_DURATION,
+            easing: Easing.bezier(0.16, 1, 0.3, 1),
+            useNativeDriver: USE_NATIVE_DRIVER,
+          }),
+        ]).start();
+      }
       AccessibilityInfo.announceForAccessibility(accessibilityAnnouncement);
       return;
     }
@@ -219,22 +237,41 @@ export default function AddHabitSheet({
     }
     titleInputRef.current?.blur();
     isClosingRef.current = true;
-    Animated.timing(backdropOpacity, {
-      toValue: 0,
-      duration: SHEET_CLOSE_DURATION,
-      useNativeDriver: USE_NATIVE_DRIVER,
-    }).start(() => {
-      if (isClosingRef.current) {
+    backdropOpacity.stopAnimation();
+    sheetTranslateY.stopAnimation();
+    if (reduceMotion) {
+      backdropOpacity.setValue(0);
+      sheetTranslateY.setValue(sheetHeight);
+      setIsMounted(false);
+      return;
+    }
+    Animated.parallel([
+      Animated.timing(backdropOpacity, {
+        toValue: 0,
+        duration: SHEET_CLOSE_DURATION,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: USE_NATIVE_DRIVER,
+      }),
+      Animated.timing(sheetTranslateY, {
+        toValue: sheetHeight,
+        duration: SHEET_CLOSE_DURATION,
+        easing: Easing.bezier(0.4, 0, 0.2, 1),
+        useNativeDriver: USE_NATIVE_DRIVER,
+      }),
+    ]).start(({ finished }) => {
+      if (finished && isClosingRef.current) {
         setIsMounted(false);
       }
     });
-  }, [accessibilityAnnouncement, backdropOpacity, isMounted, visible]);
-
-  useEffect(() => () => {
-    if (infoTimeoutRef.current) {
-      clearTimeout(infoTimeoutRef.current);
-    }
-  }, []);
+  }, [
+    accessibilityAnnouncement,
+    backdropOpacity,
+    isMounted,
+    reduceMotion,
+    sheetHeight,
+    sheetTranslateY,
+    visible,
+  ]);
 
   const handleClose = useCallback(() => {
     if (!visible) {
@@ -289,27 +326,13 @@ export default function AddHabitSheet({
 
   const showInfo = useCallback((key) => {
     setActiveInfoKey((previous) => (previous === key ? null : key));
-    if (infoTimeoutRef.current) {
-      clearTimeout(infoTimeoutRef.current);
-    }
-    infoTimeoutRef.current = setTimeout(() => setActiveInfoKey(null), 5000);
   }, []);
 
   const hideInfo = useCallback(() => {
     setActiveInfoKey(null);
-    if (infoTimeoutRef.current) {
-      clearTimeout(infoTimeoutRef.current);
-    }
   }, []);
 
   // ----------------------------------------------------------------- ícone ---
-
-  const handleShuffleEmoji = useCallback(() => {
-    dispatch({ type: 'patch', value: { emoji: pickRandomEmoji(draft.emoji) } });
-    if (HAPTICS_SUPPORTED && typeof Haptics.selectionAsync === 'function') {
-      Haptics.selectionAsync();
-    }
-  }, [draft.emoji]);
 
   const handlePickImage = useCallback(async () => {
     if (isLoadingImage) {
@@ -320,7 +343,8 @@ export default function AddHabitSheet({
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
-        quality: 0.8,
+        // Android so preserva GIF animado sem edicao e com qualidade original.
+        quality: 1,
       });
       if (!result.canceled && result.assets?.length) {
         const persistentUri = await persistPickedImage(result.assets[0], {
@@ -339,10 +363,6 @@ export default function AddHabitSheet({
       setIsLoadingImage(false);
     }
   }, [imageText, isLoadingImage]);
-
-  const handleRemoveCustomImage = useCallback(() => {
-    dispatch({ type: 'patch', value: { customImage: null } });
-  }, []);
 
   // ------------------------------------------------------------ permissões ---
 
@@ -708,8 +728,28 @@ export default function AddHabitSheet({
     },
   ];
 
+  // "Quando" reune data, repeticao, horario e lembrete; "detalhes" fica com
+  // rotulo e tipo. A ajuda de cada item expande dentro do proprio cartao.
+  const sectionRowKeys = { when: ['date', 'repeat', 'time', 'reminder'], details: ['tag', 'type'] };
+  const sections = [
+    { key: 'when', title: t.sectionWhen },
+    { key: 'details', title: t.sectionDetails },
+  ].map((section) => {
+    const sectionRows = sectionRowKeys[section.key]
+      .map((key) => rows.find((row) => row.key === key))
+      .filter(Boolean);
+    return {
+      ...section,
+      rows: sectionRows,
+    };
+  });
+
   return (
-    <View pointerEvents="auto" style={styles.container}>
+    <TaskEditorMotionProvider reduceMotion={reduceMotion}>
+      <View
+        pointerEvents="auto"
+        style={[styles.container, !visible && styles.containerClosing]}
+      >
       <Animated.View
         style={[styles.backdrop, { opacity: backdropOpacity }]}
         accessibilityRole="button"
@@ -717,13 +757,14 @@ export default function AddHabitSheet({
       >
         <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
       </Animated.View>
-      <View
+      <Animated.View
         style={[
           styles.sheetContainer,
           {
             paddingBottom: Math.max(insets.bottom, 12),
             height: sheetHeight,
-            backgroundColor: sheetBackgroundColor,
+            backgroundColor: EDITOR_BACKGROUND_COLOR,
+            transform: [{ translateY: sheetTranslateY }],
           },
         ]}
         accessibilityViewIsModal
@@ -738,44 +779,40 @@ export default function AddHabitSheet({
           <View
             style={[
               styles.safeArea,
-              { paddingTop: Math.max(insets.top, 12), backgroundColor: sheetBackgroundColor },
+              { paddingTop: Math.max(insets.top, 12) },
             ]}
-            onTouchStart={activeInfoKey ? hideInfo : undefined}
           >
-            {activeInfoKey ? (
-              <Pressable style={styles.infoBackdropDismiss} onPress={hideInfo} />
-            ) : null}
-
             <View style={styles.header}>
-              <Pressable
+              <SoftPressable
+                style={styles.headerIconButton}
                 accessibilityRole="button"
                 accessibilityLabel={t.closeTaskEditor}
                 onPress={handleClose}
                 hitSlop={16}
               >
-                <Ionicons name="close" size={26} color="#59636f" />
-              </Pressable>
-              <Pressable
+                <Ionicons name="close" size={20} color="#504B67" />
+              </SoftPressable>
+              <View style={styles.headerTitleBlock}>
+                <Text style={styles.headerTitle} numberOfLines={1}>{editorTitle}</Text>
+              </View>
+              <SoftPressable
                 style={[
                   styles.createButton,
-                  __DEV__ && styles.createButtonDevToolsOffset,
                   isSubmitDisabled && styles.createButtonDisabled,
                 ]}
                 accessibilityRole="button"
+                accessibilityLabel={submitLabel}
                 accessibilityState={{ disabled: isSubmitDisabled }}
                 onPress={handleSubmit}
                 disabled={isSubmitDisabled}
                 hitSlop={12}
               >
-                <Text
-                  style={[
-                    styles.createButtonText,
-                    isSubmitDisabled && styles.createButtonTextDisabled,
-                  ]}
-                >
-                  {submitLabel}
-                </Text>
-              </Pressable>
+                <Ionicons
+                  name="checkmark"
+                  size={18}
+                  color={isSubmitDisabled ? '#8A849D' : '#FFFFFF'}
+                />
+              </SoftPressable>
             </View>
 
             <ScrollView
@@ -788,163 +825,169 @@ export default function AddHabitSheet({
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
             >
-              <View style={styles.identityRow}>
-                <View style={styles.iconColumn}>
-                  <Pressable
-                    style={styles.iconPreview}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.changePhoto}
-                    accessibilityState={{ busy: isLoadingImage, disabled: isLoadingImage }}
-                    onPress={handlePickImage}
-                    disabled={isLoadingImage}
-                    hitSlop={8}
-                  >
-                    {draft.customImage ? (
-                      <Image source={{ uri: draft.customImage }} style={styles.iconPreviewImage} />
-                    ) : (
-                      <Text style={styles.iconPreviewEmoji}>{draft.emoji}</Text>
-                    )}
-                    <View style={styles.iconBadge}>
-                      {isLoadingImage ? (
-                        <ActivityIndicator size={12} color="#FFFFFF" />
-                      ) : (
-                        <Ionicons name="camera" size={12} color="#FFFFFF" />
-                      )}
-                    </View>
-                  </Pressable>
-                  <Pressable
-                    style={styles.iconActionLink}
-                    accessibilityRole="button"
-                    accessibilityLabel={draft.customImage ? t.removePhoto : t.shuffleIcon}
-                    onPress={draft.customImage ? handleRemoveCustomImage : handleShuffleEmoji}
-                    hitSlop={10}
-                  >
-                    <Ionicons
-                      name={draft.customImage ? 'close-circle-outline' : 'shuffle'}
-                      size={14}
-                      color="#61708A"
+              <View style={styles.identityCard}>
+                <SoftPressable
+                  style={[
+                    styles.mediaPreview,
+                    { backgroundColor: lightenColor(draft.color, 0.76) },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.photoOrGif}
+                  accessibilityState={{ busy: isLoadingImage, disabled: isLoadingImage }}
+                  onPress={handlePickImage}
+                  disabled={isLoadingImage}
+                >
+                  {isLoadingImage ? (
+                    <ActivityIndicator size="small" color="#3C2BA7" />
+                  ) : draft.customImage ? (
+                    <Image source={{ uri: draft.customImage }} style={styles.mediaPreviewImage} />
+                  ) : (
+                    <Ionicons name="camera-outline" size={23} color="#5E5682" />
+                  )}
+                </SoftPressable>
+
+                <View style={styles.identityContent}>
+                  <View style={styles.titleColumn}>
+                    <TextInput
+                      ref={titleInputRef}
+                      value={draft.title}
+                      onChangeText={(text) => dispatch({ type: 'setTitle', value: text })}
+                      placeholder={t.taskNamePlaceholder}
+                      placeholderTextColor="#8A909E"
+                      style={styles.titleInput}
+                      accessibilityLabel={t.taskName}
+                      maxLength={TITLE_MAX_LENGTH}
+                      returnKeyType="done"
+                      multiline={false}
                     />
-                    <Text style={styles.iconActionText}>
-                      {draft.customImage ? t.removePhoto : t.shuffleIcon}
-                    </Text>
-                  </Pressable>
-                </View>
-                <View style={styles.titleColumn}>
-                  <TextInput
-                    ref={titleInputRef}
-                    value={draft.title}
-                    onChangeText={(text) => dispatch({ type: 'setTitle', value: text })}
-                    placeholder={t.newTask}
-                    placeholderTextColor="#7f8a9a"
-                    style={styles.titleInput}
-                    accessibilityLabel={t.newTask}
-                    maxLength={TITLE_MAX_LENGTH}
-                    returnKeyType="done"
-                    multiline={false}
-                  />
-                  <Text style={styles.counter}>{`${draft.title.length}/${TITLE_MAX_LENGTH}`}</Text>
+                    {draft.title.length >= TITLE_COUNTER_VISIBLE_FROM ? (
+                      <Text style={styles.counter}>{`${draft.title.length}/${TITLE_MAX_LENGTH}`}</Text>
+                    ) : null}
+                  </View>
+
                 </View>
               </View>
 
-              <View style={styles.paletteContainer}>
-                {EDITOR_COLORS.map((color) => {
-                  const isSelected = draft.color === color;
-                  return (
-                    <Pressable
-                      key={color}
-                      style={[
-                        styles.colorDot,
-                        { backgroundColor: color },
-                        isSelected && styles.colorDotSelected,
-                      ]}
-                      onPress={() => dispatch({ type: 'patch', value: { color } })}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: isSelected }}
-                      accessibilityLabel={t.selectColor.replace('{color}', color)}
-                    >
-                      {isSelected ? <Ionicons name="checkmark" size={18} color="#1F2742" /> : null}
-                    </Pressable>
-                  );
-                })}
+              <View style={styles.appearanceSection}>
+                <View style={styles.appearanceHeader}>
+                  <Text style={styles.sectionHeaderText}>{t.appearance}</Text>
+                  <View style={[styles.selectedColorSample, { backgroundColor: draft.color }]} />
+                </View>
+                <View style={styles.paletteContainer}>
+                  {EDITOR_COLORS.map((color) => {
+                    const isSelected = draft.color === color;
+                    return (
+                      <SoftPressable
+                        key={color}
+                        style={[styles.colorDotOuter, isSelected && styles.colorDotOuterSelected]}
+                        onPress={() => dispatch({ type: 'patch', value: { color } })}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isSelected }}
+                        accessibilityLabel={t.selectColor.replace('{color}', color)}
+                      >
+                        <View style={[styles.colorDot, { backgroundColor: color }]}>
+                          {isSelected ? (
+                            <Ionicons name="checkmark" size={16} color="#252A36" />
+                          ) : null}
+                        </View>
+                      </SoftPressable>
+                    );
+                  })}
+                </View>
               </View>
 
-              <View style={[styles.listContainer, activeInfoKey && styles.listContainerInfoActive]}>
-                {rows.map((row, index) => (
-                  <SheetRow
-                    key={row.key}
-                    icon={(
-                      <View style={styles.rowIconContainer}>
-                        <Ionicons name={row.icon} size={22} color="#61708A" />
-                      </View>
-                    )}
-                    label={row.label}
-                    value={row.value}
-                    errorText={row.error}
-                    onPress={() => {
-                      hideInfo();
-                      openPanel(row.key);
-                    }}
-                    infoText={row.infoText}
-                    onPressInfo={() => showInfo(row.infoKey)}
-                    isInfoVisible={activeInfoKey === row.infoKey}
-                    bubbleMaxWidth={infoBubbleMaxWidth}
-                    isLast={index === rows.length - 1}
-                  />
-                ))}
-              </View>
+              {sections.map((section) => (
+                <View key={section.key} style={styles.sectionBlock}>
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionHeaderText}>{section.title}</Text>
+                  </View>
+                  <View style={styles.listContainer}>
+                    {section.rows.map((row, index) => (
+                      <SheetRow
+                        key={row.key}
+                        icon={(
+                          <View
+                            style={[
+                              styles.rowIconContainer,
+                              { backgroundColor: lightenColor(draft.color, 0.76) },
+                            ]}
+                          >
+                            <Ionicons name={row.icon} size={17} color="#343B4A" />
+                          </View>
+                        )}
+                        label={row.label}
+                        value={row.value}
+                        errorText={row.error}
+                        onPress={() => {
+                          hideInfo();
+                          openPanel(row.key);
+                        }}
+                        infoText={row.infoText}
+                        onPressInfo={() => showInfo(row.infoKey)}
+                        isInfoVisible={activeInfoKey === row.infoKey}
+                        isLast={index === section.rows.length - 1}
+                      />
+                    ))}
+                  </View>
+                </View>
+              ))}
 
               {draft.type === 'quantum' ? (
-                <QuantumPanel
-                  mode={draft.quantum.mode}
-                  animation={draft.quantum.animation}
-                  timerHours={draft.quantum.timerHours}
-                  timerMinutes={draft.quantum.timerMinutes}
-                  countValue={draft.quantum.countValue}
-                  countUnit={draft.quantum.countUnit}
-                  onChangeAnimation={(animation) =>
-                    dispatch({ type: 'patchQuantum', value: { animation } })
-                  }
-                  onChangeTimerHours={(timerHours) =>
-                    dispatch({ type: 'patchQuantum', value: { timerHours } })
-                  }
-                  onChangeTimerMinutes={(timerMinutes) =>
-                    dispatch({ type: 'patchQuantum', value: { timerMinutes } })
-                  }
-                  onChangeCountValue={(countValue) =>
-                    dispatch({ type: 'patchQuantum', value: { countValue } })
-                  }
-                  onChangeCountUnit={(countUnit) =>
-                    dispatch({ type: 'patchQuantum', value: { countUnit } })
-                  }
-                  infoText={draft.quantum.mode === 'timer' ? t.info.timer : t.info.count}
-                  onPressInfo={() => showInfo(draft.quantum.mode === 'timer' ? 'timer' : 'count')}
-                  isInfoVisible={
-                    activeInfoKey === (draft.quantum.mode === 'timer' ? 'timer' : 'count')
-                  }
-                  labels={t}
-                />
+                <AnimatedReveal key="quantum-fields">
+                  <QuantumPanel
+                    mode={draft.quantum.mode}
+                    animation={draft.quantum.animation}
+                    timerHours={draft.quantum.timerHours}
+                    timerMinutes={draft.quantum.timerMinutes}
+                    countValue={draft.quantum.countValue}
+                    countUnit={draft.quantum.countUnit}
+                    onChangeAnimation={(animation) =>
+                      dispatch({ type: 'patchQuantum', value: { animation } })
+                    }
+                    onChangeTimerHours={(timerHours) =>
+                      dispatch({ type: 'patchQuantum', value: { timerHours } })
+                    }
+                    onChangeTimerMinutes={(timerMinutes) =>
+                      dispatch({ type: 'patchQuantum', value: { timerMinutes } })
+                    }
+                    onChangeCountValue={(countValue) =>
+                      dispatch({ type: 'patchQuantum', value: { countValue } })
+                    }
+                    onChangeCountUnit={(countUnit) =>
+                      dispatch({ type: 'patchQuantum', value: { countUnit } })
+                    }
+                    infoText={draft.quantum.mode === 'timer' ? t.info.timer : t.info.count}
+                    onPressInfo={() => showInfo(draft.quantum.mode === 'timer' ? 'timer' : 'count')}
+                    isInfoVisible={
+                      activeInfoKey === (draft.quantum.mode === 'timer' ? 'timer' : 'count')
+                    }
+                    labels={t}
+                  />
+                </AnimatedReveal>
               ) : (
-                <SubtasksPanel
-                  value={draft.subtasks}
-                  onChange={(subtasks) => dispatch({ type: 'setSubtasks', value: subtasks })}
-                  infoText={
-                    (draft.type === 'reminder' ? t.info.reminders : t.info.subtasks) ??
-                    t.info.subtasks
-                  }
-                  onPressInfo={() =>
-                    showInfo(draft.type === 'reminder' ? 'reminders' : 'subtasks')
-                  }
-                  isInfoVisible={
-                    activeInfoKey === (draft.type === 'reminder' ? 'reminders' : 'subtasks')
-                  }
-                  labels={t}
-                  titleLabel={draft.type === 'reminder' ? t.reminders : t.subtasks}
-                  addLabel={draft.type === 'reminder' ? t.addReminder : t.addSubtask}
-                  hintLabel={draft.type === 'reminder' ? t.remindersHint : t.subtasksHint}
-                  removeAccessibilityPrefix={
-                    draft.type === 'reminder' ? t.removeReminder : t.removeSubtask
-                  }
-                />
+                <AnimatedReveal key={`list-fields-${draft.type}`}>
+                  <SubtasksPanel
+                    value={draft.subtasks}
+                    onChange={(subtasks) => dispatch({ type: 'setSubtasks', value: subtasks })}
+                    infoText={
+                      (draft.type === 'reminder' ? t.info.reminders : t.info.subtasks) ??
+                      t.info.subtasks
+                    }
+                    onPressInfo={() =>
+                      showInfo(draft.type === 'reminder' ? 'reminders' : 'subtasks')
+                    }
+                    isInfoVisible={
+                      activeInfoKey === (draft.type === 'reminder' ? 'reminders' : 'subtasks')
+                    }
+                    labels={t}
+                    titleLabel={draft.type === 'reminder' ? t.reminders : t.subtasks}
+                    addLabel={draft.type === 'reminder' ? t.addReminder : t.addSubtask}
+                    hintLabel={draft.type === 'reminder' ? t.remindersHint : t.subtasksHint}
+                    removeAccessibilityPrefix={
+                      draft.type === 'reminder' ? t.removeReminder : t.removeSubtask
+                    }
+                  />
+                </AnimatedReveal>
               )}
             </ScrollView>
 
@@ -956,6 +999,7 @@ export default function AddHabitSheet({
                 onApply={closePanel}
                 applyLabel={common.apply}
                 backLabel={t.goBack}
+                reduceMotion={reduceMotion}
               >
                 <DatePanel
                   month={calendarMonth}
@@ -976,6 +1020,7 @@ export default function AddHabitSheet({
                 onApply={closePanel}
                 applyLabel={common.apply}
                 backLabel={t.goBack}
+                reduceMotion={reduceMotion}
               >
                 <RepeatPanel
                   isEnabled={draft.repeat.enabled}
@@ -1027,6 +1072,7 @@ export default function AddHabitSheet({
                 onApply={closePanel}
                 applyLabel={common.apply}
                 backLabel={t.goBack}
+                reduceMotion={reduceMotion}
               >
                 <TimePanel
                   specified={draft.time.specified}
@@ -1067,6 +1113,7 @@ export default function AddHabitSheet({
                 onApply={closePanel}
                 applyLabel={common.apply}
                 backLabel={t.goBack}
+                reduceMotion={reduceMotion}
               >
                 <OptionList
                   options={reminderOptions}
@@ -1083,6 +1130,7 @@ export default function AddHabitSheet({
                 onApply={closePanel}
                 applyLabel={common.apply}
                 backLabel={t.goBack}
+                reduceMotion={reduceMotion}
               >
                 <TagPanel
                   options={tagOptions}
@@ -1101,6 +1149,7 @@ export default function AddHabitSheet({
                 onApply={closePanel}
                 applyLabel={common.apply}
                 backLabel={t.goBack}
+                reduceMotion={reduceMotion}
               >
                 <OptionList
                   options={typeOptions}
@@ -1108,12 +1157,12 @@ export default function AddHabitSheet({
                   onSelect={(type) => dispatch({ type: 'patch', value: { type } })}
                 />
                 {draft.type === 'quantum' ? (
-                  <>
+                  <AnimatedReveal>
                     <View style={styles.quantumModeRow}>
                       {['timer', 'count'].map((modeKey) => {
                         const isSelected = draft.quantum.mode === modeKey;
                         return (
-                          <Pressable
+                          <SoftPressable
                             key={modeKey}
                             style={[
                               styles.quantumModeButton,
@@ -1133,7 +1182,7 @@ export default function AddHabitSheet({
                             >
                               {modeKey === 'timer' ? t.timer : t.count}
                             </Text>
-                          </Pressable>
+                          </SoftPressable>
                         );
                       })}
                     </View>
@@ -1162,35 +1211,41 @@ export default function AddHabitSheet({
                       showTitle={false}
                       labels={t}
                     />
-                  </>
+                  </AnimatedReveal>
                 ) : null}
                 <View style={styles.typePreviewSection}>
                   <View style={styles.infoLabelRow}>
                     <Text style={styles.typePreviewLabel}>{t.preview}</Text>
-                    <Pressable
+                    <SoftPressable
                       onPress={() => showInfo('preview')}
                       style={styles.infoIconButton}
                       hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={t.info.previewDefault}
+                      accessibilityState={{ expanded: activeInfoKey === 'preview' }}
                     >
-                      <Ionicons name="help-circle-outline" size={14} color="#59636f" />
-                    </Pressable>
+                      <Ionicons
+                        name="information-circle-outline"
+                        size={17}
+                        color={activeInfoKey === 'preview' ? '#665BC2' : '#9895A5'}
+                      />
+                    </SoftPressable>
                   </View>
-                  {activeInfoKey === 'preview' ? (
-                    <View style={[styles.floatingInfoBubble, styles.previewFloatingInfoBubble]}>
-                      <Text style={styles.inlineInfoText}>
-                        {draft.type === 'default'
-                          ? t.info.previewDefault
-                          : draft.type === 'quantum'
-                          ? t.info.previewQuantum
-                          : t.info.previewReminder}
-                      </Text>
-                    </View>
-                  ) : null}
+                  <InlineInfo
+                    visible={activeInfoKey === 'preview'}
+                    text={
+                      draft.type === 'default'
+                        ? t.info.previewDefault
+                        : draft.type === 'quantum'
+                        ? t.info.previewQuantum
+                        : t.info.previewReminder
+                    }
+                  />
                   <TypePreviewCard
                     type={draft.type}
                     quantum={previewQuantum}
                     color={draft.color}
-                    backgroundColor={sheetBackgroundColor}
+                    backgroundColor={previewCardBackgroundColor}
                     emoji={draft.emoji || DEFAULT_EMOJI}
                     customImage={draft.customImage}
                     title={draft.title.trim() || common.untitledTask}
@@ -1204,7 +1259,8 @@ export default function AddHabitSheet({
             ) : null}
           </View>
         </KeyboardAvoidingView>
+      </Animated.View>
       </View>
-    </View>
+    </TaskEditorMotionProvider>
   );
 }

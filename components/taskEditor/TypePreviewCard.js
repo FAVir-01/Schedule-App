@@ -2,12 +2,18 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Image, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Path, Stop } from 'react-native-svg';
 import { getQuantumProgressPercent } from '../../utils/taskUtils';
-import { buildRepeatingWavePath, getWaterDisplayPercent } from '../../utils/waveUtils';
+import {
+  buildRepeatingWavePath,
+  getWaterDisplayPercent,
+  WATER_GRADIENT_BOTTOM_COLOR,
+  WATER_GRADIENT_TOP_COLOR,
+  WATER_WAVE_AMPLITUDE,
+  WATER_WAVE_DURATION_MS,
+  WATER_WAVE_MIN_FILL_HEIGHT,
+} from '../../utils/waveUtils';
 import styles from './styles';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
-
-const PREVIEW_WAVE_HEIGHT = 34;
 
 // Prévia do cartão dentro do painel de tipo. A animação de água só roda com o
 // painel aberto: é decorativa e não deve consumir frames com a folha fechada.
@@ -37,7 +43,7 @@ function TypePreviewCard({
     [waterPercent]
   );
   const waterFillHeight = cardSize.height
-    ? Math.max(PREVIEW_WAVE_HEIGHT, cardSize.height * waterDisplayPercent)
+    ? Math.max(WATER_WAVE_MIN_FILL_HEIGHT, cardSize.height * waterDisplayPercent)
     : 0;
 
   const previewWaveGeometry = useMemo(() => {
@@ -53,20 +59,7 @@ function TypePreviewCard({
         totalWidth,
         wavelength,
         height: waterFillHeight,
-        amplitude: 6,
-      }),
-      frontPath: buildRepeatingWavePath({
-        totalWidth,
-        wavelength,
-        height: PREVIEW_WAVE_HEIGHT,
-        amplitude: 6,
-      }),
-      backPath: buildRepeatingWavePath({
-        totalWidth,
-        wavelength,
-        height: PREVIEW_WAVE_HEIGHT,
-        amplitude: 4,
-        phase: Math.PI / 2,
+        amplitude: WATER_WAVE_AMPLITUDE,
       }),
     };
   }, [cardSize.width, waterFillHeight]);
@@ -90,8 +83,8 @@ function TypePreviewCard({
     const animation = Animated.loop(
       Animated.timing(previewWaveShiftAnim, {
         toValue: 1,
-        duration: 3600,
-        easing: Easing.inOut(Easing.sin),
+        duration: WATER_WAVE_DURATION_MS,
+        easing: Easing.linear,
         // Fabric/Android deixa o SVG transparente quando um ancestral usa
         // transform nativo. O driver JS move só a view pronta, sem reconstruir
         // o path nem disparar render React a cada frame.
@@ -135,25 +128,13 @@ function TypePreviewCard({
                 x2="0%"
                 y2="100%"
               >
-                <Stop offset="0%" stopColor="rgb(153, 199, 252)" />
-                <Stop offset="100%" stopColor="rgb(100, 158, 248)" />
+                <Stop offset="0%" stopColor={WATER_GRADIENT_TOP_COLOR} />
+                <Stop offset="100%" stopColor={WATER_GRADIENT_BOTTOM_COLOR} />
               </SvgLinearGradient>
             </Defs>
             <AnimatedPath
               d={previewWaveGeometry.fillPath}
               fill="url(#type-preview-water-gradient)"
-              style={{ transform: [{ translateX: previewWaveShift }] }}
-            />
-            <AnimatedPath
-              d={previewWaveGeometry.backPath}
-              fill="#e9f5ff"
-              opacity={0.55}
-              style={{ transform: [{ translateX: previewWaveShift }] }}
-            />
-            <AnimatedPath
-              d={previewWaveGeometry.frontPath}
-              fill="#f4fbff"
-              opacity={0.8}
               style={{ transform: [{ translateX: previewWaveShift }] }}
             />
           </Svg>

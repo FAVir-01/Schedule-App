@@ -202,7 +202,13 @@ const {
   migrateImportedTemplateTasks,
 } = require('../utils/templateUtils');
 const { getTimerParts, getTimerTotalSeconds } = require('../utils/timeUtils');
-const { getWaterDisplayPercent, WATER_IDLE_FILL_PERCENT } = require('../utils/waveUtils');
+const {
+  getWaterDisplayPercent,
+  WATER_IDLE_FILL_PERCENT,
+  WATER_WAVE_AMPLITUDE,
+  WATER_WAVE_DURATION_MS,
+  WATER_WAVE_MIN_FILL_HEIGHT,
+} = require('../utils/waveUtils');
 const {
   createEmptyDraft,
   draftFromTask,
@@ -1553,6 +1559,7 @@ test('mantem a barra inferior legivel com fonte ampliada em portugues', () => {
 
 test('usa previews mensais estaticos e desmonta o calendario fora da aba', () => {
   const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
+  const stylesSource = fs.readFileSync(path.join(root, 'styles/appStyles.js'), 'utf8');
   const monthsSource = fs.readFileSync(path.join(root, 'constants/months.js'), 'utf8');
   const calendarSource = fs.readFileSync(
     path.join(root, 'components/CalendarMonthItem.js'),
@@ -1577,6 +1584,9 @@ test('usa previews mensais estaticos e desmonta o calendario fora da aba', () =>
   assert.equal(monthsSource.includes('if (reduceMotion) {\n    return null;'), true);
   assert.equal(calendarSource.includes('getMonthReducedMotionColor(item.monthIndex)'), true);
   assert.equal(stickyHeaderSource.includes('getMonthReducedMotionColor(monthIndex)'), true);
+  assert.equal(appSource.includes('<View style={styles.calendarStickyHeaderSlot}>'), true);
+  assert.equal(appSource.includes('{!isHabitSheetOpen ? ('), true);
+  assert.match(stylesSource, /calendarStickyHeaderSlot:\s*\{[\s\S]*?height: 50/);
   assert.equal(reportSource.includes('getMonthReducedMotionColor(monthIndex)'), true);
   assert.equal(customizeSource.includes('getMonthReducedMotionColor(index)'), true);
   assert.equal((appSource.match(/reduceMotion=\{prefersReducedMotion\}/g)?.length ?? 0) >= 4, true);
@@ -1612,16 +1622,39 @@ test('mantem a troca de dias do Today animada e sensivel a reduzir movimento', (
   assert.equal(appSource.includes('setPendingTodayDateKey(targetDateKey)'), true);
 });
 
+test('anima a troca de categoria do Today com o mesmo gesto lateral dos dias', () => {
+  const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
+  const handlerSource = appSource.match(
+    /const handleSelectTagFilter = useCallback\([\s\S]*?\n  \);/
+  )?.[0] ?? '';
+
+  assert.equal(handlerSource.includes("const filterOrder = ['all', ...tagOptions.map"), true);
+  assert.equal(handlerSource.includes("activeTab === 'today' && !prefersReducedMotion"), true);
+  assert.equal(handlerSource.includes('Animated.timing(todayCardsTranslateX'), true);
+  assert.equal(handlerSource.includes('Animated.timing(todayPageTranslateX'), false);
+  assert.equal(handlerSource.includes('toValue: -direction * todayPageTravelDistance'), true);
+  assert.equal(handlerSource.includes('toValue: direction * todayPageTravelDistance'), false);
+  assert.equal(handlerSource.includes('todayCardsTranslateX.setValue(direction * todayPageTravelDistance)'), true);
+  assert.equal(handlerSource.includes('setSelectedTagFilter(filterKey)'), true);
+  assert.equal(appSource.includes('opacity: todayContentOpacity'), true);
+  assert.equal(appSource.includes('{ translateX: todayContentTranslateX }'), true);
+  assert.equal(
+    appSource.includes('style={[styles.tagFilterContainer, todayPageTransitionStyle]}'),
+    true
+  );
+  assert.equal(appSource.includes('disabled={isTodayPageTransitioning}'), true);
+});
+
 test('desenha crista e corpo da agua no mesmo path animado sem emenda', () => {
   const taskCardSource = fs.readFileSync(
     path.join(root, 'components/SwipeableTaskCard.js'),
     'utf8'
   );
 
-  assert.equal(taskCardSource.includes('const waveHeight = 19;'), true);
+  assert.equal(taskCardSource.includes('WATER_WAVE_MIN_FILL_HEIGHT'), true);
   assert.equal(taskCardSource.includes('<SvgLinearGradient'), true);
-  assert.equal(taskCardSource.includes('stopColor="rgb(153, 199, 252)"'), true);
-  assert.equal(taskCardSource.includes('stopColor="rgb(100, 158, 248)"'), true);
+  assert.equal(taskCardSource.includes('stopColor={WATER_GRADIENT_TOP_COLOR}'), true);
+  assert.equal(taskCardSource.includes('stopColor={WATER_GRADIENT_BOTTOM_COLOR}'), true);
   assert.equal(taskCardSource.includes('fill={`url(#${waterGradientId})`}'), true);
   assert.equal(taskCardSource.includes('const AnimatedPath = Animated.createAnimatedComponent(Path)'), true);
   assert.equal(taskCardSource.includes('styles.waterFallbackFill'), true);
@@ -1633,6 +1666,9 @@ test('desenha crista e corpo da agua no mesmo path animado sem emenda', () => {
 });
 
 test('mantem agua visivel em progresso zero sem distorcer a conclusao', () => {
+  assert.equal(WATER_WAVE_MIN_FILL_HEIGHT, 19);
+  assert.equal(WATER_WAVE_AMPLITUDE, 4);
+  assert.equal(WATER_WAVE_DURATION_MS, 4500);
   assert.equal(getWaterDisplayPercent(0), WATER_IDLE_FILL_PERCENT);
   assert.equal(getWaterDisplayPercent(1), 1);
   assert.equal(getWaterDisplayPercent(-1), WATER_IDLE_FILL_PERCENT);
@@ -1644,6 +1680,10 @@ test('mantem agua visivel em progresso zero sem distorcer a conclusao', () => {
 test('mantem a previa de agua nativa e limitada ao painel de tipo', () => {
   const previewSource = fs.readFileSync(
     path.join(root, 'components/taskEditor/TypePreviewCard.js'),
+    'utf8'
+  );
+  const editorStylesSource = fs.readFileSync(
+    path.join(root, 'components/taskEditor/styles.js'),
     'utf8'
   );
   const sheetSource = fs.readFileSync(
@@ -1664,8 +1704,19 @@ test('mantem a previa de agua nativa e limitada ao painel de tipo', () => {
   assert.equal(previewSource.includes('const AnimatedPath = Animated.createAnimatedComponent(Path)'), true);
   assert.equal(previewSource.includes('translateX: previewWaveShift'), true);
   assert.equal(previewSource.includes('previewWaveGeometry.fillPath'), true);
-  assert.equal(previewSource.includes('previewWaveGeometry.backPath'), true);
-  assert.equal(previewSource.includes('previewWaveGeometry.frontPath'), true);
+  assert.equal(previewSource.includes('previewWaveGeometry.backPath'), false);
+  assert.equal(previewSource.includes('previewWaveGeometry.frontPath'), false);
+  assert.equal(previewSource.includes('WATER_WAVE_MIN_FILL_HEIGHT'), true);
+  assert.equal(previewSource.includes('amplitude: WATER_WAVE_AMPLITUDE'), true);
+  assert.equal(previewSource.includes('duration: WATER_WAVE_DURATION_MS'), true);
+  assert.equal(previewSource.includes('easing: Easing.linear'), true);
+  assert.equal(previewSource.includes('stopColor={WATER_GRADIENT_TOP_COLOR}'), true);
+  assert.equal(previewSource.includes('stopColor={WATER_GRADIENT_BOTTOM_COLOR}'), true);
+  assert.match(editorStylesSource, /typePreviewCard:\s*\{[\s\S]*?overflow: 'hidden'/);
+  assert.match(
+    editorStylesSource,
+    /typePreviewWaterFallbackFill:\s*\{[\s\S]*?borderBottomLeftRadius: 18[\s\S]*?borderBottomRightRadius: 18/
+  );
   assert.equal(
     previewSource.includes('previous.width === width && previous.height === height'),
     true
@@ -1673,24 +1724,77 @@ test('mantem a previa de agua nativa e limitada ao painel de tipo', () => {
   assert.equal(addHabitMarkup.includes('reduceMotion={prefersReducedMotion}'), true);
 });
 
-test('mantem a folha editavel estavel e os paineis em modal nativo', () => {
+test('anima a folha pela base sem elevar o wrapper durante a edicao', () => {
+  const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
   const sheetSource = fs.readFileSync(
     path.join(root, 'components/AddHabitSheet.js'),
     'utf8'
   );
-  assert.equal(sheetSource.includes('Animated.spring(translateY'), false);
-  assert.equal(sheetSource.includes('Animated.timing(translateY'), false);
-  assert.equal(sheetSource.includes('transform: [{ translateY }]'), false);
+  const editorStylesSource = fs.readFileSync(
+    path.join(root, 'components/taskEditor/styles.js'),
+    'utf8'
+  );
+  assert.equal(sheetSource.includes('Animated.timing(sheetTranslateY'), true);
+  assert.equal(sheetSource.includes('transform: [{ translateY: sheetTranslateY }]'), true);
+  assert.equal(sheetSource.includes('Animated.parallel(['), true);
+  assert.equal(sheetSource.includes('if (reduceMotion) {'), true);
+  assert.equal(sheetSource.includes('<Animated.View'), true);
+  assert.match(editorStylesSource, /container:\s*\{\s*\.\.\.StyleSheet\.absoluteFillObject,?\s*\}/);
+  assert.match(editorStylesSource, /containerClosing:\s*\{\s*elevation: 30/);
   assert.equal(sheetSource.includes('titleInputRef.current.focus()'), false);
   assert.equal(sheetSource.includes("behavior={Platform.OS === 'ios' ? 'padding' : undefined}"), true);
   assert.equal(sheetSource.includes('Keyboard.dismiss();'), true);
+  assert.equal(sheetSource.includes('const EDITOR_BACKGROUND_COLOR ='), true);
+  assert.equal(sheetSource.includes('<View style={styles.identityCard}>'), true);
+  assert.equal(sheetSource.includes('{t.photoOrGif}'), true);
+  assert.equal(sheetSource.includes('name="camera-outline"'), true);
+  assert.equal(sheetSource.includes('<Text style={styles.mediaActionText}>{t.photoOrGif}</Text>'), false);
+  assert.equal(sheetSource.includes('styles.mediaActionsRow'), false);
+  assert.equal(sheetSource.includes('allowsEditing: false'), true);
+  assert.equal(sheetSource.includes('quality: 1'), true);
+  assert.equal(sheetSource.includes('pickRandomEmoji'), false);
+  assert.equal(sheetSource.includes('handleShuffleEmoji'), false);
+  assert.equal(sheetSource.includes('styles.mediaBadge'), false);
+  assert.equal(sheetSource.includes('placeholder={t.taskNamePlaceholder}'), true);
+  assert.equal(sheetSource.match(/\bt\.newTask\b/g)?.length ?? 0, 1);
+  assert.equal(sheetSource.match(/\bt\.taskName\b/g)?.length ?? 0, 1);
+  assert.equal(sheetSource.includes('const sheetHeight = height;'), true);
+  assert.equal(editorStylesSource.includes('appearanceSection: {'), true);
+  assert.equal(editorStylesSource.includes('colorDotOuterSelected: {'), true);
 
   const partsSource = fs.readFileSync(
     path.join(root, 'components/taskEditor/parts.js'),
     'utf8'
   );
   assert.equal(partsSource.includes('presentationStyle="overFullScreen"'), true);
-  assert.equal(partsSource.includes('onRequestClose={onClose}'), true);
+  assert.equal(partsSource.includes('onRequestClose={() => leave(onClose)}'), true);
+  assert.equal(partsSource.includes('Animated.timing(transition'), true);
+  assert.equal(partsSource.includes('function SoftPressable'), true);
+  assert.equal(partsSource.includes('function InlineInfo'), true);
+  assert.equal(partsSource.includes('function AnimatedReveal'), true);
+  assert.equal(partsSource.includes('TaskEditorMotionContext'), true);
+  assert.equal(sheetSource.includes('<TaskEditorMotionProvider reduceMotion={reduceMotion}>'), true);
+  assert.equal(partsSource.includes('styles.floatingInfoBubble'), false);
+  assert.equal(partsSource.includes('style={styles.rowTextColumn}'), true);
+
+  const editorHelpSources = [
+    sheetSource,
+    partsSource,
+    fs.readFileSync(path.join(root, 'components/taskEditor/QuantumFields.js'), 'utf8'),
+    fs.readFileSync(path.join(root, 'components/taskEditor/SubtasksPanel.js'), 'utf8'),
+  ].join('\n');
+  assert.equal(editorHelpSources.includes('floatingInfoBubble'), false);
+  assert.equal(editorHelpSources.includes('name="information-circle-outline"'), true);
+  assert.equal(editorHelpSources.includes("name={isInfoVisible ? 'close' : 'help'}"), false);
+  assert.equal(editorHelpSources.includes('styles.infoIconButtonActive'), false);
+  assert.equal(editorStylesSource.includes('infoIconButtonActive: {'), false);
+  assert.equal(partsSource.includes('outputRange: [32, 0]'), true);
+  assert.equal(appSource.includes('const dismissFabMenuImmediately = useCallback'), true);
+  assert.equal(appSource.includes('setIsFabMenuMounted(false);'), true);
+  assert.equal(
+    (appSource.match(/isFabMenuMounted && !isHabitSheetOpen && !reflectionDateKey/g)?.length ?? 0) >= 2,
+    true
+  );
 });
 
 test('encerra animacoes decorativas e respeita reduzir movimento', () => {
@@ -1747,10 +1851,17 @@ test('anima o painel quantum e reordena cards sem saltos interrompidos', () => {
   assert.equal(appSource.includes('TODAY_TASK_REORDER_DELAY_MS'), false);
   assert.equal(appSource.includes('zIndex: item.completed ? 0 : 1'), true);
   assert.equal(appSource.includes('CellRendererComponent={renderTodayCell}'), true);
+  assert.equal(appSource.includes('previousPosition.index === index'), true);
+  assert.equal(appSource.includes('handleTaskLayout(item.id, index, event)'), true);
   assert.equal(taskCardSource.includes('Animated.timing(adjustPanelProgress'), true);
-  assert.equal(taskCardSource.includes('previous.width === width && previous.height === height'), true);
+  assert.equal(taskCardSource.includes('hasMeasuredCollapsedCardRef'), true);
+  assert.equal(taskCardSource.includes('const waterRenderHeight = cardSize.height + QUANTUM_STEPPER_EXPANSION'), true);
+  assert.equal(taskCardSource.includes('height: waterRenderHeight'), true);
+  assert.equal(taskCardSource.includes('transform: [{ translateY: waterTranslateY }]'), true);
+  assert.equal(taskCardSource.includes('QUANTUM_STEPPER_OPEN_MS = 320'), true);
+  assert.equal(taskCardSource.includes('QUANTUM_STEPPER_CLOSE_MS = 280'), true);
   assert.equal(taskCardSource.includes("pointerEvents={isAdjustOpen ? 'auto' : 'none'}"), true);
-  assert.equal(taskCardSource.includes('outputRange: [0, 47]'), true);
+  assert.equal(taskCardSource.includes('outputRange: [0, QUANTUM_STEPPER_HEIGHT]'), true);
 });
 
 test('migra formatos antigos de tarefa ao abrir o editor', () => {

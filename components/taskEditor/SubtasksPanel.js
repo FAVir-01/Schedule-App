@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { InlineInfo, SoftPressable } from './parts';
 import styles from './styles';
 
 function SubtasksPanel({
@@ -48,16 +49,23 @@ function SubtasksPanel({
       <View style={styles.sectionTitleRow}>
         <Text style={styles.subtasksTitle}>{titleLabel ?? labels.subtasks}</Text>
         {onPressInfo ? (
-          <Pressable onPress={onPressInfo} style={styles.infoIconButton} hitSlop={8}>
-            <Ionicons name="help-circle-outline" size={14} color="#59636f" />
-          </Pressable>
-        ) : null}
-        {isInfoVisible ? (
-          <View style={[styles.floatingInfoBubble, styles.sectionFloatingInfoBubble]}>
-            <Text style={styles.inlineInfoText}>{infoText}</Text>
-          </View>
+          <SoftPressable
+            onPress={onPressInfo}
+            style={styles.infoIconButton}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={infoText}
+            accessibilityState={{ expanded: isInfoVisible }}
+          >
+            <Ionicons
+              name="information-circle-outline"
+              size={17}
+              color={isInfoVisible ? '#665BC2' : '#9895A5'}
+            />
+          </SoftPressable>
         ) : null}
       </View>
+      <InlineInfo visible={isInfoVisible} text={infoText} />
       <View style={styles.subtasksCard}>
         {hasSubtasks && (
           <View style={styles.subtasksList}>
@@ -68,7 +76,7 @@ function SubtasksPanel({
               >
                 <Ionicons name="ellipse-outline" size={18} color="#94A3B8" />
                 <Text style={styles.subtaskText}>{item}</Text>
-                <Pressable
+                <SoftPressable
                   onPress={() => handleRemove(index)}
                   accessibilityLabel={`${removeAccessibilityPrefix ?? labels.removeSubtask} ${item}`}
                   accessibilityRole="button"
@@ -76,7 +84,7 @@ function SubtasksPanel({
                   style={styles.subtaskRemoveButton}
                 >
                   <Ionicons name="close-outline" size={20} color="#94A3B8" />
-                </Pressable>
+                </SoftPressable>
               </View>
             ))}
           </View>
@@ -92,7 +100,7 @@ function SubtasksPanel({
             returnKeyType="done"
             accessibilityLabel={addLabel ?? labels.addSubtask}
           />
-          <Pressable
+          <SoftPressable
             onPress={handleAdd}
             accessibilityRole="button"
             accessibilityLabel={addLabel ?? labels.addSubtask}
@@ -104,7 +112,7 @@ function SubtasksPanel({
               size={20}
               color={trimmedDraft.length === 0 ? '#C3CCDC' : '#6B7288'}
             />
-          </Pressable>
+          </SoftPressable>
         </View>
       </View>
       <Text style={styles.subtasksPanelHint}>{hintLabel ?? labels.subtasksHint}</Text>

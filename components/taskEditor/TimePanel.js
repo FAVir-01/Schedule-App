@@ -1,9 +1,9 @@
 import React from 'react';
-import { Platform, Pressable, Switch, Text, View } from 'react-native';
+import { Platform, Switch, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { formatNumber } from '../../utils/timeUtils';
 import { HOUR_VALUES, HOUR_VALUES_24, MERIDIEM_VALUES, MINUTE_VALUES, to24Hour } from './constants';
-import { SegmentedControlButton } from './parts';
+import { AnimatedReveal, SegmentedControlButton } from './parts';
 import WheelColumn from './WheelColumn';
 import styles from './styles';
 
@@ -45,7 +45,7 @@ function TimePanel({
       <View style={styles.specifiedRow}>
         <View style={styles.specifiedLabelGroup}>
           <View style={styles.specifiedIconContainer}>
-            <Ionicons name="time-outline" size={22} color="#1F2742" />
+            <Ionicons name="time-outline" size={22} color="#3C2BA7" />
           </View>
           <View>
             <Text style={styles.specifiedTitle}>{labels.specifiedTime}</Text>
@@ -55,12 +55,12 @@ function TimePanel({
         <Switch
           value={specified}
           onValueChange={onToggleSpecified}
-          trackColor={{ false: '#C8D4E6', true: '#A3B7D7' }}
-          thumbColor={specified ? '#1F2742' : Platform.OS === 'android' ? '#f4f3f4' : undefined}
+          trackColor={{ false: '#D5D3DE', true: '#AFA5EA' }}
+          thumbColor={specified ? '#3C2BA7' : Platform.OS === 'android' ? '#f4f3f4' : undefined}
         />
       </View>
       {specified && (
-        <>
+        <AnimatedReveal>
           <View style={styles.segmentedControl}>
             <SegmentedControlButton
               label={labels.pointTime}
@@ -74,7 +74,7 @@ function TimePanel({
             />
           </View>
           {mode === 'point' ? (
-            <View style={styles.wheelGroup}>
+            <AnimatedReveal key="point" style={styles.wheelGroup}>
               <View style={styles.wheelLabelsRow}>
                 <Text style={styles.wheelLabel}>{labels.hour}</Text>
                 <Text style={styles.wheelLabel}>{labels.min}</Text>
@@ -107,9 +107,9 @@ function TimePanel({
                   )}
                 </View>
               </View>
-            </View>
+            </AnimatedReveal>
           ) : (
-            <View style={styles.periodSection}>
+            <AnimatedReveal key="period" style={styles.periodSection}>
               <Text style={styles.periodLabel}>{labels.from}</Text>
               <View style={styles.wheelGroup}>
                 <View style={styles.wheelLabelsRow}>
@@ -204,9 +204,9 @@ function TimePanel({
                   </View>
                 </View>
               </View>
-            </View>
+            </AnimatedReveal>
           )}
-        </>
+        </AnimatedReveal>
       )}
     </View>
   );
