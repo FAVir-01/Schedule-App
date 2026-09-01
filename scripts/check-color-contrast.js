@@ -5,6 +5,10 @@ const path = require('path');
 
 const root = path.resolve(__dirname, '..');
 const stylesSource = fs.readFileSync(path.join(root, 'styles', 'appStyles.js'), 'utf8');
+const editorStylesSource = fs.readFileSync(
+  path.join(root, 'components', 'taskEditor', 'styles.js'),
+  'utf8'
+);
 
 const parseColor = (value) => {
   const normalized = value.trim().toLowerCase();
@@ -63,6 +67,31 @@ const contrastRatio = (foregroundValue, backgroundValue) => {
   const lighter = Math.max(luminance(foreground), luminance(background));
   const darker = Math.min(luminance(foreground), luminance(background));
   return (lighter + 0.05) / (darker + 0.05);
+};
+
+// Leitor generico: getStyleColor le appStyles.js; este le qualquer folha de
+// estilo e qualquer propriedade de cor.
+const readStyleValue = (source, styleName, property) => {
+  const marker = '\n  ' + styleName + ': {';
+  const start = source.indexOf(marker);
+  if (start < 0) {
+    throw new Error(`Estilo nao encontrado: ${styleName}`);
+  }
+  const bodyStart = start + marker.length;
+  const remainder = source.slice(bodyStart);
+  const nextStyle = remainder.search(/\n\s{2}[A-Za-z0-9_]+:\s*\{/);
+  const block = nextStyle < 0 ? remainder : remainder.slice(0, nextStyle);
+  const line = block
+    .split('\n')
+    .find((entry) => entry.trim().startsWith(property + ':'));
+  if (!line) {
+    throw new Error(`${property} nao encontrado em: ${styleName}`);
+  }
+  const match = line.match(/['"]([^'"]+)['"]/);
+  if (!match) {
+    throw new Error(`${property} sem valor literal em: ${styleName}`);
+  }
+  return match[1];
 };
 
 const getStyleColor = (styleName) => {
@@ -153,6 +182,37 @@ textChecks.forEach(([styleName, background]) => {
 });
 componentChecks.forEach(([name, foreground, background]) => {
   check(name, foreground, background, 3);
+});
+
+// Editor minimalista: a cor escolhida virou detalhe visual; todo texto fica
+// sobre superficies neutras e previsiveis.
+[
+  ['headerTitle', '#F6F6FB'],
+  ['titleInput', '#FFFFFF'],
+  ['counter', '#FFFFFF'],
+  ['sectionHeaderText', '#F6F6FB'],
+  ['overlayTitle', '#F6F6FB'],
+  ['overlaySubtitle', '#F6F6FB'],
+  ['optionLabel', '#FFFFFF'],
+  ['optionHint', '#FFFFFF'],
+  ['inlineInfoText', '#EFEEF5'],
+].forEach(([styleName, background]) => {
+  check(
+    `editor ${styleName}`,
+    readStyleValue(editorStylesSource, styleName, 'color'),
+    background,
+    4.5
+  );
+});
+
+// Linhas e erro inline caem sobre o cartao branco das secoes.
+['rowLabel', 'rowValue', 'rowErrorText'].forEach((styleName) => {
+  check(
+    `editor ${styleName} sobre o cartao`,
+    readStyleValue(editorStylesSource, styleName, 'color'),
+    '#FFFFFF',
+    4.5
+  );
 });
 
 if (failures.length) {

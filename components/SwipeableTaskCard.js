@@ -24,11 +24,26 @@ import {
   getQuantumStepLabel,
 } from '../utils/taskUtils';
 import { formatTaskTime, getTimerTotalSeconds } from '../utils/timeUtils';
-import { buildRepeatingWavePath, getWaterDisplayPercent } from '../utils/waveUtils';
+import {
+  buildRepeatingWavePath,
+  getWaterDisplayPercent,
+  WATER_GRADIENT_BOTTOM_COLOR,
+  WATER_GRADIENT_TOP_COLOR,
+  WATER_WAVE_AMPLITUDE,
+  WATER_WAVE_DURATION_MS,
+  WATER_WAVE_MIN_FILL_HEIGHT,
+} from '../utils/waveUtils';
 import { triggerSelection } from '../utils/feedbackUtils';
 import { styles } from '../styles/appStyles';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
+const QUANTUM_STEPPER_HEIGHT = 47;
+const QUANTUM_STEPPER_MARGIN_TOP = 12;
+const QUANTUM_STEPPER_EXPANSION = QUANTUM_STEPPER_HEIGHT + QUANTUM_STEPPER_MARGIN_TOP;
+const QUANTUM_STEPPER_OPEN_MS = 320;
+const QUANTUM_STEPPER_CLOSE_MS = 280;
+const QUANTUM_STEPPER_OPEN_EASING = Easing.bezier(0.16, 1, 0.3, 1);
+const QUANTUM_STEPPER_CLOSE_EASING = Easing.bezier(0.4, 0, 0.2, 1);
 
 const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
   task,
@@ -51,10 +66,22 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
   const translateX = useRef(new Animated.Value(0)).current;
   const waveShiftAnim = useRef(new Animated.Value(0)).current;
   const waveIntensityAnim = useRef(new Animated.Value(1)).current;
+  // Nivel da agua: a lamina sobe e desce animada quando a quantidade muda.
+  // A altura NAO entra mais na geometria do path — se entrar, cada mudanca
+  // reconstroi a string inteira e o volume salta de uma vez.
+  const waterLevelAnim = useRef(new Animated.Value(0)).current;
+  const waterPanelOffsetAnim = useRef(new Animated.Value(0)).current;
+  const hasWaterLevelRef = useRef(false);
+  const previousWaterPanelOpenRef = useRef(false);
+  const hasMeasuredCollapsedCardRef = useRef(false);
+  const cardSizeRef = useRef({ width: 0, height: 0 });
   const actionWidth = 168;
   const [isOpen, setIsOpen] = useState(false);
   const [cardSize, setCardSize] = useState({ width: 0, height: 0 });
   const [hasImageError, setHasImageError] = useState(false);
+  const [isAdjustOpen, setIsAdjustOpen] = useState(false);
+  const [adjustStep, setAdjustStep] = useState(null);
+  const adjustPanelProgress = useRef(new Animated.Value(0)).current;
   const currentOffsetRef = useRef(0);
 
   useEffect(() => {
@@ -160,14 +187,20 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     () => getWaterDisplayPercent(waterPercent),
     [waterPercent]
   );
-  const waveHeight = 19;
+  // A geometria usa sempre a altura maxima do card. Durante a abertura do
+  // stepper apenas o recorte do card e a translacao da agua mudam; o path SVG
+  // nao e mais reconstruido a cada frame da animacao de layout.
+  const waterRenderHeight = cardSize.height + QUANTUM_STEPPER_EXPANSION;
   const waterFillHeight = cardSize.height
-    ? Math.max(waveHeight, cardSize.height * waterDisplayPercent)
+    ? Math.max(WATER_WAVE_MIN_FILL_HEIGHT, cardSize.height * waterDisplayPercent)
+    : 0;
+  const expandedWaterFillHeight = cardSize.height
+    ? Math.max(WATER_WAVE_MIN_FILL_HEIGHT, waterRenderHeight * waterDisplayPercent)
     : 0;
   // Onda e corpo são um único path com um único gradiente. Isso elimina a
   // junção horizontal que aparecia quando duas superfícies nativas se cruzavam.
   const waveGeometry = useMemo(() => {
-    if (!cardSize.width || !waterFillHeight) {
+    if (!cardSize.width || !waterRenderHeight) {
       return null;
     }
     const wavelength = Math.max(120, cardSize.width * 0.65);
@@ -178,11 +211,11 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
       frontPath: buildRepeatingWavePath({
         totalWidth,
         wavelength,
-        height: waterFillHeight,
-        amplitude: 4,
+        height: waterRenderHeight,
+        amplitude: WATER_WAVE_AMPLITUDE,
       }),
     };
-  }, [cardSize.width, waterFillHeight]);
+  }, [cardSize.width, waterRenderHeight]);
   const waveFrontShift = useMemo(
     () =>
       waveGeometry
@@ -206,6 +239,67 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     () => Animated.add(waveFrontShift, wavePulseShift),
     [waveFrontShift, wavePulseShift]
   );
+  const waterTranslateY = useMemo(
+    () => Animated.add(waterLevelAnim, waterPanelOffsetAnim),
+    [waterLevelAnim, waterPanelOffsetAnim]
+  );
+  // Na primeira medicao do card assume o nivel direto; senao a agua "encheria"
+  // toda vez que o card entra na lista.
+  useEffect(() => {
+    if (!cardSize.height) {
+      return undefined;
+    }
+    const target = Math.max(0, waterRenderHeight - waterFillHeight);
+    const panelOffsetTarget = isAdjustOpen
+      ? waterFillHeight - expandedWaterFillHeight
+      : 0;
+    const panelStateChanged = previousWaterPanelOpenRef.current !== isAdjustOpen;
+    previousWaterPanelOpenRef.current = isAdjustOpen;
+    if (!hasWaterLevelRef.current || reduceMotion) {
+      hasWaterLevelRef.current = true;
+      waterLevelAnim.setValue(target);
+      waterPanelOffsetAnim.setValue(panelOffsetTarget);
+      return undefined;
+    }
+    const duration = panelStateChanged
+      ? isAdjustOpen
+        ? QUANTUM_STEPPER_OPEN_MS
+        : QUANTUM_STEPPER_CLOSE_MS
+      : 520;
+    const easing = panelStateChanged
+      ? isAdjustOpen
+        ? QUANTUM_STEPPER_OPEN_EASING
+        : QUANTUM_STEPPER_CLOSE_EASING
+      : Easing.out(Easing.cubic);
+    const rise = Animated.parallel([
+      Animated.timing(waterLevelAnim, {
+        toValue: target,
+        duration,
+        easing,
+        useNativeDriver: true,
+      }),
+      Animated.timing(waterPanelOffsetAnim, {
+        toValue: panelOffsetTarget,
+        duration,
+        easing,
+        useNativeDriver: true,
+      }),
+    ]);
+    rise.start();
+    return () => {
+      rise.stop();
+    };
+  }, [
+    cardSize.height,
+    expandedWaterFillHeight,
+    isAdjustOpen,
+    reduceMotion,
+    waterFillHeight,
+    waterLevelAnim,
+    waterPanelOffsetAnim,
+    waterRenderHeight,
+  ]);
+
   const waterGradientId = useMemo(
     () => `water-gradient-${String(task.id).replace(/[^a-zA-Z0-9_-]/g, '')}`,
     [task.id]
@@ -224,7 +318,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     const animation = Animated.loop(
       Animated.timing(waveShiftAnim, {
         toValue: 1,
-        duration: 4500,
+        duration: WATER_WAVE_DURATION_MS,
         easing: Easing.linear,
         // Fabric/Android deixa filhos SVG transparentes com transform nativo.
         // Aqui o JS altera apenas a transformação da view já desenhada.
@@ -283,9 +377,6 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
 
   // Stepper inline: tap no ⊕ soma o passo direto (água/contador reagem na hora);
   // long-press abre o painel com −/+, presets e OK.
-  const [isAdjustOpen, setIsAdjustOpen] = useState(false);
-  const [adjustStep, setAdjustStep] = useState(null);
-  const adjustPanelProgress = useRef(new Animated.Value(0)).current;
   const isTimerMode = task.quantum?.mode === 'timer';
   const timerLimitSeconds = isTimerMode ? getTimerTotalSeconds(task.quantum?.timer) : 0;
   const countLimit = task.quantum?.count?.value ?? 0;
@@ -338,8 +429,10 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     }
     const animation = Animated.timing(adjustPanelProgress, {
       toValue: isAdjustOpen ? 1 : 0,
-      duration: isAdjustOpen ? 300 : 200,
-      easing: isAdjustOpen ? Easing.bezier(0.16, 1, 0.3, 1) : Easing.in(Easing.quad),
+      duration: isAdjustOpen ? QUANTUM_STEPPER_OPEN_MS : QUANTUM_STEPPER_CLOSE_MS,
+      easing: isAdjustOpen
+        ? QUANTUM_STEPPER_OPEN_EASING
+        : QUANTUM_STEPPER_CLOSE_EASING,
       useNativeDriver: false,
     });
     animation.start();
@@ -451,27 +544,43 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
         ]}
         onLayout={(event) => {
           const { width, height } = event.nativeEvent.layout;
-          setCardSize((previous) =>
-            previous.width === width && previous.height === height
-              ? previous
-              : { width, height }
-          );
+          // O primeiro layout acontece com o painel fechado. Guardar essa
+          // altura impede um setState por frame ao abrir/fechar o stepper.
+          const collapsedHeight = hasMeasuredCollapsedCardRef.current
+            ? cardSizeRef.current.height
+            : height;
+          hasMeasuredCollapsedCardRef.current = true;
+          if (
+            cardSizeRef.current.width === width &&
+            cardSizeRef.current.height === collapsedHeight
+          ) {
+            return;
+          }
+          const nextSize = { width, height: collapsedHeight };
+          cardSizeRef.current = nextSize;
+          setCardSize(nextSize);
         }}
       >
         {isQuantum && isWaterAnimation && waveGeometry ? (
-          <View
+          <Animated.View
             pointerEvents="none"
-            style={[styles.waterFallbackFill, { height: waterFillHeight }]}
+            style={[
+              styles.waterFallbackFill,
+              {
+                height: waterRenderHeight,
+                transform: [{ translateY: waterTranslateY }],
+              },
+            ]}
           >
             <Svg
               width={cardSize.width}
-              height={waterFillHeight}
+              height={waterRenderHeight}
               style={styles.waterFallbackWave}
             >
               <Defs>
                 <SvgLinearGradient id={waterGradientId} x1="0%" y1="0%" x2="0%" y2="100%">
-                  <Stop offset="0%" stopColor="rgb(153, 199, 252)" />
-                  <Stop offset="100%" stopColor="rgb(100, 158, 248)" />
+                  <Stop offset="0%" stopColor={WATER_GRADIENT_TOP_COLOR} />
+                  <Stop offset="100%" stopColor={WATER_GRADIENT_BOTTOM_COLOR} />
                 </SvgLinearGradient>
               </Defs>
               <AnimatedPath
@@ -480,7 +589,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
                 style={{ transform: [{ translateX: waveCombinedShift }] }}
               />
             </Svg>
-          </View>
+          </Animated.View>
         ) : null}
         <View style={styles.taskCardMain}>
         <Pressable style={styles.taskCardContent} onPress={handlePress}>
@@ -578,11 +687,11 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
                 opacity: adjustPanelProgress,
                 height: adjustPanelProgress.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0, 47],
+                  outputRange: [0, QUANTUM_STEPPER_HEIGHT],
                 }),
                 marginTop: adjustPanelProgress.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0, 12],
+                  outputRange: [0, QUANTUM_STEPPER_MARGIN_TOP],
                 }),
                 transform: [
                   {

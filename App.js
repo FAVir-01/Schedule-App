@@ -343,12 +343,24 @@ function ScheduleApp() {
     return now;
   });
   const [pendingTodayDateKey, setPendingTodayDateKey] = useState(null);
-  const [isTodayDateTransitioning, setIsTodayDateTransitioning] = useState(false);
-  const todayDateTransitioningRef = useRef(false);
-  const todayDateTransitionSequenceRef = useRef(0);
+  const [isTodayPageTransitioning, setIsTodayPageTransitioning] = useState(false);
+  const todayPageTransitioningRef = useRef(false);
+  const todayPageTransitionSequenceRef = useRef(0);
   const todayDayStripRef = useRef(null);
   const todayPageTranslateX = useRef(new Animated.Value(0)).current;
   const todayPageOpacity = useRef(new Animated.Value(1)).current;
+  // A troca de categoria movimenta apenas os cards. A troca de dia continua
+  // usando os valores da pagina inteira (cabecalho, filtros e conteudo).
+  const todayCardsTranslateX = useRef(new Animated.Value(0)).current;
+  const todayCardsOpacity = useRef(new Animated.Value(1)).current;
+  const todayContentTranslateX = useMemo(
+    () => Animated.add(todayPageTranslateX, todayCardsTranslateX),
+    [todayCardsTranslateX, todayPageTranslateX]
+  );
+  const todayContentOpacity = useMemo(
+    () => Animated.multiply(todayPageOpacity, todayCardsOpacity),
+    [todayCardsOpacity, todayPageOpacity]
+  );
   const [tasks, setTasks] = useState([]);
   const [reportDate, setReportDate] = useState(null);
   const [activeTaskId, setActiveTaskId] = useState(null);
@@ -620,7 +632,7 @@ function ScheduleApp() {
     (selectedDateWindowIndex - TODAY_VISIBLE_DATE_RADIUS) * todayDayItemWidth;
 
   useEffect(() => {
-    if (isTodayDateTransitioning) {
+    if (isTodayPageTransitioning) {
       return;
     }
     if (
@@ -635,7 +647,7 @@ function ScheduleApp() {
       animated: false,
     });
   }, [
-    isTodayDateTransitioning,
+    isTodayPageTransitioning,
     selectedDate,
     selectedDateOffsetFromWindow,
     selectedDateWindowOffset,
@@ -1034,15 +1046,19 @@ function ScheduleApp() {
     }
   }, []);
   const handleTaskLayout = useCallback(
-    (taskId, event) => {
+    (taskId, index, event) => {
       const { height, y } = event.nativeEvent.layout;
       const previousPosition = taskPositionsRef.current.get(taskId);
-      taskPositionsRef.current.set(taskId, { height, y });
+      taskPositionsRef.current.set(taskId, { height, index, y });
 
       if (
         activeTab !== 'today' ||
         prefersReducedMotion ||
         !previousPosition ||
+        // Expandir o painel quantum muda altura e posicao, mas nao a ordem.
+        // Deixar o layout seguir naturalmente evita uma segunda animacao FLIP
+        // disputando cada frame com a abertura/recolhimento do card.
+        previousPosition.index === index ||
         (previousPosition.y === y && previousPosition.height === height)
       ) {
         return;
@@ -2183,6 +2199,22 @@ function ScheduleApp() {
     setIsFabOpen(false);
   }, [isFabMenuMounted, isFabOpen]);
 
+  // Abrir uma folha nao pode esperar a animacao/debounce do menu central:
+  // esses cards têm elevation propria no Android e poderiam atravessar o
+  // editor por alguns frames. Desmontamos a camada no mesmo render.
+  const dismissFabMenuImmediately = useCallback(() => {
+    overlayOpacity.stopAnimation();
+    actionsScale.stopAnimation();
+    actionsOpacity.stopAnimation();
+    actionsTranslateY.stopAnimation();
+    overlayOpacity.setValue(0);
+    actionsScale.setValue(0.85);
+    actionsOpacity.setValue(0);
+    actionsTranslateY.setValue(12);
+    setIsFabOpen(false);
+    setIsFabMenuMounted(false);
+  }, [actionsOpacity, actionsScale, actionsTranslateY, overlayOpacity]);
+
   const handleToggleFab = useCallback(() => {
     if (isFabOpen) {
       closeFabMenu();
@@ -2193,17 +2225,17 @@ function ScheduleApp() {
 
   const handleAddHabit = useCallback(() => {
     triggerImpact(Haptics.ImpactFeedbackStyle.Light);
-    closeFabMenu();
+    dismissFabMenuImmediately();
     setHabitSheetMode('create');
     setHabitSheetInitialTask(null);
     setIsHabitSheetOpen(true);
-  }, [closeFabMenu]);
+  }, [dismissFabMenuImmediately]);
 
   const handleAddReflection = useCallback(() => {
     triggerImpact(Haptics.ImpactFeedbackStyle.Light);
-    closeFabMenu();
+    dismissFabMenuImmediately();
     setReflectionDateKey(selectedDateKey);
-  }, [closeFabMenu, selectedDateKey]);
+  }, [dismissFabMenuImmediately, selectedDateKey]);
 
   const handleEditReflectionForDate = useCallback((dateKey) => {
     setReflectionDateKey(dateKey);
@@ -2272,7 +2304,7 @@ function ScheduleApp() {
         !normalized ||
         !targetDateKey ||
         targetDateKey === selectedDateKey ||
-        todayDateTransitioningRef.current
+        todayPageTransitioningRef.current
       ) {
         return;
       }
@@ -2282,7 +2314,7 @@ function ScheduleApp() {
       const shouldAnimate = activeTab === 'today' && !prefersReducedMotion && dayOffset !== 0;
 
       if (!shouldAnimate) {
-        todayDateTransitionSequenceRef.current += 1;
+        todayPageTransitionSequenceRef.current += 1;
         todayPageTranslateX.stopAnimation();
         todayPageOpacity.stopAnimation();
         todayPageTranslateX.setValue(0);
@@ -2306,10 +2338,10 @@ function ScheduleApp() {
       const canCenterTarget =
         Math.abs(targetDateOffsetFromWindow) <=
         TODAY_DATE_WINDOW_RADIUS - TODAY_VISIBLE_DATE_RADIUS;
-      const transitionSequence = todayDateTransitionSequenceRef.current + 1;
-      todayDateTransitionSequenceRef.current = transitionSequence;
-      todayDateTransitioningRef.current = true;
-      setIsTodayDateTransitioning(true);
+      const transitionSequence = todayPageTransitionSequenceRef.current + 1;
+      todayPageTransitionSequenceRef.current = transitionSequence;
+      todayPageTransitioningRef.current = true;
+      setIsTodayPageTransitioning(true);
       setPendingTodayDateKey(targetDateKey);
 
       if (canCenterTarget) {
@@ -2334,9 +2366,9 @@ function ScheduleApp() {
           useNativeDriver: USE_NATIVE_DRIVER,
         }),
       ]).start(({ finished }) => {
-        if (!finished || transitionSequence !== todayDateTransitionSequenceRef.current) {
-          todayDateTransitioningRef.current = false;
-          setIsTodayDateTransitioning(false);
+        if (!finished || transitionSequence !== todayPageTransitionSequenceRef.current) {
+          todayPageTransitioningRef.current = false;
+          setIsTodayPageTransitioning(false);
           setPendingTodayDateKey(null);
           return;
         }
@@ -2350,7 +2382,7 @@ function ScheduleApp() {
         todayPageOpacity.setValue(0);
 
         requestAnimationFrame(() => {
-          if (transitionSequence !== todayDateTransitionSequenceRef.current) {
+          if (transitionSequence !== todayPageTransitionSequenceRef.current) {
             return;
           }
           Animated.parallel([
@@ -2367,13 +2399,13 @@ function ScheduleApp() {
               useNativeDriver: USE_NATIVE_DRIVER,
             }),
           ]).start(({ finished: didFinishEntering }) => {
-            if (transitionSequence === todayDateTransitionSequenceRef.current) {
+            if (transitionSequence === todayPageTransitionSequenceRef.current) {
               if (!didFinishEntering) {
                 todayPageTranslateX.setValue(0);
                 todayPageOpacity.setValue(1);
               }
-              todayDateTransitioningRef.current = false;
-              setIsTodayDateTransitioning(false);
+              todayPageTransitioningRef.current = false;
+              setIsTodayPageTransitioning(false);
             }
           });
         });
@@ -2432,10 +2464,106 @@ function ScheduleApp() {
 
   const handleSelectTagFilter = useCallback(
     (filterKey) => {
-      setSelectedTagFilter(filterKey);
-      updateUserSettings({ selectedTagFilter: filterKey });
+      if (
+        !filterKey ||
+        filterKey === selectedTagFilter ||
+        todayPageTransitioningRef.current
+      ) {
+        return;
+      }
+
+      triggerSelection();
+      const filterOrder = ['all', ...tagOptions.map((option) => option.key)];
+      const currentIndex = Math.max(0, filterOrder.indexOf(selectedTagFilter));
+      const targetIndex = Math.max(0, filterOrder.indexOf(filterKey));
+      const direction = targetIndex >= currentIndex ? 1 : -1;
+      const shouldAnimate = activeTab === 'today' && !prefersReducedMotion;
+      const applyFilter = () => {
+        setSelectedTagFilter(filterKey);
+        updateUserSettings({ selectedTagFilter: filterKey });
+      };
+
+      if (!shouldAnimate) {
+        todayPageTransitionSequenceRef.current += 1;
+        todayCardsTranslateX.stopAnimation();
+        todayCardsOpacity.stopAnimation();
+        todayCardsTranslateX.setValue(0);
+        todayCardsOpacity.setValue(1);
+        applyFilter();
+        return;
+      }
+
+      const transitionSequence = todayPageTransitionSequenceRef.current + 1;
+      todayPageTransitionSequenceRef.current = transitionSequence;
+      todayPageTransitioningRef.current = true;
+      setIsTodayPageTransitioning(true);
+
+      Animated.parallel([
+        Animated.timing(todayCardsTranslateX, {
+          toValue: -direction * todayPageTravelDistance,
+          duration: TODAY_DATE_TRANSITION_OUT_MS,
+          easing: Easing.in(Easing.cubic),
+          useNativeDriver: USE_NATIVE_DRIVER,
+        }),
+        Animated.timing(todayCardsOpacity, {
+          toValue: 0,
+          duration: TODAY_DATE_TRANSITION_OUT_MS,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: USE_NATIVE_DRIVER,
+        }),
+      ]).start(({ finished }) => {
+        if (!finished || transitionSequence !== todayPageTransitionSequenceRef.current) {
+          todayCardsTranslateX.setValue(0);
+          todayCardsOpacity.setValue(1);
+          todayPageTransitioningRef.current = false;
+          setIsTodayPageTransitioning(false);
+          return;
+        }
+
+        applyFilter();
+        todayCardsTranslateX.setValue(direction * todayPageTravelDistance);
+        todayCardsOpacity.setValue(0);
+
+        requestAnimationFrame(() => {
+          if (transitionSequence !== todayPageTransitionSequenceRef.current) {
+            return;
+          }
+          Animated.parallel([
+            Animated.timing(todayCardsTranslateX, {
+              toValue: 0,
+              duration: TODAY_DATE_TRANSITION_IN_MS,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: USE_NATIVE_DRIVER,
+            }),
+            Animated.timing(todayCardsOpacity, {
+              toValue: 1,
+              duration: TODAY_DATE_TRANSITION_IN_MS,
+              easing: Easing.out(Easing.quad),
+              useNativeDriver: USE_NATIVE_DRIVER,
+            }),
+          ]).start(({ finished: didFinishEntering }) => {
+            if (transitionSequence === todayPageTransitionSequenceRef.current) {
+              if (!didFinishEntering) {
+                todayCardsTranslateX.setValue(0);
+                todayCardsOpacity.setValue(1);
+              }
+              todayPageTransitioningRef.current = false;
+              setIsTodayPageTransitioning(false);
+            }
+          });
+        });
+      });
     },
-    [updateUserSettings]
+    [
+      activeTab,
+      prefersReducedMotion,
+      selectedTagFilter,
+      tagOptions,
+      todayCardsOpacity,
+      todayCardsTranslateX,
+      todayPageTravelDistance,
+      updateUserSettings,
+    ]
   );
 
   const handleToggleTaskCompletion = useCallback(
@@ -3277,10 +3405,11 @@ function ScheduleApp() {
   );
 
   const openHabitSheet = useCallback((mode, task = null) => {
+    dismissFabMenuImmediately();
     setHabitSheetMode(mode);
     setHabitSheetInitialTask(task);
     setIsHabitSheetOpen(true);
-  }, []);
+  }, [dismissFabMenuImmediately]);
 
   // Handlers estáveis dos cards (recebem a task de volta como argumento):
   // referências fixas + cache de identidade das tasks = React.memo efetivo,
@@ -3387,7 +3516,7 @@ function ScheduleApp() {
         onFocusCapture={onFocusCapture}
         onLayout={(event) => {
           onLayout?.(event);
-          handleTaskLayout(item.id, event);
+          handleTaskLayout(item.id, index, event);
         }}
         style={[
           style,
@@ -3398,8 +3527,9 @@ function ScheduleApp() {
             // concluído que está descendo. Evita o efeito de duas superfícies
             // disputando o mesmo plano enquanto os layouts se cruzam.
             zIndex: item.completed ? 0 : 1,
+            opacity: todayContentOpacity,
             transform: [
-              { translateX: todayPageTranslateX },
+              { translateX: todayContentTranslateX },
               { translateY: getTaskTranslateY(item.id) },
             ],
           },
@@ -3408,7 +3538,7 @@ function ScheduleApp() {
         {children}
       </Animated.View>
     ),
-    [getTaskTranslateY, handleTaskLayout, todayPageTranslateX]
+    [getTaskTranslateY, handleTaskLayout, todayContentOpacity, todayContentTranslateX]
   );
 
   const renderProfileFilterChip = useCallback(
@@ -3605,6 +3735,10 @@ function ScheduleApp() {
     opacity: todayPageOpacity,
     transform: [{ translateX: todayPageTranslateX }],
   };
+  const todayContentTransitionStyle = {
+    opacity: todayContentOpacity,
+    transform: [{ translateX: todayContentTranslateX }],
+  };
 
   return (
     <View
@@ -3724,12 +3858,12 @@ function ScheduleApp() {
                       <Pressable
                         style={[styles.dayItem, { width: todayDayItemWidth }]}
                         onPress={() => handleSelectDate(day.date)}
-                        disabled={isTodayDateTransitioning}
+                        disabled={isTodayPageTransitioning}
                         accessibilityRole="button"
                         accessibilityLabel={day.accessibilityLabel}
                         accessibilityState={{
                           selected: isSelected,
-                          disabled: isTodayDateTransitioning,
+                          disabled: isTodayPageTransitioning,
                         }}
                       >
                         <Text style={[styles.dayLabel, isSelected && styles.dayLabelSelected]}>
@@ -3743,7 +3877,7 @@ function ScheduleApp() {
                     );
                   }}
                   keyExtractor={(day) => day.key}
-                  extraData={`${displayedTodayDateKey}:${isTodayDateTransitioning}`}
+                  extraData={`${displayedTodayDateKey}:${isTodayPageTransitioning}`}
                   initialScrollIndex={selectedDateWindowIndex - TODAY_VISIBLE_DATE_RADIUS}
                   getItemLayout={(_, index) => ({
                     length: todayDayItemWidth,
@@ -3799,13 +3933,16 @@ function ScheduleApp() {
                       ]}
                       onPress={() => {
                         if (selectedTagFilter !== 'all') {
-                          triggerSelection();
                           handleSelectTagFilter('all');
                         }
                       }}
+                      disabled={isTodayPageTransitioning}
                       accessibilityRole="button"
                       accessibilityLabel={t.today.showAllTags}
-                      accessibilityState={{ selected: selectedTagFilter === 'all' }}
+                      accessibilityState={{
+                        selected: selectedTagFilter === 'all',
+                        disabled: isTodayPageTransitioning,
+                      }}
                     >
                       <Text
                         style={[
@@ -3824,13 +3961,16 @@ function ScheduleApp() {
                           style={[styles.tagPill, isSelected && styles.tagPillSelected]}
                           onPress={() => {
                             if (!isSelected) {
-                              triggerSelection();
                               handleSelectTagFilter(option.key);
                             }
                           }}
+                          disabled={isTodayPageTransitioning}
                           accessibilityRole="button"
                           accessibilityLabel={t.today.showTasksTagged.replace('{tag}', option.label)}
-                          accessibilityState={{ selected: isSelected }}
+                          accessibilityState={{
+                            selected: isSelected,
+                            disabled: isTodayPageTransitioning,
+                          }}
                         >
                           <Text
                             style={[styles.tagPillText, isSelected && styles.tagPillTextSelected]}
@@ -3847,7 +3987,7 @@ function ScheduleApp() {
                 </>
               }
               ListEmptyComponent={
-                <Animated.View style={[styles.tasksSection, todayPageTransitionStyle]}>
+                <Animated.View style={[styles.tasksSection, todayContentTransitionStyle]}>
                   <View style={styles.emptyStateContainer}>
                     <View
                       style={[styles.emptyStateIllustration, dynamicStyles.emptyStateIllustration]}
@@ -4122,12 +4262,16 @@ function ScheduleApp() {
                   calendarViewMode === 'calendar' ? 'auto' : 'no-hide-descendants'
                 }
               >
-                <StickyMonthHeader
-                  date={visibleCalendarDate}
-                  customImages={customMonthImages}
-                  language={language}
-                  reduceMotion={prefersReducedMotion}
-                />
+                <View style={styles.calendarStickyHeaderSlot}>
+                  {!isHabitSheetOpen ? (
+                    <StickyMonthHeader
+                      date={visibleCalendarDate}
+                      customImages={customMonthImages}
+                      language={language}
+                      reduceMotion={prefersReducedMotion}
+                    />
+                  ) : null}
+                </View>
 
                 <FlatList
                   ref={calendarListRef}
@@ -4207,11 +4351,17 @@ function ScheduleApp() {
           </View>
 
           <TouchableOpacity
+            // O editor de tarefas cobre a tela inteira sem usar elevation no
+            // wrapper (isso quebrava o scroll dele no Android), entao o FAB,
+            // que tem elevation 12, ficaria desenhado por cima. Some com ele
+            // enquanto a folha esta aberta.
             style={[
               styles.addButton,
               dynamicStyles.addButton,
               isFabOpen && styles.addButtonActive,
+              (isHabitSheetOpen || reflectionDateKey) && { opacity: 0 },
             ]}
+            pointerEvents={isHabitSheetOpen || reflectionDateKey ? 'none' : 'auto'}
             onPress={handleToggleFab}
             accessibilityRole="button"
             accessibilityLabel={isFabOpen ? t.common.closeAddMenu : t.common.openAddMenu}
@@ -4255,7 +4405,7 @@ function ScheduleApp() {
           </TouchableOpacity>
         </View>
 
-        {isFabMenuMounted && (
+        {isFabMenuMounted && !isHabitSheetOpen && !reflectionDateKey && (
           <AnimatedPressable
             style={[styles.overlay, { opacity: overlayOpacity }]}
             onPress={closeFabMenu}
@@ -4267,7 +4417,7 @@ function ScheduleApp() {
           </AnimatedPressable>
         )}
 
-        {isFabMenuMounted && (
+        {isFabMenuMounted && !isHabitSheetOpen && !reflectionDateKey && (
           <Animated.View
             pointerEvents={isFabOpen ? 'auto' : 'none'}
             style={[
