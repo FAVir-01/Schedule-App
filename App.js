@@ -660,6 +660,40 @@ function ScheduleApp() {
     lastResult: { calendarDayStatusByKey: {}, calendarMonthStatusSignatureById: {} },
   });
   const isCalendarTabActive = activeTab === 'calendar';
+  const canAnimateCalendarSurface =
+    isCalendarTabActive &&
+    calendarViewMode === 'calendar' &&
+    !prefersReducedMotion &&
+    !reportDate &&
+    !reflectionDateKey &&
+    !isHabitSheetOpen &&
+    !isSettingsOpen &&
+    !isCustomizeCalendarOpen;
+  const animatedCalendarMonthIds = useMemo(() => {
+    if (!canAnimateCalendarSurface || calendarMonths.length === 0) {
+      return new Set();
+    }
+
+    const visibleIndex = calendarMonths.findIndex((month) =>
+      visibleCalendarMonthIds.has(month.monthId)
+    );
+    const centerIndex = visibleIndex >= 0
+      ? visibleIndex
+      : Math.max(0, initialCalendarIndex);
+    const activeIds = new Set();
+    for (let offset = -2; offset <= 2; offset += 1) {
+      const month = calendarMonths[centerIndex + offset];
+      if (month) {
+        activeIds.add(month.monthId);
+      }
+    }
+    return activeIds;
+  }, [
+    calendarMonths,
+    canAnimateCalendarSurface,
+    initialCalendarIndex,
+    visibleCalendarMonthIds,
+  ]);
   const calendarStatusMonths = useMemo(() => {
     if (!isCalendarTabActive || calendarMonths.length === 0) {
       return [];
@@ -914,10 +948,23 @@ function ScheduleApp() {
         dayMoods={dayMoods}
         moodAppearance={moodAppearance}
         monthMoodSignature={calendarMonthMoodSignatureById[item.monthId]}
+        animateImage={animatedCalendarMonthIds.has(item.monthId)}
         reduceMotion={prefersReducedMotion}
       />
     ),
-    [calendarDayStatusByKey, calendarMonthStatusSignatureById, calendarMonthMoodSignatureById, customMonthImages, dayMoods, handleOpenReport, language, moodAppearance, prefersReducedMotion, todayKey]
+    [
+      animatedCalendarMonthIds,
+      calendarDayStatusByKey,
+      calendarMonthStatusSignatureById,
+      calendarMonthMoodSignatureById,
+      customMonthImages,
+      dayMoods,
+      handleOpenReport,
+      language,
+      moodAppearance,
+      prefersReducedMotion,
+      todayKey,
+    ]
   );
   const tasksForSelectedDate = useMemo(() => {
     const filtered = tasks.filter((task) => shouldTaskAppearOnDate(task, selectedDate));
@@ -3514,6 +3561,8 @@ function ScheduleApp() {
     ({ children, index, item, onFocusCapture, onLayout, style }) => (
       <Animated.View
         onFocusCapture={onFocusCapture}
+        needsOffscreenAlphaCompositing
+        renderToHardwareTextureAndroid={isTodayPageTransitioning}
         onLayout={(event) => {
           onLayout?.(event);
           handleTaskLayout(item.id, index, event);
@@ -3538,7 +3587,13 @@ function ScheduleApp() {
         {children}
       </Animated.View>
     ),
-    [getTaskTranslateY, handleTaskLayout, todayContentOpacity, todayContentTranslateX]
+    [
+      getTaskTranslateY,
+      handleTaskLayout,
+      isTodayPageTransitioning,
+      todayContentOpacity,
+      todayContentTranslateX,
+    ]
   );
 
   const renderProfileFilterChip = useCallback(
@@ -4268,6 +4323,7 @@ function ScheduleApp() {
                       date={visibleCalendarDate}
                       customImages={customMonthImages}
                       language={language}
+                      animateImage={canAnimateCalendarSurface}
                       reduceMotion={prefersReducedMotion}
                     />
                   ) : null}
@@ -4277,6 +4333,7 @@ function ScheduleApp() {
                   ref={calendarListRef}
                   data={calendarMonths}
                   renderItem={renderCalendarMonth}
+                  extraData={animatedCalendarMonthIds}
                   keyExtractor={(item) => item.id.toString()}
                   showsVerticalScrollIndicator={false}
                   removeClippedSubviews={Platform.OS === 'android'}

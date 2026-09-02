@@ -429,10 +429,26 @@ export const styles = StyleSheet.create({
     color: '#59636f',
     textDecorationLine: 'line-through',
   },
-  taskTime: {
+  // O selo mora na linha da frequencia, alinhado pelo centro do texto: ele e
+  // irmao da palavra e nao do botao de check, entao acompanha o fim da frase
+  // quando ela muda de tamanho e fica longe do toque de concluir.
+  taskTimeRow: {
     marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  taskTime: {
+    flexShrink: 1,
     fontSize: 13,
     color: '#59636f',
+  },
+  taskMetaRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
   },
   taskSubtaskSummary: {
     marginTop: 6,
@@ -444,10 +460,16 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#d7dbeb',
   },
+  taskSubtaskSummaryInline: {
+    marginTop: 0,
+  },
   taskSubtaskSummaryText: {
     fontSize: 12,
     fontWeight: '600',
     color: '#3c2ba7',
+  },
+  finishedMilestoneBadge: {
+    flexShrink: 0,
   },
   taskToggle: {
     width: 32,
@@ -563,16 +585,22 @@ export const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#4b4b63',
   },
-  detailStreakRow: {
+  detailStatsRow: {
     marginTop: 4,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 12,
   },
-  detailStreakText: {
+  detailStatText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#f2732e',
+    color: '#4b4b63',
+  },
+  detailEndDateText: {
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#4b4b63',
   },
   detailSubtaskSummaryLabel: {
     marginTop: 6,
@@ -767,13 +795,13 @@ export const styles = StyleSheet.create({
     color: '#59636f',
   },
   calendarMonthYear: {
-    color: 'rgba(255, 255, 255, 0.85)',
+    color: '#fff',
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 2.5,
-    textShadowColor: 'rgba(0, 0, 0, 0.7)',
+    textShadowColor: 'rgba(0, 0, 0, 0.95)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    textShadowRadius: 3,
   },
   calendarWeekdayTextWeekend: {
     color: '#655b92',
@@ -796,9 +824,9 @@ export const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: '800',
     textTransform: 'capitalize',
-    textShadowColor: 'rgba(0, 0, 0, 0.9)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 8,
+    textShadowColor: '#000',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   calendarDaysGrid: {
     flexDirection: 'row',
@@ -1450,6 +1478,17 @@ export const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#1a1a2e',
+  },
+  reportTaskMetaRow: {
+    marginTop: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  reportTaskMetaText: {
+    fontSize: 12,
+    color: '#666',
   },
 
   // --- ESTILOS DA REFLEXÃO DO DIA ---

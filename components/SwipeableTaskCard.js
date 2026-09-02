@@ -19,6 +19,7 @@ import Svg, {
 import { translations } from '../constants/i18n';
 import { FALLBACK_EMOJI, USE_NATIVE_DRIVER } from '../constants/app';
 import {
+  getTaskFinishedMilestoneForDate,
   getQuantumProgressLabel,
   getQuantumProgressPercent,
   getQuantumStepLabel,
@@ -31,10 +32,12 @@ import {
   WATER_GRADIENT_TOP_COLOR,
   WATER_WAVE_AMPLITUDE,
   WATER_WAVE_DURATION_MS,
+  WATER_WAVE_HORIZONTAL_OVERSCAN,
   WATER_WAVE_MIN_FILL_HEIGHT,
 } from '../utils/waveUtils';
 import { triggerSelection } from '../utils/feedbackUtils';
 import { styles } from '../styles/appStyles';
+import FinishedMilestoneBadge from './FinishedMilestoneBadge';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const QUANTUM_STEPPER_HEIGHT = 47;
@@ -81,8 +84,13 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
   const [hasImageError, setHasImageError] = useState(false);
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
   const [adjustStep, setAdjustStep] = useState(null);
+  const [finishedMilestoneAnimationToken, setFinishedMilestoneAnimationToken] = useState(0);
   const adjustPanelProgress = useRef(new Animated.Value(0)).current;
   const currentOffsetRef = useRef(0);
+  const previousCompletionRef = useRef({
+    dateKey,
+    completed: Boolean(task.completed),
+  });
 
   useEffect(() => {
     const id = translateX.addListener(({ value }) => {
@@ -175,6 +183,31 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     }
     return `${completedSubtasks}/${totalSubtasks}`;
   }, [completedSubtasks, dateKey, task, totalSubtasks]);
+  const finishedMilestone = useMemo(
+    () => getTaskFinishedMilestoneForDate(task, dateKey),
+    [dateKey, task]
+  );
+  const finishedMilestoneMessage = useMemo(
+    () =>
+      finishedMilestone
+        ? t.taskCard.finishedMilestoneMessage.replace('{count}', String(finishedMilestone))
+        : null,
+    [finishedMilestone, t]
+  );
+
+  useEffect(() => {
+    const previous = previousCompletionRef.current;
+    const completed = Boolean(task.completed);
+    if (
+      previous.dateKey === dateKey &&
+      !previous.completed &&
+      completed &&
+      finishedMilestone
+    ) {
+      setFinishedMilestoneAnimationToken((token) => token + 1);
+    }
+    previousCompletionRef.current = { dateKey, completed };
+  }, [dateKey, finishedMilestone, task.completed]);
 
   const isQuantum = task.type === 'quantum';
   const isReminder = task.type === 'reminder';
@@ -204,7 +237,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
       return null;
     }
     const wavelength = Math.max(120, cardSize.width * 0.65);
-    const totalWidth = cardSize.width + wavelength;
+    const totalWidth = cardSize.width + wavelength + WATER_WAVE_HORIZONTAL_OVERSCAN;
     return {
       wavelength,
       totalWidth,
@@ -610,12 +643,29 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
               >
                 {task.title}
               </Text>
-              <Text style={styles.taskTime}>{formatTaskTime(task.time, { language, anytimeLabel: t.sheet.anytime })}</Text>
-              {totalLabel && (
-                <View style={styles.taskSubtaskSummary}>
-                  <Text style={styles.taskSubtaskSummaryText}>{totalLabel}</Text>
+              <View style={styles.taskTimeRow}>
+                <Text style={styles.taskTime} numberOfLines={1}>
+                  {formatTaskTime(task.time, { language, anytimeLabel: t.sheet.anytime })}
+                </Text>
+                <FinishedMilestoneBadge
+                  value={finishedMilestone}
+                  message={finishedMilestoneMessage}
+                  animationToken={finishedMilestoneAnimationToken}
+                  reduceMotion={reduceMotion}
+                  accessibilityLabel={t.taskCard.finishedMilestoneAccessibility.replace(
+                    '{count}',
+                    String(finishedMilestone ?? '')
+                  )}
+                  style={styles.finishedMilestoneBadge}
+                />
+              </View>
+              {totalLabel ? (
+                <View style={styles.taskMetaRow}>
+                  <View style={[styles.taskSubtaskSummary, styles.taskSubtaskSummaryInline]}>
+                    <Text style={styles.taskSubtaskSummaryText}>{totalLabel}</Text>
+                  </View>
                 </View>
-              )}
+              ) : null}
             </View>
           </View>
         </Pressable>
