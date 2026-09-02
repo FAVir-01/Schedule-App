@@ -126,9 +126,11 @@ const {
 const { getInterruptedTaskReorderOffset } = require('../utils/taskReorderUtils');
 const {
   getFinishedMilestoneValue,
+  getLatestFinishedMilestoneValue,
   getTaskRepeatDisplayLabel,
   getTaskFinishedCount,
   getTaskFinishedMilestoneForDate,
+  getTaskLatestFinishedMilestone,
   getTaskTagDisplayLabel,
   getTaskTypeDisplayLabel,
   getQuantumProgressLabel,
@@ -445,6 +447,13 @@ test('deriva os selos de conclusao nos marcos 10 e multiplos de 50', () => {
   assert.equal(getFinishedMilestoneValue(0), null);
   assert.equal(getFinishedMilestoneValue(-50), null);
   assert.equal(getFinishedMilestoneValue(50.5), null);
+  assert.equal(getLatestFinishedMilestoneValue(9), null);
+  assert.equal(getLatestFinishedMilestoneValue(10), 10);
+  assert.equal(getLatestFinishedMilestoneValue(49), 10);
+  assert.equal(getLatestFinishedMilestoneValue(50), 50);
+  assert.equal(getLatestFinishedMilestoneValue(73), 50);
+  assert.equal(getLatestFinishedMilestoneValue(100), 100);
+  assert.equal(getLatestFinishedMilestoneValue(149), 100);
 
   const completionKeys = Array.from({ length: 55 }, (_, index) => {
     const date = new Date(2026, 0, 1);
@@ -461,6 +470,7 @@ test('deriva os selos de conclusao nos marcos 10 e multiplos de 50', () => {
   const task = { completedDates };
 
   assert.equal(getTaskFinishedCount(task), 55);
+  assert.equal(getTaskLatestFinishedMilestone(task), 50);
   assert.equal(getTaskFinishedMilestoneForDate(task, completionKeys[8]), null);
   assert.equal(getTaskFinishedMilestoneForDate(task, completionKeys[9]), 10);
   assert.equal(getTaskFinishedMilestoneForDate(task, completionKeys[49]), 50);
@@ -1793,6 +1803,10 @@ test('mostra o selo Finished somente na data do marco, na linha da frequencia', 
     path.join(root, 'components/DayReportModal.js'),
     'utf8'
   );
+  const taskDetailSource = fs.readFileSync(
+    path.join(root, 'components/TaskDetailModal.js'),
+    'utf8'
+  );
   const profileDetailSource = fs.readFileSync(
     path.join(root, 'components/ProfileTaskDetailModal.js'),
     'utf8'
@@ -1808,6 +1822,7 @@ test('mostra o selo Finished somente na data do marco, na linha da frequencia', 
   assert.equal(badgeSource.includes('useRef(new Animated.Value(1)).current'), true);
   assert.equal(badgeSource.includes('playMessage(0);'), true);
   assert.equal(badgeSource.includes('playEntrance();'), true);
+  assert.equal(badgeSource.includes('animateOnMount && value'), true);
   // A frase flutua, entao entrar e sair dela nao pode mexer no layout do card.
   assert.equal(badgeSource.includes("position: 'absolute'"), true);
   assert.equal(taskCardSource.includes('getTaskFinishedMilestoneForDate(task, dateKey)'), true);
@@ -1816,6 +1831,17 @@ test('mostra o selo Finished somente na data do marco, na linha da frequencia', 
   assert.equal(taskCardSource.includes('message={finishedMilestoneMessage}'), true);
   assert.equal(reportSource.includes('getTaskFinishedMilestoneForDate(task, dateKey)'), true);
   assert.equal(reportSource.includes('animationToken='), false);
+  assert.equal(taskDetailSource.includes('getTaskFinishedCount'), false);
+  assert.equal(taskDetailSource.includes('streak > 0'), true);
+  assert.equal(taskDetailSource.includes('styles.detailStreakRow'), true);
+  assert.equal(taskDetailSource.includes('getTaskLatestFinishedMilestone(task)'), true);
+  assert.equal(taskDetailSource.includes('finishedMilestoneAnimationToken'), false);
+  assert.equal(taskDetailSource.includes('animateOnMount'), true);
+  assert.equal(taskDetailSource.includes('animateSealOnPress'), false);
+  assert.equal(taskDetailSource.includes('message={String(finishedMilestone)}'), true);
+  assert.equal(taskDetailSource.includes('messageSide="left"'), true);
+  assert.equal(taskDetailSource.includes('styles.detailFooterRow'), true);
+  assert.equal(taskDetailSource.includes('style={styles.detailFinishedMilestoneBadge}'), true);
   assert.equal(profileDetailSource.includes('>{streak}</Text>'), true);
   assert.equal(profileDetailSource.includes('>{finished}</Text>'), true);
 });

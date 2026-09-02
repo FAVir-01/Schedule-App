@@ -488,6 +488,20 @@ export const getFinishedMilestoneValue = (finishedCount) => {
   return count >= 50 && count % 50 === 0 ? count : null;
 };
 
+export const getLatestFinishedMilestoneValue = (finishedCount) => {
+  const count = Number(finishedCount);
+  if (!Number.isInteger(count) || count < 10) {
+    return null;
+  }
+  if (count < 50) {
+    return 10;
+  }
+  return Math.floor(count / 50) * 50;
+};
+
+export const getTaskLatestFinishedMilestone = (task) =>
+  getLatestFinishedMilestoneValue(getTaskFinishedCount(task));
+
 export const getTaskFinishedMilestoneForDate = (task, dateKey) => {
   if (!dateKey || !task?.completedDates || typeof task.completedDates !== 'object') {
     return null;

@@ -585,16 +585,16 @@ export const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#4b4b63',
   },
-  detailStatsRow: {
+  detailStreakRow: {
     marginTop: 4,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 4,
   },
-  detailStatText: {
+  detailStreakText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#4b4b63',
+    color: '#f2732e',
   },
   detailEndDateText: {
     marginTop: 4,
@@ -731,6 +731,17 @@ export const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 12,
     alignSelf: 'center',
+  },
+  detailFooterRow: {
+    position: 'relative',
+    minHeight: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailFinishedMilestoneBadge: {
+    position: 'absolute',
+    right: 2,
+    top: 12,
   },
   detailEditContent: {
     flexDirection: 'row',
