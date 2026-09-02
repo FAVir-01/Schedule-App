@@ -1,21 +1,49 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Image, Modal, Platform, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { getDateLocale, translations } from '../constants/i18n';
 import { normalizeDateValue } from '../utils/dateUtils';
-import { getMoodMarker, hasReflectionContent } from '../utils/moodUtils';
+import {
+  getMoodMarker,
+  hasPrivateReflectionContent,
+  hasReflectionContent,
+} from '../utils/moodUtils';
 import { styles } from '../styles/appStyles';
+import DiaryPrivacyMask from './DiaryPrivacyMask';
 import PinchToZoomImage from './PinchToZoomImage';
 
 // Post individual: memo evita re-render dos demais posts ao rolar/atualizar.
-const FeedPostCard = React.memo(({ dateKey, mood, moodAppearance, language, t, onOpenDay, onEditReflection, onOpenPhoto }) => {
+const FeedPostCard = React.memo(({
+  dateKey,
+  mood,
+  moodAppearance,
+  language,
+  t,
+  onOpenDay,
+  onEditReflection,
+  onOpenPhoto,
+  isDiaryPrivacyEnabled,
+  isDiaryUnlocked,
+  onRequestDiaryUnlock,
+}) => {
   const marker = getMoodMarker(mood, moodAppearance);
   const date = normalizeDateValue(dateKey);
   const dateLabel = date
     ? format(date, 'EEEE, d MMM', { locale: getDateLocale(language) })
     : dateKey;
   const title = mood.level ? t.reflection.levels[mood.level] : t.reflection.title;
+  const isPrivateLocked =
+    isDiaryPrivacyEnabled &&
+    !isDiaryUnlocked &&
+    hasPrivateReflectionContent(mood);
+
+  const handleEditReflection = async () => {
+    if (isPrivateLocked && !(await onRequestDiaryUnlock?.())) {
+      return;
+    }
+    onEditReflection(dateKey);
+  };
 
   return (
     <Pressable
@@ -38,7 +66,7 @@ const FeedPostCard = React.memo(({ dateKey, mood, moodAppearance, language, t, o
           <Text style={styles.feedPostDate}>{dateLabel}</Text>
         </View>
         <Pressable
-          onPress={() => onEditReflection(dateKey)}
+          onPress={handleEditReflection}
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel={`${t.reflection.editReflection}. ${dateLabel}`}
@@ -55,20 +83,31 @@ const FeedPostCard = React.memo(({ dateKey, mood, moodAppearance, language, t, o
           ))}
         </View>
       ) : null}
-      {mood.note ? <Text style={styles.feedPostNote}>{mood.note}</Text> : null}
-      {mood.photo ? (
-        <Pressable
-          onPress={() => onOpenPhoto(mood.photo)}
-          accessibilityRole="button"
-          accessibilityLabel={`${t.reflection.openPhoto}. ${dateLabel}`}
-        >
-          <Image
-            source={{ uri: mood.photo }}
-            style={styles.feedPostPhoto}
-            accessible={false}
-          />
-        </Pressable>
-      ) : null}
+      {isPrivateLocked ? (
+        <DiaryPrivacyMask
+          hasText={Boolean(`${mood.note ?? ''}`.trim())}
+          hasPhoto={Boolean(mood.photo)}
+          label={t.diaryPrivacy.unlock}
+          onUnlock={onRequestDiaryUnlock}
+        />
+      ) : (
+        <>
+          {mood.note ? <Text style={styles.feedPostNote}>{mood.note}</Text> : null}
+          {mood.photo ? (
+            <Pressable
+              onPress={() => onOpenPhoto(mood.photo)}
+              accessibilityRole="button"
+              accessibilityLabel={`${t.reflection.openPhoto}. ${dateLabel}`}
+            >
+              <Image
+                source={{ uri: mood.photo }}
+                style={styles.feedPostPhoto}
+                accessible={false}
+              />
+            </Pressable>
+          ) : null}
+        </>
+      )}
     </Pressable>
   );
 });
@@ -80,6 +119,9 @@ function ReflectionFeed({
   todayKey,
   onOpenDay,
   onEditReflection,
+  isDiaryPrivacyEnabled = false,
+  isDiaryUnlocked = false,
+  onRequestDiaryUnlock,
   bottomPadding = 60,
 }) {
   const t = translations[language] ?? translations.en;
@@ -117,6 +159,12 @@ function ReflectionFeed({
     setOpenPhoto(photo);
   }, []);
 
+  useEffect(() => {
+    if (isDiaryPrivacyEnabled && !isDiaryUnlocked) {
+      setOpenPhoto(null);
+    }
+  }, [isDiaryPrivacyEnabled, isDiaryUnlocked]);
+
   const renderItem = useCallback(
     ({ item }) => {
       if (item.type === 'header') {
@@ -132,10 +180,23 @@ function ReflectionFeed({
           onOpenDay={onOpenDay}
           onEditReflection={onEditReflection}
           onOpenPhoto={handleOpenPhoto}
+          isDiaryPrivacyEnabled={isDiaryPrivacyEnabled}
+          isDiaryUnlocked={isDiaryUnlocked}
+          onRequestDiaryUnlock={onRequestDiaryUnlock}
         />
       );
     },
-    [handleOpenPhoto, language, moodAppearance, onEditReflection, onOpenDay, t]
+    [
+      handleOpenPhoto,
+      isDiaryPrivacyEnabled,
+      isDiaryUnlocked,
+      language,
+      moodAppearance,
+      onEditReflection,
+      onOpenDay,
+      onRequestDiaryUnlock,
+      t,
+    ]
   );
 
   if (!hasPosts) {
@@ -168,7 +229,7 @@ function ReflectionFeed({
         contentContainerStyle={{ paddingTop: 4, paddingBottom: bottomPadding }}
       />
       <Modal
-        visible={Boolean(openPhoto)}
+        visible={Boolean(openPhoto) && (!isDiaryPrivacyEnabled || isDiaryUnlocked)}
         transparent
         animationType="fade"
         onRequestClose={() => setOpenPhoto(null)}

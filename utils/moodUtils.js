@@ -23,6 +23,12 @@ export function hasReflectionContent(reflection) {
   );
 }
 
+// Only the free-form note and the daily photo are private. Mood level and
+// tags remain visible so statistics and the calendar keep working normally.
+export function hasPrivateReflectionContent(reflection) {
+  return Boolean(`${reflection?.note ?? ''}`.trim() || reflection?.photo);
+}
+
 // Resolve o que desenhar para um registro de humor: registros novos usam o
 // nível (com aparência personalizável); registros antigos guardavam o próprio
 // emoji/imagem e continuam mostrando o que foi salvo.

@@ -193,7 +193,10 @@ const {
   reconcileTaskReminderSchedules,
 } = require('../services/reminderService');
 const { translations } = require('../constants/i18n');
-const { hasReflectionContent } = require('../utils/moodUtils');
+const {
+  hasPrivateReflectionContent,
+  hasReflectionContent,
+} = require('../utils/moodUtils');
 const {
   TASK_TEMPLATE_COLLECTIONS,
   TASK_TEMPLATE_VERSION,
@@ -689,6 +692,38 @@ test('permite salvar reflexoes com qualquer conteudo significativo', () => {
   assert.equal(hasReflectionContent({ level: 4 }), true);
   assert.equal(hasReflectionContent({ emoji: 'legacy' }), true);
   assert.equal(hasReflectionContent({}), false);
+});
+
+test('protege somente texto e foto privados da reflexao', () => {
+  assert.equal(hasPrivateReflectionContent({ level: 4, tags: ['calm'] }), false);
+  assert.equal(hasPrivateReflectionContent({ emoji: 'legacy', image: 'file://mood.png' }), false);
+  assert.equal(hasPrivateReflectionContent({ note: '   ' }), false);
+  assert.equal(hasPrivateReflectionContent({ note: 'Meu dia' }), true);
+  assert.equal(hasPrivateReflectionContent({ photo: 'file://reflection.jpg' }), true);
+});
+
+test('usa o bloqueio do Android sem renderizar o conteudo real sob o blur', () => {
+  const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
+  const serviceSource = fs.readFileSync(
+    path.join(root, 'services/diaryPrivacyService.js'),
+    'utf8'
+  );
+  const maskSource = fs.readFileSync(
+    path.join(root, 'components/DiaryPrivacyMask.js'),
+    'utf8'
+  );
+  const defaultsSource = fs.readFileSync(
+    path.join(root, 'constants/userSettings.js'),
+    'utf8'
+  );
+
+  assert.equal(serviceSource.includes('disableDeviceFallback: false'), true);
+  assert.equal(serviceSource.includes('getEnrolledLevelAsync()'), true);
+  assert.equal(maskSource.includes('BlurView'), true);
+  assert.equal(maskSource.includes('note'), false);
+  assert.equal(maskSource.includes('source={{ uri:'), false);
+  assert.equal(defaultsSource.includes('protectPrivateReflections: false'), true);
+  assert.equal(appSource.includes('const DIARY_BACKGROUND_LOCK_DELAY_MS = 5 * 60 * 1000;'), true);
 });
 
 test('mantem acoes de tarefa completas nos dois idiomas', () => {

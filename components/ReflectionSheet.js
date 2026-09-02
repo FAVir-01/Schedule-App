@@ -25,8 +25,10 @@ import {
   DEFAULT_MOOD_EMOJIS,
   MOOD_LEVELS,
   MOOD_TAG_KEYS,
+  hasPrivateReflectionContent,
   hasReflectionContent,
 } from '../utils/moodUtils';
+import DiaryPrivacyMask from './DiaryPrivacyMask';
 
 // Folha de reflexão do dia: humor em escala de 1-5 (registro rápido), tags de
 // sentimento, nota e foto opcionais. A aparência de cada nível é personalizável
@@ -40,11 +42,18 @@ function ReflectionSheet({
   language = 'en',
   moodAppearance = {},
   onSetAppearance,
+  isDiaryPrivacyEnabled = false,
+  isDiaryUnlocked = false,
+  onRequestDiaryUnlock,
 }) {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const t = translations[language] ?? translations.en;
   const imageText = t.imageHandling;
+  const isPrivateLocked =
+    isDiaryPrivacyEnabled &&
+    !isDiaryUnlocked &&
+    hasPrivateReflectionContent(mood);
   const [selectedLevel, setSelectedLevel] = useState(null);
   const [selectedTags, setSelectedTags] = useState([]);
   const [note, setNote] = useState('');
@@ -244,6 +253,42 @@ function ReflectionSheet({
     buttons.push({ text: t.reflection.cancel, style: 'cancel' });
     Alert.alert(t.reflection.customizeTitle, t.reflection.customizeMessage, buttons);
   };
+
+  if (isPrivateLocked) {
+    return (
+      <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
+        <View style={styles.reportOverlay}>
+          <Pressable style={styles.reportBackdrop} onPress={onClose} />
+          <View
+            style={[
+              styles.reflectionSheet,
+              {
+                maxHeight: height * 0.85,
+                paddingBottom: insets.bottom,
+              },
+            ]}
+          >
+            <View style={styles.reflectionHeader}>
+              <View>
+                <Text style={styles.reflectionTitle}>{t.reflection.title}</Text>
+                <Text style={styles.reflectionDate}>{dateLabel}</Text>
+              </View>
+              <Pressable onPress={onClose} hitSlop={12}>
+                <Ionicons name="close-circle" size={30} color="#817b96" />
+              </Pressable>
+            </View>
+            <DiaryPrivacyMask
+              hasText={Boolean(`${mood?.note ?? ''}`.trim())}
+              hasPhoto={Boolean(mood?.photo)}
+              editor
+              label={t.diaryPrivacy.unlock}
+              onUnlock={onRequestDiaryUnlock}
+            />
+          </View>
+        </View>
+      </Modal>
+    );
+  }
 
   return (
     <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>

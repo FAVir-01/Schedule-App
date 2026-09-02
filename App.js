@@ -145,6 +145,7 @@ import {
   prepareImportedBackupData,
   selectLatestAppBackupFromDirectory,
 } from './services/backupService';
+import { authenticateDiaryAccess } from './services/diaryPrivacyService';
 import { buildTemplateTasks, migrateImportedTemplateTasks } from './utils/templateUtils';
 
 
@@ -158,6 +159,7 @@ const TODAY_DATE_WINDOW_RADIUS = 45;
 const TODAY_DATE_TRANSITION_OUT_MS = 240;
 const TODAY_DATE_TRANSITION_IN_MS = 280;
 const TODAY_TASK_REORDER_MS = 300;
+const DIARY_BACKGROUND_LOCK_DELAY_MS = 5 * 60 * 1000;
 
 const INITIAL_STORAGE_LOAD_FAILURES = {
   tasks: true,
@@ -384,6 +386,7 @@ function ScheduleApp() {
   const [profileFilterId, setProfileFilterId] = useState(null);
   const [isProfileFilterSheetOpen, setProfileFilterSheetOpen] = useState(false);
   const [isSettingsOpen, setSettingsOpen] = useState(false);
+  const [isDiaryUnlocked, setDiaryUnlocked] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   // Evita exibir movimento antes de a preferência de acessibilidade ser carregada.
@@ -419,12 +422,80 @@ function ScheduleApp() {
   const pendingImportedReminderReconciliationRef = useRef(false);
   const didInitialReminderReconciliationRef = useRef(false);
   const reminderContentSignatureRef = useRef(null);
+  const diaryAuthenticationPromiseRef = useRef(null);
+  const diaryBackgroundedAtRef = useRef(null);
   const pendingCompletionActionDateRef = useRef(null);
   const taskPositionsRef = useRef(new Map());
   const taskAnimationsRef = useRef(new Map());
   const taskReorderAnimationsRef = useRef(new Map());
   const taskReorderGenerationsRef = useRef(new Map());
   const taskPositionContextRef = useRef(null);
+  const isDiaryPrivacyEnabled = userSettings.protectPrivateReflections === true;
+
+  const runDiaryAuthentication = useCallback(async () => {
+    if (diaryAuthenticationPromiseRef.current) {
+      return diaryAuthenticationPromiseRef.current;
+    }
+
+    const authenticationPromise = (async () => {
+      const result = await authenticateDiaryAccess(t.diaryPrivacy);
+      if (result.success) {
+        setDiaryUnlocked(true);
+        return true;
+      }
+      if (result.reason === 'cancelled') {
+        return false;
+      }
+      if (result.reason === 'not_configured') {
+        Alert.alert(
+          t.diaryPrivacy.notConfiguredTitle,
+          t.diaryPrivacy.notConfiguredMessage
+        );
+        return false;
+      }
+      if (result.reason === 'unavailable') {
+        Alert.alert(t.diaryPrivacy.unavailableTitle, t.diaryPrivacy.unavailableMessage);
+        return false;
+      }
+      Alert.alert(t.diaryPrivacy.failedTitle, t.diaryPrivacy.failedMessage);
+      return false;
+    })();
+
+    diaryAuthenticationPromiseRef.current = authenticationPromise;
+    try {
+      return await authenticationPromise;
+    } finally {
+      if (diaryAuthenticationPromiseRef.current === authenticationPromise) {
+        diaryAuthenticationPromiseRef.current = null;
+      }
+    }
+  }, [t.diaryPrivacy]);
+
+  const requestDiaryUnlock = useCallback(async () => {
+    if (!isDiaryPrivacyEnabled || isDiaryUnlocked) {
+      return true;
+    }
+    return runDiaryAuthentication();
+  }, [isDiaryPrivacyEnabled, isDiaryUnlocked, runDiaryAuthentication]);
+
+  const handleChangeDiaryProtection = useCallback(
+    async (shouldProtect) => {
+      if (shouldProtect === isDiaryPrivacyEnabled) {
+        return true;
+      }
+      if (!(await runDiaryAuthentication())) {
+        return false;
+      }
+      updateUserSettings({ protectPrivateReflections: shouldProtect });
+      setDiaryUnlocked(shouldProtect);
+      return true;
+    },
+    [isDiaryPrivacyEnabled, runDiaryAuthentication, updateUserSettings]
+  );
+
+  const handleLockDiaryNow = useCallback(() => {
+    setDiaryUnlocked(false);
+  }, []);
   const [calendarMonths, setCalendarMonths] = useState(() => {
     const today = new Date();
     const months = [];
@@ -570,6 +641,34 @@ function ScheduleApp() {
       appStateSubscription.remove();
     };
   }, []);
+
+  useEffect(() => {
+    if (!isDiaryPrivacyEnabled) {
+      diaryBackgroundedAtRef.current = null;
+      return undefined;
+    }
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'inactive' || nextState === 'background') {
+        if (diaryBackgroundedAtRef.current == null) {
+          diaryBackgroundedAtRef.current = Date.now();
+        }
+        return;
+      }
+      if (nextState === 'active') {
+        const backgroundedAt = diaryBackgroundedAtRef.current;
+        diaryBackgroundedAtRef.current = null;
+        if (
+          backgroundedAt != null &&
+          Date.now() - backgroundedAt >= DIARY_BACKGROUND_LOCK_DELAY_MS
+        ) {
+          setDiaryUnlocked(false);
+        }
+      }
+    });
+
+    return () => subscription.remove();
+  }, [isDiaryPrivacyEnabled]);
 
   const isSelectedToday = selectedDateKey === todayKey;
   const selectedDateLabel = useMemo(() => {
@@ -3081,6 +3180,9 @@ function ScheduleApp() {
             ? rawSettings.selectedTagFilter
             : DEFAULT_USER_SETTINGS.selectedTagFilter,
         privateNotificationContent: rawSettings.privateNotificationContent !== false,
+        // This is a device security preference, so a data backup must not
+        // silently enable or disable it when restored.
+        protectPrivateReflections: isDiaryPrivacyEnabled,
         onboardingCompleted: rawSettings.onboardingCompleted === true,
       };
       const normalizedTasks = normalizeStoredTasks(
@@ -3167,7 +3269,7 @@ function ScheduleApp() {
       setSettingsOpen(false);
       Alert.alert(t.backup.restoreSuccessTitle, t.backup.restoreSuccessMessage);
     },
-    [normalizeStoredTasks, t.backup, tasks]
+    [isDiaryPrivacyEnabled, normalizeStoredTasks, t.backup, tasks]
   );
 
   const handleImportBackup = useCallback(async () => {
@@ -4374,6 +4476,9 @@ function ScheduleApp() {
                     todayKey={todayKey}
                     onOpenDay={handleOpenFeedDay}
                     onEditReflection={handleEditReflectionForDate}
+                    isDiaryPrivacyEnabled={isDiaryPrivacyEnabled}
+                    isDiaryUnlocked={isDiaryUnlocked}
+                    onRequestDiaryUnlock={requestDiaryUnlock}
                     bottomPadding={isCompact ? 56 : 72}
                   />
                 </View>
@@ -4687,6 +4792,9 @@ function ScheduleApp() {
         mood={reportDate ? dayMoods[getDateKey(reportDate)] ?? null : null}
         moodAppearance={moodAppearance}
         onEditReflection={handleEditReflectionForDate}
+        isDiaryPrivacyEnabled={isDiaryPrivacyEnabled}
+        isDiaryUnlocked={isDiaryUnlocked}
+        onRequestDiaryUnlock={requestDiaryUnlock}
         reduceMotion={prefersReducedMotion}
       />
       <ReflectionSheet
@@ -4698,6 +4806,9 @@ function ScheduleApp() {
         language={language}
         moodAppearance={moodAppearance}
         onSetAppearance={handleSetMoodAppearance}
+        isDiaryPrivacyEnabled={isDiaryPrivacyEnabled}
+        isDiaryUnlocked={isDiaryUnlocked}
+        onRequestDiaryUnlock={requestDiaryUnlock}
       />
       <FirstRunOnboarding
         visible={isOnboardingOpen}
@@ -4730,10 +4841,14 @@ function ScheduleApp() {
         onClose={() => setSettingsOpen(false)}
         language={language}
         privateNotificationContent={userSettings.privateNotificationContent !== false}
+        protectPrivateReflections={isDiaryPrivacyEnabled}
+        isDiaryUnlocked={isDiaryUnlocked}
         onChangeLanguage={(key) => updateUserSettings({ language: key })}
         onChangePrivateNotificationContent={(value) =>
           updateUserSettings({ privateNotificationContent: value })
         }
+        onChangeDiaryProtection={handleChangeDiaryProtection}
+        onLockDiaryNow={handleLockDiaryNow}
         onCustomizeCalendar={() => setCustomizeCalendarOpen(true)}
         onExportBackup={handleExportBackup}
         onImportBackup={handleImportBackup}

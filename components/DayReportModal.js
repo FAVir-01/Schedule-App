@@ -17,7 +17,7 @@ import { getMonthImageSource, getMonthReducedMotionColor } from '../constants/mo
 import { translations } from '../constants/i18n';
 import { getDateKey } from '../utils/dateUtils';
 import { lightenColor } from '../utils/colorUtils';
-import { getMoodMarker } from '../utils/moodUtils';
+import { getMoodMarker, hasPrivateReflectionContent } from '../utils/moodUtils';
 import {
   getQuantumProgressLabel,
   getTaskFinishedMilestoneForDate,
@@ -26,6 +26,7 @@ import {
 import { FALLBACK_EMOJI } from '../constants/app';
 import { styles } from '../styles/appStyles';
 import FinishedMilestoneBadge from './FinishedMilestoneBadge';
+import DiaryPrivacyMask from './DiaryPrivacyMask';
 import PinchToZoomImage from './PinchToZoomImage';
 
 function DayReportModal({
@@ -38,6 +39,9 @@ function DayReportModal({
   mood = null,
   moodAppearance = {},
   onEditReflection,
+  isDiaryPrivacyEnabled = false,
+  isDiaryUnlocked = false,
+  onRequestDiaryUnlock,
   reduceMotion = false,
 }) {
   const { height } = useWindowDimensions();
@@ -64,10 +68,20 @@ function DayReportModal({
   const targetSuccessRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
   const t = translations[language] ?? translations.en;
   const [imageErrors, setImageErrors] = useState({});
+  const isPrivateLocked =
+    isDiaryPrivacyEnabled &&
+    !isDiaryUnlocked &&
+    hasPrivateReflectionContent(mood);
 
   useEffect(() => {
     setImageErrors({});
   }, [date, tasks, visible]);
+
+  useEffect(() => {
+    if (isPrivateLocked) {
+      setIsPhotoOpen(false);
+    }
+  }, [isPrivateLocked]);
 
   useEffect(() => {
     if (visible) {
@@ -110,6 +124,13 @@ function DayReportModal({
   const gaugeCenter = GAUGE_SIZE / 2;
 
   if (!visible || !date) return null;
+
+  const handleEditReflection = async () => {
+    if (isPrivateLocked && !(await onRequestDiaryUnlock?.())) {
+      return;
+    }
+    onEditReflection?.(dateKey);
+  };
 
   const getSummaryText = () => {
     if (hasOnlyReminders) {
@@ -183,7 +204,7 @@ function DayReportModal({
                     ) : null}
                   </View>
                   <Pressable
-                    onPress={() => onEditReflection?.(dateKey)}
+                    onPress={handleEditReflection}
                     hitSlop={12}
                     accessibilityRole="button"
                     accessibilityLabel={t.reflection.editReflection}
@@ -191,23 +212,34 @@ function DayReportModal({
                     <Ionicons name="pencil" size={18} color="#625f79" />
                   </Pressable>
                 </View>
-                {mood.note ? (
-                  <Text style={styles.reportMoodNote}>{mood.note}</Text>
-                ) : null}
-                {mood.photo ? (
-                  <Pressable
-                    onPress={() => setIsPhotoOpen(true)}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.reflection.openPhoto}
-                  >
-                    <Image
-                      source={{ uri: mood.photo }}
-                      style={styles.reportMoodPhoto}
-                      accessible={false}
-                    />
-                  </Pressable>
-                ) : null}
-                {mood.photo ? (
+                {isPrivateLocked ? (
+                  <DiaryPrivacyMask
+                    hasText={Boolean(`${mood.note ?? ''}`.trim())}
+                    hasPhoto={Boolean(mood.photo)}
+                    label={t.diaryPrivacy.unlock}
+                    onUnlock={onRequestDiaryUnlock}
+                  />
+                ) : (
+                  <>
+                    {mood.note ? (
+                      <Text style={styles.reportMoodNote}>{mood.note}</Text>
+                    ) : null}
+                    {mood.photo ? (
+                      <Pressable
+                        onPress={() => setIsPhotoOpen(true)}
+                        accessibilityRole="button"
+                        accessibilityLabel={t.reflection.openPhoto}
+                      >
+                        <Image
+                          source={{ uri: mood.photo }}
+                          style={styles.reportMoodPhoto}
+                          accessible={false}
+                        />
+                      </Pressable>
+                    ) : null}
+                  </>
+                )}
+                {mood.photo && !isPrivateLocked ? (
                   <Modal
                     visible={isPhotoOpen}
                     transparent

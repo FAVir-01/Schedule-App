@@ -993,6 +993,62 @@ export const styles = StyleSheet.create({
     borderRadius: 14,
     marginTop: 12,
   },
+  diaryPrivacyMask: {
+    position: 'relative',
+    minHeight: 108,
+    marginTop: 12,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#efedf5',
+  },
+  diaryPrivacyEditorMask: {
+    height: 270,
+    marginHorizontal: 24,
+    marginBottom: 32,
+  },
+  diaryPrivacyPlaceholder: {
+    flex: 1,
+    padding: 14,
+    gap: 12,
+  },
+  diaryPrivacyTextPlaceholder: {
+    gap: 8,
+  },
+  diaryPrivacyLine: {
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#bab6c7',
+  },
+  diaryPrivacyPhotoPlaceholder: {
+    minHeight: 150,
+    borderRadius: 10,
+    backgroundColor: '#cbc7d6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  diaryPrivacyBlur: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  diaryPrivacyUnlockButton: {
+    position: 'absolute',
+    left: '50%',
+    marginLeft: -22,
+    top: '50%',
+    marginTop: -22,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(49, 38, 111, 0.9)',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.92)',
+    elevation: 5,
+  },
+  diaryPrivacyUnlockButtonPressed: {
+    opacity: 0.78,
+    transform: [{ scale: 0.96 }],
+  },
   feedEmptyContainer: {
     flex: 1,
     alignItems: 'center',
@@ -2289,6 +2345,11 @@ export const styles = StyleSheet.create({
   },
   settingsContent: {
     gap: 10,
+    paddingBottom: 4,
+  },
+  settingsScroll: {
+    flexShrink: 1,
+    maxHeight: 560,
   },
   settingsRow: {
     flexDirection: 'row',
