@@ -1748,6 +1748,10 @@ test('abre o teclado do titulo somente por interacao do usuario', () => {
 
 test('mantem a troca de dias do Today animada e sensivel a reduzir movimento', () => {
   const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
+  const stylesSource = fs.readFileSync(path.join(root, 'styles/appStyles.js'), 'utf8');
+  const temporalActionsStyle = stylesSource.match(
+    /todayTemporalActions:\s*\{[\s\S]*?\n  \},/
+  )?.[0] ?? '';
 
   assert.equal(appSource.includes('todayDayStripRef.current?.scrollToOffset'), true);
   assert.equal(appSource.includes('animated: true'), true);
@@ -1757,6 +1761,18 @@ test('mantem a troca de dias do Today animada e sensivel a reduzir movimento', (
     true
   );
   assert.equal(appSource.includes('setPendingTodayDateKey(targetDateKey)'), true);
+  assert.equal(
+    appSource.includes("activeTab === 'today' && !isSelectedToday"),
+    true
+  );
+  assert.equal(
+    appSource.includes('!isSelectedToday && styles.todayContentWithTemporalAction'),
+    true
+  );
+  assert.equal(appSource.includes('styles.todayTemporalButtonFloating'), true);
+  assert.equal(temporalActionsStyle.includes("position: 'absolute'"), true);
+  assert.equal(temporalActionsStyle.includes('bottom: 12'), true);
+  assert.equal(stylesSource.includes('todayContentWithTemporalAction'), true);
 });
 
 test('anima a troca de categoria do Today com o mesmo gesto lateral dos dias', () => {

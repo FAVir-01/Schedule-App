@@ -54,6 +54,10 @@ export const styles = StyleSheet.create({
     flexGrow: 1,
     paddingBottom: 48,
   },
+  todayContentWithTemporalAction: {
+    // Espaco pro botao flutuante "voltar para hoje" nao cobrir o ultimo card.
+    paddingBottom: 104,
+  },
   todayHeader: {
     marginBottom: 20,
   },
@@ -119,12 +123,15 @@ export const styles = StyleSheet.create({
     flexGrow: 0,
   },
   todayTemporalActions: {
+    // Flutua no rodape da area de conteudo, logo acima da barra de abas, em
+    // vez de empurrar o cabecalho da lista pra baixo.
+    position: 'absolute',
+    bottom: 12,
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'flex-end',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 20,
   },
   todayTemporalButton: {
     minHeight: 36,
@@ -142,6 +149,13 @@ export const styles = StyleSheet.create({
   todayTemporalButtonPrimary: {
     borderColor: '#3c2ba7',
     backgroundColor: '#3c2ba7',
+  },
+  todayTemporalButtonFloating: {
+    shadowColor: '#1a1a2e',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    elevation: 6,
   },
   todayTemporalButtonPrimaryText: {
     color: '#ffffff',

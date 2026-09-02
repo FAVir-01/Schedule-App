@@ -3951,7 +3951,10 @@ function ScheduleApp() {
               renderItem={renderTodayTask}
               CellRendererComponent={renderTodayCell}
               keyExtractor={(task) => String(task.id)}
-              contentContainerStyle={styles.todayContent}
+              contentContainerStyle={[
+                styles.todayContent,
+                !isSelectedToday && styles.todayContentWithTemporalAction,
+              ]}
               showsVerticalScrollIndicator={false}
               initialNumToRender={6}
               maxToRenderPerBatch={6}
@@ -4065,28 +4068,6 @@ function ScheduleApp() {
                   style={styles.daySelectorList}
                 />
               </View>
-
-              {!isSelectedToday ? (
-                <Animated.View
-                  style={[styles.todayTemporalActions, todayPageTransitionStyle]}
-                >
-                  <TouchableOpacity
-                    style={[
-                      styles.todayTemporalButton,
-                      styles.todayTemporalButtonPrimary,
-                    ]}
-                    onPress={handleReturnToToday}
-                    activeOpacity={0.75}
-                    accessibilityRole="button"
-                    accessibilityLabel={t.today.backToToday}
-                  >
-                    <Ionicons name="return-up-back" size={16} color="#ffffff" />
-                    <Text style={styles.todayTemporalButtonPrimaryText}>
-                      {t.today.backToToday}
-                    </Text>
-                  </TouchableOpacity>
-                </Animated.View>
-              ) : null}
 
               {tagOptions.length > 0 && (
                 <Animated.View
@@ -4502,6 +4483,34 @@ function ScheduleApp() {
                 </View>
               ) : null}
             </View>
+          ) : null}
+
+          {activeTab === 'today' && !isSelectedToday ? (
+            <Animated.View
+              pointerEvents="box-none"
+              style={[
+                styles.todayTemporalActions,
+                { left: horizontalPadding, right: horizontalPadding },
+                todayPageTransitionStyle,
+              ]}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.todayTemporalButton,
+                  styles.todayTemporalButtonPrimary,
+                  styles.todayTemporalButtonFloating,
+                ]}
+                onPress={handleReturnToToday}
+                activeOpacity={0.75}
+                accessibilityRole="button"
+                accessibilityLabel={t.today.backToToday}
+              >
+                <Ionicons name="return-up-back" size={16} color="#ffffff" />
+                <Text style={styles.todayTemporalButtonPrimaryText}>
+                  {t.today.backToToday}
+                </Text>
+              </TouchableOpacity>
+            </Animated.View>
           ) : null}
         </View>
 
