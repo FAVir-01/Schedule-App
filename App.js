@@ -325,6 +325,7 @@ function ScheduleApp() {
   // Aba calendar tem dois modos: grade de meses ou feed de reflexões.
   const [calendarViewMode, setCalendarViewMode] = useState('calendar');
   const [hasMountedFeed, setHasMountedFeed] = useState(false);
+  const [hasShownCalendarList, setHasShownCalendarList] = useState(false);
   const [isFabOpen, setIsFabOpen] = useState(false);
   const [isFabMenuMounted, setIsFabMenuMounted] = useState(false);
   const [isHabitSheetOpen, setIsHabitSheetOpen] = useState(false);
@@ -1679,6 +1680,20 @@ function ScheduleApp() {
     },
     []
   );
+  // A lista precisa montar VISÍVEL. Dentro de um display:none ela nunca recebe
+  // tamanho de conteúdo, e o salto do initialScrollIndex é limitado em 0 pelo
+  // ScrollView: a lista fica no topo mostrando o espaçador vazio, com as células
+  // do mês atual desenhadas milhares de pixels abaixo. O React Native tenta esse
+  // salto uma única vez por instância, então a chance é perdida de vez.
+  useEffect(() => {
+    if (!isCalendarTabActive) {
+      setHasShownCalendarList(false);
+      return;
+    }
+    if (calendarViewMode === 'calendar') {
+      setHasShownCalendarList(true);
+    }
+  }, [calendarViewMode, isCalendarTabActive]);
   // A faixa do topo mostra o mês que está fisicamente sob ela: o mês cujo bloco
   // contém o offset atual de scroll. A viewability (50% visível) trocava de mês
   // cedo demais — a faixa dizia "julho" com as últimas semanas de junho na tela.
@@ -4431,34 +4446,37 @@ function ScheduleApp() {
                   ) : null}
                 </View>
 
-                <FlatList
-                  ref={calendarListRef}
-                  data={calendarMonths}
-                  renderItem={renderCalendarMonth}
-                  extraData={animatedCalendarMonthIds}
-                  keyExtractor={(item) => item.id.toString()}
-                  showsVerticalScrollIndicator={false}
-                  removeClippedSubviews={Platform.OS === 'android'}
-                  maxToRenderPerBatch={2}
-                  windowSize={3}
-                  initialScrollIndex={initialCalendarIndex !== -1 ? initialCalendarIndex : 12}
-                  initialNumToRender={2}
-                  updateCellsBatchingPeriod={16}
-                  onScroll={handleCalendarScroll}
-                  scrollEventThrottle={48}
-                  getItemLayout={getItemLayout}
-                  onScrollToIndexFailed={handleCalendarScrollToIndexFailed}
-                  contentContainerStyle={[
-                    styles.calendarListContent,
-                    {
-                      paddingTop: 0,
-                      paddingBottom: isCompact ? 56 : 72,
-                      paddingHorizontal: 0,
-                    },
-                  ]}
-                  onEndReached={loadMoreCalendarMonths}
-                  onEndReachedThreshold={0.5}
-                />
+                {/* Montar escondida faz a lista perder o salto inicial: só entra visível. */}
+                {calendarViewMode === 'calendar' || hasShownCalendarList ? (
+                  <FlatList
+                    ref={calendarListRef}
+                    data={calendarMonths}
+                    renderItem={renderCalendarMonth}
+                    extraData={animatedCalendarMonthIds}
+                    keyExtractor={(item) => item.id.toString()}
+                    showsVerticalScrollIndicator={false}
+                    removeClippedSubviews={Platform.OS === 'android'}
+                    maxToRenderPerBatch={2}
+                    windowSize={3}
+                    initialScrollIndex={initialCalendarIndex !== -1 ? initialCalendarIndex : 12}
+                    initialNumToRender={2}
+                    updateCellsBatchingPeriod={16}
+                    onScroll={handleCalendarScroll}
+                    scrollEventThrottle={48}
+                    getItemLayout={getItemLayout}
+                    onScrollToIndexFailed={handleCalendarScrollToIndexFailed}
+                    contentContainerStyle={[
+                      styles.calendarListContent,
+                      {
+                        paddingTop: 0,
+                        paddingBottom: isCompact ? 56 : 72,
+                        paddingHorizontal: 0,
+                      },
+                    ]}
+                    onEndReached={loadMoreCalendarMonths}
+                    onEndReachedThreshold={0.5}
+                  />
+                ) : null}
               </View>
 
               {hasMountedFeed ? (
