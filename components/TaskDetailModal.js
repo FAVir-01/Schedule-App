@@ -10,11 +10,12 @@ import { normalizeDateValue } from '../utils/dateUtils';
 import {
   getQuantumProgressLabel,
   getSubtaskCompletionStatus,
-  getTaskFinishedCount,
+  getTaskLatestFinishedMilestone,
   getTaskStreak,
 } from '../utils/taskUtils';
 import { formatTaskTime } from '../utils/timeUtils';
 import { styles } from '../styles/appStyles';
+import FinishedMilestoneBadge from './FinishedMilestoneBadge';
 
 export default function TaskDetailModal({
   language = 'en',
@@ -25,6 +26,7 @@ export default function TaskDetailModal({
   onToggleSubtask,
   onToggleCompletion,
   onEdit,
+  reduceMotion = false,
 }) {
   const insets = useSafeAreaInsets();
   const [hasImageError, setHasImageError] = useState(false);
@@ -38,8 +40,8 @@ export default function TaskDetailModal({
     () => (visible && task ? getTaskStreak(task) : 0),
     [task, visible]
   );
-  const finished = useMemo(
-    () => (visible && task ? getTaskFinishedCount(task) : 0),
+  const finishedMilestone = useMemo(
+    () => (visible && task ? getTaskLatestFinishedMilestone(task) : null),
     [task, visible]
   );
 
@@ -97,10 +99,14 @@ export default function TaskDetailModal({
                   />
                 </Text>
                 <Text style={styles.detailTime}>{formatTaskTime(task.time, { language, anytimeLabel: t.sheet.anytime })}</Text>
-                <View style={styles.detailStatsRow}>
-                  <Text style={styles.detailStatText}>{`${t.taskModal.streak}: ${streak}`}</Text>
-                  <Text style={styles.detailStatText}>{`${t.taskDetails.finished}: ${finished}`}</Text>
-                </View>
+                {streak > 0 ? (
+                  <View style={styles.detailStreakRow}>
+                    <Ionicons name="flame" size={14} color="#f2732e" />
+                    <Text style={styles.detailStreakText}>
+                      {`${t.taskModal.streak}: ${streak} ${streak === 1 ? t.profile.day : t.profile.days}`}
+                    </Text>
+                  </View>
+                ) : null}
                 {endDateLabel ? (
                   <Text style={styles.detailEndDateText}>
                     {`${t.sheet.endDate}: ${endDateLabel}`}
@@ -184,17 +190,33 @@ export default function TaskDetailModal({
                 ))
               )}
             </ScrollView>
-            <Pressable
-              style={styles.detailEditLink}
-              onPress={() => onEdit?.(task.id)}
-              accessibilityRole="button"
-              accessibilityLabel={t.taskModal.editTask}
-            >
-              <View style={styles.detailEditContent}>
-                <Ionicons name="create-outline" size={18} color="#3c2ba7" />
-                <Text style={styles.detailEditButtonText}>{t.taskModal.editTask}</Text>
-              </View>
-            </Pressable>
+            <View style={styles.detailFooterRow}>
+              <Pressable
+                style={styles.detailEditLink}
+                onPress={() => onEdit?.(task.id)}
+                accessibilityRole="button"
+                accessibilityLabel={t.taskModal.editTask}
+              >
+                <View style={styles.detailEditContent}>
+                  <Ionicons name="create-outline" size={18} color="#3c2ba7" />
+                  <Text style={styles.detailEditButtonText}>{t.taskModal.editTask}</Text>
+                </View>
+              </Pressable>
+              {finishedMilestone ? (
+                <FinishedMilestoneBadge
+                  value={finishedMilestone}
+                  message={String(finishedMilestone)}
+                  animateOnMount
+                  messageSide="left"
+                  reduceMotion={reduceMotion}
+                  accessibilityLabel={t.taskCard.finishedMilestoneAccessibility.replace(
+                    '{count}',
+                    String(finishedMilestone)
+                  )}
+                  style={styles.detailFinishedMilestoneBadge}
+                />
+              ) : null}
+            </View>
           </View>
         </View>
       </View>

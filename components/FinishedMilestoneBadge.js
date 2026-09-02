@@ -87,6 +87,8 @@ export default function FinishedMilestoneBadge({
   value,
   message,
   animationToken = 0,
+  animateOnMount = false,
+  messageSide = 'right',
   reduceMotion = false,
   accessibilityLabel,
   style,
@@ -100,6 +102,7 @@ export default function FinishedMilestoneBadge({
   const revealAnimationRef = useRef(null);
   const previousAnimationTokenRef = useRef(animationToken);
   const slideTravel = windowWidth < NARROW_SCREEN_WIDTH ? SLIDE_TRAVEL_NARROW : SLIDE_TRAVEL;
+  const isMessageOnLeft = messageSide === 'left';
   const messageWidth = useMemo(
     () =>
       Math.ceil(
@@ -175,9 +178,7 @@ export default function FinishedMilestoneBadge({
     playMessage(SLIDE_DURATION_MS + MESSAGE_DELAY_MS);
   }, [playMessage, reduceMotion, slide, stopAnimations]);
 
-  // Dois gatilhos, so: a virada de nao-concluida para concluida no botao de
-  // check (o card troca o token) e o toque direto no selo. Abrir a tela nunca
-  // dispara nada.
+  // Nos cards, a animacao completa acontece ao atingir um novo marco.
   useEffect(() => {
     if (previousAnimationTokenRef.current !== animationToken) {
       previousAnimationTokenRef.current = animationToken;
@@ -186,6 +187,13 @@ export default function FinishedMilestoneBadge({
       }
     }
   }, [animationToken, playEntrance, value]);
+
+  // No detalhe, o selo ja fica parado em seu lugar e apenas o numero aparece.
+  useEffect(() => {
+    if (animateOnMount && value) {
+      playMessage(MESSAGE_DELAY_MS);
+    }
+  }, [animateOnMount, playMessage, value]);
 
   useEffect(() => () => stopAnimations(), [stopAnimations]);
 
@@ -237,7 +245,6 @@ export default function FinishedMilestoneBadge({
           },
         ],
   };
-
   return (
     <View style={[{ width: SEAL_SIZE, height: SEAL_SIZE }, style]}>
       <Pressable
@@ -257,11 +264,14 @@ export default function FinishedMilestoneBadge({
           style={[
             {
               position: 'absolute',
-              left: SEAL_SIZE + MESSAGE_GAP,
+              ...(isMessageOnLeft
+                ? { right: SEAL_SIZE + MESSAGE_GAP }
+                : { left: SEAL_SIZE + MESSAGE_GAP }),
               top: 0,
               bottom: 0,
               width: messageWidth,
               justifyContent: 'center',
+              alignItems: isMessageOnLeft ? 'flex-end' : 'flex-start',
             },
             messageAnimatedStyle,
           ]}

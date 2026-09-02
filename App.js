@@ -4786,6 +4786,7 @@ function ScheduleApp() {
         onClose={closeTaskDetail}
         onToggleSubtask={handleToggleSubtask}
         onToggleCompletion={(taskId) => handleToggleTaskCompletion(taskId, selectedDateKey)}
+        reduceMotion={prefersReducedMotion}
         onEdit={(taskId) => {
           const taskToEdit = tasks.find((task) => task.id === taskId);
           if (!taskToEdit) {
