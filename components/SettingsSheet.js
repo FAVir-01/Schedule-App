@@ -4,10 +4,12 @@ import {
   Alert,
   Modal,
   Pressable,
+  ScrollView,
   Switch,
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,16 +23,22 @@ function SettingsSheet({
   onClose,
   language = 'en',
   privateNotificationContent = true,
+  protectPrivateReflections = false,
+  isDiaryUnlocked = false,
   onChangeLanguage,
   onChangePrivateNotificationContent,
+  onChangeDiaryProtection,
+  onLockDiaryNow,
   onCustomizeCalendar,
   onExportBackup,
   onImportBackup,
 }) {
   const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
   const t = translations[language] ?? translations.en;
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isDiaryAuthBusy, setIsDiaryAuthBusy] = useState(false);
   const [shouldTestErrorBoundary, setShouldTestErrorBoundary] = useState(false);
 
   const handleExportBackup = useCallback(async () => {
@@ -59,6 +67,21 @@ function SettingsSheet({
 
   const isBackupBusy = isExporting || isImporting;
 
+  const handleChangeDiaryProtection = useCallback(
+    async (value) => {
+      if (isDiaryAuthBusy) {
+        return;
+      }
+      setIsDiaryAuthBusy(true);
+      try {
+        await onChangeDiaryProtection?.(value);
+      } finally {
+        setIsDiaryAuthBusy(false);
+      }
+    },
+    [isDiaryAuthBusy, onChangeDiaryProtection]
+  );
+
   if (__DEV__ && shouldTestErrorBoundary) {
     throw new Error('Intentional development error boundary test');
   }
@@ -67,7 +90,12 @@ function SettingsSheet({
     <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
       <View style={styles.reportOverlay}>
         <Pressable style={styles.reportBackdrop} onPress={onClose} />
-        <View style={[styles.reflectionSheet, { paddingBottom: insets.bottom + 16 }]}>
+        <View
+          style={[
+            styles.reflectionSheet,
+            { maxHeight: height * 0.9, paddingBottom: insets.bottom + 16 },
+          ]}
+        >
           <View style={styles.reflectionHeader}>
             <Text style={styles.reflectionTitle}>{t.profile.settings}</Text>
             <Pressable onPress={onClose} hitSlop={12}>
@@ -75,7 +103,11 @@ function SettingsSheet({
             </Pressable>
           </View>
 
-          <View style={styles.settingsContent}>
+          <ScrollView
+            style={styles.settingsScroll}
+            contentContainerStyle={styles.settingsContent}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={styles.settingsRow}>
               <Ionicons name="language-outline" size={20} color="#3c2ba7" />
               <Text style={styles.settingsRowLabel}>{t.profile.language}</Text>
@@ -105,6 +137,42 @@ function SettingsSheet({
                 ))}
               </View>
             </View>
+
+            <View style={styles.settingsRow}>
+              <Ionicons name="lock-closed-outline" size={20} color="#3c2ba7" />
+              <View style={styles.settingsRowTextGroup}>
+                <Text style={styles.settingsRowTitle}>{t.diaryPrivacy.settingLabel}</Text>
+                <Text style={styles.settingsRowHint}>{t.diaryPrivacy.settingHint}</Text>
+              </View>
+              <Switch
+                value={protectPrivateReflections}
+                onValueChange={handleChangeDiaryProtection}
+                disabled={isDiaryAuthBusy}
+                trackColor={{ false: '#817b96', true: '#7467c9' }}
+                thumbColor={protectPrivateReflections ? '#3c2ba7' : '#ffffff'}
+                accessibilityLabel={t.diaryPrivacy.settingLabel}
+                accessibilityHint={t.diaryPrivacy.settingHint}
+                accessibilityState={{ busy: isDiaryAuthBusy }}
+              />
+            </View>
+
+            {protectPrivateReflections && isDiaryUnlocked ? (
+              <TouchableOpacity
+                style={styles.settingsRow}
+                onPress={onLockDiaryNow}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t.diaryPrivacy.lockNow}
+                accessibilityHint={t.diaryPrivacy.lockNowHint}
+              >
+                <Ionicons name="lock-closed" size={20} color="#3c2ba7" />
+                <View style={styles.settingsRowTextGroup}>
+                  <Text style={styles.settingsRowTitle}>{t.diaryPrivacy.lockNow}</Text>
+                  <Text style={styles.settingsRowHint}>{t.diaryPrivacy.lockNowHint}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#68637f" />
+              </TouchableOpacity>
+            ) : null}
 
             <View style={styles.settingsRow}>
               <Ionicons name="notifications-outline" size={20} color="#3c2ba7" />
@@ -210,7 +278,7 @@ function SettingsSheet({
                 <Ionicons name="warning-outline" size={18} color="#a23b3b" />
               </TouchableOpacity>
             ) : null}
-          </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
