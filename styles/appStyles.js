@@ -1350,6 +1350,9 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  reportPhotoViewerBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
   reportPhotoViewerImage: {
     width: '100%',
     height: '85%',
@@ -2146,10 +2149,10 @@ export const styles = StyleSheet.create({
   profileFilterSheetOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
   },
   profileFilterSheetBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(26, 26, 46, 0.45)',
   },
   profileFilterSheetCard: {
     backgroundColor: '#ffffff',
@@ -2168,11 +2171,18 @@ export const styles = StyleSheet.create({
     backgroundColor: '#d8dbe8',
     marginBottom: 14,
   },
+  profileFilterSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 8,
+  },
   profileFilterSheetTitle: {
+    flex: 1,
     fontSize: 16,
     fontWeight: '700',
     color: '#1a1a2e',
-    marginBottom: 8,
   },
   profileFilterSheetRow: {
     flexDirection: 'row',

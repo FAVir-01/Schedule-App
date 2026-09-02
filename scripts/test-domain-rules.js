@@ -1552,6 +1552,44 @@ test('mantem listas extensas virtualizadas na tela principal e no perfil', () =>
   assert.equal(appSource.includes('renderItem={renderProfileFilterChip}'), true);
 });
 
+test('fecha o filtro do perfil pelo X ou backdrop escurecido', () => {
+  const sheetSource = fs.readFileSync(
+    path.join(root, 'components/ProfileFilterSheet.js'),
+    'utf8'
+  );
+  const stylesSource = fs.readFileSync(path.join(root, 'styles/appStyles.js'), 'utf8');
+
+  assert.equal(sheetSource.includes('statusBarTranslucent'), true);
+  assert.equal(sheetSource.includes('navigationBarTranslucent'), true);
+  assert.equal(sheetSource.includes('style={styles.profileFilterSheetBackdrop}'), true);
+  assert.equal(sheetSource.includes('name="close-circle"'), true);
+  assert.equal(
+    (sheetSource.match(/accessibilityLabel=\{t\.profile\.filterSheetClose\}/g)?.length ?? 0),
+    2
+  );
+  assert.match(
+    stylesSource,
+    /profileFilterSheetOverlay:\s*\{[\s\S]*?backgroundColor: 'rgba\(0, 0, 0, 0\.55\)'/
+  );
+});
+
+test('mantem o detalhe da task acima da navegacao inferior do aparelho', () => {
+  const detailSource = fs.readFileSync(
+    path.join(root, 'components/TaskDetailModal.js'),
+    'utf8'
+  );
+
+  assert.equal(
+    detailSource.includes("import { useSafeAreaInsets } from 'react-native-safe-area-context';"),
+    true
+  );
+  assert.equal(detailSource.includes('const insets = useSafeAreaInsets();'), true);
+  assert.equal(
+    detailSource.includes('paddingBottom: Math.max(28, insets.bottom + 16)'),
+    true
+  );
+});
+
 test('mantem o corpo do perfil com margens horizontais simetricas', () => {
   const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
   const stylesSource = fs.readFileSync(path.join(root, 'styles/appStyles.js'), 'utf8');
@@ -1590,9 +1628,9 @@ test('mantem a barra inferior legivel com fonte ampliada em portugues', () => {
   assert.equal(appSource.includes('const isBottomBarLargeText = fontScale >= 1.6;'), true);
   assert.equal(appSource.includes('numberOfLines={isBottomBarLargeText ? 2 : 1}'), true);
   assert.equal(appSource.includes('maxFontSizeMultiplier={2}'), true);
-  assert.equal(
-    appSource.includes("!isBottomBarLargeText &&\n            (key === 'calendar' || key === 'discover')"),
-    true
+  assert.match(
+    appSource,
+    /!isBottomBarLargeText &&\r?\n\s+\(key === 'calendar' \|\| key === 'discover'\) &&/
   );
   assert.match(stylesSource, /tabButtonWide:\s*\{\s*flex: 1\.5/);
   assert.equal(stylesSource.includes("textAlign: 'center'"), true);
@@ -1854,7 +1892,9 @@ test('anima a folha pela base sem elevar o wrapper durante a edicao', () => {
   assert.equal(sheetSource.includes('name="camera-outline"'), true);
   assert.equal(sheetSource.includes('<Text style={styles.mediaActionText}>{t.photoOrGif}</Text>'), false);
   assert.equal(sheetSource.includes('styles.mediaActionsRow'), false);
-  assert.equal(sheetSource.includes('allowsEditing: false'), true);
+  assert.equal(sheetSource.includes('allowsEditing: true'), true);
+  assert.equal(sheetSource.includes('aspect: [1, 1]'), true);
+  assert.equal(sheetSource.includes("shape: 'rectangle'"), true);
   assert.equal(sheetSource.includes('quality: 1'), true);
   assert.equal(sheetSource.includes('pickRandomEmoji'), false);
   assert.equal(sheetSource.includes('handleShuffleEmoji'), false);
@@ -1899,6 +1939,53 @@ test('anima a folha pela base sem elevar o wrapper durante a edicao', () => {
     (appSource.match(/isFabMenuMounted && !isHabitSheetOpen && !reflectionDateKey/g)?.length ?? 0) >= 2,
     true
   );
+});
+
+test('recorta icones quadrados e restaura o zoom das fotos ao soltar', () => {
+  const taskEditorSource = fs.readFileSync(
+    path.join(root, 'components/AddHabitSheet.js'),
+    'utf8'
+  );
+  const reflectionSource = fs.readFileSync(
+    path.join(root, 'components/ReflectionSheet.js'),
+    'utf8'
+  );
+  const calendarSource = fs.readFileSync(
+    path.join(root, 'components/CustomizeCalendarModal.js'),
+    'utf8'
+  );
+  const zoomSource = fs.readFileSync(
+    path.join(root, 'components/PinchToZoomImage.js'),
+    'utf8'
+  );
+  const feedSource = fs.readFileSync(
+    path.join(root, 'components/ReflectionFeed.js'),
+    'utf8'
+  );
+  const reportSource = fs.readFileSync(
+    path.join(root, 'components/DayReportModal.js'),
+    'utf8'
+  );
+
+  assert.equal(taskEditorSource.includes('allowsEditing: true'), true);
+  assert.equal(taskEditorSource.includes('aspect: [1, 1]'), true);
+  assert.equal(reflectionSource.includes('cropSquare: true'), true);
+  assert.equal(reflectionSource.includes("aspect: [1, 1], shape: 'rectangle'"), true);
+  assert.equal(calendarSource.includes('allowsEditing: false'), true);
+  assert.equal(zoomSource.includes('PanResponder.create({'), true);
+  assert.equal(zoomSource.includes('Math.min(MAX_SCALE'), true);
+  assert.equal(zoomSource.includes('focalOffsetX'), true);
+  assert.equal(zoomSource.includes('(1 - nextScale) * gesture.focalOffsetX'), true);
+  assert.equal(zoomSource.includes('nextPageX - gesture.pinchStartPageX'), true);
+  assert.equal(zoomSource.includes('PINCH_SMOOTHING'), true);
+  assert.equal(zoomSource.includes('scale.stopAnimation();'), true);
+  assert.equal(zoomSource.includes('overshootClamping: true'), true);
+  assert.equal(zoomSource.includes('Animated.parallel(['), true);
+  assert.equal(zoomSource.includes('toValue: 1'), true);
+  assert.equal(zoomSource.includes('toValue: 0'), true);
+  assert.equal(zoomSource.includes('onPanResponderRelease:'), true);
+  assert.equal(feedSource.includes('<PinchToZoomImage'), true);
+  assert.equal(reportSource.includes('<PinchToZoomImage'), true);
 });
 
 test('encerra animacoes decorativas e respeita reduzir movimento', () => {

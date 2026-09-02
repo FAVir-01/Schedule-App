@@ -76,12 +76,34 @@ export default function ProfileFilterSheet({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={onClose}
+    >
       <View style={styles.profileFilterSheetOverlay}>
-        <Pressable style={styles.profileFilterSheetBackdrop} onPress={onClose} />
+        <Pressable
+          style={styles.profileFilterSheetBackdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={t.profile.filterSheetClose}
+        />
         <View style={styles.profileFilterSheetCard}>
           <View style={styles.profileFilterSheetHandle} />
-          <Text style={styles.profileFilterSheetTitle}>{t.profile.filterSheetTitle}</Text>
+          <View style={styles.profileFilterSheetHeader}>
+            <Text style={styles.profileFilterSheetTitle}>{t.profile.filterSheetTitle}</Text>
+            <Pressable
+              onPress={onClose}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel={t.profile.filterSheetClose}
+            >
+              <Ionicons name="close-circle" size={30} color="#817b96" />
+            </Pressable>
+          </View>
           <ScrollView showsVerticalScrollIndicator={false}>
             <Pressable
               style={styles.profileFilterSheetRow}

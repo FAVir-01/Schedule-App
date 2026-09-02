@@ -342,8 +342,10 @@ export default function AddHabitSheet({
       setIsLoadingImage(true);
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
-        // Android so preserva GIF animado sem edicao e com qualidade original.
+        // Abre o editor nativo para enquadrar o icone antes de salva-lo.
+        allowsEditing: true,
+        aspect: [1, 1],
+        shape: 'rectangle',
         quality: 1,
       });
       if (!result.canceled && result.assets?.length) {
