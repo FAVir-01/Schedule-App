@@ -6,6 +6,7 @@ import { getDateLocale, translations } from '../constants/i18n';
 import { normalizeDateValue } from '../utils/dateUtils';
 import { getMoodMarker, hasReflectionContent } from '../utils/moodUtils';
 import { styles } from '../styles/appStyles';
+import PinchToZoomImage from './PinchToZoomImage';
 
 // Post individual: memo evita re-render dos demais posts ao rolar/atualizar.
 const FeedPostCard = React.memo(({ dateKey, mood, moodAppearance, language, t, onOpenDay, onEditReflection, onOpenPhoto }) => {
@@ -172,19 +173,21 @@ function ReflectionFeed({
         animationType="fade"
         onRequestClose={() => setOpenPhoto(null)}
       >
-        <Pressable
-          style={styles.reportPhotoViewerOverlay}
-          onPress={() => setOpenPhoto(null)}
-          accessibilityRole="button"
-          accessibilityLabel={t.reflection.closePhoto}
-        >
-          <Image
+        <View style={styles.reportPhotoViewerOverlay}>
+          <Pressable
+            style={styles.reportPhotoViewerBackdrop}
+            onPress={() => setOpenPhoto(null)}
+            accessibilityRole="button"
+            accessibilityLabel={t.reflection.closePhoto}
+          />
+          <PinchToZoomImage
             source={{ uri: openPhoto }}
             style={styles.reportPhotoViewerImage}
             resizeMode="contain"
-            accessible={false}
+            onPress={() => setOpenPhoto(null)}
+            accessibilityLabel={t.reflection.closePhoto}
           />
-        </Pressable>
+        </View>
       </Modal>
     </>
   );

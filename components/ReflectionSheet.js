@@ -177,7 +177,7 @@ function ReflectionSheet({
     );
   };
 
-  const pickImage = async ({ quality = 1, limits, prefix }) => {
+  const pickImage = async ({ quality = 1, limits, prefix, cropSquare = false }) => {
     if (isLoadingImage) {
       return null;
     }
@@ -185,7 +185,8 @@ function ReflectionSheet({
       setIsLoadingImage(true);
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
+        allowsEditing: cropSquare,
+        ...(cropSquare ? { aspect: [1, 1], shape: 'rectangle' } : {}),
         quality,
       });
       if (result.canceled || !result.assets?.length) {
@@ -215,8 +216,8 @@ function ReflectionSheet({
     }
   };
 
-  // Segurar um humor troca só a aparência dele (imagem/GIF); o nível salvo nos
-  // registros não muda. Sem allowsEditing pra não re-encodar e matar GIFs.
+  // Segurar um humor troca só a aparência dele; o nível salvo nos registros
+  // não muda. O recorte quadrado mantém o enquadramento em todos os avatares.
   const handleCustomizeLevel = (level) => {
     const buttons = [
       {
@@ -226,6 +227,7 @@ function ReflectionSheet({
             quality: 1,
             limits: IMAGE_LIMITS.moodAppearance,
             prefix: `custom_mood_level_${level}`,
+            cropSquare: true,
           });
           if (uri) {
             onSetAppearance?.(level, uri);

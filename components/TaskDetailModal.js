@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns';
 import { getDateLocale, translations } from '../constants/i18n';
 import { FALLBACK_EMOJI } from '../constants/app';
@@ -25,6 +26,7 @@ export default function TaskDetailModal({
   onToggleCompletion,
   onEdit,
 }) {
+  const insets = useSafeAreaInsets();
   const [hasImageError, setHasImageError] = useState(false);
   const t = translations[language] ?? translations.en;
 
@@ -66,7 +68,12 @@ export default function TaskDetailModal({
     >
       <View style={styles.detailOverlay}>
         <Pressable style={styles.detailBackdrop} onPress={onClose} accessibilityRole="button" />
-        <View style={styles.detailCardContainer}>
+        <View
+          style={[
+            styles.detailCardContainer,
+            { paddingBottom: Math.max(28, insets.bottom + 16) },
+          ]}
+        >
           <View style={[styles.detailCard, { backgroundColor: cardBackground, borderColor: task.color }]}>
             <View style={styles.detailHeaderRow}>
               <View style={styles.detailHeaderInfo}>

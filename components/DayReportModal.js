@@ -26,6 +26,7 @@ import {
 import { FALLBACK_EMOJI } from '../constants/app';
 import { styles } from '../styles/appStyles';
 import FinishedMilestoneBadge from './FinishedMilestoneBadge';
+import PinchToZoomImage from './PinchToZoomImage';
 
 function DayReportModal({
   visible,
@@ -213,19 +214,21 @@ function DayReportModal({
                     animationType="fade"
                     onRequestClose={() => setIsPhotoOpen(false)}
                   >
-                    <Pressable
-                      style={styles.reportPhotoViewerOverlay}
-                      onPress={() => setIsPhotoOpen(false)}
-                      accessibilityRole="button"
-                      accessibilityLabel={t.reflection.closePhoto}
-                    >
-                      <Image
+                    <View style={styles.reportPhotoViewerOverlay}>
+                      <Pressable
+                        style={styles.reportPhotoViewerBackdrop}
+                        onPress={() => setIsPhotoOpen(false)}
+                        accessibilityRole="button"
+                        accessibilityLabel={t.reflection.closePhoto}
+                      />
+                      <PinchToZoomImage
                         source={{ uri: mood.photo }}
                         style={styles.reportPhotoViewerImage}
                         resizeMode="contain"
-                        accessible={false}
+                        onPress={() => setIsPhotoOpen(false)}
+                        accessibilityLabel={t.reflection.closePhoto}
                       />
-                    </Pressable>
+                    </View>
                   </Modal>
                 ) : null}
               </View>
