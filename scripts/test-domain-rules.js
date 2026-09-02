@@ -125,7 +125,10 @@ const {
 } = require('../utils/todayNavigationUtils');
 const { getInterruptedTaskReorderOffset } = require('../utils/taskReorderUtils');
 const {
+  getFinishedMilestoneValue,
   getTaskRepeatDisplayLabel,
+  getTaskFinishedCount,
+  getTaskFinishedMilestoneForDate,
   getTaskTagDisplayLabel,
   getTaskTypeDisplayLabel,
   getQuantumProgressLabel,
@@ -207,6 +210,7 @@ const {
   WATER_IDLE_FILL_PERCENT,
   WATER_WAVE_AMPLITUDE,
   WATER_WAVE_DURATION_MS,
+  WATER_WAVE_HORIZONTAL_OVERSCAN,
   WATER_WAVE_MIN_FILL_HEIGHT,
 } = require('../utils/waveUtils');
 const {
@@ -425,6 +429,45 @@ test('mantem progresso quantum e conclusao coerentes em dados antigos', () => {
     ),
     '1/1 cup'
   );
+});
+
+test('deriva os selos de conclusao nos marcos 10 e multiplos de 50', () => {
+  assert.equal(getFinishedMilestoneValue(9), null);
+  assert.equal(getFinishedMilestoneValue(10), 10);
+  assert.equal(getFinishedMilestoneValue(11), null);
+  assert.equal(getFinishedMilestoneValue(49), null);
+  assert.equal(getFinishedMilestoneValue(50), 50);
+  assert.equal(getFinishedMilestoneValue(100), 100);
+  assert.equal(getFinishedMilestoneValue(150), 150);
+  assert.equal(getFinishedMilestoneValue(0), null);
+  assert.equal(getFinishedMilestoneValue(-50), null);
+  assert.equal(getFinishedMilestoneValue(50.5), null);
+
+  const completionKeys = Array.from({ length: 55 }, (_, index) => {
+    const date = new Date(2026, 0, 1);
+    date.setDate(date.getDate() + index);
+    return getDateKey(date);
+  });
+  const completedDates = Object.fromEntries(
+    completionKeys
+      .slice()
+      .reverse()
+      .map((dateKey) => [dateKey, true])
+  );
+  completedDates['2025-12-31'] = false;
+  const task = { completedDates };
+
+  assert.equal(getTaskFinishedCount(task), 55);
+  assert.equal(getTaskFinishedMilestoneForDate(task, completionKeys[8]), null);
+  assert.equal(getTaskFinishedMilestoneForDate(task, completionKeys[9]), 10);
+  assert.equal(getTaskFinishedMilestoneForDate(task, completionKeys[49]), 50);
+  assert.equal(getTaskFinishedMilestoneForDate(task, completionKeys[50]), null);
+  assert.equal(getTaskFinishedMilestoneForDate(task, '2025-12-31'), null);
+
+  completedDates[completionKeys[9]] = false;
+  assert.equal(getTaskFinishedCount(task), 54);
+  assert.equal(getTaskFinishedMilestoneForDate(task, completionKeys[10]), 10);
+  assert.equal(getTaskFinishedMilestoneForDate(task, completionKeys[50]), 50);
 });
 
 test('reconhece fontes importadas sem confundir tarefas comuns', () => {
@@ -1557,7 +1600,7 @@ test('mantem a barra inferior legivel com fonte ampliada em portugues', () => {
   assert.equal(translations.pt.tabs.discover, 'DESCUBRA');
 });
 
-test('usa previews mensais estaticos e desmonta o calendario fora da aba', () => {
+test('anima cinco meses do calendario e mantem os demais estaticos', () => {
   const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
   const stylesSource = fs.readFileSync(path.join(root, 'styles/appStyles.js'), 'utf8');
   const monthsSource = fs.readFileSync(path.join(root, 'constants/months.js'), 'utf8');
@@ -1579,14 +1622,25 @@ test('usa previews mensais estaticos e desmonta o calendario fora da aba', () =>
     monthsSource.match(/assets\/months\/static\/[a-z]{3}\.webp/g)?.length,
     12
   );
-  assert.equal(monthsSource.includes("require('../assets/months/jan.gif')"), false);
+  assert.equal(
+    monthsSource.match(/assets\/months\/[a-z]{3}\.gif/g)?.length,
+    12
+  );
   assert.equal(monthsSource.includes('return isGifImageUri(customImageUri) ? null'), true);
-  assert.equal(monthsSource.includes('if (reduceMotion) {\n    return null;'), true);
+  assert.equal(monthsSource.includes('return animate && !reduceMotion'), true);
+  assert.equal(monthsSource.includes('? MONTH_ANIMATED_IMAGES[index]'), true);
+  assert.equal(monthsSource.includes(': MONTH_STATIC_IMAGES[index]'), true);
+  assert.equal(appSource.includes('for (let offset = -2; offset <= 2; offset += 1)'), true);
+  assert.equal(appSource.includes('animateImage={animatedCalendarMonthIds.has(item.monthId)}'), true);
+  assert.equal(appSource.includes('extraData={animatedCalendarMonthIds}'), true);
+  assert.equal(calendarSource.includes('animate: animateImage'), true);
   assert.equal(calendarSource.includes('getMonthReducedMotionColor(item.monthIndex)'), true);
+  assert.equal(stickyHeaderSource.includes('animate: animateImage'), true);
   assert.equal(stickyHeaderSource.includes('getMonthReducedMotionColor(monthIndex)'), true);
   assert.equal(appSource.includes('<View style={styles.calendarStickyHeaderSlot}>'), true);
   assert.equal(appSource.includes('{!isHabitSheetOpen ? ('), true);
   assert.match(stylesSource, /calendarStickyHeaderSlot:\s*\{[\s\S]*?height: 50/);
+  assert.equal(reportSource.includes('animate: visible'), true);
   assert.equal(reportSource.includes('getMonthReducedMotionColor(monthIndex)'), true);
   assert.equal(customizeSource.includes('getMonthReducedMotionColor(index)'), true);
   assert.equal((appSource.match(/reduceMotion=\{prefersReducedMotion\}/g)?.length ?? 0) >= 4, true);
@@ -1643,6 +1697,54 @@ test('anima a troca de categoria do Today com o mesmo gesto lateral dos dias', (
     true
   );
   assert.equal(appSource.includes('disabled={isTodayPageTransitioning}'), true);
+  assert.equal(
+    appSource.includes('needsOffscreenAlphaCompositing'),
+    true
+  );
+  assert.equal(
+    appSource.includes('renderToHardwareTextureAndroid={isTodayPageTransitioning}'),
+    true
+  );
+});
+
+test('mostra o selo Finished somente na data do marco, na linha da frequencia', () => {
+  const badgeSource = fs.readFileSync(
+    path.join(root, 'components/FinishedMilestoneBadge.js'),
+    'utf8'
+  );
+  const taskCardSource = fs.readFileSync(
+    path.join(root, 'components/SwipeableTaskCard.js'),
+    'utf8'
+  );
+  const reportSource = fs.readFileSync(
+    path.join(root, 'components/DayReportModal.js'),
+    'utf8'
+  );
+  const profileDetailSource = fs.readFileSync(
+    path.join(root, 'components/ProfileTaskDetailModal.js'),
+    'utf8'
+  );
+
+  assert.equal(badgeSource.includes('const MESSAGE_HOLD_MS = 3500'), true);
+  assert.equal(badgeSource.includes('const SLIDE_DURATION_MS = 1200'), true);
+  assert.equal(badgeSource.includes('onPress={(event) => {'), true);
+  assert.equal(badgeSource.includes('event.stopPropagation?.();'), true);
+  assert.equal(badgeSource.includes('backgroundColor'), false);
+  // O selo em repouso ja esta assentado: abrir a tela nao anima nada e o toque
+  // move so a frase.
+  assert.equal(badgeSource.includes('useRef(new Animated.Value(1)).current'), true);
+  assert.equal(badgeSource.includes('playMessage(0);'), true);
+  assert.equal(badgeSource.includes('playEntrance();'), true);
+  // A frase flutua, entao entrar e sair dela nao pode mexer no layout do card.
+  assert.equal(badgeSource.includes("position: 'absolute'"), true);
+  assert.equal(taskCardSource.includes('getTaskFinishedMilestoneForDate(task, dateKey)'), true);
+  assert.equal(taskCardSource.includes('animationToken={finishedMilestoneAnimationToken}'), true);
+  assert.equal(taskCardSource.includes('style={styles.taskTimeRow}'), true);
+  assert.equal(taskCardSource.includes('message={finishedMilestoneMessage}'), true);
+  assert.equal(reportSource.includes('getTaskFinishedMilestoneForDate(task, dateKey)'), true);
+  assert.equal(reportSource.includes('animationToken='), false);
+  assert.equal(profileDetailSource.includes('>{streak}</Text>'), true);
+  assert.equal(profileDetailSource.includes('>{finished}</Text>'), true);
 });
 
 test('desenha crista e corpo da agua no mesmo path animado sem emenda', () => {
@@ -1659,6 +1761,7 @@ test('desenha crista e corpo da agua no mesmo path animado sem emenda', () => {
   assert.equal(taskCardSource.includes('const AnimatedPath = Animated.createAnimatedComponent(Path)'), true);
   assert.equal(taskCardSource.includes('styles.waterFallbackFill'), true);
   assert.equal(taskCardSource.includes('waveCombinedShift'), true);
+  assert.equal(taskCardSource.includes('WATER_WAVE_HORIZONTAL_OVERSCAN'), true);
   assert.equal(taskCardSource.includes('translateX: waveCombinedShift'), true);
   assert.equal(taskCardSource.includes('styles.waterFallbackBody'), false);
   assert.equal(taskCardSource.includes('AnimatedLinearGradient'), false);
@@ -1669,6 +1772,7 @@ test('mantem agua visivel em progresso zero sem distorcer a conclusao', () => {
   assert.equal(WATER_WAVE_MIN_FILL_HEIGHT, 19);
   assert.equal(WATER_WAVE_AMPLITUDE, 4);
   assert.equal(WATER_WAVE_DURATION_MS, 4500);
+  assert.equal(WATER_WAVE_HORIZONTAL_OVERSCAN > 10, true);
   assert.equal(getWaterDisplayPercent(0), WATER_IDLE_FILL_PERCENT);
   assert.equal(getWaterDisplayPercent(1), 1);
   assert.equal(getWaterDisplayPercent(-1), WATER_IDLE_FILL_PERCENT);

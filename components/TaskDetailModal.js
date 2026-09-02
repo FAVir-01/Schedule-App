@@ -1,10 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { translations } from '../constants/i18n';
+import { format } from 'date-fns';
+import { getDateLocale, translations } from '../constants/i18n';
 import { FALLBACK_EMOJI } from '../constants/app';
 import { lightenColor } from '../utils/colorUtils';
-import { getQuantumProgressLabel, getSubtaskCompletionStatus, getTaskStreak } from '../utils/taskUtils';
+import { normalizeDateValue } from '../utils/dateUtils';
+import {
+  getQuantumProgressLabel,
+  getSubtaskCompletionStatus,
+  getTaskFinishedCount,
+  getTaskStreak,
+} from '../utils/taskUtils';
 import { formatTaskTime } from '../utils/timeUtils';
 import { styles } from '../styles/appStyles';
 
@@ -29,6 +36,10 @@ export default function TaskDetailModal({
     () => (visible && task ? getTaskStreak(task) : 0),
     [task, visible]
   );
+  const finished = useMemo(
+    () => (visible && task ? getTaskFinishedCount(task) : 0),
+    [task, visible]
+  );
 
   if (!visible || !task) {
     return null;
@@ -41,6 +52,10 @@ export default function TaskDetailModal({
   const quantumLabel = getQuantumProgressLabel(task, dateKey);
   const isReminder = task.type === 'reminder';
   const cardBackground = lightenColor(task.color, 0.85);
+  const endDate = normalizeDateValue(task.repeat?.endDate);
+  const endDateLabel = endDate
+    ? format(endDate, 'PPP', { locale: getDateLocale(language) })
+    : null;
 
   return (
     <Modal
@@ -75,14 +90,15 @@ export default function TaskDetailModal({
                   />
                 </Text>
                 <Text style={styles.detailTime}>{formatTaskTime(task.time, { language, anytimeLabel: t.sheet.anytime })}</Text>
-                {streak > 0 && (
-                  <View style={styles.detailStreakRow}>
-                    <Ionicons name="flame" size={14} color="#f2732e" />
-                    <Text style={styles.detailStreakText}>
-                      {`${t.taskModal.streak}: ${streak} ${streak === 1 ? t.profile.day : t.profile.days}`}
-                    </Text>
-                  </View>
-                )}
+                <View style={styles.detailStatsRow}>
+                  <Text style={styles.detailStatText}>{`${t.taskModal.streak}: ${streak}`}</Text>
+                  <Text style={styles.detailStatText}>{`${t.taskDetails.finished}: ${finished}`}</Text>
+                </View>
+                {endDateLabel ? (
+                  <Text style={styles.detailEndDateText}>
+                    {`${t.sheet.endDate}: ${endDateLabel}`}
+                  </Text>
+                ) : null}
                 {quantumLabel ? (
                   <Text style={styles.detailSubtaskSummaryLabel}>{quantumLabel}</Text>
                 ) : !isReminder && totalSubtasks > 0 ? (

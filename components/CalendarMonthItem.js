@@ -1,7 +1,6 @@
 import React from 'react';
-import { Image, ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, ImageBackground, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { format } from 'date-fns';
 import { getMonthImageSource, getMonthReducedMotionColor } from '../constants/months';
 import { getDateLocale, getWeekdayInitials, translations } from '../constants/i18n';
@@ -98,9 +97,13 @@ const CalendarMonthItem = React.memo(({
   dayMoods,
   moodAppearance,
   monthMoodSignature,
+  animateImage = false,
   reduceMotion = false,
 }) => {
-  const imageSource = getMonthImageSource(item.monthIndex, customImages, { reduceMotion });
+  const imageSource = getMonthImageSource(item.monthIndex, customImages, {
+    animate: animateImage,
+    reduceMotion,
+  });
   const reducedMotionColor = getMonthReducedMotionColor(item.monthIndex);
   const labels = (translations[language] ?? translations.en).calendar;
   const weekdayInitials = getWeekdayInitials(language);
@@ -113,12 +116,6 @@ const CalendarMonthItem = React.memo(({
         imageStyle={{ resizeMode: 'cover' }}
         resizeMethod="resize"
       >
-        {/* Gradiente no rodapé garante contraste do título sobre qualquer foto */}
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.55)']}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        />
         <Text style={styles.calendarMonthYear}>{format(item.date, 'yyyy')}</Text>
         <Text style={styles.calendarMonthTitle} accessibilityRole="header">
           {format(item.date, 'MMMM', { locale: getDateLocale(language) })}
@@ -187,6 +184,10 @@ const CalendarMonthItem = React.memo(({
   }
 
   if (prevProps.reduceMotion !== nextProps.reduceMotion) {
+    return false;
+  }
+
+  if (prevProps.animateImage !== nextProps.animateImage) {
     return false;
   }
 

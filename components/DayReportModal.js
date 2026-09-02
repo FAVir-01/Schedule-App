@@ -20,10 +20,12 @@ import { lightenColor } from '../utils/colorUtils';
 import { getMoodMarker } from '../utils/moodUtils';
 import {
   getQuantumProgressLabel,
+  getTaskFinishedMilestoneForDate,
   shouldCountTaskTowardsCompletion,
 } from '../utils/taskUtils';
 import { FALLBACK_EMOJI } from '../constants/app';
 import { styles } from '../styles/appStyles';
+import FinishedMilestoneBadge from './FinishedMilestoneBadge';
 
 function DayReportModal({
   visible,
@@ -48,7 +50,7 @@ function DayReportModal({
   // Se 'date' for nulo, não quebra o app
   const monthIndex = date?.getMonth() ?? 0;
   const imageSource = date
-    ? getMonthImageSource(monthIndex, customImages, { reduceMotion })
+    ? getMonthImageSource(monthIndex, customImages, { animate: visible, reduceMotion })
     : null;
   const reducedMotionColor = getMonthReducedMotionColor(monthIndex);
 
@@ -322,6 +324,11 @@ function DayReportModal({
                     const baseColor = task.color || '#3c2ba7';
                     const lightBg = lightenColor(baseColor, 0.85);
                     const quantumLabel = getQuantumProgressLabel(task, dateKey);
+                    const finishedMilestone = getTaskFinishedMilestoneForDate(task, dateKey);
+                    const subtaskLabel =
+                      task.type !== 'reminder' && task.totalSubtasks > 0
+                        ? `${task.completedSubtasks}/${task.totalSubtasks} subtasks`
+                        : null;
 
                     return (
                       <View
@@ -360,14 +367,31 @@ function DayReportModal({
                             {task.title}
                           </Text>
 
-                          {quantumLabel ? (
-                            <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
-                              {quantumLabel}
-                            </Text>
-                          ) : task.type !== 'reminder' && task.totalSubtasks > 0 ? (
-                            <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>
-                              {task.completedSubtasks}/{task.totalSubtasks} subtasks
-                            </Text>
+                          {(quantumLabel || subtaskLabel || finishedMilestone) ? (
+                            <View style={styles.reportTaskMetaRow}>
+                              {quantumLabel || subtaskLabel ? (
+                                <Text style={styles.reportTaskMetaText}>
+                                  {quantumLabel ?? subtaskLabel}
+                                </Text>
+                              ) : null}
+                              <FinishedMilestoneBadge
+                                value={finishedMilestone}
+                                message={
+                                  finishedMilestone
+                                    ? t.taskCard.finishedMilestoneMessage.replace(
+                                        '{count}',
+                                        String(finishedMilestone)
+                                      )
+                                    : null
+                                }
+                                reduceMotion={reduceMotion}
+                                accessibilityLabel={t.taskCard.finishedMilestoneAccessibility.replace(
+                                  '{count}',
+                                  String(finishedMilestone ?? '')
+                                )}
+                                style={styles.finishedMilestoneBadge}
+                              />
+                            </View>
                           ) : null}
                         </View>
 

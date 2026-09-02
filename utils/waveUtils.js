@@ -23,6 +23,10 @@ const WATER_IDLE_FILL_PERCENT = 0.16;
 const WATER_WAVE_MIN_FILL_HEIGHT = 19;
 const WATER_WAVE_AMPLITUDE = 4;
 const WATER_WAVE_DURATION_MS = 4500;
+// O pulso horizontal do card desloca a onda ate 10 px alem do loop principal.
+// Esta sobra fica fora do recorte e impede que esse deslocamento revele uma
+// faixa vazia na lateral direita perto do fim de um ciclo.
+const WATER_WAVE_HORIZONTAL_OVERSCAN = 24;
 const WATER_GRADIENT_TOP_COLOR = 'rgb(153, 199, 252)';
 const WATER_GRADIENT_BOTTOM_COLOR = 'rgb(100, 158, 248)';
 
@@ -64,5 +68,6 @@ export {
   WATER_IDLE_FILL_PERCENT,
   WATER_WAVE_AMPLITUDE,
   WATER_WAVE_DURATION_MS,
+  WATER_WAVE_HORIZONTAL_OVERSCAN,
   WATER_WAVE_MIN_FILL_HEIGHT,
 };

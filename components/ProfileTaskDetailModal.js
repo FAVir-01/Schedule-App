@@ -7,7 +7,9 @@ import { FALLBACK_EMOJI } from '../constants/app';
 import { getDateKey, normalizeDateValue } from '../utils/dateUtils';
 import {
   getQuantumProgressLabel,
+  getTaskFinishedCount,
   getTaskRepeatDisplayLabel,
+  getTaskStreak,
   getTaskTagDisplayLabel,
   getTaskTypeDisplayLabel,
   isTaskArchived,
@@ -51,6 +53,8 @@ export default function ProfileTaskDetailModal({
     ?? t.taskDisplay.quantumModes.quantum;
   const repeatLabel = getTaskRepeatDisplayLabel(task.repeat, t.taskDisplay.repeats);
   const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
+  const streak = getTaskStreak(task);
+  const finished = getTaskFinishedCount(task);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -119,6 +123,14 @@ export default function ProfileTaskDetailModal({
             <View style={styles.profileDetailRow}>
               <Text style={styles.profileDetailLabel}>{t.taskDetails.startDate}</Text>
               <Text style={styles.profileDetailValue}>{dateLabel}</Text>
+            </View>
+            <View style={styles.profileDetailRow}>
+              <Text style={styles.profileDetailLabel}>{t.taskDetails.streak}</Text>
+              <Text style={styles.profileDetailValue}>{streak}</Text>
+            </View>
+            <View style={styles.profileDetailRow}>
+              <Text style={styles.profileDetailLabel}>{t.taskDetails.finished}</Text>
+              <Text style={styles.profileDetailValue}>{finished}</Text>
             </View>
             <View style={styles.profileDetailRow}>
               <Text style={styles.profileDetailLabel}>{t.taskDetails.repeat}</Text>

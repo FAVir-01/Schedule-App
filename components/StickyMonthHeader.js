@@ -6,11 +6,20 @@ import { getDateLocale } from '../constants/i18n';
 import { styles } from '../styles/appStyles';
 
 // --- COMPONENTE DA FAIXA DO TOPO ---
-const StickyMonthHeader = ({ date, customImages, language, reduceMotion = false }) => {
+const StickyMonthHeader = ({
+  date,
+  customImages,
+  language,
+  animateImage = false,
+  reduceMotion = false,
+}) => {
   if (!date) return null;
 
   const monthIndex = date.getMonth();
-  const imageSource = getMonthImageSource(monthIndex, customImages, { reduceMotion });
+  const imageSource = getMonthImageSource(monthIndex, customImages, {
+    animate: animateImage,
+    reduceMotion,
+  });
   const reducedMotionColor = getMonthReducedMotionColor(monthIndex);
 
   return (

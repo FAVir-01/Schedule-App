@@ -467,6 +467,43 @@ export const getTaskLastCompletionDateKey = (task) => {
   return latest;
 };
 
+// Conclusoes sao guardadas por ocorrencia em `completedDates`. O total e os
+// selos sao derivados desse mesmo mapa para nao manter um contador paralelo
+// que possa divergir ao desmarcar uma data ou restaurar um backup.
+export const getTaskFinishedCount = (task) => {
+  if (!task?.completedDates || typeof task.completedDates !== 'object') {
+    return 0;
+  }
+  return Object.values(task.completedDates).filter(Boolean).length;
+};
+
+export const getFinishedMilestoneValue = (finishedCount) => {
+  const count = Number(finishedCount);
+  if (!Number.isInteger(count) || count <= 0) {
+    return null;
+  }
+  if (count === 10) {
+    return count;
+  }
+  return count >= 50 && count % 50 === 0 ? count : null;
+};
+
+export const getTaskFinishedMilestoneForDate = (task, dateKey) => {
+  if (!dateKey || !task?.completedDates || typeof task.completedDates !== 'object') {
+    return null;
+  }
+
+  const completedDateKeys = Object.entries(task.completedDates)
+    .filter(([, completed]) => Boolean(completed))
+    .map(([key]) => key)
+    .sort();
+  const completionIndex = completedDateKeys.indexOf(dateKey);
+  if (completionIndex < 0) {
+    return null;
+  }
+  return getFinishedMilestoneValue(completionIndex + 1);
+};
+
 export const isPassiveTaskType = (task) => {
   const type = task?.type;
   return type === 'reminder';
