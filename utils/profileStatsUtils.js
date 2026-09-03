@@ -7,6 +7,7 @@ import {
 import {
   getTaskCompletionStatus,
   shouldCountTaskTowardsCompletion,
+  shouldCountTaskTowardsStreak,
 } from './taskUtils';
 
 export const MAX_PROFILE_STREAK_DAYS = 730;
@@ -82,7 +83,10 @@ export const calculateProfileStats = ({
         (isCompleted) => isCompleted === true
       ).length
     : 0;
-  const scorableTasks = statsTasks.filter(shouldCountTaskTowardsCompletion);
+  // Só o que tem sequência entra aqui. O gráfico logo abaixo continua usando
+  // `shouldCountTaskTowardsCompletion`: tarefa avulsa é trabalho agendado real
+  // e deve aparecer lá, ela só não produz sequência.
+  const scorableTasks = statsTasks.filter(shouldCountTaskTowardsStreak);
 
   if (!scorableTasks.length || totalDays === 0) {
     return {
