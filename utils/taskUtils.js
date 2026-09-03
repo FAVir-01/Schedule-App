@@ -1,5 +1,10 @@
 import { DEFAULT_REPEAT_CONFIG } from '../constants/app';
-import { getDateKey, normalizeDateValue, shouldTaskAppearOnDate } from './dateUtils';
+import {
+  getCurrentScheduleVersion,
+  shouldTaskAppearOnDate,
+  toScheduleKey,
+} from '../domain/taskSchedule';
+import { getDateKey, normalizeDateValue } from './dateUtils';
 import { clamp01 } from './mathUtils';
 import { formatDuration, getTimerTotalSeconds, toMinutes } from './timeUtils';
 
@@ -434,25 +439,57 @@ export {
   shouldResetTaskProgress,
 };
 
-// "Arquivada" cobre dois casos: arquivamento manual (task.archived) e tarefas
-// de uma vez só cuja data já passou — essas viram inativas automaticamente.
-export const isTaskArchived = (task, todayKey) => {
-  if (!task) {
+// Arquivada = o usuário arquivou. Estado explícito, nada derivado.
+export const isTaskArchived = (task) => Boolean(task?.archived);
+
+// Vencida = a tarefa não tem mais nenhum dia pela frente. É DERIVADO da data,
+// não um estado gravado. Antes as duas coisas moravam na mesma função, e era
+// isso que obrigava "reativar" a falsificar a data de início da tarefa para
+// escapar do próprio filtro.
+//
+// São dois jeitos de uma tarefa acabar, e os dois contam:
+//   - avulsa: a ocorrência única já passou;
+//   - repetente: a data final da repetição já passou.
+export const isTaskExpired = (task, todayKey) => {
+  if (!task || !todayKey) {
     return false;
   }
-  if (task.archived) {
-    return true;
-  }
-  if (!todayKey) {
+  const version = getCurrentScheduleVersion(task);
+  if (!version) {
     return false;
   }
-  const repeatConfig = normalizeRepeatConfig(task.repeat);
-  if (repeatConfig.enabled) {
+  const repeat = normalizeRepeatConfig(version.repeat);
+  if (!repeat.enabled) {
+    return version.effectiveFrom < todayKey;
+  }
+  const endKey = toScheduleKey(repeat.endDate);
+  if (!endKey) {
     return false;
   }
-  const startDate = normalizeDateValue(task.dateKey ?? task.date);
-  return startDate ? getDateKey(startDate) < todayKey : false;
+  // Fim anterior ao próprio início não descreve dia nenhum: sem isso, um dado
+  // antigo ou importado vira uma tarefa invisível parada na lista de ativas.
+  return endKey < todayKey || endKey < version.effectiveFrom;
 };
+
+// Reativar um hábito que chegou ao fim precisa soltar a data final vencida:
+// sem isso a versão nova já nasceria expirada e o botão não faria nada.
+export const clearExpiredRepeatEnd = (repeat, todayKey) => {
+  const normalized = normalizeRepeatConfig(repeat);
+  if (!normalized.enabled || !todayKey) {
+    return repeat ?? null;
+  }
+  const endKey = toScheduleKey(normalized.endDate);
+  if (!endKey || endKey >= todayKey) {
+    return repeat ?? null;
+  }
+  const { endDate: _expiredEndDate, ...withoutEnd } = normalized;
+  return withoutEnd;
+};
+
+// O que a aba "Arquivadas" de "Suas tarefas" mostra: continuam duas abas, mas
+// as duas regras deixam de colidir dentro de um predicado só.
+export const isTaskInactive = (task, todayKey) =>
+  isTaskArchived(task) || isTaskExpired(task, todayKey);
 
 export const getTaskLastCompletionDateKey = (task) => {
   if (!task?.completedDates || typeof task.completedDates !== 'object') {

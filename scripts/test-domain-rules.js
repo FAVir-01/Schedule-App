@@ -84,15 +84,55 @@ const runHapticsMock = async (operation, value) => {
     throw new Error('haptics unavailable');
   }
 };
+// Sistema de arquivos virtual: a restauração de mídia é a parte do backup que
+// mais pode dar errado na troca de aparelho, e dá para exercitá-la sem device.
+const fileSystemMockState = {
+  documentDirectory: 'file:///data/app/',
+  existing: new Set(),
+  copies: [],
+  failCopyFor: new Set(),
+};
+const fileSystemMock = {
+  get documentDirectory() {
+    return fileSystemMockState.documentDirectory;
+  },
+  EncodingType: { UTF8: 'utf8', Base64: 'base64' },
+  getInfoAsync: async (uri) =>
+    fileSystemMockState.existing.has(uri)
+      ? { exists: true, isDirectory: false, size: 1024, uri }
+      : { exists: false, isDirectory: false, size: 0, uri },
+  copyAsync: async ({ from, to }) => {
+    if (fileSystemMockState.failCopyFor.has(from)) {
+      throw new Error(`copy failed: ${from}`);
+    }
+    fileSystemMockState.copies.push({ from, to });
+    fileSystemMockState.existing.add(to);
+  },
+  readAsStringAsync: async () => 'ZmFrZQ==',
+  writeAsStringAsync: async () => undefined,
+  deleteAsync: async () => undefined,
+  StorageAccessFramework: {
+    readDirectoryAsync: async () => [],
+    makeDirectoryAsync: async (parent, name) => `${parent}/${name}`,
+    createFileAsync: async (parent, name) => `${parent}/${name}`,
+    writeAsStringAsync: async () => undefined,
+    requestDirectoryPermissionsAsync: async () => ({ granted: false }),
+  },
+};
+
 Module._load = function loadWithReactNativeMock(request, parent, isMain) {
   if (request === 'react-native') {
     return {
       Platform: { OS: 'android' },
       Pressable: 'Pressable',
+      Share: { share: async () => ({ action: 'sharedAction' }), dismissedAction: 'dismissedAction' },
       StyleSheet: { create: (styles) => styles },
       Text: 'Text',
       View: 'View',
     };
+  }
+  if (request === 'expo-file-system/legacy') {
+    return fileSystemMock;
   }
   if (request === 'expo-haptics') {
     return {
@@ -117,8 +157,17 @@ const {
   getDateKey,
   isValidDateRange,
   normalizeDateValue,
-  shouldTaskAppearOnDate,
 } = require('../utils/dateUtils');
+const {
+  appendScheduleVersion,
+  createTaskScheduleMatcher,
+  getCurrentScheduleVersion,
+  getScheduleVersionForKey,
+  normalizeTaskSchedule,
+  restartScheduleAt,
+  shouldTaskAppearOnDate,
+  withScheduleMirror,
+} = require('../domain/taskSchedule');
 const {
   createCenteredDateWindow,
   getCalendarDayOffset,
@@ -136,6 +185,10 @@ const {
   getQuantumProgressLabel,
   getQuantumStepLabel,
   isValidQuantumDefinition,
+  clearExpiredRepeatEnd,
+  isTaskArchived,
+  isTaskExpired,
+  isTaskInactive,
   reconcileQuantumCompletionState,
   reconcileTaskProgressOnEdit,
   restoreDeletedTaskAtIndex,
@@ -232,8 +285,18 @@ const { doesDateRepeat } = require('../utils/calendarMath');
 const { buildLocalPeriodSummary } = require('../utils/localSummaryUtils');
 const {
   BACKUP_ERROR_CODES,
+  BACKUP_VERSION,
+  buildMediaManifest,
+  createMediaManifestLookup,
+  getMediaFileName,
   parseAppBackupContents,
 } = require('../utils/backupUtils');
+const {
+  buildDiaryTextExport,
+  collectDiaryEntries,
+  getDiaryExportFileName,
+} = require('../utils/diaryExportUtils');
+const { prepareImportedBackupData } = require('../services/backupService');
 const { AppErrorBoundary } = require('../components/AppErrorBoundary');
 const { replaceStoredAppData, saveTasks } = require('../storage');
 
@@ -548,6 +611,54 @@ test('restaura tarefa excluida na posicao original sem duplicar', () => {
   assert.equal(restoreDeletedTaskAtIndex(restored, deletedTask, 1), restored);
 });
 
+test('protege exclusoes e preserva o desfazer completo da tarefa', () => {
+  const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
+  const profileTasksSource = fs.readFileSync(
+    path.join(root, 'components/ProfileTasksModal.js'),
+    'utf8'
+  );
+  const profileDetailSource = fs.readFileSync(
+    path.join(root, 'components/ProfileTaskDetailModal.js'),
+    'utf8'
+  );
+  const reflectionSource = fs.readFileSync(
+    path.join(root, 'components/ReflectionSheet.js'),
+    'utf8'
+  );
+
+  assert.equal(appSource.includes('const TASK_DELETE_UNDO_DURATION_MS = 6000'), true);
+  assert.equal(
+    appSource.includes('queueTaskDeletionUndo(task, originalIndex, historyEntryId)'),
+    true
+  );
+  assert.equal(appSource.includes('restoreDeletedTaskAtIndex('), true);
+  assert.equal(
+    appSource.includes('entry.id !== pendingTaskDeletion.historyEntryId'),
+    true
+  );
+  assert.equal(
+    appSource.includes(
+      'void refreshTaskReminder(restoredTask, null, { notifyOnFailure: true });'
+    ),
+    true
+  );
+  assert.equal(
+    profileTasksSource.includes('task.id === taskId && !task.profileLocked'),
+    true
+  );
+  assert.equal(
+    profileTasksSource.includes('Alert.alert(t.profileTasks.deleteSelectedConfirmTitle'),
+    true
+  );
+  assert.equal(profileDetailSource.includes('disabled={task.profileLocked}'), true);
+  assert.equal(
+    reflectionSource.includes(
+      'Alert.alert(t.reflection.removeConfirmTitle, t.reflection.removeConfirmMessage'
+    ),
+    true
+  );
+});
+
 test('valida backup versionado e monta previa sem alterar dados', () => {
   const result = parseAppBackupContents(JSON.stringify({
     format: 'favit-backup',
@@ -598,9 +709,18 @@ test('rejeita backup incorreto, futuro ou com tarefas duplicadas', () => {
     (error) => error.code === BACKUP_ERROR_CODES.INVALID_JSON
   );
   assert.throws(
-    () => parseAppBackupContents(buildContents({ version: 2 })),
+    () => parseAppBackupContents(buildContents({ version: BACKUP_VERSION + 1 })),
     (error) => error.code === BACKUP_ERROR_CODES.UNSUPPORTED_VERSION
   );
+  assert.throws(
+    () => parseAppBackupContents(buildContents({ version: '1' })),
+    (error) => error.code === BACKUP_ERROR_CODES.UNSUPPORTED_VERSION
+  );
+  // Um backup da versão anterior continua importável: sem a cadeia de
+  // migradores, toda mudança de formato viraria "versão não suportada" para
+  // quem já usa o app.
+  const migrated = parseAppBackupContents(buildContents({ version: 1 }));
+  assert.equal(migrated.payload.version, BACKUP_VERSION);
   assert.throws(
     () => parseAppBackupContents(buildContents({
       data: {
@@ -614,6 +734,300 @@ test('rejeita backup incorreto, futuro ou com tarefas duplicadas', () => {
     })),
     (error) => error.code === BACKUP_ERROR_CODES.INVALID_DATA
   );
+});
+
+test('monta manifesto de midia com nome unico por arquivo', () => {
+  // O nome do arquivo é a identidade da foto entre exportar e importar. Duas
+  // mídias com o mesmo nome base se sobrescreveriam dentro da pasta.
+  const files = buildMediaManifest([
+    'file:///data/app/reflection_photo_1_a1.jpg',
+    'file:///data/app/reflection_photo_1_a1.jpg', // repetida: entra uma vez só
+    'file:///outro/lugar/reflection_photo_1_a1.jpg', // mesmo nome, origem diferente
+    'file:///data/app/habit_icon_2_b2.png',
+    'content://media/external/images/42', // sem extensão utilizável
+  ]);
+
+  assert.deepEqual(files.map((entry) => entry.fileName), [
+    'reflection_photo_1_a1.jpg',
+    'reflection_photo_1_a1_1.jpg',
+    'habit_icon_2_b2.png',
+    'media.bin',
+  ]);
+  assert.equal(new Set(files.map((entry) => entry.fileName)).size, files.length);
+
+  // A volta: da URI antiga (que não existe no aparelho novo) para o arquivo.
+  const lookup = createMediaManifestLookup(files);
+  assert.equal(
+    lookup.get('file:///outro/lugar/reflection_photo_1_a1.jpg'),
+    'reflection_photo_1_a1_1.jpg'
+  );
+  assert.equal(lookup.get('file:///nunca/exportada.jpg'), undefined);
+
+  assert.equal(getMediaFileName('file:///a/b/foto.jpeg?v=2'), 'foto.jpeg');
+  assert.equal(getMediaFileName('content://media/42'), null);
+  assert.equal(getMediaFileName(null), null);
+
+  // Entradas corrompidas no manifesto não podem virar destino de restauração.
+  const unsafe = createMediaManifestLookup([
+    { fileName: '', originalUri: 'file:///a.jpg' },
+    { fileName: 'ok.jpg', originalUri: '' },
+    null,
+    'nao-e-objeto',
+  ]);
+  assert.equal(unsafe.size, 0);
+});
+
+test('aceita backup com pasta de midia e mantem os antigos validos', () => {
+  const buildContents = (media) => JSON.stringify({
+    format: 'favit-backup',
+    version: BACKUP_VERSION,
+    exportedAt: '2026-09-03T12:00:00.000Z',
+    data: {
+      tasks: [],
+      userSettings: null,
+      history: [],
+      monthImages: {},
+      dayMoods: {},
+      moodAppearance: {},
+    },
+    media,
+  });
+
+  const withMedia = parseAppBackupContents(buildContents({
+    filesIncluded: true,
+    referencedUris: ['file:///data/app/foto.jpg'],
+    files: [{ fileName: 'foto.jpg', originalUri: 'file:///data/app/foto.jpg' }],
+  }));
+  assert.equal(withMedia.preview.bundledMediaCount, 1);
+  assert.equal(withMedia.preview.filesIncluded, true);
+
+  // Backup da versão 2 (arquivo solto, sem fotos) continua importável e sai da
+  // migração com manifesto vazio em vez de quebrar a validação.
+  const legacy = parseAppBackupContents(JSON.stringify({
+    format: 'favit-backup',
+    version: 2,
+    exportedAt: '2026-08-01T12:00:00.000Z',
+    data: {
+      tasks: [],
+      userSettings: null,
+      history: [],
+      monthImages: {},
+      dayMoods: {},
+      moodAppearance: {},
+    },
+    media: { filesIncluded: false, referencedUris: ['file:///sumida.jpg'] },
+  }));
+  assert.equal(legacy.payload.version, BACKUP_VERSION);
+  assert.equal(legacy.preview.bundledMediaCount, 0);
+  assert.equal(legacy.preview.referencedMediaCount, 1);
+
+  // Manifesto malformado é dado inválido, não algo para tentar adivinhar.
+  assert.throws(
+    () => parseAppBackupContents(buildContents({
+      filesIncluded: true,
+      referencedUris: [],
+      files: [{ fileName: 'foto.jpg' }],
+    })),
+    (error) => error.code === BACKUP_ERROR_CODES.INVALID_DATA
+  );
+});
+
+test('exporta o diario em texto na mesma ordem do feed', () => {
+  const labels = {
+    ...translations.pt.diaryExport,
+    levels: translations.pt.reflection.levels,
+    tags: translations.pt.reflection.tags,
+  };
+  const dayMoods = {
+    '2026-08-30': { level: 2, note: 'Dia difícil.' },
+    '2026-09-01': { level: 4, tags: ['calm', 'focused'], note: 'Primeira linha.\nSegunda linha.' },
+    '2026-09-03': { level: 5, note: 'Deu tudo certo.', photo: 'file:///foto.jpg' },
+    '2026-09-02': { level: 3 }, // só humor: continua sendo um registro
+    '2026-09-04': {}, // sem conteúdo nenhum: fica de fora
+    'data-invalida': { note: 'ignorada' },
+  };
+
+  const { contents, entryCount } = buildDiaryTextExport({
+    dayMoods,
+    language: 'pt',
+    labels,
+    exportedAt: '2026-09-03T14:22:00.000Z',
+  });
+
+  assert.equal(entryCount, 4);
+  // Ordem do feed: mais recente primeiro. Cada dia é localizado por um trecho
+  // só dele, sem depender do formato de data escolhido.
+  const positions = [
+    contents.indexOf('Deu tudo certo.'), // 03/09
+    contents.indexOf(labels.noText), // 02/09, único sem texto
+    contents.indexOf('Primeira linha.'), // 01/09
+    contents.indexOf('Dia difícil.'), // 30/08
+  ];
+  positions.forEach((position) => assert.ok(position > 0));
+  assert.deepEqual(positions.slice().sort((a, b) => a - b), positions);
+
+  // Cabeçalho por mês, como no feed.
+  assert.ok(contents.includes('SETEMBRO 2026'));
+  assert.ok(contents.includes('AGOSTO 2026'));
+  assert.equal(contents.split('SETEMBRO 2026').length - 1, 1);
+
+  // Conteúdo: humor, tags, quebras de linha preservadas e rastro da foto.
+  // Os rótulos vêm do i18n para o teste não congelar o texto exibido.
+  assert.ok(contents.includes(labels.levels[5]));
+  assert.ok(
+    contents.includes(
+      `${labels.levels[4]} · ${labels.tags.calm}, ${labels.tags.focused}`
+    )
+  );
+  assert.ok(contents.includes('Primeira linha.\nSegunda linha.'));
+  assert.ok(contents.includes(labels.photoAttached));
+  // Dia só com humor não inventa texto.
+  assert.ok(contents.includes(labels.noText));
+  // Nada de dia sem conteúdo nem de chave inválida.
+  assert.equal(contents.includes('ignorada'), false);
+  assert.equal(contents.includes('4 de setembro'), false);
+  assert.ok(contents.endsWith('\n'));
+
+  assert.equal(getDiaryExportFileName('2026-09-03T14:22:00.000Z'), 'favit-diario-2026-09-03.txt');
+  assert.deepEqual(
+    collectDiaryEntries(dayMoods).map((entry) => entry.dateKey),
+    ['2026-09-03', '2026-09-02', '2026-09-01', '2026-08-30']
+  );
+});
+
+test('exporta diario vazio sem quebrar e nos dois idiomas', () => {
+  for (const language of ['en', 'pt']) {
+    const labels = {
+      ...translations[language].diaryExport,
+      levels: translations[language].reflection.levels,
+      tags: translations[language].reflection.tags,
+    };
+    const { contents, entryCount } = buildDiaryTextExport({
+      dayMoods: {},
+      language,
+      labels,
+      exportedAt: '2026-09-03T14:22:00.000Z',
+    });
+    assert.equal(entryCount, 0);
+    assert.ok(contents.includes(labels.empty));
+    assert.ok(contents.includes(labels.fileTitle));
+
+    // Registro único usa a forma singular da contagem.
+    const single = buildDiaryTextExport({
+      dayMoods: { '2026-09-03': { note: 'um' } },
+      language,
+      labels,
+      exportedAt: '2026-09-03T14:22:00.000Z',
+    });
+    assert.equal(single.entryCount, 1);
+    assert.ok(single.contents.includes(labels.entryCountOne));
+    assert.equal(single.contents.includes('{count}'), false);
+    assert.equal(single.contents.includes('{date}'), false);
+  }
+});
+
+test('restaura as fotos da pasta do backup ao trocar de aparelho', async () => {
+  // Cenário real da troca de celular: NENHUMA das URIs antigas existe aqui.
+  fileSystemMockState.existing = new Set();
+  fileSystemMockState.copies = [];
+  fileSystemMockState.failCopyFor = new Set();
+
+  const oldPhoto = 'file:///aparelho/antigo/reflection_photo_1_a1.jpg';
+  const oldIcon = 'file:///aparelho/antigo/habit_icon_2_b2.png';
+  const semBackup = 'file:///aparelho/antigo/perdida.jpg';
+  const files = buildMediaManifest([oldPhoto, oldIcon, semBackup]);
+  // A pasta do backup trouxe só as duas primeiras.
+  const bundleMediaUris = [
+    'content://backup/media/reflection_photo_1_a1.jpg',
+    'content://backup/media/habit_icon_2_b2.png',
+  ];
+
+  const prepared = await prepareImportedBackupData(
+    {
+      tasks: [{ id: 'task-1', customImage: oldIcon }],
+      monthImages: { 0: semBackup },
+      dayMoods: { '2026-09-03': { level: 4, note: 'oi', photo: oldPhoto } },
+      moodAppearance: {},
+    },
+    { mediaFiles: files, bundleMediaUris }
+  );
+
+  // As fotos voltam apontando para o diretório do app, com o MESMO nome de
+  // arquivo — a limpeza de órfãos casa referências por nome base, então
+  // renomear aqui faria a foto recém-restaurada ser apagada como órfã.
+  assert.equal(
+    prepared.data.dayMoods['2026-09-03'].photo,
+    'file:///data/app/reflection_photo_1_a1.jpg'
+  );
+  assert.equal(
+    prepared.data.tasks[0].customImage,
+    'file:///data/app/habit_icon_2_b2.png'
+  );
+  assert.equal(prepared.restoredMediaCount, 2);
+  // A que não veio na pasta é limpa e contabilizada para o aviso da prévia.
+  assert.deepEqual(prepared.data.monthImages, {});
+  assert.equal(prepared.missingMediaCount, 1);
+  // A nota do diário sobrevive independentemente da foto.
+  assert.equal(prepared.data.dayMoods['2026-09-03'].note, 'oi');
+});
+
+test('nao recopia foto que ainda existe nem duplica copia concorrente', async () => {
+  const localPhoto = 'file:///data/app/reflection_photo_9_z9.jpg';
+  fileSystemMockState.existing = new Set([localPhoto]);
+  fileSystemMockState.copies = [];
+  fileSystemMockState.failCopyFor = new Set();
+
+  const repetida = 'file:///aparelho/antigo/repetida.jpg';
+  const files = buildMediaManifest([localPhoto, repetida]);
+  const prepared = await prepareImportedBackupData(
+    {
+      // A mesma URI aparece em quatro registros: sem deduplicação, o arquivo
+      // seria copiado quatro vezes em paralelo, sobre si mesmo.
+      tasks: [{ id: 't1', customImage: repetida }, { id: 't2', customImage: repetida }],
+      monthImages: { 0: repetida },
+      dayMoods: { '2026-09-03': { photo: repetida, image: localPhoto } },
+      moodAppearance: { 3: localPhoto },
+    },
+    { mediaFiles: files, bundleMediaUris: ['content://backup/media/repetida.jpg'] }
+  );
+
+  // Restauração no mesmo aparelho: o arquivo existente é reaproveitado.
+  assert.equal(prepared.data.moodAppearance[3], localPhoto);
+  assert.equal(prepared.data.dayMoods['2026-09-03'].image, localPhoto);
+  // A que faltava foi copiada UMA vez só, apesar das quatro referências.
+  assert.equal(fileSystemMockState.copies.length, 1);
+  assert.equal(prepared.restoredMediaCount, 1);
+  assert.equal(prepared.missingMediaCount, 0);
+  assert.equal(prepared.data.tasks[0].customImage, prepared.data.tasks[1].customImage);
+});
+
+test('uma foto ilegivel nao derruba a restauracao inteira', async () => {
+  const boa = 'file:///aparelho/antigo/boa.jpg';
+  const ruim = 'file:///aparelho/antigo/ruim.jpg';
+  fileSystemMockState.existing = new Set();
+  fileSystemMockState.copies = [];
+  fileSystemMockState.failCopyFor = new Set(['content://backup/media/ruim.jpg']);
+
+  const prepared = await prepareImportedBackupData(
+    {
+      tasks: [{ id: 't1', customImage: ruim }],
+      monthImages: {},
+      dayMoods: { '2026-09-03': { photo: boa } },
+      moodAppearance: {},
+    },
+    {
+      mediaFiles: buildMediaManifest([boa, ruim]),
+      bundleMediaUris: [
+        'content://backup/media/boa.jpg',
+        'content://backup/media/ruim.jpg',
+      ],
+    }
+  );
+
+  assert.equal(prepared.data.dayMoods['2026-09-03'].photo, 'file:///data/app/boa.jpg');
+  assert.equal(prepared.data.tasks[0].customImage, null);
+  assert.equal(prepared.restoredMediaCount, 1);
+  assert.equal(prepared.missingMediaCount, 1);
 });
 
 test('informa sucesso ou falha ao gravar dados locais', async () => {
@@ -734,6 +1148,47 @@ test('usa o bloqueio do Android sem renderizar o conteudo real sob o blur', () =
   assert.equal(maskSource.includes('source={{ uri:'), false);
   assert.equal(defaultsSource.includes('protectPrivateReflections: false'), true);
   assert.equal(appSource.includes('const DIARY_BACKGROUND_LOCK_DELAY_MS = 5 * 60 * 1000;'), true);
+});
+
+test('agrupa bloqueio e interruptor do diario numa subsecao das configuracoes', () => {
+  const settingsSource = fs.readFileSync(
+    path.join(root, 'components/SettingsSheet.js'),
+    'utf8'
+  );
+
+  // Dois níveis na MESMA folha: empilhar outro Modal por cima é frágil no
+  // Android e a volta precisa ser imediata.
+  assert.equal(settingsSource.includes('<Modal'), true);
+  assert.equal(settingsSource.match(/<Modal/g).length, 1);
+  assert.equal(settingsSource.includes("useState('root')"), true);
+  assert.equal(settingsSource.includes("setSection('diaryPrivacy')"), true);
+  assert.equal(settingsSource.includes("setSection('root')"), true);
+
+  // Reabrir as Configurações começa na raiz, nunca numa subseção antiga.
+  assert.equal(settingsSource.includes('if (!visible) {'), true);
+
+  // O interruptor e o "bloquear agora" moraram na subseção, não na raiz.
+  const rootBranchIndex = settingsSource.indexOf('setSection(\'diaryPrivacy\')');
+  const switchIndex = settingsSource.indexOf('onValueChange={handleChangeDiaryProtection}');
+  const lockNowIndex = settingsSource.indexOf('onPress={onLockDiaryNow}');
+  assert.ok(switchIndex > 0 && lockNowIndex > 0 && rootBranchIndex > 0);
+  assert.ok(switchIndex < rootBranchIndex);
+  assert.ok(lockNowIndex < rootBranchIndex);
+
+  // A linha da raiz precisa dizer o estado atual, senão a proteção fica
+  // escondida atrás de um menu sem nenhum sinal de que está ligada.
+  assert.equal(settingsSource.includes('t.diaryPrivacy.stateOn'), true);
+  assert.equal(settingsSource.includes('t.diaryPrivacy.stateOff'), true);
+  assert.equal(settingsSource.includes('t.common.back'), true);
+
+  for (const language of ['en', 'pt']) {
+    const labels = translations[language].diaryPrivacy;
+    ['sectionLabel', 'sectionHint', 'sectionIntro', 'stateOn', 'stateOff'].forEach((key) => {
+      assert.equal(typeof labels[key], 'string');
+      assert.ok(labels[key].length > 0, `${language}.diaryPrivacy.${key}`);
+    });
+    assert.equal(typeof translations[language].common.back, 'string');
+  }
 });
 
 test('mantem acoes de tarefa completas nos dois idiomas', () => {
@@ -1250,6 +1705,340 @@ test('respeita intervalo e dias da recorrência semanal', () => {
   assert.equal(shouldTaskAppearOnDate(task, '2026-07-15'), true);
   assert.equal(shouldTaskAppearOnDate(task, '2026-07-20'), false);
   assert.equal(shouldTaskAppearOnDate(task, '2026-07-27'), true);
+});
+
+test('migra tarefa sem schedule sem mudar nenhum dia agendado', () => {
+  // A migração precisa ser neutra: qualquer diferença aqui reescreveria o
+  // histórico de quem já usa o app no primeiro carregamento.
+  const legacy = {
+    dateKey: '2026-07-13',
+    repeat: { enabled: true, frequency: 'weekly', interval: 2, weekdays: ['mon', 'wed'] },
+    time: { specified: true, mode: 'point', point: { hour: 7, minute: 0, meridiem: 'AM' } },
+  };
+  const schedule = normalizeTaskSchedule(legacy);
+  assert.equal(schedule.length, 1);
+  assert.equal(schedule[0].effectiveFrom, '2026-07-13');
+  assert.deepEqual(schedule[0].repeat, legacy.repeat);
+
+  const migrated = withScheduleMirror(legacy);
+  for (const dateKey of [
+    '2026-07-13', '2026-07-15', '2026-07-16', '2026-07-20', '2026-07-27', '2026-07-29',
+  ]) {
+    assert.equal(
+      shouldTaskAppearOnDate(migrated, dateKey),
+      shouldTaskAppearOnDate(legacy, dateKey),
+      `divergiu em ${dateKey}`
+    );
+  }
+});
+
+test('editar a recorrencia nao reescreve os dias ja agendados', () => {
+  // Diário desde 13/07; em 03/08 vira seg/qua/sex. Julho tem de continuar
+  // sendo lido pela regra diária, senão gráfico e sequência mudam sozinhos.
+  const daily = withScheduleMirror({
+    dateKey: '2026-07-13',
+    repeat: { enabled: true, frequency: 'daily', interval: 1 },
+  });
+  const edited = withScheduleMirror({
+    ...daily,
+    schedule: appendScheduleVersion(daily, {
+      effectiveFrom: '2026-08-03',
+      repeat: { enabled: true, frequency: 'weekly', interval: 1, weekdays: ['mon', 'wed', 'fri'] },
+      time: null,
+    }),
+  });
+
+  assert.equal(edited.schedule.length, 2);
+  // Passado: continua diário.
+  assert.equal(shouldTaskAppearOnDate(edited, '2026-07-14'), true);
+  assert.equal(shouldTaskAppearOnDate(edited, '2026-07-15'), true);
+  assert.equal(shouldTaskAppearOnDate(edited, '2026-08-02'), true);
+  // Presente/futuro: só seg/qua/sex.
+  assert.equal(shouldTaskAppearOnDate(edited, '2026-08-03'), true);
+  assert.equal(shouldTaskAppearOnDate(edited, '2026-08-04'), false);
+  assert.equal(shouldTaskAppearOnDate(edited, '2026-08-05'), true);
+  assert.equal(shouldTaskAppearOnDate(edited, '2026-08-08'), false);
+  // O espelho lido pelo editor e pelas notificações é a versão atual.
+  assert.equal(edited.repeat.frequency, 'weekly');
+  assert.equal(getCurrentScheduleVersion(edited).effectiveFrom, '2026-08-03');
+  assert.equal(getScheduleVersionForKey(edited, '2026-07-20').effectiveFrom, '2026-07-13');
+});
+
+test('ancora a fase do intervalo na versao, nao na data de inicio', () => {
+  // "A cada 3 dias" re-faseia a partir da mudança; antes, mexer no início
+  // deslocava retroativamente todas as ocorrências passadas.
+  const task = withScheduleMirror({
+    dateKey: '2026-07-13',
+    repeat: { enabled: true, frequency: 'daily', interval: 3 },
+  });
+  const edited = withScheduleMirror({
+    ...task,
+    schedule: appendScheduleVersion(task, {
+      effectiveFrom: '2026-07-21',
+      repeat: { enabled: true, frequency: 'daily', interval: 3 },
+      time: { specified: true, mode: 'point', point: { hour: 8, minute: 0, meridiem: 'AM' } },
+    }),
+  });
+
+  assert.equal(shouldTaskAppearOnDate(edited, '2026-07-16'), true);
+  assert.equal(shouldTaskAppearOnDate(edited, '2026-07-19'), true);
+  assert.equal(shouldTaskAppearOnDate(edited, '2026-07-21'), true);
+  assert.equal(shouldTaskAppearOnDate(edited, '2026-07-22'), false);
+  assert.equal(shouldTaskAppearOnDate(edited, '2026-07-24'), true);
+});
+
+test('so cria versao de agendamento quando algo muda de fato', () => {
+  const task = withScheduleMirror({
+    dateKey: '2026-07-13',
+    repeat: { enabled: true, frequency: 'daily', interval: 1 },
+    time: null,
+  });
+  // Salvar o mesmo agendamento não deve deixar versão nova para trás.
+  const unchanged = appendScheduleVersion(task, {
+    effectiveFrom: '2026-08-03',
+    repeat: { enabled: true, frequency: 'daily', interval: 1 },
+    time: null,
+  });
+  assert.equal(unchanged.length, 1);
+
+  // Editar no próprio dia de início substitui a primeira versão: não existe
+  // passado para proteger ali.
+  const sameDay = appendScheduleVersion(task, {
+    effectiveFrom: '2026-07-13',
+    repeat: { enabled: true, frequency: 'weekly', interval: 1, weekdays: ['tue'] },
+    time: null,
+  });
+  assert.equal(sameDay.length, 1);
+  assert.equal(sameDay[0].effectiveFrom, '2026-07-13');
+
+  // Uma data anterior ao início é ancorada no início, nunca antes dele.
+  const beforeStart = appendScheduleVersion(task, {
+    effectiveFrom: '2026-01-01',
+    repeat: { enabled: true, frequency: 'monthly', interval: 1 },
+    time: null,
+  });
+  assert.equal(beforeStart.length, 1);
+  assert.equal(beforeStart[0].effectiveFrom, '2026-07-13');
+});
+
+test('separa tarefa arquivada de tarefa avulsa vencida', () => {
+  const oneTime = withScheduleMirror({
+    dateKey: '2026-07-13',
+    repeat: { enabled: false, frequency: 'daily', interval: 1 },
+  });
+  const repeating = withScheduleMirror({
+    dateKey: '2026-07-13',
+    repeat: { enabled: true, frequency: 'daily', interval: 1 },
+  });
+
+  // Vencida é derivado da data; arquivada é estado que o usuário escreveu.
+  assert.equal(isTaskArchived(oneTime), false);
+  assert.equal(isTaskExpired(oneTime, '2026-08-03'), true);
+  assert.equal(isTaskInactive(oneTime, '2026-08-03'), true);
+  assert.equal(isTaskExpired(oneTime, '2026-07-13'), false);
+  assert.equal(isTaskExpired(repeating, '2026-08-03'), false);
+  assert.equal(isTaskArchived({ ...repeating, archived: true }), true);
+  assert.equal(isTaskExpired({ ...repeating, archived: true }, '2026-08-03'), false);
+});
+
+test('trata habito com data final vencida como encerrado', () => {
+  const HOJE = '2026-09-10';
+  const build = (repeat, extra = {}) =>
+    withScheduleMirror({
+      id: 'task-1',
+      type: 'default',
+      dateKey: '2026-09-01',
+      repeat,
+      completedDates: {},
+      ...extra,
+    });
+
+  // São dois jeitos de uma tarefa acabar. Antes só o primeiro contava, e um
+  // hábito encerrado ficava para sempre na aba Ativas sem nunca mais aparecer.
+  const encerrado = build({
+    enabled: true,
+    frequency: 'daily',
+    interval: 1,
+    endDate: '2026-09-05',
+  });
+  assert.equal(shouldTaskAppearOnDate(encerrado, '2026-09-05'), true);
+  assert.equal(shouldTaskAppearOnDate(encerrado, HOJE), false);
+  assert.equal(isTaskArchived(encerrado), false);
+  assert.equal(isTaskExpired(encerrado, HOJE), true);
+  assert.equal(isTaskInactive(encerrado, HOJE), true);
+
+  // No próprio dia do fim ainda está valendo: encerra a partir do dia seguinte.
+  assert.equal(isTaskExpired(encerrado, '2026-09-05'), false);
+
+  // Os demais casos continuam como eram.
+  const emAndamento = build({
+    enabled: true,
+    frequency: 'daily',
+    interval: 1,
+    endDate: '2026-12-31',
+  });
+  assert.equal(isTaskInactive(emAndamento, HOJE), false);
+  const semFim = build({ enabled: true, frequency: 'daily', interval: 1 });
+  assert.equal(isTaskInactive(semFim, HOJE), false);
+  const avulsa = build({ enabled: false, frequency: 'daily', interval: 1 });
+  assert.equal(isTaskInactive(avulsa, HOJE), true);
+  const arquivada = build(
+    { enabled: true, frequency: 'daily', interval: 1 },
+    { archived: true, archivedAt: '2026-09-06' }
+  );
+  assert.equal(isTaskArchived(arquivada), true);
+  assert.equal(isTaskInactive(arquivada, HOJE), true);
+
+  // Fim anterior ao início não descreve dia nenhum: sem isso vira uma tarefa
+  // invisível parada na lista de ativas.
+  const fantasma = build({
+    enabled: true,
+    frequency: 'daily',
+    interval: 1,
+    endDate: '2026-08-25',
+  });
+  assert.equal(shouldTaskAppearOnDate(fantasma, '2026-09-01'), false);
+  assert.equal(isTaskExpired(fantasma, HOJE), true);
+  assert.equal(isTaskExpired(fantasma, '2026-08-20'), true);
+});
+
+test('reativar habito encerrado solta a data final vencida', () => {
+  const HOJE = '2026-09-10';
+  const encerrado = withScheduleMirror({
+    id: 'task-1',
+    type: 'default',
+    dateKey: '2026-09-01',
+    repeat: { enabled: true, frequency: 'daily', interval: 1, endDate: '2026-09-05' },
+    completedDates: { '2026-09-02': true },
+  });
+
+  // Sem soltar a data final, a versão nova nasceria expirada e o botão
+  // "Reativar" não faria absolutamente nada.
+  const current = getCurrentScheduleVersion(encerrado);
+  const reativado = withScheduleMirror({
+    ...encerrado,
+    schedule: appendScheduleVersion(encerrado, {
+      effectiveFrom: HOJE,
+      repeat: clearExpiredRepeatEnd(current.repeat, HOJE),
+      time: current.time,
+    }),
+  });
+
+  assert.equal(isTaskExpired(reativado, HOJE), false);
+  assert.equal(shouldTaskAppearOnDate(reativado, HOJE), true);
+  assert.equal(shouldTaskAppearOnDate(reativado, '2026-09-11'), true);
+  // O passado continua descrito pela regra antiga, com a data final valendo.
+  assert.equal(shouldTaskAppearOnDate(reativado, '2026-09-02'), true);
+  assert.equal(shouldTaskAppearOnDate(reativado, '2026-09-07'), false);
+  assert.equal(reativado.dateKey, '2026-09-01');
+  assert.equal(reativado.completedDates['2026-09-02'], true);
+
+  // Uma data final ainda no futuro não pode ser descartada.
+  const futura = { enabled: true, frequency: 'daily', interval: 1, endDate: '2026-12-31' };
+  assert.equal(clearExpiredRepeatEnd(futura, HOJE).endDate, '2026-12-31');
+  // Nem a repetição desligada deve ser mexida.
+  const avulsa = { enabled: false, frequency: 'daily', interval: 1 };
+  assert.deepEqual(clearExpiredRepeatEnd(avulsa, HOJE), avulsa);
+});
+
+test('reativar avulsa vencida cria ocorrencia nova sem falsificar o inicio', () => {
+  const expired = withScheduleMirror({
+    dateKey: '2026-07-13',
+    repeat: { enabled: false, frequency: 'daily', interval: 1 },
+    archived: true,
+    archivedAt: '2026-07-20',
+  });
+  const cleared = { ...expired, archived: false, archivedAt: null };
+  const current = getCurrentScheduleVersion(cleared);
+  const reactivated = withScheduleMirror({
+    ...cleared,
+    schedule: appendScheduleVersion(cleared, {
+      effectiveFrom: '2026-08-03',
+      repeat: current.repeat,
+      time: current.time,
+    }),
+  });
+
+  // A data de início continua sendo a real — era isso que o hack antigo
+  // sobrescrevia para escapar do filtro de arquivadas.
+  assert.equal(reactivated.dateKey, '2026-07-13');
+  assert.equal(reactivated.schedule.length, 2);
+  assert.equal(shouldTaskAppearOnDate(reactivated, '2026-08-03'), true);
+  assert.equal(shouldTaskAppearOnDate(reactivated, '2026-07-13'), true);
+  assert.equal(shouldTaskAppearOnDate(reactivated, '2026-07-25'), false);
+  assert.equal(isTaskExpired(reactivated, '2026-08-03'), false);
+});
+
+test('mantem o espelho repeat/time colado na versao atual', () => {
+  // `repeat`/`time` são visão derivada: se saírem de sincronia, o editor e as
+  // notificações passam a ler um agendamento que não existe mais.
+  const task = withScheduleMirror({
+    dateKey: '2026-07-13',
+    repeat: { enabled: true, frequency: 'daily', interval: 1 },
+    time: null,
+  });
+  const nextTime = { specified: true, mode: 'point', point: { hour: 6, minute: 30, meridiem: 'AM' } };
+  const edited = withScheduleMirror({
+    ...task,
+    schedule: appendScheduleVersion(task, {
+      effectiveFrom: '2026-08-03',
+      repeat: { enabled: true, frequency: 'monthly', interval: 2, monthDays: [3] },
+      time: nextTime,
+    }),
+  });
+  const current = getCurrentScheduleVersion(edited);
+  assert.deepEqual(edited.repeat, current.repeat);
+  assert.deepEqual(edited.time, current.time);
+  assert.deepEqual(edited.time, nextTime);
+
+  // Recriar a partir do início descarta o histórico de versões: mover a data
+  // de início é redefinir quando a tarefa começa.
+  const restarted = withScheduleMirror({
+    ...edited,
+    dateKey: '2026-09-01',
+    schedule: restartScheduleAt({
+      effectiveFrom: '2026-09-01',
+      repeat: { enabled: true, frequency: 'daily', interval: 1 },
+      time: null,
+    }),
+  });
+  assert.equal(restarted.schedule.length, 1);
+  assert.equal(restarted.dateKey, '2026-09-01');
+  assert.equal(shouldTaskAppearOnDate(restarted, '2026-07-14'), false);
+});
+
+test('congela a taxa de conclusao passada ao trocar a recorrencia', () => {
+  // O teste que dá sentido ao resto: a série do gráfico não pode mudar para
+  // trás por causa de uma edição feita hoje.
+  const daily = withScheduleMirror({
+    id: 'task-1',
+    type: 'default',
+    dateKey: '2026-07-13',
+    repeat: { enabled: true, frequency: 'daily', interval: 1 },
+    completedDates: { '2026-07-13': true, '2026-07-14': true, '2026-07-15': true },
+  });
+  const buildSeries = (task) =>
+    buildDailyCompletionSeries({
+      tasks: [task],
+      endDate: new Date(2026, 6, 16),
+      days: 4,
+    }).entries;
+
+  const before = buildSeries(daily);
+  const edited = withScheduleMirror({
+    ...daily,
+    schedule: appendScheduleVersion(daily, {
+      effectiveFrom: '2026-07-16',
+      repeat: { enabled: true, frequency: 'weekly', interval: 1, weekdays: ['mon'] },
+      time: null,
+    }),
+  });
+  const after = buildSeries(edited);
+
+  assert.deepEqual(after.slice(0, 3), before.slice(0, 3));
+  assert.deepEqual(before[3], { completed: 0, total: 1 });
+  // 16/07/2026 é quinta: sob a regra nova o dia deixa de ser agendado.
+  assert.deepEqual(after[3], { completed: 0, total: 0 });
 });
 
 test('exige meta quantum positiva no modo ativo', () => {

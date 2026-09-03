@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -32,14 +32,27 @@ function SettingsSheet({
   onCustomizeCalendar,
   onExportBackup,
   onImportBackup,
+  onExportDiaryText,
 }) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const t = translations[language] ?? translations.en;
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isExportingDiary, setIsExportingDiary] = useState(false);
   const [isDiaryAuthBusy, setIsDiaryAuthBusy] = useState(false);
   const [shouldTestErrorBoundary, setShouldTestErrorBoundary] = useState(false);
+  // Navegação em dois níveis dentro da mesma folha: empilhar outro Modal por
+  // cima deste é frágil no Android, e a volta precisa ser instantânea.
+  const [section, setSection] = useState('root');
+
+  // Reabrir as Configurações sempre começa na raiz: voltar para uma subseção
+  // que o usuário já deixou seria um estado surpresa.
+  useEffect(() => {
+    if (!visible) {
+      setSection('root');
+    }
+  }, [visible]);
 
   const handleExportBackup = useCallback(async () => {
     if (isExporting || isImporting) {
@@ -65,7 +78,22 @@ function SettingsSheet({
     }
   }, [isExporting, isImporting, onImportBackup]);
 
+  const handleExportDiaryText = useCallback(async () => {
+    if (isExportingDiary) {
+      return;
+    }
+    setIsExportingDiary(true);
+    try {
+      await onExportDiaryText?.();
+    } finally {
+      setIsExportingDiary(false);
+    }
+  }, [isExportingDiary, onExportDiaryText]);
+
   const isBackupBusy = isExporting || isImporting;
+  const isDiarySection = section === 'diaryPrivacy';
+  const isExportSection = section === 'export';
+  const isSubsection = isDiarySection || isExportSection;
 
   const handleChangeDiaryProtection = useCallback(
     async (value) => {
@@ -97,7 +125,25 @@ function SettingsSheet({
           ]}
         >
           <View style={styles.reflectionHeader}>
-            <Text style={styles.reflectionTitle}>{t.profile.settings}</Text>
+            <View style={styles.settingsHeaderGroup}>
+              {isSubsection ? (
+                <Pressable
+                  onPress={() => setSection('root')}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.common.back}
+                >
+                  <Ionicons name="chevron-back" size={24} color="#1a1a2e" />
+                </Pressable>
+              ) : null}
+              <Text style={styles.reflectionTitle}>
+                {isDiarySection
+                  ? t.diaryPrivacy.sectionLabel
+                  : isExportSection
+                    ? t.backup.exportSectionLabel
+                    : t.profile.settings}
+              </Text>
+            </View>
             <Pressable onPress={onClose} hitSlop={12}>
               <Ionicons name="close-circle" size={30} color="#817b96" />
             </Pressable>
@@ -108,6 +154,112 @@ function SettingsSheet({
             contentContainerStyle={styles.settingsContent}
             showsVerticalScrollIndicator={false}
           >
+            {isDiarySection ? (
+              <>
+                <Text style={styles.settingsSectionIntro}>
+                  {t.diaryPrivacy.sectionIntro}
+                </Text>
+
+                <View style={styles.settingsRow}>
+                  <Ionicons name="lock-closed-outline" size={20} color="#3c2ba7" />
+                  <View style={styles.settingsRowTextGroup}>
+                    <Text style={styles.settingsRowTitle}>
+                      {t.diaryPrivacy.settingLabel}
+                    </Text>
+                    <Text style={styles.settingsRowHint}>
+                      {t.diaryPrivacy.settingHint}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={protectPrivateReflections}
+                    onValueChange={handleChangeDiaryProtection}
+                    disabled={isDiaryAuthBusy}
+                    trackColor={{ false: '#817b96', true: '#7467c9' }}
+                    thumbColor={protectPrivateReflections ? '#3c2ba7' : '#ffffff'}
+                    accessibilityLabel={t.diaryPrivacy.settingLabel}
+                    accessibilityHint={t.diaryPrivacy.settingHint}
+                    accessibilityState={{ busy: isDiaryAuthBusy }}
+                  />
+                </View>
+
+                {protectPrivateReflections && isDiaryUnlocked ? (
+                  <TouchableOpacity
+                    style={styles.settingsRow}
+                    onPress={onLockDiaryNow}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.diaryPrivacy.lockNow}
+                    accessibilityHint={t.diaryPrivacy.lockNowHint}
+                  >
+                    <Ionicons name="lock-closed" size={20} color="#3c2ba7" />
+                    <View style={styles.settingsRowTextGroup}>
+                      <Text style={styles.settingsRowTitle}>
+                        {t.diaryPrivacy.lockNow}
+                      </Text>
+                      <Text style={styles.settingsRowHint}>
+                        {t.diaryPrivacy.lockNowHint}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#68637f" />
+                  </TouchableOpacity>
+                ) : null}
+              </>
+            ) : isExportSection ? (
+              <>
+                <Text style={styles.settingsSectionIntro}>
+                  {t.backup.exportSectionIntro}
+                </Text>
+
+                <TouchableOpacity
+                  style={[styles.settingsRow, isBackupBusy && styles.settingsRowDisabled]}
+                  onPress={handleExportBackup}
+                  activeOpacity={0.7}
+                  disabled={isBackupBusy}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.backup.exportLabel}
+                  accessibilityHint={t.backup.exportHint}
+                  accessibilityState={{ disabled: isBackupBusy, busy: isExporting }}
+                >
+                  <Ionicons name="download-outline" size={20} color="#3c2ba7" />
+                  <View style={styles.settingsRowTextGroup}>
+                    <Text style={styles.settingsRowTitle}>
+                      {isExporting ? t.backup.exporting : t.backup.exportLabel}
+                    </Text>
+                    <Text style={styles.settingsRowHint}>{t.backup.exportHint}</Text>
+                  </View>
+                  {isExporting ? (
+                    <ActivityIndicator size="small" color="#3c2ba7" />
+                  ) : (
+                    <Ionicons name="chevron-forward" size={18} color="#68637f" />
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.settingsRow, isExportingDiary && styles.settingsRowDisabled]}
+                  onPress={handleExportDiaryText}
+                  activeOpacity={0.7}
+                  disabled={isExportingDiary}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.diaryExport.label}
+                  accessibilityHint={t.diaryExport.hint}
+                  accessibilityState={{ disabled: isExportingDiary, busy: isExportingDiary }}
+                >
+                  <Ionicons name="document-text-outline" size={20} color="#3c2ba7" />
+                  <View style={styles.settingsRowTextGroup}>
+                    <Text style={styles.settingsRowTitle}>
+                      {isExportingDiary ? t.diaryExport.exporting : t.diaryExport.label}
+                    </Text>
+                    <Text style={styles.settingsRowHint}>{t.diaryExport.hint}</Text>
+                  </View>
+                  {isExportingDiary ? (
+                    <ActivityIndicator size="small" color="#3c2ba7" />
+                  ) : (
+                    <Ionicons name="chevron-forward" size={18} color="#68637f" />
+                  )}
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
             <View style={styles.settingsRow}>
               <Ionicons name="language-outline" size={20} color="#3c2ba7" />
               <Text style={styles.settingsRowLabel}>{t.profile.language}</Text>
@@ -138,41 +290,29 @@ function SettingsSheet({
               </View>
             </View>
 
-            <View style={styles.settingsRow}>
-              <Ionicons name="lock-closed-outline" size={20} color="#3c2ba7" />
-              <View style={styles.settingsRowTextGroup}>
-                <Text style={styles.settingsRowTitle}>{t.diaryPrivacy.settingLabel}</Text>
-                <Text style={styles.settingsRowHint}>{t.diaryPrivacy.settingHint}</Text>
-              </View>
-              <Switch
-                value={protectPrivateReflections}
-                onValueChange={handleChangeDiaryProtection}
-                disabled={isDiaryAuthBusy}
-                trackColor={{ false: '#817b96', true: '#7467c9' }}
-                thumbColor={protectPrivateReflections ? '#3c2ba7' : '#ffffff'}
-                accessibilityLabel={t.diaryPrivacy.settingLabel}
-                accessibilityHint={t.diaryPrivacy.settingHint}
-                accessibilityState={{ busy: isDiaryAuthBusy }}
+            <TouchableOpacity
+              style={styles.settingsRow}
+              onPress={() => setSection('diaryPrivacy')}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t.diaryPrivacy.sectionLabel}
+              accessibilityHint={t.diaryPrivacy.sectionHint}
+            >
+              <Ionicons
+                name={protectPrivateReflections ? 'lock-closed' : 'lock-open-outline'}
+                size={20}
+                color="#3c2ba7"
               />
-            </View>
-
-            {protectPrivateReflections && isDiaryUnlocked ? (
-              <TouchableOpacity
-                style={styles.settingsRow}
-                onPress={onLockDiaryNow}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={t.diaryPrivacy.lockNow}
-                accessibilityHint={t.diaryPrivacy.lockNowHint}
-              >
-                <Ionicons name="lock-closed" size={20} color="#3c2ba7" />
-                <View style={styles.settingsRowTextGroup}>
-                  <Text style={styles.settingsRowTitle}>{t.diaryPrivacy.lockNow}</Text>
-                  <Text style={styles.settingsRowHint}>{t.diaryPrivacy.lockNowHint}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color="#68637f" />
-              </TouchableOpacity>
-            ) : null}
+              <View style={styles.settingsRowTextGroup}>
+                <Text style={styles.settingsRowTitle}>{t.diaryPrivacy.sectionLabel}</Text>
+                <Text style={styles.settingsRowHint}>
+                  {protectPrivateReflections
+                    ? t.diaryPrivacy.stateOn
+                    : t.diaryPrivacy.stateOff}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#68637f" />
+            </TouchableOpacity>
 
             <View style={styles.settingsRow}>
               <Ionicons name="notifications-outline" size={20} color="#3c2ba7" />
@@ -221,24 +361,23 @@ function SettingsSheet({
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.settingsRow, isBackupBusy && styles.settingsRowDisabled]}
-              onPress={handleExportBackup}
+              style={styles.settingsRow}
+              onPress={() => setSection('export')}
               activeOpacity={0.7}
-              disabled={isBackupBusy}
               accessibilityRole="button"
-              accessibilityLabel={t.backup.exportLabel}
-              accessibilityHint={t.backup.exportHint}
-              accessibilityState={{ disabled: isBackupBusy, busy: isExporting }}
+              accessibilityLabel={t.backup.exportSectionLabel}
+              accessibilityHint={t.backup.exportSectionHint}
             >
               <Ionicons name="download-outline" size={20} color="#3c2ba7" />
-              <Text style={styles.settingsRowLabel}>
-                {isExporting ? t.backup.exporting : t.backup.exportLabel}
-              </Text>
-              {isExporting ? (
-                <ActivityIndicator size="small" color="#3c2ba7" />
-              ) : (
-                <Ionicons name="chevron-forward" size={18} color="#68637f" />
-              )}
+              <View style={styles.settingsRowTextGroup}>
+                <Text style={styles.settingsRowTitle}>
+                  {t.backup.exportSectionLabel}
+                </Text>
+                <Text style={styles.settingsRowHint}>
+                  {t.backup.exportSectionHint}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#68637f" />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -278,6 +417,8 @@ function SettingsSheet({
                 <Ionicons name="warning-outline" size={18} color="#a23b3b" />
               </TouchableOpacity>
             ) : null}
+              </>
+            )}
           </ScrollView>
         </View>
       </View>

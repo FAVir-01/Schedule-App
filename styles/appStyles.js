@@ -2372,6 +2372,20 @@ export const styles = StyleSheet.create({
     gap: 10,
     paddingBottom: 4,
   },
+  // Cabeçalho das Configurações: o botão de voltar só aparece dentro de uma
+  // subseção, e o título fica colado nele em vez de centralizado.
+  settingsHeaderGroup: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  settingsSectionIntro: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#6f6b87',
+    paddingHorizontal: 2,
+  },
   settingsScroll: {
     flexShrink: 1,
     maxHeight: 560,

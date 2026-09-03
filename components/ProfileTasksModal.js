@@ -16,7 +16,7 @@ import {
   getTaskRepeatDisplayLabel,
   getTaskStreak,
   getTaskTagDisplayLabel,
-  isTaskArchived,
+  isTaskInactive,
   normalizeRepeatConfig,
   normalizeTaskTagKey,
 } from '../utils/taskUtils';
@@ -77,7 +77,7 @@ export default function ProfileTasksModal({
     const active = [];
     const archived = [];
     tasks.forEach((task) => {
-      (isTaskArchived(task, todayKey) ? archived : active).push(task);
+      (isTaskInactive(task, todayKey) ? archived : active).push(task);
     });
     return { activeTasks: active, archivedTasks: archived };
   }, [tasks, todayKey]);
