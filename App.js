@@ -93,6 +93,7 @@ import {
   reconcileTaskProgressOnEdit,
   restoreDeletedTaskAtIndex,
   shouldCountTaskTowardsCompletion,
+  shouldResetStreakAfterPause,
   normalizeRepeatConfig,
 } from './utils/taskUtils';
 import { getTimerTotalSeconds, toMinutes } from './utils/timeUtils';
@@ -3065,7 +3066,17 @@ function ScheduleApp() {
         if (!idSet.has(task.id)) {
           return;
         }
-        const cleared = { ...task, archived: false, archivedAt: null };
+        // Medido ANTES de limpar: `cleared` já perdeu o `archivedAt`, que é
+        // justamente o marco de quando a tarefa parou.
+        const pausedTooLong = shouldResetStreakAfterPause(task, todayKey);
+        const cleared = {
+          ...task,
+          archived: false,
+          archivedAt: null,
+          // Ficou guardada tempo demais: o que vem agora é outra tentativa, e
+          // a sequência recomeça do zero em vez de emendar no que era antes.
+          ...(pausedTooLong ? { streakResetAt: todayKey } : {}),
+        };
         // Tarefa avulsa vencida volta com uma ocorrência nova valendo hoje.
         // Antes a data de início era sobrescrita para hoje: além de mentir
         // sobre quando a tarefa começou, isso re-faseava a recorrência inteira,

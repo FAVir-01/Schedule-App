@@ -1,10 +1,13 @@
-import { DEFAULT_REPEAT_CONFIG } from '../constants/app';
+import {
+  DEFAULT_REPEAT_CONFIG,
+  STREAK_PAUSE_TOLERANCE_DAYS,
+} from '../constants/app';
 import {
   getCurrentScheduleVersion,
   shouldTaskAppearOnDate,
   toScheduleKey,
 } from '../domain/taskSchedule';
-import { getDateKey, normalizeDateValue } from './dateUtils';
+import { getCalendarDayOrdinal, getDateKey, normalizeDateValue } from './dateUtils';
 import { clamp01 } from './mathUtils';
 import { formatDuration, getTimerTotalSeconds, toMinutes } from './timeUtils';
 
@@ -562,6 +565,47 @@ export const isPassiveTaskType = (task) => {
 
 export const shouldCountTaskTowardsCompletion = (task) => !isPassiveTaskType(task);
 
+// Sequência é um conceito de hábito: exige algo que se repita. Tarefa avulsa
+// acontece uma vez e pronto — contar sequência nela produz números que não
+// querem dizer nada, do mesmo jeito que um lembrete nunca contou.
+//
+// Predicado SEPARADO de `shouldCountTaskTowardsCompletion` de propósito: uma
+// tarefa avulsa de hoje continua valendo para o "terminei tudo hoje", para o
+// relatório do dia e para o gráfico. Ela só não tem sequência.
+export const shouldCountTaskTowardsStreak = (task) => {
+  if (!task || isPassiveTaskType(task)) {
+    return false;
+  }
+  return normalizeRepeatConfig(getCurrentScheduleVersion(task)?.repeat).enabled;
+};
+
+// Desde quando a tarefa está parada. São os dois jeitos de parar: guardada à
+// mão (`archivedAt`) ou encerrada pela data final da repetição.
+export const getTaskPausedSinceKey = (task) => {
+  const archivedKey = toScheduleKey(task?.archivedAt);
+  if (archivedKey) {
+    return archivedKey;
+  }
+  const repeat = normalizeRepeatConfig(getCurrentScheduleVersion(task)?.repeat);
+  return repeat.enabled ? toScheduleKey(repeat.endDate) : null;
+};
+
+// Uma pausa longa reinicia a sequência: o que veio antes dela pertence a outra
+// tentativa. O intervalo entre ocorrências NÃO entra nessa conta — é por isso
+// que o hábito mensal, que nunca fica guardado, não perde nada.
+export const shouldResetStreakAfterPause = (
+  task,
+  todayKey,
+  toleranceDays = STREAK_PAUSE_TOLERANCE_DAYS
+) => {
+  const pausedSince = normalizeDateValue(getTaskPausedSinceKey(task));
+  const today = normalizeDateValue(todayKey);
+  if (!pausedSince || !today) {
+    return false;
+  }
+  return getCalendarDayOrdinal(today) - getCalendarDayOrdinal(pausedSince) >= toleranceDays;
+};
+
 export const isReminderExpiredForDate = (task, targetDate, now = new Date()) => {
   if (!task || task.type !== 'reminder') {
     return false;
@@ -604,7 +648,7 @@ export const isReminderExpiredForDate = (task, targetDate, now = new Date()) => 
 const STREAK_LOOKBACK_LIMIT_DAYS = 730;
 
 export const getTaskStreak = (task, today = new Date()) => {
-  if (!task || isPassiveTaskType(task)) {
+  if (!shouldCountTaskTowardsStreak(task)) {
     return 0;
   }
 
@@ -614,9 +658,16 @@ export const getTaskStreak = (task, today = new Date()) => {
     return 0;
   }
 
+  // Marco deixado por uma pausa longa: a contagem não atravessa essa data.
+  const resetDate = normalizeDateValue(task.streakResetAt);
+  const resetTime = resetDate ? resetDate.getTime() : null;
+
   let streak = 0;
   for (let i = 0; i < STREAK_LOOKBACK_LIMIT_DAYS; i += 1) {
     if (cursor.getTime() < startDate.getTime()) {
+      break;
+    }
+    if (resetTime != null && cursor.getTime() < resetTime) {
       break;
     }
     if (shouldTaskAppearOnDate(task, cursor)) {
