@@ -7,6 +7,7 @@ node_modules/
 android/.gradle/
 android/app/build/
 android/build/
+modules/*/android/build/
 android/local.properties
 
 # Expo / React Native logs

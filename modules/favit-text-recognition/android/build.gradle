@@ -1,0 +1,26 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.favit.textrecognition'
+version = '0.1.0'
+
+android {
+  namespace "com.favit.textrecognition"
+
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  // Modelo latino empacotado: funciona offline inclusive no primeiro uso.
+  implementation 'com.google.mlkit:text-recognition:16.0.1'
+}
+

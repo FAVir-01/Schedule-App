@@ -19,6 +19,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { translations } from '../constants/i18n';
 import { persistPickedImage } from '../services/imagePersistenceService';
+import {
+  TEXT_RECOGNITION_ERROR_CODES,
+  recognizeTextFromImage,
+} from '../services/textRecognitionService';
 import { styles } from '../styles/appStyles';
 import { IMAGE_LIMITS, getImageErrorMessage } from '../utils/imageUtils';
 import {
@@ -28,6 +32,10 @@ import {
   hasPrivateReflectionContent,
   hasReflectionContent,
 } from '../utils/moodUtils';
+import {
+  MAX_REFLECTION_NOTE_LENGTH,
+  appendRecognizedText,
+} from '../utils/textRecognitionUtils';
 import DiaryPrivacyMask from './DiaryPrivacyMask';
 
 // Folha de reflexão do dia: humor em escala de 1-5 (registro rápido), tags de
@@ -59,6 +67,11 @@ function ReflectionSheet({
   const [note, setNote] = useState('');
   const [photo, setPhoto] = useState(null);
   const [isLoadingImage, setIsLoadingImage] = useState(false);
+  const [isRecognizingText, setIsRecognizingText] = useState(false);
+  // `null` = editor normal. Uma string, inclusive vazia durante a edição,
+  // representa a etapa interna de revisão e ainda não altera `note`.
+  const [recognizedTextDraft, setRecognizedTextDraft] = useState(null);
+  const recognitionRequestRef = useRef(0);
   // O Android com edge-to-edge ignora o adjustResize dentro de Modal, então
   // medimos o teclado na mão e encolhemos/subimos a folha por conta própria.
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -85,7 +98,11 @@ function ReflectionSheet({
       setSelectedTags(Array.isArray(mood?.tags) ? mood.tags : []);
       setNote(mood?.note ?? '');
       setPhoto(mood?.photo ?? null);
+      setRecognizedTextDraft(null);
+      setIsRecognizingText(false);
     }
+    // Ignora a resposta de um OCR iniciado para uma abertura anterior da folha.
+    recognitionRequestRef.current += 1;
   }, [visible, mood]);
 
   useEffect(() => {
@@ -154,6 +171,12 @@ function ReflectionSheet({
   const keyboardOverlap = Math.max(0, keyboardHeight - resizeCompensated);
   const sheetMaxHeight =
     keyboardHeight > 0 ? height - keyboardOverlap - 16 : height * 0.85;
+  const mergedRecognizedText =
+    recognizedTextDraft == null
+      ? note
+      : appendRecognizedText(note, recognizedTextDraft);
+  const recognizedTextExceedsLimit =
+    mergedRecognizedText.length > MAX_REFLECTION_NOTE_LENGTH;
 
   const handleSave = () => {
     if (!canSave) {
@@ -186,14 +209,34 @@ function ReflectionSheet({
     );
   };
 
-  const pickImage = async ({ quality = 1, limits, prefix, cropSquare = false }) => {
+  const pickImage = async ({
+    source = 'gallery',
+    quality = 1,
+    limits,
+    prefix,
+    cropSquare = false,
+  }) => {
     if (isLoadingImage) {
       return null;
     }
     try {
       setIsLoadingImage(true);
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      if (source === 'camera') {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert(
+            t.reflection.photoCameraPermissionTitle,
+            t.reflection.photoCameraPermissionMessage
+          );
+          return null;
+        }
+      }
+      const launch =
+        source === 'camera'
+          ? ImagePicker.launchCameraAsync
+          : ImagePicker.launchImageLibraryAsync;
+      const result = await launch({
+        mediaTypes: ['images'],
         allowsEditing: cropSquare,
         ...(cropSquare ? { aspect: [1, 1], shape: 'rectangle' } : {}),
         quality,
@@ -214,8 +257,9 @@ function ReflectionSheet({
     }
   };
 
-  const handlePickPhoto = async () => {
+  const handlePickPhoto = async (source) => {
     const uri = await pickImage({
+      source,
       quality: 0.75,
       limits: IMAGE_LIMITS.reflectionPhoto,
       prefix: 'custom_mood_photo',
@@ -223,6 +267,128 @@ function ReflectionSheet({
     if (uri) {
       setPhoto(uri);
     }
+  };
+
+  const handleOpenPhotoSource = () => {
+    Keyboard.dismiss();
+    Alert.alert(
+      t.reflection.photoSourceTitle,
+      t.reflection.photoSourceMessage,
+      [
+        {
+          text: t.reflection.scan.camera,
+          onPress: () => void handlePickPhoto('camera'),
+        },
+        {
+          text: t.reflection.scan.gallery,
+          onPress: () => void handlePickPhoto('gallery'),
+        },
+        { text: t.reflection.cancel, style: 'cancel' },
+      ]
+    );
+  };
+
+  const showRecognitionError = (error) => {
+    let message = t.reflection.scan.failedMessage;
+    if (error?.code === TEXT_RECOGNITION_ERROR_CODES.UNAVAILABLE) {
+      message = t.reflection.scan.unavailableMessage;
+    } else if (error?.code === TEXT_RECOGNITION_ERROR_CODES.INVALID_IMAGE) {
+      message = t.reflection.scan.invalidImageMessage;
+    }
+    Alert.alert(t.reflection.scan.errorTitle, message);
+  };
+
+  const handleRecognizeImage = async (source) => {
+    if (isRecognizingText || isLoadingImage) {
+      return;
+    }
+
+    let requestId = null;
+    try {
+      if (source === 'camera') {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert(
+            t.reflection.scan.cameraPermissionTitle,
+            t.reflection.scan.cameraPermissionMessage
+          );
+          return;
+        }
+      }
+
+      const launch =
+        source === 'camera'
+          ? ImagePicker.launchCameraAsync
+          : ImagePicker.launchImageLibraryAsync;
+      const result = await launch({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        shape: 'rectangle',
+        quality: 0.9,
+      });
+      if (result.canceled || !result.assets?.length) {
+        return;
+      }
+
+      requestId = recognitionRequestRef.current + 1;
+      recognitionRequestRef.current = requestId;
+      setIsRecognizingText(true);
+      const recognized = await recognizeTextFromImage(
+        result.assets[0].uri,
+        language
+      );
+      if (requestId !== recognitionRequestRef.current) {
+        return;
+      }
+      if (!recognized) {
+        Alert.alert(
+          t.reflection.scan.noTextTitle,
+          t.reflection.scan.noTextMessage
+        );
+        return;
+      }
+
+      Keyboard.dismiss();
+      setRecognizedTextDraft(recognized);
+    } catch (error) {
+      if (requestId != null && requestId !== recognitionRequestRef.current) {
+        return;
+      }
+      console.warn('Failed to recognize reflection text', error);
+      showRecognitionError(error);
+    } finally {
+      if (requestId == null || requestId === recognitionRequestRef.current) {
+        setIsRecognizingText(false);
+      }
+    }
+  };
+
+  const handleOpenTextScanner = () => {
+    Keyboard.dismiss();
+    Alert.alert(
+      t.reflection.scan.sourceTitle,
+      t.reflection.scan.sourceMessage,
+      [
+        {
+          text: t.reflection.scan.camera,
+          onPress: () => void handleRecognizeImage('camera'),
+        },
+        {
+          text: t.reflection.scan.gallery,
+          onPress: () => void handleRecognizeImage('gallery'),
+        },
+        { text: t.reflection.cancel, style: 'cancel' },
+      ]
+    );
+  };
+
+  const handleInsertRecognizedText = () => {
+    if (!recognizedTextDraft?.trim() || recognizedTextExceedsLimit) {
+      return;
+    }
+    setNote(mergedRecognizedText);
+    setRecognizedTextDraft(null);
+    setTimeout(() => scrollToNote(true), 120);
   };
 
   // Segurar um humor troca só a aparência dele; o nível salvo nos registros
@@ -291,7 +457,18 @@ function ReflectionSheet({
   }
 
   return (
-    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
+    <Modal
+      animationType="slide"
+      transparent
+      visible={visible}
+      onRequestClose={() => {
+        if (recognizedTextDraft != null) {
+          setRecognizedTextDraft(null);
+          return;
+        }
+        onClose();
+      }}
+    >
       <View style={styles.reportOverlay}>
         <Pressable style={styles.reportBackdrop} onPress={onClose} />
 
@@ -320,18 +497,83 @@ function ReflectionSheet({
             </Pressable>
           </View>
 
-          <ScrollView
-            ref={scrollRef}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.reflectionScrollContent}
-            onLayout={() => {
-              // O viewport muda de tamanho quando o teclado abre; nesse momento
-              // rola até a nota pra ela continuar à vista.
-              if (keyboardHeightRef.current > 0) {
-                scrollToNote(false);
-              }
-            }}
-          >
+          {recognizedTextDraft != null ? (
+            <ScrollView
+              ref={scrollRef}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.reflectionScrollContent}
+            >
+              <View style={styles.reflectionScanReviewHeading}>
+                <Ionicons name="scan-outline" size={20} color="#3c2ba7" />
+                <Text style={styles.reflectionScanReviewTitle}>
+                  {t.reflection.scan.reviewTitle}
+                </Text>
+              </View>
+              <Text style={styles.reflectionScanReviewHint}>
+                {t.reflection.scan.reviewHint}
+              </Text>
+              <TextInput
+                style={styles.reflectionScanReviewInput}
+                value={recognizedTextDraft}
+                onChangeText={setRecognizedTextDraft}
+                placeholder={t.reflection.scan.reviewPlaceholder}
+                placeholderTextColor="#68637f"
+                multiline
+                maxLength={MAX_REFLECTION_NOTE_LENGTH}
+                textAlignVertical="top"
+                accessibilityLabel={t.reflection.scan.reviewAccessibilityLabel}
+              />
+              {recognizedTextExceedsLimit ? (
+                <Text style={styles.reflectionScanLimitError}>
+                  {t.reflection.scan.tooLongMessage.replace(
+                    '{max}',
+                    MAX_REFLECTION_NOTE_LENGTH.toLocaleString(locale)
+                  )}
+                </Text>
+              ) : null}
+              <View style={styles.reflectionActions}>
+                <TouchableOpacity
+                  style={styles.reflectionScanCancelButton}
+                  onPress={() => setRecognizedTextDraft(null)}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.reflectionScanCancelText}>
+                    {t.reflection.cancel}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.reflectionSaveButton,
+                    (!recognizedTextDraft.trim() || recognizedTextExceedsLimit) &&
+                      styles.reflectionSaveButtonDisabled,
+                  ]}
+                  onPress={handleInsertRecognizedText}
+                  disabled={
+                    !recognizedTextDraft.trim() || recognizedTextExceedsLimit
+                  }
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.reflectionSaveText}>
+                    {t.reflection.scan.addToReflection}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          ) : (
+            <ScrollView
+              ref={scrollRef}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.reflectionScrollContent}
+              onLayout={() => {
+                // O viewport muda de tamanho quando o teclado abre; nesse momento
+                // rola até a nota pra ela continuar à vista.
+                if (keyboardHeightRef.current > 0) {
+                  scrollToNote(false);
+                }
+              }}
+            >
             <Text style={styles.reflectionQuestion}>{t.reflection.moodQuestion}</Text>
             <View style={styles.reflectionMoodRow}>
               {MOOD_LEVELS.map((level) => {
@@ -437,20 +679,47 @@ function ReflectionSheet({
               })}
             </View>
 
-            <TextInput
-              style={styles.reflectionNoteInput}
-              value={note}
-              onChangeText={setNote}
+            <View
               onLayout={(event) => {
                 noteInputYRef.current = event.nativeEvent.layout.y;
               }}
-              onFocus={() => setTimeout(() => scrollToNote(true), 120)}
-              placeholder={t.reflection.notePlaceholder}
-              placeholderTextColor="#68637f"
-              multiline
-              maxLength={500}
-              textAlignVertical="top"
-            />
+              style={styles.reflectionNoteField}
+            >
+              <TextInput
+                style={styles.reflectionNoteInput}
+                value={note}
+                onChangeText={setNote}
+                onFocus={() => setTimeout(() => scrollToNote(true), 120)}
+                placeholder={t.reflection.notePlaceholder}
+                placeholderTextColor="#68637f"
+                multiline
+                maxLength={MAX_REFLECTION_NOTE_LENGTH}
+                textAlignVertical="top"
+              />
+              <View style={styles.reflectionNoteToolbar}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.reflectionScanButton,
+                    pressed && styles.reflectionScanButtonPressed,
+                  ]}
+                  onPress={handleOpenTextScanner}
+                  disabled={isRecognizingText || isLoadingImage}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={t.reflection.scan.accessibilityLabel}
+                  accessibilityState={{
+                    busy: isRecognizingText,
+                    disabled: isRecognizingText || isLoadingImage,
+                  }}
+                >
+                  {isRecognizingText ? (
+                    <ActivityIndicator size="small" color="#3c2ba7" />
+                  ) : (
+                    <Ionicons name="scan-outline" size={20} color="#3c2ba7" />
+                  )}
+                </Pressable>
+              </View>
+            </View>
 
             {photo ? (
               <View style={styles.reflectionPhotoWrapper}>
@@ -467,11 +736,14 @@ function ReflectionSheet({
             ) : (
               <TouchableOpacity
                 style={styles.reflectionPhotoButton}
-                onPress={handlePickPhoto}
-                disabled={isLoadingImage}
+                onPress={handleOpenPhotoSource}
+                disabled={isLoadingImage || isRecognizingText}
                 activeOpacity={0.7}
                 accessibilityRole="button"
-                accessibilityState={{ busy: isLoadingImage, disabled: isLoadingImage }}
+                accessibilityState={{
+                  busy: isLoadingImage,
+                  disabled: isLoadingImage || isRecognizingText,
+                }}
               >
                 {isLoadingImage ? (
                   <ActivityIndicator size="small" color="#3c2ba7" />
@@ -509,7 +781,8 @@ function ReflectionSheet({
                 <Text style={styles.reflectionSaveText}>{t.reflection.save}</Text>
               </TouchableOpacity>
             </View>
-          </ScrollView>
+            </ScrollView>
+          )}
         </View>
       </View>
     </Modal>
