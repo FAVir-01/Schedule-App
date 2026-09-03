@@ -172,7 +172,6 @@ if (/release\s*\{[\s\S]*?signingConfig\s+signingConfigs\.debug/.test(gradle)) {
 
 const blockedPermissions = new Set(android.blockedPermissions ?? []);
 const releaseBlockedPermissions = [
-  'android.permission.CAMERA',
   'android.permission.READ_EXTERNAL_STORAGE',
   'android.permission.RECORD_AUDIO',
   'android.permission.WRITE_EXTERNAL_STORAGE',
@@ -180,6 +179,7 @@ const releaseBlockedPermissions = [
 ];
 
 const exactAlarmPermission = 'android.permission.SCHEDULE_EXACT_ALARM';
+const cameraPermission = 'android.permission.CAMERA';
 const configuredPermissions = new Set(android.permissions ?? []);
 if (!configuredPermissions.has(exactAlarmPermission)) {
   errors.push(`Expo deve declarar ${exactAlarmPermission} para lembretes pontuais.`);
@@ -190,6 +190,19 @@ if (
   )
 ) {
   errors.push(`Manifest principal deve declarar ${exactAlarmPermission}.`);
+}
+if (!configuredPermissions.has(cameraPermission)) {
+  errors.push(`Expo deve declarar ${cameraPermission} para digitalizar texto.`);
+}
+if (
+  !/<uses-permission\s+android:name=["']android\.permission\.CAMERA["'][^>]*\/?>/.test(
+    mainManifest
+  ) ||
+  /<uses-permission\s+android:name=["']android\.permission\.CAMERA["'][^>]*tools:node=["']remove["']/.test(
+    mainManifest
+  )
+) {
+  errors.push(`Manifest principal deve liberar ${cameraPermission}.`);
 }
 
 releaseBlockedPermissions.forEach((permission) => {

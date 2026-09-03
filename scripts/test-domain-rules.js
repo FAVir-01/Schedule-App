@@ -204,6 +204,11 @@ const {
   validatePickedImageAsset,
 } = require('../utils/imageUtils');
 const {
+  MAX_REFLECTION_NOTE_LENGTH,
+  appendRecognizedText,
+  normalizeRecognizedText,
+} = require('../utils/textRecognitionUtils');
+const {
   backfillTaskTitlesInHistory,
   createTaskHistoryDetails,
   prependHistoryEntry,
@@ -2342,6 +2347,58 @@ test('normaliza a extensao da imagem sem confiar apenas na URI', () => {
     'webp'
   );
   assert.equal(getPickedImageExtension({ uri: 'content://gallery/14' }), 'jpg');
+});
+
+test('digitaliza texto como rascunho sem substituir a nota existente', () => {
+  assert.equal(MAX_REFLECTION_NOTE_LENGTH, 10000);
+  assert.equal(
+    normalizeRecognizedText('  primeira linha\r\nsegunda linha\r  '),
+    'primeira linha\nsegunda linha'
+  );
+  assert.equal(
+    appendRecognizedText('Minha nota', 'Texto do quadro'),
+    'Minha nota\n\nTexto do quadro'
+  );
+  assert.equal(appendRecognizedText('', '  Texto novo  '), 'Texto novo');
+  assert.equal(appendRecognizedText('Minha nota', '   '), 'Minha nota');
+});
+
+test('integra o OCR local ao campo sem limite antigo nem sobreposicao visual', () => {
+  const reflectionSource = fs.readFileSync(
+    path.join(root, 'components/ReflectionSheet.js'),
+    'utf8'
+  );
+  const reflectionStyles = fs.readFileSync(
+    path.join(root, 'styles/appStyles.js'),
+    'utf8'
+  );
+  const androidModule = fs.readFileSync(
+    path.join(
+      root,
+      'modules/favit-text-recognition/android/src/main/java/com/favit/textrecognition/FavitTextRecognitionModule.kt'
+    ),
+    'utf8'
+  );
+  assert.equal(reflectionSource.includes('maxLength={500}'), false);
+  assert.equal(
+    reflectionSource.includes('maxLength={MAX_REFLECTION_NOTE_LENGTH}'),
+    true
+  );
+  assert.equal(reflectionSource.includes('name="scan-outline"'), true);
+  assert.equal(reflectionSource.includes('ImagePicker.launchCameraAsync'), true);
+  assert.equal(reflectionSource.includes("mediaTypes: ['images']"), true);
+  assert.equal(reflectionSource.includes('ImagePicker.MediaTypeOptions'), false);
+  assert.equal(reflectionSource.includes('allowsEditing: true'), true);
+  assert.equal(reflectionSource.includes('setNote(mergedRecognizedText);'), true);
+  assert.equal(reflectionSource.includes('handleOpenPhotoSource'), true);
+  assert.equal(reflectionSource.includes("handlePickPhoto('camera')"), true);
+  assert.equal(reflectionStyles.includes('reflectionNoteToolbar: {'), true);
+  assert.equal(reflectionStyles.includes('maxHeight: 260'), true);
+  assert.equal(androidModule.includes('com.google.mlkit.vision.text.TextRecognition'), true);
+  assert.deepEqual(
+    Object.keys(translations.en.reflection.scan).sort(),
+    Object.keys(translations.pt.reflection.scan).sort()
+  );
 });
 
 test('reconhece GIFs persistidos para respeitar reduzir movimento', () => {

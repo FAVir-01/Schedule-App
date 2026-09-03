@@ -1,0 +1,10 @@
+{
+  "platforms": ["android", "apple"],
+  "apple": {
+    "modules": ["FavitTextRecognitionModule"]
+  },
+  "android": {
+    "modules": ["com.favit.textrecognition.FavitTextRecognitionModule"]
+  }
+}
+
