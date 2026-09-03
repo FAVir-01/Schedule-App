@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { NOTIFICATIONS_SUPPORTED, REMINDER_OFFSETS } from '../constants/app';
-import { normalizeDateValue, shouldTaskAppearOnDate } from '../utils/dateUtils';
+import { shouldTaskAppearOnDate } from '../domain/taskSchedule';
+import { normalizeDateValue } from '../utils/dateUtils';
 import { scheduledReminderContentMatches } from '../utils/notificationUtils';
 import { toMinutes } from '../utils/timeUtils';
 

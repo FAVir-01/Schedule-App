@@ -4,7 +4,6 @@ import {
   getWeeksInMonth,
   isBefore,
   isSameDay as isSameDayDateFns,
-  startOfDay,
   startOfMonth,
   startOfWeek,
 } from 'date-fns';
@@ -99,27 +98,6 @@ const createCenteredWeekDates = (centerDate) => {
   });
 };
 
-const normalizeRepeatCollection = (value) => {
-  if (!value) {
-    return [];
-  }
-  if (Array.isArray(value)) {
-    return value;
-  }
-  if (value instanceof Set) {
-    return Array.from(value);
-  }
-  return [];
-};
-
-const normalizeRepeatInterval = (value, fallback = 1) => {
-  const parsed = Number.parseInt(value, 10);
-  if (Number.isNaN(parsed) || parsed < 1) {
-    return fallback;
-  }
-  return parsed;
-};
-
 const isSameDay = (dateA, dateB) => {
   if (!dateA || !dateB) {
     return false;
@@ -141,147 +119,12 @@ const getWeekdayKeyFromDate = (date) => {
   return WEEKDAY_KEYS[date.getDay()] ?? null;
 };
 
-const createTaskScheduleMatcher = (
-  task,
-  { targetDatesAreNormalized = false } = {}
-) => {
-  if (!task || typeof task !== 'object') {
-    return () => false;
-  }
-
-  const normalizedStartDate = normalizeDateValue(task.dateKey ?? task.date);
-  if (!normalizedStartDate) {
-    return () => false;
-  }
-
-  const startDay = startOfDay(normalizedStartDate);
-  const configuredEndDate = normalizeDateValue(task.repeat?.endDate);
-  const startTime = startDay.getTime();
-  const configuredEndTime = configuredEndDate?.getTime() ?? null;
-  // Tarefa arquivada some da agenda a partir da data do arquivamento,
-  // mas as ocorrências anteriores (histórico/calendário) continuam valendo.
-  const archivedTime = task.archived
-    ? normalizeDateValue(task.archivedAt)?.getTime() ?? null
-    : null;
-  const startDayOrdinal = getCalendarDayOrdinal(startDay);
-  const isQuantumTask = task.type === 'quantum';
-  let repeat = task.repeat;
-  if (!repeat) {
-    repeat = {
-      frequency: 'daily',
-      option: 'daily',
-      interval: 1,
-      enabled: true,
-    };
-  }
-  if (isQuantumTask && repeat.option === 'off') {
-    repeat = {
-      ...repeat,
-      option: 'daily',
-      frequency: repeat.frequency || 'daily',
-      enabled: true,
-    };
-  }
-  const repeatsAfterStart = repeat.option !== 'off' && repeat.enabled !== false;
-  const rawFrequency = repeat.frequency || repeat.option || 'daily';
-  const frequency = rawFrequency === 'interval' ? 'daily' : rawFrequency;
-  const interval = normalizeRepeatInterval(repeat.interval);
-  const allowedWeekdays = normalizeRepeatCollection(repeat.weekdays);
-  const selectedMonthDays = normalizeRepeatCollection(repeat.monthDays);
-
-  return (targetDate) => {
-    const normalizedTargetDate = targetDatesAreNormalized
-      ? targetDate
-      : normalizeDateValue(targetDate);
-    if (!normalizedTargetDate) {
-      return false;
-    }
-
-    const targetDay = targetDatesAreNormalized
-      ? normalizedTargetDate
-      : startOfDay(normalizedTargetDate);
-    if (!(targetDay instanceof Date) || Number.isNaN(targetDay.getTime())) {
-      return false;
-    }
-    const targetTime = targetDay.getTime();
-    if (configuredEndTime != null && configuredEndTime < targetTime) {
-      return false;
-    }
-    if (archivedTime != null && targetTime >= archivedTime) {
-      return false;
-    }
-
-    if (startTime === targetTime) {
-      return true;
-    }
-
-    if (targetTime < startTime || !repeatsAfterStart) {
-      return false;
-    }
-
-    switch (frequency) {
-      case 'daily':
-      case 'interval': {
-        const diffDays = getCalendarDayOrdinal(targetDay) - startDayOrdinal;
-        return diffDays % interval === 0;
-      }
-      case 'weekly': {
-        const diffDays = getCalendarDayOrdinal(targetDay) - startDayOrdinal;
-        const diffWeeks = Math.floor(diffDays / 7);
-        if (diffWeeks % interval !== 0) {
-          return false;
-        }
-        const targetWeekday = getWeekdayKeyFromDate(targetDay);
-        if (allowedWeekdays.length > 0) {
-          return targetWeekday ? allowedWeekdays.includes(targetWeekday) : false;
-        }
-        return targetDay.getDay() === startDay.getDay();
-      }
-      case 'monthly': {
-        const diffMonths =
-          (targetDay.getFullYear() - startDay.getFullYear()) * 12 +
-          targetDay.getMonth() -
-          startDay.getMonth();
-        if (diffMonths % interval !== 0) {
-          return false;
-        }
-        if (selectedMonthDays.length > 0) {
-          return selectedMonthDays.includes(targetDay.getDate());
-        }
-        return targetDay.getDate() === startDay.getDate();
-      }
-      case 'weekend': {
-        const day = targetDay.getDay();
-        return day === 0 || day === 6;
-      }
-      case 'weekdays': {
-        const day = targetDay.getDay();
-        return day >= 1 && day <= 5;
-      }
-      default:
-        return false;
-    }
-  };
-};
-
-const taskScheduleMatcherCache = new WeakMap();
-
-const shouldTaskAppearOnDate = (task, targetDate) => {
-  if (!task || typeof task !== 'object' || !targetDate) {
-    return false;
-  }
-  let matcher = taskScheduleMatcherCache.get(task);
-  if (!matcher) {
-    matcher = createTaskScheduleMatcher(task);
-    taskScheduleMatcherCache.set(task, matcher);
-  }
-  return matcher(targetDate);
-};
-
+// As regras de recorrência moram em `domain/taskSchedule.js`: elas dependem do
+// agendamento versionado da tarefa, não só de datas.
 export {
   calculateWeeksInMonth,
   createCenteredWeekDates,
-  createTaskScheduleMatcher,
+  getCalendarDayOrdinal,
   getDateKey,
   getMonthId,
   getMonthStart,
@@ -289,5 +132,4 @@ export {
   isSameDay,
   isValidDateRange,
   normalizeDateValue,
-  shouldTaskAppearOnDate,
 };

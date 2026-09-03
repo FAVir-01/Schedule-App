@@ -7,8 +7,8 @@ import {
   startOfMonth,
   startOfWeek,
 } from 'date-fns';
+import { createTaskScheduleMatcher } from '../domain/taskSchedule';
 import {
-  createTaskScheduleMatcher,
   getDateKey,
   normalizeDateValue,
 } from './dateUtils';

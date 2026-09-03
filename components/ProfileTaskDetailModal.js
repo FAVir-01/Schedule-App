@@ -12,7 +12,7 @@ import {
   getTaskStreak,
   getTaskTagDisplayLabel,
   getTaskTypeDisplayLabel,
-  isTaskArchived,
+  isTaskInactive,
 } from '../utils/taskUtils';
 import { formatTaskTime } from '../utils/timeUtils';
 import { lightenColor } from '../utils/colorUtils';
@@ -47,7 +47,7 @@ export default function ProfileTaskDetailModal({
   const isQuantum = task.type === 'quantum';
   const todayKey = getDateKey(new Date());
   // "Arquivada" inclui avulsa com data passada — as ações seguem esse estado.
-  const archived = isTaskArchived(task, todayKey);
+  const archived = isTaskInactive(task, todayKey);
   const quantumLabel = isQuantum ? getQuantumProgressLabel(task, todayKey) : null;
   const quantumModeLabel = t.taskDisplay.quantumModes[task.quantum?.mode]
     ?? t.taskDisplay.quantumModes.quantum;

@@ -65,8 +65,14 @@ import {
   getMonthId,
   getMonthStart,
   normalizeDateValue,
-  shouldTaskAppearOnDate,
 } from './utils/dateUtils';
+import {
+  appendScheduleVersion,
+  getCurrentScheduleVersion,
+  restartScheduleAt,
+  shouldTaskAppearOnDate,
+  withScheduleMirror,
+} from './domain/taskSchedule';
 import {
   createCenteredDateWindow,
   getCalendarDayOffset,
@@ -74,13 +80,15 @@ import {
 import { getInterruptedTaskReorderOffset } from './utils/taskReorderUtils';
 import { clampValue } from './utils/mathUtils';
 import {
+  clearExpiredRepeatEnd,
   getSubtaskCompletionStatus,
   getTaskCompletionStatus,
   getTaskTagDisplayLabel,
   normalizeTaskTagKey,
   isPassiveTaskType,
   isReminderExpiredForDate,
-  isTaskArchived,
+  isTaskExpired,
+  isTaskInactive,
   reconcileQuantumCompletionState,
   reconcileTaskProgressOnEdit,
   restoreDeletedTaskAtIndex,
@@ -142,9 +150,14 @@ import {
 } from './services/reminderService';
 import {
   exportAppBackup,
+  exportDiaryTextFile,
   prepareImportedBackupData,
   selectLatestAppBackupFromDirectory,
 } from './services/backupService';
+import {
+  buildDiaryTextExport,
+  getDiaryExportFileName,
+} from './utils/diaryExportUtils';
 import { authenticateDiaryAccess } from './services/diaryPrivacyService';
 import { buildTemplateTasks, migrateImportedTemplateTasks } from './utils/templateUtils';
 
@@ -1433,7 +1446,7 @@ function ScheduleApp() {
     const active = [];
     const archived = [];
     tasks.forEach((task) => {
-      (isTaskArchived(task, todayKey) ? archived : active).push(task);
+      (isTaskInactive(task, todayKey) ? archived : active).push(task);
     });
     return { profileActiveTasks: active, profileArchivedTasks: archived };
   }, [tasks, todayKey]);
@@ -1792,7 +1805,10 @@ function ScheduleApp() {
       const { completed, periodGoal: _removedPeriodGoal, ...restTask } = task;
       const notificationIds = getTaskNotificationIds(task);
 
-      return {
+      // `withScheduleMirror` migra a tarefa legada (sem `schedule`) para uma
+      // única versão valendo desde o início — comportamento idêntico ao de
+      // antes — e mantém `repeat`/`time` em sincronia com a versão atual.
+      return withScheduleMirror({
         ...restTask,
         dateKey: baseDateKey,
         completedDates: reconciledQuantumState.completedDates,
@@ -1806,7 +1822,7 @@ function ScheduleApp() {
           task.notificationScheduleMode === 'queued'
             ? task.notificationScheduleMode
             : null,
-      };
+      });
     });
   }, []);
 
@@ -2210,10 +2226,30 @@ function ScheduleApp() {
       const messageTemplate = result.includesRecoveryData
         ? t.backup.successWithRecovery
         : t.backup.successMessage;
-      Alert.alert(
-        t.backup.successTitle,
-        messageTemplate.split('{fileName}').join(result.fileName)
-      );
+      // O nome mostrado é o da pasta no Android (onde as fotos foram junto) e
+      // o do arquivo nas outras plataformas.
+      let successMessage = messageTemplate
+        .split('{fileName}')
+        .join(result.uri ? result.fileName.replace(/\.json$/, '') : result.fileName);
+      const copiedMediaCount = result.copiedMediaCount ?? 0;
+      if (copiedMediaCount > 0) {
+        successMessage += copiedMediaCount === 1
+          ? t.backup.exportedMediaOne
+          : t.backup.exportedMediaMany
+              .split('{count}')
+              .join(String(copiedMediaCount));
+      } else if (Platform.OS === 'android' && result.referencedMediaCount === 0) {
+        successMessage += t.backup.exportedMediaNone;
+      }
+      const failedMediaCount = result.failedMediaCount ?? 0;
+      if (failedMediaCount > 0) {
+        successMessage += failedMediaCount === 1
+          ? t.backup.exportedMediaFailedOne
+          : t.backup.exportedMediaFailedMany
+              .split('{count}')
+              .join(String(failedMediaCount));
+      }
+      Alert.alert(t.backup.successTitle, successMessage);
     } catch (error) {
       console.warn('Failed to export backup', error);
       Alert.alert(t.backup.errorTitle, t.backup.errorMessage);
@@ -2227,6 +2263,46 @@ function ScheduleApp() {
     tasks,
     userSettings,
   ]);
+
+  // O .txt sai em texto puro, então ele contorna a trava do diário por
+  // natureza: exigir o desbloqueio antes é o que mantém a proteção honesta.
+  const handleExportDiaryText = useCallback(async () => {
+    try {
+      const exportedAt = new Date().toISOString();
+      const { contents, entryCount } = buildDiaryTextExport({
+        dayMoods,
+        language,
+        labels: { ...t.diaryExport, levels: t.reflection.levels, tags: t.reflection.tags },
+        exportedAt,
+      });
+      if (entryCount === 0) {
+        Alert.alert(t.diaryExport.emptyTitle, t.diaryExport.emptyMessage);
+        return;
+      }
+      if (!(await requestDiaryUnlock())) {
+        return;
+      }
+      const result = await exportDiaryTextFile({
+        contents,
+        fileName: getDiaryExportFileName(exportedAt),
+      });
+      if (result.status === 'cancelled') {
+        return;
+      }
+      const message = (entryCount === 1
+        ? t.diaryExport.successMessageOne
+        : t.diaryExport.successMessageMany
+      )
+        .split('{fileName}')
+        .join(result.fileName)
+        .split('{count}')
+        .join(String(entryCount));
+      Alert.alert(t.diaryExport.successTitle, message);
+    } catch (error) {
+      console.warn('Failed to export diary text', error);
+      Alert.alert(t.diaryExport.errorTitle, t.diaryExport.errorMessage);
+    }
+  }, [dayMoods, language, requestDiaryUnlock, t.diaryExport, t.reflection]);
 
   const applyNavigationBarThemeForTab = useCallback(async (tabKey) => {
     if (Platform.OS !== 'android') {
@@ -2989,14 +3065,27 @@ function ScheduleApp() {
         if (!idSet.has(task.id)) {
           return;
         }
-        const next = { ...task, archived: false, archivedAt: null };
-        if (!normalizeRepeatConfig(task.repeat).enabled) {
-          const startDate = normalizeDateValue(task.dateKey ?? task.date);
-          if (startDate && getDateKey(startDate) < todayKey) {
-            next.date = today;
-            next.dateKey = todayKey;
-          }
-        }
+        const cleared = { ...task, archived: false, archivedAt: null };
+        // Tarefa avulsa vencida volta com uma ocorrência nova valendo hoje.
+        // Antes a data de início era sobrescrita para hoje: além de mentir
+        // sobre quando a tarefa começou, isso re-faseava a recorrência inteira,
+        // porque a fase é ancorada nessa data.
+        const currentVersion = getCurrentScheduleVersion(cleared);
+        const next = isTaskExpired(cleared, todayKey)
+          ? withScheduleMirror({
+              ...cleared,
+              schedule: appendScheduleVersion(cleared, {
+                effectiveFrom: todayKey,
+                // A data final vencida sai junto: mantê-la faria a versão nova
+                // já nascer expirada e o botão "Reativar" não fazer nada.
+                repeat: clearExpiredRepeatEnd(
+                  currentVersion?.repeat ?? cleared.repeat,
+                  todayKey
+                ),
+                time: currentVersion?.time ?? cleared.time,
+              }),
+            })
+          : cleared;
         updatedById.set(task.id, next);
       });
       if (updatedById.size === 0) {
@@ -3009,7 +3098,7 @@ function ScheduleApp() {
         void refreshTaskReminder(task, null, { notifyOnFailure: false });
       });
     },
-    [refreshTaskReminder, tasks, today, todayKey]
+    [refreshTaskReminder, tasks, todayKey]
   );
 
   const handleToggleProfileTaskArchive = useCallback(
@@ -3018,9 +3107,9 @@ function ScheduleApp() {
       if (!task) {
         return;
       }
-      // Mesmo critério do modal: avulsa com data passada conta como arquivada,
-      // então "Reativar" nela move a data para hoje.
-      if (isTaskArchived(task, todayKey)) {
+      // Mesmo critério do modal: avulsa vencida aparece na aba Arquivadas,
+      // então "Reativar" nela agenda uma ocorrência nova para hoje.
+      if (isTaskInactive(task, todayKey)) {
         handleUnarchiveProfileTasks([taskId]);
       } else {
         handleArchiveProfileTasks([taskId]);
@@ -3302,7 +3391,10 @@ function ScheduleApp() {
         return;
       }
 
-      const prepared = await prepareImportedBackupData(selected.data);
+      const prepared = await prepareImportedBackupData(selected.data, {
+        mediaFiles: selected.payload?.media?.files ?? [],
+        bundleMediaUris: selected.bundleMediaUris ?? [],
+      });
       const locale = language === 'pt' ? 'pt-BR' : 'en-US';
       const exportedDate = new Date(selected.preview.exportedAt).toLocaleString(locale);
       const replaceToken = (value, token, replacement) =>
@@ -3317,6 +3409,15 @@ function ScheduleApp() {
       ].forEach(([token, value]) => {
         previewMessage = replaceToken(previewMessage, token, value);
       });
+      if (prepared.restoredMediaCount > 0) {
+        previewMessage += prepared.restoredMediaCount === 1
+          ? t.backup.restoredMediaOne
+          : replaceToken(
+              t.backup.restoredMediaMany,
+              '{count}',
+              prepared.restoredMediaCount
+            );
+      }
       if (prepared.missingMediaCount > 0) {
         previewMessage += prepared.missingMediaCount === 1
           ? t.backup.missingMediaOne
@@ -3349,7 +3450,7 @@ function ScheduleApp() {
     const color = habit?.color ?? '#d1d7ff';
     const title = getUniqueTitle(habit?.title, null);
     const repeat = normalizeRepeatConfig(habit?.repeat);
-    const newTask = {
+    const newTask = withScheduleMirror({
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       title,
       color,
@@ -3358,6 +3459,11 @@ function ScheduleApp() {
       time: habit?.time,
       date: normalizedDate,
       dateKey,
+      schedule: restartScheduleAt({
+        effectiveFrom: dateKey,
+        repeat,
+        time: habit?.time ?? null,
+      }),
       completedDates: {},
       subtasks: convertSubtasks(habit?.subtasks ?? []),
       repeat,
@@ -3370,7 +3476,7 @@ function ScheduleApp() {
       notificationIds: [],
       notificationId: null,
       notificationScheduleMode: null,
-    };
+    });
     setTasks((previous) => [...previous, newTask]);
     void refreshTaskReminder(newTask, null, { notifyOnFailure: true });
     setSelectedDate(normalizedDate);
@@ -3449,13 +3555,35 @@ function ScheduleApp() {
         completedDates: nextCompletedDates,
         quantum: mergedQuantum,
       } = reconcileTaskProgressOnEdit(existingTask, nextType, nextQuantum);
+      const nextDateKey = getDateKey(nextDate);
+      const nextRepeat = normalizeRepeatConfig(habit?.repeat ?? existingTask.repeat);
+      const nextTime = habit?.time ?? null;
+      // Mudar o agendamento passa a valer de hoje em diante: o que já foi
+      // agendado sob a regra antiga continua descrito por ela, então gráfico,
+      // taxa de conclusão e sequência não mudam retroativamente.
+      //
+      // Mover a data de início é outra intenção: redefine quando a tarefa
+      // começa, e as versões anteriores deixam de descrever qualquer dia real.
+      const nextSchedule =
+        nextDateKey === existingTask.dateKey
+          ? appendScheduleVersion(existingTask, {
+              effectiveFrom: todayKey,
+              repeat: nextRepeat,
+              time: nextTime,
+            })
+          : restartScheduleAt({
+              effectiveFrom: nextDateKey,
+              repeat: nextRepeat,
+              time: nextTime,
+            });
       setTasks((previous) =>
         previous.map((task) => {
           if (task.id !== taskId) {
             return task;
           }
-          return {
+          return withScheduleMirror({
             ...task,
+            schedule: nextSchedule,
             title: nextTitle,
             color: habit?.color ?? task.color,
             emoji: habit?.emoji ?? task.emoji,
@@ -3478,12 +3606,13 @@ function ScheduleApp() {
             notificationIds: [],
             notificationId: null,
             notificationScheduleMode: null,
-          };
+          });
         })
       );
       if (existingTask) {
-        const updatedTask = {
+        const updatedTask = withScheduleMirror({
           ...existingTask,
+          schedule: nextSchedule,
           title: nextTitle,
           color: habit?.color ?? existingTask.color,
           emoji: habit?.emoji ?? existingTask.emoji,
@@ -3504,7 +3633,7 @@ function ScheduleApp() {
           notificationIds: [],
           notificationId: null,
           notificationScheduleMode: null,
-        };
+        });
         void refreshTaskReminder(updatedTask, existingTask, { notifyOnFailure: true });
       }
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
@@ -3517,7 +3646,15 @@ function ScheduleApp() {
         dateKey: normalizedDate ? getDateKey(normalizedDate) : undefined,
       });
     },
-    [appendHistoryEntry, convertSubtasks, getUniqueTitle, refreshTaskReminder, t.common.untitledTask, tasks]
+    [
+      appendHistoryEntry,
+      convertSubtasks,
+      getUniqueTitle,
+      refreshTaskReminder,
+      t.common.untitledTask,
+      tasks,
+      todayKey,
+    ]
   );
 
   const handleToggleSubtask = useCallback(
@@ -4880,6 +5017,7 @@ function ScheduleApp() {
         onCustomizeCalendar={() => setCustomizeCalendarOpen(true)}
         onExportBackup={handleExportBackup}
         onImportBackup={handleImportBackup}
+        onExportDiaryText={handleExportDiaryText}
       />
       <CustomizeCalendarModal
         visible={isCustomizeCalendarOpen}
