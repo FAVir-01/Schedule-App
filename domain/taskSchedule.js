@@ -26,6 +26,7 @@ import {
   getWeekdayKeyFromDate,
   normalizeDateValue,
 } from '../utils/dateUtils';
+import { resolveTimeForRepeatDate } from '../utils/taskTimeUtils';
 
 const normalizeRepeatCollection = (value) => {
   if (!value) {
@@ -183,6 +184,13 @@ export const getScheduleVersionForKey = (task, dateKey) => {
     }
   }
   return match;
+};
+
+export const getTaskTimeForDate = (task, targetDate) => {
+  const version = getScheduleVersionForKey(task, targetDate);
+  const time = version?.time ?? task?.time ?? null;
+  const repeat = version?.repeat ?? task?.repeat ?? null;
+  return resolveTimeForRepeatDate(time, repeat, targetDate);
 };
 
 export const getScheduleSignature = (version, { isQuantum = false } = {}) => {

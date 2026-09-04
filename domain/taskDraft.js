@@ -9,6 +9,8 @@
 
 import { getWeekdayKeyFromDate, isValidDateRange, normalizeDateValue } from '../utils/dateUtils';
 import { getTimerParts } from '../utils/timeUtils';
+import { getTimeConfigurations, hasGroupedTaskTimes } from '../utils/taskTimeUtils';
+import { getCurrentScheduleVersion } from './taskSchedule';
 
 export const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
@@ -160,6 +162,97 @@ const sortedUnique = (values) => Array.from(new Set(values)).sort((a, b) => a - 
 const sortedWeekdays = (keys) =>
   WEEKDAY_KEYS.filter((key) => keys.includes(key));
 
+const normalizeTimeConfiguration = (time, fallback = {}) => ({
+  specified: Boolean(time?.specified ?? fallback.specified),
+  mode: time?.mode === 'period' ? 'period' : fallback.mode === 'period' ? 'period' : 'point',
+  point: normalizeTimeValue(time?.point ?? fallback.point ?? DEFAULT_POINT_TIME),
+  period: ensureValidPeriod(time?.period ?? fallback.period ?? DEFAULT_PERIOD_TIME),
+});
+
+const getRepeatDays = (repeat) => {
+  if (!repeat?.enabled) {
+    return [];
+  }
+  if (repeat.frequency === 'weekly') {
+    return sortedWeekdays(repeat.weekdays ?? []);
+  }
+  if (repeat.frequency === 'monthly') {
+    return sortedUnique(repeat.monthDays ?? []);
+  }
+  return [];
+};
+
+const sortDaysForRepeat = (days, repeat) => {
+  const selectedDays = getRepeatDays(repeat);
+  return selectedDays.filter((day) => days.includes(day));
+};
+
+const reconcileTimeGroups = (time, repeat) => {
+  const selectedDays = getRepeatDays(repeat);
+  if (selectedDays.length < 2 || !Array.isArray(time?.groups) || time.groups.length < 2) {
+    const remainingDay = selectedDays[0];
+    const fallbackGroup =
+      time?.groups?.find((group) => group?.days?.includes(remainingDay)) ?? time?.groups?.[0];
+    return fallbackGroup
+      ? { ...time, ...normalizeTimeConfiguration(fallbackGroup, time), groups: [] }
+      : { ...time, groups: [] };
+  }
+
+  const selectedSet = new Set(selectedDays);
+  const assigned = new Set();
+  const usedIds = new Set();
+  const groups = time.groups
+    .map((group, index) => {
+      let id = `${group?.id ?? `time-group-${index + 1}`}`;
+      if (usedIds.has(id)) {
+        let suffix = index + 1;
+        while (usedIds.has(`time-group-${suffix}`)) {
+          suffix += 1;
+        }
+        id = `time-group-${suffix}`;
+      }
+      usedIds.add(id);
+      const days = [];
+      (Array.isArray(group?.days) ? group.days : []).forEach((day) => {
+        if (selectedSet.has(day) && !assigned.has(day)) {
+          assigned.add(day);
+          days.push(day);
+        }
+      });
+      return {
+        id,
+        days: sortDaysForRepeat(days, repeat),
+        ...normalizeTimeConfiguration(group, time),
+      };
+    })
+    .filter((group) => group.days.length > 0);
+
+  const missingDays = selectedDays.filter((day) => !assigned.has(day));
+  if (groups.length > 0 && missingDays.length > 0) {
+    groups[0] = {
+      ...groups[0],
+      days: sortDaysForRepeat([...groups[0].days, ...missingDays], repeat),
+    };
+  }
+
+  if (groups.length < 2) {
+    const fallbackGroup = groups[0] ?? time.groups[0];
+    return fallbackGroup
+      ? { ...time, ...normalizeTimeConfiguration(fallbackGroup, time), groups: [] }
+      : { ...time, groups: [] };
+  }
+  return { ...time, groups };
+};
+
+const nextTimeGroupId = (groups) => {
+  const used = new Set(groups.map((group) => group.id));
+  let number = 1;
+  while (used.has(`time-group-${number}`)) {
+    number += 1;
+  }
+  return `time-group-${number}`;
+};
+
 export const createEmptyDraft = ({ today = new Date(), emoji } = {}) => {
   const startDate = startOfDay(today);
   return {
@@ -185,6 +278,7 @@ export const createEmptyDraft = ({ today = new Date(), emoji } = {}) => {
         start: { ...DEFAULT_PERIOD_TIME.start },
         end: { ...DEFAULT_PERIOD_TIME.end },
       },
+      groups: [],
     },
     reminder: 'none',
     tag: 'none',
@@ -273,9 +367,35 @@ export const draftFromTask = (task, { today = new Date() } = {}) => {
     return base;
   }
 
+  const currentScheduleVersion = getCurrentScheduleVersion(task);
+  // Cards de uma data recebem `time` ja resolvido para aquela ocorrencia. Ao
+  // editar ou duplicar por esse card, a configuracao completa precisa vir da
+  // versao atual do schedule, senao os demais grupos seriam descartados.
+  const scheduledTask = currentScheduleVersion
+    ? {
+        ...task,
+        repeat: currentScheduleVersion.repeat ?? task.repeat,
+        time: currentScheduleVersion.time ?? task.time,
+      }
+    : task;
   const startDate = startOfDay(task.startDate ?? task.date ?? today);
   const timerParts = getTimerParts(task.quantum?.timer);
   const rawAnimation = task.quantum?.animation === 'defaut' ? 'default' : task.quantum?.animation;
+  const repeat = draftRepeatFromTask(scheduledTask, startDate);
+  const baseTime = normalizeTimeConfiguration(scheduledTask.time);
+  const time = reconcileTimeGroups(
+    {
+      ...baseTime,
+      groups: Array.isArray(scheduledTask.time?.groups)
+        ? scheduledTask.time.groups.map((group) => ({
+            id: group?.id,
+            days: Array.isArray(group?.days) ? [...group.days] : [],
+            ...normalizeTimeConfiguration(group, baseTime),
+          }))
+        : [],
+    },
+    repeat
+  );
 
   return {
     ...base,
@@ -284,13 +404,8 @@ export const draftFromTask = (task, { today = new Date() } = {}) => {
     emoji: task.emoji ?? DEFAULT_EMOJI,
     customImage: task.customImage ?? null,
     startDate,
-    repeat: draftRepeatFromTask(task, startDate),
-    time: {
-      specified: Boolean(task.time?.specified),
-      mode: task.time?.mode === 'period' ? 'period' : 'point',
-      point: normalizeTimeValue(task.time?.point ?? DEFAULT_POINT_TIME),
-      period: ensureValidPeriod(task.time?.period ?? DEFAULT_PERIOD_TIME),
-    },
+    repeat,
+    time,
     reminder: oneOf(task.reminder, REMINDER_KEYS, 'none'),
     tag: task.tag ?? 'none',
     type: oneOf(task.type, TASK_TYPES, 'default'),
@@ -335,6 +450,18 @@ export const draftToTask = (draft, { tagOptions = [] } = {}) => {
       mode: draft.time.mode,
       point: draft.time.point,
       period: draft.time.period,
+      ...(hasGroupedTaskTimes(draft.time)
+        ? {
+            groups: draft.time.groups.map((group) => ({
+              id: group.id,
+              days: [...group.days],
+              specified: group.specified,
+              mode: group.mode,
+              point: group.point,
+              period: group.period,
+            })),
+          }
+        : {}),
     },
     reminder: draft.reminder,
     tag: draft.tag,
@@ -370,7 +497,10 @@ export const validateDraft = (draft) => {
     errors.push({ field: 'title', code: 'titleRequired' });
   }
 
-  if (draft.reminder !== 'none' && !draft.time.specified) {
+  if (
+    draft.reminder !== 'none' &&
+    getTimeConfigurations(draft.time).some((configuration) => !configuration?.specified)
+  ) {
     errors.push({ field: 'reminder', code: 'reminderNeedsTime' });
   }
 
@@ -431,7 +561,7 @@ const withInvariants = (draft) => {
   // Lembrete sem horário também não é corrigido aqui: `validateDraft` marca o
   // campo e o formulário mostra o erro na linha, o que explica o problema em
   // vez de desfazer a escolha em silêncio.
-  return { ...draft, repeat };
+  return { ...draft, repeat, time: reconcileTimeGroups(draft.time, repeat) };
 };
 
 export const taskDraftReducer = (draft, action) => {
@@ -471,7 +601,8 @@ export const taskDraftReducer = (draft, action) => {
         : sortedWeekdays([...draft.repeat.weekdays, action.value]);
       // Sem invariantes: esvaziar a lista é um estado intermediário legítimo
       // enquanto o usuário troca de dia, e `validateDraft` cobre o resto.
-      return { ...draft, repeat: { ...draft.repeat, weekdays } };
+      const repeat = { ...draft.repeat, weekdays };
+      return { ...draft, repeat, time: reconcileTimeGroups(draft.time, repeat) };
     }
 
     case 'toggleMonthDay': {
@@ -479,7 +610,8 @@ export const taskDraftReducer = (draft, action) => {
       const monthDays = has
         ? draft.repeat.monthDays.filter((day) => day !== action.value)
         : sortedUnique([...draft.repeat.monthDays, action.value]);
-      return { ...draft, repeat: { ...draft.repeat, monthDays } };
+      const repeat = { ...draft.repeat, monthDays };
+      return { ...draft, repeat, time: reconcileTimeGroups(draft.time, repeat) };
     }
 
     case 'patchTime': {
@@ -491,6 +623,115 @@ export const taskDraftReducer = (draft, action) => {
         time.period = ensureValidPeriod(action.value.period);
       }
       return withInvariants({ ...draft, time });
+    }
+
+    case 'configureTimeGroups': {
+      const days = getRepeatDays(draft.repeat);
+      if (days.length < 2) {
+        return draft;
+      }
+      const splitAt = Math.ceil(days.length / 2);
+      const configuration = normalizeTimeConfiguration(draft.time);
+      const groups = [days.slice(0, splitAt), days.slice(splitAt)].map((groupDays, index) => ({
+        id: `time-group-${index + 1}`,
+        days: groupDays,
+        ...configuration,
+      }));
+      return { ...draft, time: { ...draft.time, groups } };
+    }
+
+    case 'patchTimeGroup': {
+      const groups = (draft.time.groups ?? []).map((group) => {
+        if (group.id !== action.id) {
+          return group;
+        }
+        return {
+          ...group,
+          ...normalizeTimeConfiguration({ ...group, ...action.value }, group),
+        };
+      });
+      return withInvariants({ ...draft, time: { ...draft.time, groups } });
+    }
+
+    case 'assignTimeGroupDay': {
+      const groups = draft.time.groups ?? [];
+      const sourceIndex = groups.findIndex((group) => group.days.includes(action.day));
+      const targetIndex = groups.findIndex((group) => group.id === action.id);
+      if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+        return draft;
+      }
+      // Um grupo nunca pode ficar vazio: para dividi-lo, o usuario usa o +.
+      if (groups[sourceIndex].days.length <= 1) {
+        return draft;
+      }
+      const nextGroups = groups.map((group, index) => {
+        const days =
+          index === sourceIndex
+            ? group.days.filter((day) => day !== action.day)
+            : index === targetIndex
+            ? [...group.days, action.day]
+            : group.days;
+        return { ...group, days: sortDaysForRepeat(days, draft.repeat) };
+      });
+      return { ...draft, time: { ...draft.time, groups: nextGroups } };
+    }
+
+    case 'addTimeGroup': {
+      const groups = draft.time.groups ?? [];
+      const days = getRepeatDays(draft.repeat);
+      if (groups.length < 2 || groups.length >= days.length) {
+        return draft;
+      }
+      const requestedIndex = Number.isInteger(action.afterIndex) ? action.afterIndex : groups.length - 1;
+      const preferredDonor = Math.max(0, Math.min(groups.length - 1, requestedIndex));
+      const donorIndex =
+        groups[preferredDonor]?.days.length > 1
+          ? preferredDonor
+          : groups.findIndex((group) => group.days.length > 1);
+      if (donorIndex < 0) {
+        return draft;
+      }
+      const donor = groups[donorIndex];
+      const movedDay = donor.days[donor.days.length - 1];
+      const nextGroups = groups.map((group, index) =>
+        index === donorIndex ? { ...group, days: group.days.slice(0, -1) } : group
+      );
+      const insertionIndex = Math.max(0, Math.min(nextGroups.length, requestedIndex + 1));
+      nextGroups.splice(insertionIndex, 0, {
+        id: nextTimeGroupId(groups),
+        days: [movedDay],
+        ...normalizeTimeConfiguration(donor, draft.time),
+      });
+      return { ...draft, time: { ...draft.time, groups: nextGroups } };
+    }
+
+    case 'removeTimeGroup': {
+      const groups = draft.time.groups ?? [];
+      const removeIndex = groups.findIndex((group) => group.id === action.id);
+      if (removeIndex < 0) {
+        return draft;
+      }
+      if (groups.length <= 2) {
+        const fallback = normalizeTimeConfiguration(groups[0], draft.time);
+        return { ...draft, time: { ...draft.time, ...fallback, groups: [] } };
+      }
+      const targetIndex = removeIndex > 0 ? removeIndex - 1 : 1;
+      const removedDays = groups[removeIndex].days;
+      const targetId = groups[targetIndex].id;
+      const nextGroups = groups
+        .filter((_, index) => index !== removeIndex)
+        .map((group) =>
+          group.id === targetId
+            ? { ...group, days: sortDaysForRepeat([...group.days, ...removedDays], draft.repeat) }
+            : group
+        );
+      return { ...draft, time: { ...draft.time, groups: nextGroups } };
+    }
+
+    case 'clearTimeGroups': {
+      const groups = draft.time.groups ?? [];
+      const fallback = normalizeTimeConfiguration(groups[0], draft.time);
+      return { ...draft, time: { ...draft.time, ...fallback, groups: [] } };
     }
 
     case 'patchQuantum': {

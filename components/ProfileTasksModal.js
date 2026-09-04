@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { translations } from '../constants/i18n';
 import {
   getTaskLastCompletionDateKey,
@@ -52,6 +53,7 @@ export default function ProfileTasksModal({
   onUndoDelete,
   language = 'en',
 }) {
+  const insets = useSafeAreaInsets();
   const t = translations[language] ?? translations.en;
   const [viewTab, setViewTab] = useState('active');
   const [searchValue, setSearchValue] = useState('');
@@ -286,7 +288,12 @@ export default function ProfileTasksModal({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.profileTasksContainer}>
+      <View
+        style={[
+          styles.profileTasksContainer,
+          { paddingTop: insets.top + 12 },
+        ]}
+      >
         <View style={styles.profileTasksHeader}>
           <Text style={styles.profileTasksTitle}>{t.profileTasks.title}</Text>
           <Pressable

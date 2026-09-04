@@ -163,6 +163,7 @@ const {
   createTaskScheduleMatcher,
   getCurrentScheduleVersion,
   getScheduleVersionForKey,
+  getTaskTimeForDate,
   normalizeTaskSchedule,
   restartScheduleAt,
   shouldTaskAppearOnDate,
@@ -270,13 +271,7 @@ const {
   hasReflectionContent,
 } = require('../utils/moodUtils');
 const {
-  TASK_TEMPLATE_COLLECTIONS,
   TASK_TEMPLATE_VERSION,
-  getTaskTemplateCollection,
-} = require('../constants/taskTemplates');
-const {
-  buildTemplateTasks,
-  getImportedTemplateTaskKeys,
   migrateImportedTemplateTasks,
 } = require('../utils/templateUtils');
 const { getTimerParts, getTimerTotalSeconds } = require('../utils/timeUtils');
@@ -378,72 +373,6 @@ test('resume o periodo local sem misturar lembretes ou inferir causalidade', () 
   assert.equal(summary.current.photos, 1);
 });
 
-test('mantem o catalogo de templates completo nos dois idiomas', () => {
-  assert.equal(TASK_TEMPLATE_COLLECTIONS.length, 3);
-  TASK_TEMPLATE_COLLECTIONS.forEach((template) => {
-    ['en', 'pt'].forEach((language) => {
-      const localized = translations[language].discover.templates[template.id];
-      assert.ok(localized?.title);
-      assert.ok(localized?.description);
-      template.tasks.forEach((task) => {
-        assert.ok(localized.tasks[task.id]?.title);
-        assert.ok(localized.tasks[task.id]?.description);
-        if (task.type === 'quantum') {
-          assert.equal(isValidQuantumDefinition(task.quantum), true);
-          assert.notEqual(task.quantum.animation, 'defaut');
-        }
-      });
-    });
-  });
-});
-
-test('cria somente tarefas selecionadas e ainda nao importadas do template', () => {
-  const template = getTaskTemplateCollection('morningReset');
-  const localizedTemplate = translations.pt.discover.templates.morningReset;
-  const existingTasks = [
-    {
-      id: 'existing-template-task',
-      title: 'Beber um copo de água',
-      templateSource: { templateId: 'morningReset', taskId: 'hydrate', version: 1 },
-    },
-    { id: 'existing-title', title: 'Escolher as prioridades de hoje' },
-  ];
-  const tasks = buildTemplateTasks({
-    template,
-    selectedTaskIds: ['hydrate', 'priorities', 'stretch'],
-    localizedTemplate,
-    existingTasks,
-    startDate: '2026-07-17',
-    fallbackTitle: 'Sem titulo',
-    createTaskId: (templateId, taskId) => `${templateId}-${taskId}`,
-  });
-
-  assert.equal(tasks.length, 2);
-  assert.deepEqual(tasks.map((task) => task.templateSource.taskId), ['priorities', 'stretch']);
-  assert.equal(tasks[0].title, 'Escolher as prioridades de hoje 1');
-  assert.equal(tasks[0].dateKey, '2026-07-17');
-  assert.equal(tasks[0].repeat.frequency, 'daily');
-  assert.equal(tasks[0].completedDates['2026-07-17'], undefined);
-  assert.equal(tasks[1].type, 'default');
-  assert.equal(tasks[1].quantum, null);
-  assert.equal(tasks[1].templateSource.version, TASK_TEMPLATE_VERSION);
-});
-
-test('preserva minutos dos templates quantitativos ao criar e editar', () => {
-  const template = getTaskTemplateCollection('focusFlow');
-  const tasks = buildTemplateTasks({
-    template,
-    selectedTaskIds: ['focusBlock'],
-    localizedTemplate: translations.en.discover.templates.focusFlow,
-    startDate: '2026-07-18',
-    createTaskId: () => 'focus-task',
-  });
-
-  assert.equal(tasks.length, 1);
-  assert.deepEqual(getTimerParts(tasks[0].quantum.timer), { hours: 0, minutes: 25 });
-  assert.equal(getTimerTotalSeconds(tasks[0].quantum.timer), 25 * 60);
-  assert.equal(getQuantumStepLabel(tasks[0], 900), '15m');
-});
 
 test('migra imports com duracao incorreta sem alterar tarefas manuais', () => {
   const migrated = migrateImportedTemplateTasks([
@@ -561,15 +490,6 @@ test('deriva os selos de conclusao nos marcos 10 e multiplos de 50', () => {
   assert.equal(getTaskFinishedCount(task), 54);
   assert.equal(getTaskFinishedMilestoneForDate(task, completionKeys[10]), 10);
   assert.equal(getTaskFinishedMilestoneForDate(task, completionKeys[50]), 50);
-});
-
-test('reconhece fontes importadas sem confundir tarefas comuns', () => {
-  const keys = getImportedTemplateTaskKeys([
-    { id: 'ordinary', title: 'Tarefa comum' },
-    { templateSource: { templateId: 'focusFlow', taskId: 'focusBlock' } },
-    { templateSource: { templateId: 'focusFlow' } },
-  ]);
-  assert.deepEqual([...keys], ['focusFlow:focusBlock']);
 });
 
 test('traduz rotulos de tarefa pela chave semantica atual', () => {
@@ -2600,6 +2520,10 @@ test('mantem o detalhe da task acima da navegacao inferior do aparelho', () => {
 test('mantem o corpo do perfil com margens horizontais simetricas', () => {
   const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
   const stylesSource = fs.readFileSync(path.join(root, 'styles/appStyles.js'), 'utf8');
+  const profileTasksSource = fs.readFileSync(
+    path.join(root, 'components/ProfileTasksModal.js'),
+    'utf8'
+  );
 
   assert.equal(
     appSource.includes('const profileContentWidth = Math.max(0, width - 48);'),
@@ -2610,6 +2534,8 @@ test('mantem o corpo do perfil com margens horizontais simetricas', () => {
     true
   );
   assert.match(stylesSource, /profileBody:\s*\{\s*alignSelf: 'center'/);
+  assert.equal(profileTasksSource.includes('const insets = useSafeAreaInsets();'), true);
+  assert.equal(profileTasksSource.includes('{ paddingTop: insets.top + 12 }'), true);
 });
 
 test('expoe abas e acoes de reflexao ao leitor de tela', () => {
@@ -3253,6 +3179,310 @@ test('mantem as invariantes do rascunho num lugar so', () => {
       .timerMinutes,
     '59'
   );
+});
+
+test('divide os dias semanais em horarios exclusivos e limita a quantidade de grupos', () => {
+  const today = new Date(2026, 8, 7);
+  let draft = createEmptyDraft({ today });
+  draft = taskDraftReducer(draft, { type: 'setTitle', value: 'Computacao' });
+  draft = taskDraftReducer(draft, {
+    type: 'patchRepeat',
+    value: {
+      enabled: true,
+      frequency: 'weekly',
+      weekdays: ['mon', 'wed', 'fri'],
+    },
+  });
+
+  // Sem a configuracao extra, o horario raiz continua valendo para todos.
+  draft = taskDraftReducer(draft, {
+    type: 'patchTime',
+    value: { specified: true, point: { hour: 3, minute: 0, meridiem: 'PM' } },
+  });
+  const simpleTask = { ...draftToTask(draft), date: today, dateKey: '2026-09-07' };
+  assert.equal(getTaskTimeForDate(simpleTask, new Date(2026, 8, 7)).point.hour, 3);
+  assert.equal(getTaskTimeForDate(simpleTask, new Date(2026, 8, 11)).point.hour, 3);
+
+  draft = taskDraftReducer(draft, { type: 'configureTimeGroups' });
+  assert.deepEqual(draft.time.groups.map((group) => group.days), [
+    ['mon', 'wed'],
+    ['fri'],
+  ]);
+
+  // Um dia so pode mudar de grupo quando o grupo de origem nao fica vazio.
+  draft = taskDraftReducer(draft, {
+    type: 'assignTimeGroupDay',
+    id: draft.time.groups[1].id,
+    day: 'wed',
+  });
+  assert.deepEqual(draft.time.groups.map((group) => group.days), [['mon'], ['wed', 'fri']]);
+
+  draft = taskDraftReducer(draft, { type: 'addTimeGroup', afterIndex: 1 });
+  assert.deepEqual(draft.time.groups.map((group) => group.days), [['mon'], ['wed'], ['fri']]);
+  const atMaximum = taskDraftReducer(draft, { type: 'addTimeGroup', afterIndex: 2 });
+  assert.equal(atMaximum, draft);
+
+  const allDays = draft.time.groups.flatMap((group) => group.days);
+  assert.deepEqual(allDays.sort(), ['fri', 'mon', 'wed']);
+  assert.equal(new Set(allDays).size, 3);
+});
+
+test('persiste horarios por dia e resolve cada ocorrencia com seu proprio horario', () => {
+  const today = new Date(2026, 8, 7);
+  let draft = taskDraftReducer(createEmptyDraft({ today }), {
+    type: 'patchRepeat',
+    value: { enabled: true, frequency: 'weekly', weekdays: ['mon', 'wed', 'fri'] },
+  });
+  draft = taskDraftReducer(draft, { type: 'setTitle', value: 'Computacao' });
+  draft = taskDraftReducer(draft, { type: 'configureTimeGroups' });
+  const firstId = draft.time.groups[0].id;
+  const secondId = draft.time.groups[1].id;
+  draft = taskDraftReducer(draft, {
+    type: 'patchTimeGroup',
+    id: firstId,
+    value: { specified: true, point: { hour: 3, minute: 0, meridiem: 'PM' } },
+  });
+  draft = taskDraftReducer(draft, {
+    type: 'patchTimeGroup',
+    id: secondId,
+    value: { specified: true, point: { hour: 1, minute: 30, meridiem: 'PM' } },
+  });
+  draft = taskDraftReducer(draft, { type: 'patch', value: { reminder: 'at_time' } });
+  assert.equal(getDraftError(validateDraft(draft), 'reminder'), null);
+
+  const persisted = draftToTask(draft);
+  const reopened = draftFromTask({ ...persisted, startDate: today }, { today });
+  assert.deepEqual(reopened.time.groups.map((group) => group.days), [
+    ['mon', 'wed'],
+    ['fri'],
+  ]);
+
+  const task = { ...persisted, date: today, dateKey: '2026-09-07' };
+  assert.deepEqual(getTaskTimeForDate(task, new Date(2026, 8, 9)).point, {
+    hour: 3,
+    minute: 0,
+    meridiem: 'PM',
+  });
+  assert.deepEqual(getTaskTimeForDate(task, new Date(2026, 8, 11)).point, {
+    hour: 1,
+    minute: 30,
+    meridiem: 'PM',
+  });
+
+  // O atalho de editar/duplicar no card recebe o horario resolvido daquele dia,
+  // mas precisa reabrir todos os grupos guardados no schedule.
+  const taskFromFridayCard = {
+    ...task,
+    schedule: [
+      {
+        effectiveFrom: '2026-09-07',
+        repeat: persisted.repeat,
+        time: persisted.time,
+      },
+    ],
+    time: getTaskTimeForDate(task, new Date(2026, 8, 11)),
+  };
+  const reopenedFromCard = draftFromTask(taskFromFridayCard, { today });
+  assert.deepEqual(reopenedFromCard.time.groups.map((group) => group.days), [
+    ['mon', 'wed'],
+    ['fri'],
+  ]);
+});
+
+test('resolve grupos mensais pelo dia do mes', () => {
+  const task = {
+    date: new Date(2026, 8, 3),
+    dateKey: '2026-09-03',
+    repeat: { enabled: true, frequency: 'monthly', interval: 1, monthDays: [3, 18] },
+    time: {
+      specified: false,
+      groups: [
+        {
+          id: 'time-group-1',
+          days: [3],
+          specified: true,
+          mode: 'point',
+          point: { hour: 8, minute: 0, meridiem: 'AM' },
+        },
+        {
+          id: 'time-group-2',
+          days: [18],
+          specified: true,
+          mode: 'point',
+          point: { hour: 6, minute: 30, meridiem: 'PM' },
+        },
+      ],
+    },
+  };
+
+  assert.equal(getTaskTimeForDate(task, new Date(2026, 9, 3)).point.hour, 8);
+  assert.deepEqual(getTaskTimeForDate(task, new Date(2026, 9, 18)).point, {
+    hour: 6,
+    minute: 30,
+    meridiem: 'PM',
+  });
+});
+
+test('preserva o horario antigo no historico ao adicionar grupos depois', () => {
+  const point = (hour, minute, meridiem) => ({
+    specified: true,
+    mode: 'point',
+    point: { hour, minute, meridiem },
+  });
+  const groupedTime = {
+    ...point(3, 0, 'PM'),
+    groups: [
+      { id: 'time-group-1', days: ['mon'], ...point(3, 0, 'PM') },
+      { id: 'time-group-2', days: ['fri'], ...point(1, 30, 'PM') },
+    ],
+  };
+  const task = withScheduleMirror({
+    date: new Date(2026, 8, 1),
+    dateKey: '2026-09-01',
+    schedule: [
+      {
+        effectiveFrom: '2026-09-01',
+        repeat: { enabled: true, frequency: 'daily', interval: 1 },
+        time: point(9, 0, 'AM'),
+      },
+      {
+        effectiveFrom: '2026-09-07',
+        repeat: {
+          enabled: true,
+          frequency: 'weekly',
+          interval: 1,
+          weekdays: ['mon', 'fri'],
+        },
+        time: groupedTime,
+      },
+    ],
+  });
+
+  assert.deepEqual(getTaskTimeForDate(task, new Date(2026, 8, 4)).point, {
+    hour: 9,
+    minute: 0,
+    meridiem: 'AM',
+  });
+  assert.deepEqual(getTaskTimeForDate(task, new Date(2026, 8, 11)).point, {
+    hour: 1,
+    minute: 30,
+    meridiem: 'PM',
+  });
+});
+
+test('a data de inicio fora dos grupos recebe um horario concreto', () => {
+  const { formatTaskTime } = require('../utils/timeUtils');
+  const group = (id, days, hour, meridiem) => ({
+    id,
+    days,
+    specified: true,
+    mode: 'point',
+    point: { hour, minute: 0, meridiem },
+  });
+
+  // Semanal comecando numa segunda, mas repetindo so em terca e quinta: a
+  // ocorrencia da data de inicio existe e nao pertence a nenhum grupo.
+  const weekly = {
+    date: new Date(2026, 8, 7),
+    dateKey: '2026-09-07',
+    repeat: { enabled: true, frequency: 'weekly', interval: 1, weekdays: ['tue', 'thu'] },
+    time: {
+      specified: true,
+      mode: 'point',
+      point: { hour: 9, minute: 0, meridiem: 'AM' },
+      groups: [group('time-group-1', ['tue'], 8, 'AM'), group('time-group-2', ['thu'], 6, 'PM')],
+    },
+  };
+  const startTime = getTaskTimeForDate(weekly, '2026-09-07');
+  assert.equal(Array.isArray(startTime.groups), false);
+  assert.equal(startTime.point.hour, 8);
+  assert.equal(formatTaskTime(startTime, { language: 'pt', anytimeLabel: 'x' }), '08:00');
+  assert.equal(getTaskTimeForDate(weekly, '2026-09-10').point.hour, 6);
+
+  // Mensal comecando no dia 5, repetindo nos dias 10 e 20.
+  const monthly = {
+    date: new Date(2026, 8, 5),
+    dateKey: '2026-09-05',
+    repeat: { enabled: true, frequency: 'monthly', interval: 1, monthDays: [10, 20] },
+    time: {
+      specified: true,
+      mode: 'point',
+      point: { hour: 9, minute: 0, meridiem: 'AM' },
+      groups: [group('time-group-1', [10], 8, 'AM'), group('time-group-2', [20], 6, 'PM')],
+    },
+  };
+  assert.equal(Array.isArray(getTaskTimeForDate(monthly, '2026-09-05').groups), false);
+  assert.equal(getTaskTimeForDate(monthly, '2026-09-05').point.hour, 8);
+});
+
+test('a lista do dia preserva a identidade de tarefas sem grupos de horario', () => {
+  const appSource = fs.readFileSync(path.join(root, 'App.js'), 'utf8');
+  assert.ok(appSource.includes('resolvedTaskTimeCacheRef'));
+  assert.equal(
+    appSource.includes('.map((task) => ({ ...task, time: getTaskTimeForDate(task, selectedDate) }))'),
+    false
+  );
+});
+
+test('agenda lembretes em fila usando o horario correspondente a cada dia', () => {
+  const point = (hour, minute, meridiem) => ({
+    specified: true,
+    mode: 'point',
+    point: { hour, minute, meridiem },
+  });
+  const task = {
+    id: 'aula-computacao',
+    date: new Date(2026, 8, 7),
+    dateKey: '2026-09-07',
+    reminder: 'at_time',
+    repeat: {
+      enabled: true,
+      frequency: 'weekly',
+      interval: 1,
+      weekdays: ['mon', 'wed', 'fri'],
+    },
+    time: {
+      ...point(3, 0, 'PM'),
+      groups: [
+        { id: 'time-group-1', days: ['mon', 'wed'], ...point(3, 0, 'PM') },
+        { id: 'time-group-2', days: ['fri'], ...point(1, 30, 'PM') },
+      ],
+    },
+  };
+
+  const plan = getTaskReminderPlan(task, new Date(2026, 8, 7, 8, 0));
+  assert.equal(plan.status, 'ready');
+  assert.equal(plan.mode, 'queued');
+  assert.deepEqual(
+    plan.triggers.slice(0, 3).map((trigger) => [
+      trigger.date.getDate(),
+      trigger.date.getHours(),
+      trigger.date.getMinutes(),
+    ]),
+    [
+      [7, 15, 0],
+      [9, 15, 0],
+      [11, 13, 30],
+    ]
+  );
+});
+
+test('mostra a escolha de horario geral e cria linhas de Time por grupo', () => {
+  const repeatSource = fs.readFileSync(
+    path.join(root, 'components/taskEditor/RepeatPanel.js'),
+    'utf8'
+  );
+  const editorSource = fs.readFileSync(path.join(root, 'components/AddHabitSheet.js'), 'utf8');
+  const cardSource = fs.readFileSync(path.join(root, 'components/SwipeableTaskCard.js'), 'utf8');
+
+  assert.equal(translations.pt.sheet.noExtraTimeConfig, 'Mesmo hor\u00e1rio em todos os dias');
+  assert.ok(repeatSource.includes('onConfigureTimeGroups'));
+  assert.ok(repeatSource.includes('groups.length < selectedDays.length'));
+  assert.ok(editorSource.includes('key: `time:${group.id}`'));
+  assert.ok(editorSource.includes("panel?.key?.startsWith('time:')"));
+  assert.equal(translations.en.sheet.timeGroupName, 'Time Group {number}');
+  assert.equal(editorSource.includes('`${t.time} - ${t.timeGroupName'), false);
+  assert.ok(cardSource.includes('getTaskTimeForDate(task, dateKey)'));
 });
 
 test('nao persiste configuracao quantum fora do tipo de meta', () => {

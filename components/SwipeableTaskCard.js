@@ -25,6 +25,7 @@ import {
   getQuantumStepLabel,
 } from '../utils/taskUtils';
 import { formatTaskTime, getTimerTotalSeconds } from '../utils/timeUtils';
+import { getTaskTimeForDate } from '../domain/taskSchedule';
 import {
   buildRepeatingWavePath,
   getWaterDisplayPercent,
@@ -645,7 +646,10 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
               </Text>
               <View style={styles.taskTimeRow}>
                 <Text style={styles.taskTime} numberOfLines={1}>
-                  {formatTaskTime(task.time, { language, anytimeLabel: t.sheet.anytime })}
+                  {formatTaskTime(getTaskTimeForDate(task, dateKey), {
+                    language,
+                    anytimeLabel: t.sheet.anytime,
+                  })}
                 </Text>
                 <FinishedMilestoneBadge
                   value={finishedMilestone}

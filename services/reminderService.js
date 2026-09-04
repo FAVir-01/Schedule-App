@@ -1,9 +1,10 @@
 import * as Notifications from 'expo-notifications';
 import { NOTIFICATIONS_SUPPORTED, REMINDER_OFFSETS } from '../constants/app';
-import { shouldTaskAppearOnDate } from '../domain/taskSchedule';
+import { getTaskTimeForDate, shouldTaskAppearOnDate } from '../domain/taskSchedule';
 import { normalizeDateValue } from '../utils/dateUtils';
 import { scheduledReminderContentMatches } from '../utils/notificationUtils';
 import { toMinutes } from '../utils/timeUtils';
+import { getTimeConfigurations, hasGroupedTaskTimes } from '../utils/taskTimeUtils';
 
 const REMINDER_QUEUE_SIZE = 8;
 const REMINDER_QUEUE_REPLENISH_AT = 4;
@@ -74,10 +75,9 @@ const getUpcomingReminderDates = (
   maxCount = REMINDER_QUEUE_SIZE
 ) => {
   const offsetMinutes = REMINDER_OFFSETS[task?.reminder] ?? null;
-  const baseTime = getReminderBaseTime(task?.time);
   const startDate = normalizeDateValue(task?.date ?? task?.dateKey);
 
-  if (offsetMinutes === null || !isValidTime(baseTime) || !isValidDate(startDate)) {
+  if (offsetMinutes === null || !isValidDate(startDate)) {
     return [];
   }
 
@@ -94,6 +94,10 @@ const getUpcomingReminderDates = (
     const candidateDate = new Date(initialDate);
     candidateDate.setDate(candidateDate.getDate() + offset);
     if (!shouldTaskAppearOnDate(task, candidateDate)) {
+      continue;
+    }
+    const baseTime = getReminderBaseTime(getTaskTimeForDate(task, candidateDate));
+    if (!isValidTime(baseTime)) {
       continue;
     }
     const reminderDate = buildReminderDateTime(candidateDate, baseTime, offsetMinutes);
@@ -122,6 +126,7 @@ const getNativeRecurringTriggers = (task, now = new Date()) => {
   const startDate = normalizeDateValue(task?.date ?? task?.dateKey);
 
   if (
+    hasGroupedTaskTimes(task?.time) ||
     !repeat?.enabled ||
     repeat?.option === 'off' ||
     repeat?.endDate ||
@@ -258,7 +263,12 @@ export const getTaskReminderPlan = (task, now = new Date()) => {
   if (task?.archived === true || !hasTaskReminder(task)) {
     return { status: 'disabled', mode: null, triggers: [] };
   }
-  if (!isValidTime(getReminderBaseTime(task?.time))) {
+  if (
+    getTimeConfigurations(task?.time).length === 0 ||
+    getTimeConfigurations(task?.time).some(
+      (configuration) => !isValidTime(getReminderBaseTime(configuration))
+    )
+  ) {
     return { status: 'invalid-time', mode: null, triggers: [] };
   }
 

@@ -69,6 +69,7 @@ import {
 import {
   appendScheduleVersion,
   getCurrentScheduleVersion,
+  getTaskTimeForDate,
   restartScheduleAt,
   shouldTaskAppearOnDate,
   withScheduleMirror,
@@ -140,9 +141,9 @@ import SettingsSheet from './components/SettingsSheet';
 import PerformanceChart from './components/PerformanceChart';
 import AppErrorBoundary from './components/AppErrorBoundary';
 import UndoSnackbar from './components/UndoSnackbar';
-import DiscoverScreen, { FirstRunOnboarding } from './components/DiscoverScreen';
+import DiscoverScreen from './components/DiscoverScreen';
+import FirstRunOnboarding from './components/FirstRunOnboarding';
 import { CALENDAR_DAY_SIZE, WEEKDAY_ROW_HEIGHT } from './constants/layout';
-import { getTaskTemplateCollection } from './constants/taskTemplates';
 import {
   cancelTaskReminders,
   getTaskNotificationIds,
@@ -161,7 +162,7 @@ import {
   getDiaryExportFileName,
 } from './utils/diaryExportUtils';
 import { authenticateDiaryAccess } from './services/diaryPrivacyService';
-import { buildTemplateTasks, migrateImportedTemplateTasks } from './utils/templateUtils';
+import { migrateImportedTemplateTasks } from './utils/templateUtils';
 
 
 const habitImage = require('./assets/add-habit.png');
@@ -900,6 +901,7 @@ function ScheduleApp() {
 
         return {
           ...task,
+          time: getTaskTimeForDate(task, reportDate),
           completed: isCompleted,
           totalSubtasks,
           completedSubtasks,
@@ -1081,8 +1083,26 @@ function ScheduleApp() {
       todayKey,
     ]
   );
+  // Resolver o horário da ocorrência cria um objeto novo, e isso anularia o
+  // `React.memo` dos cards a cada mudança em qualquer tarefa. O cache guarda a
+  // versão já resolvida enquanto a tarefa e o dia continuarem os mesmos.
+  const resolvedTaskTimeCacheRef = useRef(new WeakMap());
   const tasksForSelectedDate = useMemo(() => {
-    const filtered = tasks.filter((task) => shouldTaskAppearOnDate(task, selectedDate));
+    const cache = resolvedTaskTimeCacheRef.current;
+    const filtered = tasks
+      .filter((task) => shouldTaskAppearOnDate(task, selectedDate))
+      .map((task) => {
+        const cached = cache.get(task);
+        if (cached && cached.dateKey === selectedDateKey) {
+          return cached.value;
+        }
+        const resolvedTime = getTaskTimeForDate(task, selectedDate);
+        // Sem grupos de horário nada muda: manter a mesma referência evita
+        // recriar a lista inteira em tarefas comuns.
+        const value = resolvedTime === task.time ? task : { ...task, time: resolvedTime };
+        cache.set(task, { dateKey: selectedDateKey, value });
+        return value;
+      });
     const getSortValue = (task) => {
       if (!task.time || !task.time.specified) {
         return Number.MAX_SAFE_INTEGER;
@@ -1096,7 +1116,7 @@ function ScheduleApp() {
       return Number.MAX_SAFE_INTEGER;
     };
     return filtered.slice().sort((a, b) => getSortValue(a) - getSortValue(b));
-  }, [selectedDate, tasks]);
+  }, [selectedDate, selectedDateKey, tasks]);
   const availableTagOptions = useMemo(() => {
     const seen = new Set();
     return tasks.reduce((options, task) => {
@@ -1332,16 +1352,22 @@ function ScheduleApp() {
       return normalized ? normalized.getTime() : Number.MAX_SAFE_INTEGER;
     };
     const getSortTime = (task) => {
-      if (!task.time || !task.time.specified) {
-        return Number.MAX_SAFE_INTEGER;
-      }
-      if (task.time.mode === 'period' && task.time.period) {
-        return toMinutes(task.time.period.start);
-      }
-      if (task.time.point) {
-        return toMinutes(task.time.point);
-      }
-      return Number.MAX_SAFE_INTEGER;
+      const configurations =
+        Array.isArray(task.time?.groups) && task.time.groups.length >= 2
+          ? task.time.groups
+          : [task.time];
+      return configurations.reduce((earliest, time) => {
+        if (!time?.specified) {
+          return earliest;
+        }
+        const value =
+          time.mode === 'period' && time.period
+            ? toMinutes(time.period.start)
+            : time.point
+            ? toMinutes(time.point)
+            : Number.MAX_SAFE_INTEGER;
+        return Math.min(earliest, value);
+      }, Number.MAX_SAFE_INTEGER);
     };
     return tasks
       .slice()
@@ -1513,6 +1539,7 @@ function ScheduleApp() {
       activeTask
         ? {
             ...activeTask,
+            time: getTaskTimeForDate(activeTask, selectedDate),
             completed: getTaskCompletionStatus(activeTask, selectedDateKey),
             subtasks: Array.isArray(activeTask.subtasks)
               ? activeTask.subtasks.map((subtask) => ({
@@ -1522,7 +1549,7 @@ function ScheduleApp() {
               : activeTask.subtasks,
           }
         : null,
-    [activeTask, selectedDateKey]
+    [activeTask, selectedDate, selectedDateKey]
   );
 
   // Ajuste direto do progresso quantum: amount é segundos (timer) ou unidades
@@ -2678,11 +2705,6 @@ function ScheduleApp() {
     updateUserSettings({ onboardingCompleted: true });
   }, [updateUserSettings]);
 
-  const handleExploreTemplates = useCallback(() => {
-    completeOnboarding();
-    handleChangeTab('discover');
-  }, [completeOnboarding, handleChangeTab]);
-
   const handleCreateFromOnboarding = useCallback(() => {
     completeOnboarding();
     handleAddHabit();
@@ -2691,11 +2713,6 @@ function ScheduleApp() {
   const handleSkipOnboarding = useCallback(() => {
     completeOnboarding();
   }, [completeOnboarding]);
-
-  const handleViewToday = useCallback(() => {
-    handleSelectDate(today);
-    handleChangeTab('today');
-  }, [handleChangeTab, handleSelectDate, today]);
 
   const handleReturnToToday = useCallback(() => {
     handleSelectDate(today);
@@ -3500,51 +3517,6 @@ function ScheduleApp() {
     });
   }, [appendHistoryEntry, convertSubtasks, getUniqueTitle, refreshTaskReminder]);
 
-  const handleImportTemplate = useCallback(
-    (templateId, selectedTaskIds) => {
-      const template = getTaskTemplateCollection(templateId);
-      const localizedTemplate = t.discover.templates?.[templateId];
-      if (!template || !localizedTemplate) {
-        return 0;
-      }
-
-      const importedTasks = buildTemplateTasks({
-        template,
-        selectedTaskIds,
-        localizedTemplate,
-        existingTasks: tasks,
-        startDate: today,
-        fallbackTitle: t.common.untitledTask,
-      });
-      if (importedTasks.length === 0) {
-        return 0;
-      }
-
-      setTasks((previous) => [...previous, ...importedTasks]);
-      importedTasks.forEach((task) => {
-        void refreshTaskReminder(task, null, { notifyOnFailure: true });
-        appendHistoryEntry('task_created', {
-          taskId: task.id,
-          title: task.title,
-          dateKey: task.dateKey,
-        });
-      });
-      setSelectedDate(new Date(today));
-      setIsOnboardingOpen(false);
-      updateUserSettings({ onboardingCompleted: true });
-      triggerImpact(Haptics.ImpactFeedbackStyle.Light);
-      return importedTasks.length;
-    },
-    [
-      appendHistoryEntry,
-      refreshTaskReminder,
-      t.common.untitledTask,
-      t.discover.templates,
-      tasks,
-      today,
-      updateUserSettings,
-    ]
-  );
 
   const handleUpdateHabit = useCallback(
     (taskId, habit) => {
@@ -4526,13 +4498,7 @@ function ScheduleApp() {
                 </View>
              </ScrollView>
           ) : (
-            <DiscoverScreen
-              language={language}
-              tasks={tasks}
-              onImportTemplate={handleImportTemplate}
-              onCreateTask={handleAddHabit}
-              onViewToday={handleViewToday}
-            />
+            <DiscoverScreen language={language} />
           )}
           {isCalendarTabActive ? (
             <View
@@ -5012,7 +4978,6 @@ function ScheduleApp() {
       <FirstRunOnboarding
         visible={isOnboardingOpen}
         language={language}
-        onExploreTemplates={handleExploreTemplates}
         onCreateTask={handleCreateFromOnboarding}
         onSkip={handleSkipOnboarding}
       />
