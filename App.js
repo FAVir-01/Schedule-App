@@ -102,6 +102,7 @@ import {
   createTaskHistoryDetails,
   prependHistoryEntry,
 } from './utils/historyUtils';
+import { normalizeNotes } from './domain/taskDraft';
 import { getWeekdayInitials, translations } from './constants/i18n';
 import { styles } from './styles/appStyles';
 import {
@@ -3716,6 +3717,27 @@ function ScheduleApp() {
     [appendHistoryEntry, selectedDateKey, tasks]
   );
 
+  // Nota da tarefa: um texto só, não uma entrada por dia — o diário de datas
+  // já é o lugar das reflexões. Só grava quando o texto muda de fato, para o
+  // simples abrir e fechar do card não poluir a linha do tempo.
+  const handleUpdateTaskNotes = useCallback(
+    (taskId, notes) => {
+      const nextNotes = normalizeNotes(notes);
+      const targetTask = tasks.find((task) => task.id === taskId);
+      if (!targetTask || normalizeNotes(targetTask.notes) === nextNotes) {
+        return;
+      }
+      setTasks((previous) =>
+        previous.map((task) => (task.id === taskId ? { ...task, notes: nextNotes } : task))
+      );
+      appendHistoryEntry(
+        'task_updated',
+        createTaskHistoryDetails(targetTask, { dateKey: selectedDateKey ?? undefined })
+      );
+    },
+    [appendHistoryEntry, selectedDateKey, tasks]
+  );
+
   const openHabitSheet = useCallback((mode, task = null) => {
     dismissFabMenuImmediately();
     setHabitSheetMode(mode);
@@ -4942,6 +4964,7 @@ function ScheduleApp() {
         dateKey={selectedDateKey}
         onClose={closeTaskDetail}
         onToggleSubtask={handleToggleSubtask}
+        onUpdateNotes={handleUpdateTaskNotes}
         onToggleCompletion={(taskId) => handleToggleTaskCompletion(taskId, selectedDateKey)}
         reduceMotion={prefersReducedMotion}
         onEdit={(taskId) => {

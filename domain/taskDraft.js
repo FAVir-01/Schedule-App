@@ -46,6 +46,9 @@ export const REMINDER_OFFSETS = {
 export const REMINDER_KEYS = Object.keys(REMINDER_OFFSETS);
 
 export const TITLE_MAX_LENGTH = 50;
+// Nota livre da tarefa. O limite existe para o campo não virar um diário
+// dentro do card: entradas datadas já têm lugar próprio nas reflexões.
+export const NOTES_MAX_LENGTH = 500;
 export const REPEAT_INTERVAL_MAX = 99;
 export const QUANTUM_TIMER_HOURS_MAX = 99;
 export const QUANTUM_TIMER_MINUTES_MAX = 59;
@@ -146,6 +149,12 @@ const normalizeSubtasks = (subtasks) => {
     .filter((title) => title.length > 0);
 };
 
+// A nota é editada no card de detalhe, não no editor: aqui ela só precisa
+// sobreviver ao ciclo tarefa -> rascunho -> tarefa sem ser apagada por uma
+// edição que não mexeu nela.
+export const normalizeNotes = (value) =>
+  `${value ?? ''}`.slice(0, NOTES_MAX_LENGTH).trim();
+
 const sortedUnique = (values) => Array.from(new Set(values)).sort((a, b) => a - b);
 
 const sortedWeekdays = (keys) =>
@@ -189,6 +198,7 @@ export const createEmptyDraft = ({ today = new Date(), emoji } = {}) => {
       countUnit: '',
     },
     subtasks: [],
+    notes: '',
   };
 };
 
@@ -293,6 +303,7 @@ export const draftFromTask = (task, { today = new Date() } = {}) => {
       countUnit: `${task.quantum?.count?.unit ?? ''}`,
     },
     subtasks: normalizeSubtasks(task.subtasks),
+    notes: `${task.notes ?? ''}`.slice(0, NOTES_MAX_LENGTH),
   };
 };
 
@@ -346,6 +357,7 @@ export const draftToTask = (draft, { tagOptions = [] } = {}) => {
         }
       : null,
     subtasks: normalizeSubtasks(draft.subtasks),
+    notes: normalizeNotes(draft.notes),
   };
 };
 

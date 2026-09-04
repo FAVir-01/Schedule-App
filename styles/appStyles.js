@@ -563,25 +563,57 @@ export const styles = StyleSheet.create({
   detailHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 16,
   },
   detailHeaderInfo: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flex: 1,
   },
-  detailEmoji: {
-    fontSize: 36,
+  // Moldura de fotografia no lugar do avatar redondo. A base mais grossa que
+  // os lados é o que faz o olho ler como polaroid; sem a inclinação a moldura
+  // parece só uma borda branca. As medidas são proporcionais — ver
+  // components/PolaroidFrame.
+  polaroidFrame: {
+    backgroundColor: '#ffffff',
+    transform: [{ rotate: '-2deg' }],
+    shadowColor: '#000000',
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
-  detailEmojiImage: {
-    width: 53,
-    height: 53,
-    borderRadius: 26.5,
+  polaroidImage: {
+    width: '100%',
+    aspectRatio: 1,
     resizeMode: 'cover',
   },
+  polaroidEmojiWrap: {
+    width: '100%',
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailPhotoTouch: {
+    alignSelf: 'flex-start',
+  },
+  detailPhotoTouchFlying: {
+    opacity: 0,
+  },
+  detailRoot: {
+    flex: 1,
+  },
+  detailOriginMarker: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 0,
+    height: 0,
+  },
   detailTitleContainer: {
-    marginLeft: 12,
+    marginLeft: 13,
+    paddingTop: 4,
     flex: 1,
   },
   detailTitle: {
@@ -631,6 +663,10 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#ffffff',
+    // A moldura roubou largura do bloco de texto: a folga evita que a linha
+    // da sequência encoste no círculo.
+    marginLeft: 8,
+    marginTop: 4,
   },
   detailToggleCompleted: {
     backgroundColor: '#3dd598',
@@ -640,11 +676,344 @@ export const styles = StyleSheet.create({
     maxHeight: 260,
     marginHorizontal: -4,
     paddingHorizontal: 4,
-    marginBottom: 16,
+    // Mantém o corpo compacto mesmo com a moldura maior no cabeçalho.
+    marginBottom: 10,
   },
   detailEmptySubtasks: {
     fontSize: 14,
     color: '#59636f',
+  },
+  // Aba que se abre da fotografia — ver components/TaskPhotoSheet.
+  photoSheetRoot: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  photoSheetBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    // Leve de propósito: o modal do card já tem o seu backdrop, e os dois
+    // somados fechavam a tela em quase preto. Quem faz o card recuar agora é
+    // a escala e a opacidade dele, não mais escuro por cima.
+    backgroundColor: 'rgba(10, 11, 30, 0.28)',
+  },
+  photoSheetDismiss: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  photoSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    paddingHorizontal: 20,
+    shadowColor: '#000000',
+    shadowOpacity: 0.18,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: -6 },
+    elevation: 12,
+  },
+  // Mesmo botão redondo das outras folhas do app (ver profileTasksCloseButton).
+  photoSheetClose: {
+    position: 'absolute',
+    top: 14,
+    right: 16,
+    zIndex: 2,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#767c8f',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoSheetContent: {
+    flex: 1,
+  },
+  photoSheetTitle: {
+    paddingHorizontal: 40,
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1a1a2e',
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+  photoSheetTime: {
+    marginTop: 4,
+    marginBottom: 18,
+    fontSize: 14,
+    color: '#4b4b63',
+    textAlign: 'center',
+  },
+  photoSheetScroll: {
+    flex: 1,
+    marginHorizontal: -20,
+  },
+  photoSheetScrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+    gap: 20,
+  },
+  photoSheetSectionHeading: {
+    marginBottom: 9,
+    marginLeft: 2,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.9,
+    color: '#657083',
+    textTransform: 'uppercase',
+  },
+  photoSheetNoteField: {
+    marginBottom: 0,
+    borderRadius: 16,
+  },
+  photoSheetNotesInput: {
+    minHeight: 112,
+    maxHeight: 240,
+    lineHeight: 22,
+    paddingBottom: 8,
+  },
+  photoSheetNoteFooter: {
+    minHeight: 30,
+    paddingHorizontal: 14,
+    paddingBottom: 8,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  photoSheetNoteCount: {
+    fontSize: 11,
+    color: '#59636f',
+    fontVariant: ['tabular-nums'],
+  },
+  photoSheetMetrics: {
+    minHeight: 92,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+  },
+  photoSheetMetric: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  photoSheetMetricDivider: {
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: '#dfe5ec',
+  },
+  photoSheetMetricValue: {
+    fontSize: 21,
+    lineHeight: 26,
+    fontWeight: '700',
+    color: '#1a1a2e',
+    fontVariant: ['tabular-nums'],
+    textAlign: 'center',
+  },
+  photoSheetMetricLabel: {
+    marginTop: 4,
+    fontSize: 11,
+    lineHeight: 14,
+    color: '#667181',
+    textAlign: 'center',
+  },
+  photoSheetRowsContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+  },
+  heatmap: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+  },
+  heatmapHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  heatmapLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    color: '#657083',
+    textTransform: 'uppercase',
+  },
+  heatmapPeriod: {
+    fontSize: 11,
+    color: '#667181',
+  },
+  heatmapBody: {
+    flexDirection: 'row',
+    marginTop: 13,
+  },
+  heatmapWeekdays: {
+    gap: 3,
+    marginRight: 7,
+  },
+  heatmapMonthSpacer: {
+    height: 16,
+  },
+  heatmapWeekdayCell: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 10,
+  },
+  heatmapWeekdayText: {
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: '600',
+    color: '#59636f',
+  },
+  heatmapGridArea: {
+    flex: 1,
+  },
+  heatmapMonths: {
+    flexDirection: 'row',
+    gap: 3,
+    height: 16,
+  },
+  heatmapMonthText: {
+    fontSize: 9,
+    lineHeight: 12,
+    fontWeight: '600',
+    color: '#59636f',
+    width: 34,
+    textTransform: 'capitalize',
+  },
+  // `gap` fixo, não `space-between`: o segundo espalhava as colunas pela
+  // largura toda e a grade virava quadradinhos soltos em vez de calendário.
+  heatmapGrid: {
+    flexDirection: 'row',
+    gap: 3,
+  },
+  heatmapColumn: {
+    gap: 3,
+  },
+  heatmapMonthBoundary: {
+    marginLeft: 8,
+  },
+  heatmapCell: {
+    borderRadius: 3,
+  },
+  heatmapCellToday: {
+    borderWidth: 2,
+    borderColor: '#1a1a2e',
+  },
+  heatmapStats: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    marginTop: 15,
+    paddingTop: 13,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#dfe5ec',
+  },
+  heatmapStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  heatmapStatDivider: {
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: '#dfe5ec',
+  },
+  heatmapStatValue: {
+    fontSize: 17,
+    lineHeight: 21,
+    fontWeight: '700',
+    color: '#1a1a2e',
+    fontVariant: ['tabular-nums'],
+  },
+  heatmapStatLabel: {
+    marginTop: 2,
+    fontSize: 11,
+    color: '#667181',
+    textAlign: 'center',
+  },
+  photoSheetMilestone: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+  },
+  photoSheetMilestoneHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  photoSheetMilestoneLabel: {
+    fontSize: 12,
+    color: '#667181',
+  },
+  photoSheetMilestoneValue: {
+    marginTop: 2,
+    fontSize: 25,
+    lineHeight: 30,
+    fontWeight: '700',
+    color: '#1a1a2e',
+    fontVariant: ['tabular-nums'],
+  },
+  photoSheetMilestoneRemaining: {
+    paddingBottom: 3,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4f5968',
+  },
+  photoSheetMilestoneTrack: {
+    height: 7,
+    marginTop: 12,
+    overflow: 'hidden',
+    borderRadius: 4,
+    backgroundColor: '#e3e8ef',
+  },
+  photoSheetMilestoneFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  photoSheetMilestoneLatest: {
+    marginTop: 9,
+    fontSize: 11,
+    color: '#667181',
+  },
+  photoSheetRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: 48,
+    paddingVertical: 13,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e4edf7',
+  },
+  photoSheetRowLast: {
+    borderBottomWidth: 0,
+  },
+  photoSheetRowLabel: {
+    fontSize: 14,
+    color: '#5a646e',
+  },
+  photoSheetRowValue: {
+    flexShrink: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a1a2e',
+    textAlign: 'right',
+  },
+  photoSheetFlyer: {
+    position: 'absolute',
   },
   timerWheelArea: {
     position: 'relative',

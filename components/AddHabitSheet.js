@@ -43,7 +43,7 @@ import {
 import { translations } from '../constants/i18n';
 import { persistPickedImage } from '../services/imagePersistenceService';
 import { requestReminderPermission } from '../services/reminderService';
-import { IMAGE_LIMITS, getImageErrorMessage } from '../utils/imageUtils';
+import { IMAGE_LIMITS, getImageErrorMessage, isGifImageAsset } from '../utils/imageUtils';
 import {
   DEFAULT_EMOJI,
   EDITOR_COLORS,
@@ -75,6 +75,7 @@ import TimePanel from './taskEditor/TimePanel';
 import QuantumPanel from './taskEditor/QuantumFields';
 import SubtasksPanel from './taskEditor/SubtasksPanel';
 import TypePreviewCard from './taskEditor/TypePreviewCard';
+import ImageCropModal from './ImageCropModal';
 import styles from './taskEditor/styles';
 
 const SHEET_OPEN_DURATION = 360;
@@ -151,6 +152,7 @@ export default function AddHabitSheet({
   const [customTags, setCustomTags] = useState([]);
   const [activeInfoKey, setActiveInfoKey] = useState(null);
   const [isLoadingImage, setIsLoadingImage] = useState(false);
+  const [pendingCropAsset, setPendingCropAsset] = useState(null);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
 
   const titleInputRef = useRef(null);
@@ -194,6 +196,7 @@ export default function AddHabitSheet({
     setShowErrors(false);
     setActiveInfoKey(null);
     setIsLoadingImage(false);
+    setPendingCropAsset(null);
     setCustomTags([]);
     setCalendarMonth(new Date(nextDraft.startDate.getFullYear(), nextDraft.startDate.getMonth(), 1));
   }, [initialHabit, visible]);
@@ -334,6 +337,25 @@ export default function AddHabitSheet({
 
   // ----------------------------------------------------------------- ícone ---
 
+  const showImageError = useCallback(
+    (error) => {
+      console.warn('Failed to select, crop, or persist custom habit image', error);
+      Alert.alert(
+        imageText.errorTitle,
+        getImageErrorMessage(imageText, error, IMAGE_LIMITS.habitIcon)
+      );
+    },
+    [imageText]
+  );
+
+  const persistHabitImage = useCallback(async (asset) => {
+    const persistentUri = await persistPickedImage(asset, {
+      prefix: 'custom_habit_icon',
+      limits: IMAGE_LIMITS.habitIcon,
+    });
+    dispatch({ type: 'patch', value: { customImage: persistentUri } });
+  }, []);
+
   const handlePickImage = useCallback(async () => {
     if (isLoadingImage) {
       return;
@@ -342,29 +364,37 @@ export default function AddHabitSheet({
       setIsLoadingImage(true);
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        // Abre o editor nativo para enquadrar o icone antes de salva-lo.
-        allowsEditing: true,
-        aspect: [1, 1],
-        shape: 'rectangle',
+        // O arquivo precisa voltar intacto para conseguirmos preservar GIFs.
+        // Imagens estáticas são recortadas depois, dentro do próprio app.
+        allowsEditing: false,
         quality: 1,
       });
       if (!result.canceled && result.assets?.length) {
-        const persistentUri = await persistPickedImage(result.assets[0], {
-          prefix: 'custom_habit_icon',
-          limits: IMAGE_LIMITS.habitIcon,
-        });
-        dispatch({ type: 'patch', value: { customImage: persistentUri } });
+        const asset = result.assets[0];
+        if (isGifImageAsset(asset)) {
+          await persistHabitImage(asset);
+        } else {
+          setPendingCropAsset(asset);
+        }
       }
     } catch (error) {
-      console.warn('Failed to select or persist custom habit image', error);
-      Alert.alert(
-        imageText.errorTitle,
-        getImageErrorMessage(imageText, error, IMAGE_LIMITS.habitIcon)
-      );
+      showImageError(error);
     } finally {
       setIsLoadingImage(false);
     }
-  }, [imageText, isLoadingImage]);
+  }, [isLoadingImage, persistHabitImage, showImageError]);
+
+  const handleConfirmCrop = useCallback(
+    async (croppedAsset) => {
+      try {
+        await persistHabitImage(croppedAsset);
+        setPendingCropAsset(null);
+      } catch (error) {
+        showImageError(error);
+      }
+    },
+    [persistHabitImage, showImageError]
+  );
 
   // ------------------------------------------------------------ permissões ---
 
@@ -1263,6 +1293,14 @@ export default function AddHabitSheet({
         </KeyboardAvoidingView>
       </Animated.View>
       </View>
+      <ImageCropModal
+        visible={Boolean(pendingCropAsset)}
+        asset={pendingCropAsset}
+        strings={imageText}
+        onCancel={() => setPendingCropAsset(null)}
+        onConfirm={handleConfirmCrop}
+        onError={showImageError}
+      />
     </TaskEditorMotionProvider>
   );
 }

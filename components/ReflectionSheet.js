@@ -24,7 +24,7 @@ import {
   recognizeTextFromImage,
 } from '../services/textRecognitionService';
 import { styles } from '../styles/appStyles';
-import { IMAGE_LIMITS, getImageErrorMessage } from '../utils/imageUtils';
+import { IMAGE_LIMITS, getImageErrorMessage, isGifImageAsset } from '../utils/imageUtils';
 import {
   DEFAULT_MOOD_EMOJIS,
   MOOD_LEVELS,
@@ -37,6 +37,7 @@ import {
   appendRecognizedText,
 } from '../utils/textRecognitionUtils';
 import DiaryPrivacyMask from './DiaryPrivacyMask';
+import ImageCropModal from './ImageCropModal';
 
 // Folha de reflexão do dia: humor em escala de 1-5 (registro rápido), tags de
 // sentimento, nota e foto opcionais. A aparência de cada nível é personalizável
@@ -67,6 +68,7 @@ function ReflectionSheet({
   const [note, setNote] = useState('');
   const [photo, setPhoto] = useState(null);
   const [isLoadingImage, setIsLoadingImage] = useState(false);
+  const [pendingCropRequest, setPendingCropRequest] = useState(null);
   const [isRecognizingText, setIsRecognizingText] = useState(false);
   // `null` = editor normal. Uma string, inclusive vazia durante a edição,
   // representa a etapa interna de revisão e ainda não altera `note`.
@@ -100,6 +102,7 @@ function ReflectionSheet({
       setPhoto(mood?.photo ?? null);
       setRecognizedTextDraft(null);
       setIsRecognizingText(false);
+      setPendingCropRequest(null);
     }
     // Ignora a resposta de um OCR iniciado para uma abertura anterior da folha.
     recognitionRequestRef.current += 1;
@@ -215,6 +218,7 @@ function ReflectionSheet({
     limits,
     prefix,
     cropSquare = false,
+    cropLevel = null,
   }) => {
     if (isLoadingImage) {
       return null;
@@ -237,14 +241,20 @@ function ReflectionSheet({
           : ImagePicker.launchImageLibraryAsync;
       const result = await launch({
         mediaTypes: ['images'],
-        allowsEditing: cropSquare,
-        ...(cropSquare ? { aspect: [1, 1], shape: 'rectangle' } : {}),
+        // Mantém o arquivo original. GIFs seguem direto e imagens estáticas
+        // usam o editor quadrado do próprio app quando solicitado.
+        allowsEditing: false,
         quality,
       });
       if (result.canceled || !result.assets?.length) {
         return null;
       }
-      return await persistPickedImage(result.assets[0], { prefix, limits });
+      const asset = result.assets[0];
+      if (cropSquare && !isGifImageAsset(asset)) {
+        setPendingCropRequest({ asset, prefix, limits, level: cropLevel });
+        return null;
+      }
+      return await persistPickedImage(asset, { prefix, limits });
     } catch (error) {
       console.warn('Failed to select or persist reflection image', error);
       Alert.alert(
@@ -255,6 +265,34 @@ function ReflectionSheet({
     } finally {
       setIsLoadingImage(false);
     }
+  };
+
+  const handleConfirmCrop = async (croppedAsset) => {
+    if (!pendingCropRequest) {
+      return;
+    }
+    try {
+      const persistentUri = await persistPickedImage(croppedAsset, {
+        prefix: pendingCropRequest.prefix,
+        limits: pendingCropRequest.limits,
+      });
+      onSetAppearance?.(pendingCropRequest.level, persistentUri);
+      setPendingCropRequest(null);
+    } catch (error) {
+      console.warn('Failed to crop or persist mood appearance', error);
+      Alert.alert(
+        imageText.errorTitle,
+        getImageErrorMessage(imageText, error, pendingCropRequest.limits)
+      );
+    }
+  };
+
+  const handleCropError = (error) => {
+    console.warn('Failed to crop mood appearance', error);
+    Alert.alert(
+      imageText.errorTitle,
+      getImageErrorMessage(imageText, error, pendingCropRequest?.limits)
+    );
   };
 
   const handlePickPhoto = async (source) => {
@@ -403,6 +441,7 @@ function ReflectionSheet({
             limits: IMAGE_LIMITS.moodAppearance,
             prefix: `custom_mood_level_${level}`,
             cropSquare: true,
+            cropLevel: level,
           });
           if (uri) {
             onSetAppearance?.(level, uri);
@@ -457,6 +496,7 @@ function ReflectionSheet({
   }
 
   return (
+    <>
     <Modal
       animationType="slide"
       transparent
@@ -786,6 +826,15 @@ function ReflectionSheet({
         </View>
       </View>
     </Modal>
+    <ImageCropModal
+      visible={Boolean(pendingCropRequest)}
+      asset={pendingCropRequest?.asset}
+      strings={imageText}
+      onCancel={() => setPendingCropRequest(null)}
+      onConfirm={handleConfirmCrop}
+      onError={handleCropError}
+    />
+    </>
   );
 }
 
