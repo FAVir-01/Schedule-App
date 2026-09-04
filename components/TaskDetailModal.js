@@ -22,6 +22,7 @@ import {
   getTaskStreak,
 } from '../utils/taskUtils';
 import { formatTaskTime } from '../utils/timeUtils';
+import { getTaskTimeForDate } from '../domain/taskSchedule';
 import { styles } from '../styles/appStyles';
 import FinishedMilestoneBadge from './FinishedMilestoneBadge';
 import PolaroidFrame from './PolaroidFrame';
@@ -191,7 +192,12 @@ export default function TaskDetailModal({
                     style={styles.detailTitleLock}
                   />
                 </Text>
-                <Text style={styles.detailTime}>{formatTaskTime(task.time, { language, anytimeLabel: t.sheet.anytime })}</Text>
+                <Text style={styles.detailTime}>
+                  {formatTaskTime(getTaskTimeForDate(task, dateKey), {
+                    language,
+                    anytimeLabel: t.sheet.anytime,
+                  })}
+                </Text>
                 {streak > 0 ? (
                   <View style={styles.detailStreakRow}>
                     <Ionicons name="flame" size={14} color="#f2732e" />

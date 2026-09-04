@@ -30,6 +30,7 @@ import {
 } from '../utils/taskUtils';
 import { formatTaskTime } from '../utils/timeUtils';
 import { NOTES_MAX_LENGTH } from '../domain/taskDraft';
+import { getTaskTimeForDate } from '../domain/taskSchedule';
 import { styles } from '../styles/appStyles';
 import PolaroidFrame, { getPolaroidHeight } from './PolaroidFrame';
 import TaskHeatmap from './TaskHeatmap';
@@ -414,7 +415,10 @@ export default function TaskPhotoSheet({
             {task.title}
           </Text>
           <Text style={styles.photoSheetTime}>
-            {formatTaskTime(task.time, { language, anytimeLabel: t.sheet.anytime })}
+            {formatTaskTime(getTaskTimeForDate(task, dateKey), {
+              language,
+              anytimeLabel: t.sheet.anytime,
+            })}
           </Text>
 
           <ScrollView

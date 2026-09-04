@@ -4,6 +4,7 @@ import {
 } from '../constants/app';
 import {
   getCurrentScheduleVersion,
+  getTaskTimeForDate,
   shouldTaskAppearOnDate,
   toScheduleKey,
 } from '../domain/taskSchedule';
@@ -626,17 +627,18 @@ export const isReminderExpiredForDate = (task, targetDate, now = new Date()) => 
     return false;
   }
 
-  if (!task.time?.specified) {
+  const taskTime = getTaskTimeForDate(task, normalizedTargetDate);
+  if (!taskTime?.specified) {
     return false;
   }
 
   const nowSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-  if (task.time.mode === 'period' && task.time.period?.end) {
-    return nowSeconds > toMinutes(task.time.period.end) * 60;
+  if (taskTime.mode === 'period' && taskTime.period?.end) {
+    return nowSeconds > toMinutes(taskTime.period.end) * 60;
   }
 
-  if (task.time.point) {
-    return nowSeconds > toMinutes(task.time.point) * 60;
+  if (taskTime.point) {
+    return nowSeconds > toMinutes(taskTime.point) * 60;
   }
 
   return false;

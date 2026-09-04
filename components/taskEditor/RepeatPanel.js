@@ -15,6 +15,7 @@ function RepeatPanel({
   interval,
   weekdays,
   monthDays,
+  timeGroups,
   hasEndDate,
   endDate,
   onToggleEnabled,
@@ -22,6 +23,11 @@ function RepeatPanel({
   onIntervalChange,
   onToggleWeekday,
   onToggleMonthDay,
+  onConfigureTimeGroups,
+  onAddTimeGroup,
+  onAssignTimeGroupDay,
+  onRemoveTimeGroup,
+  onClearTimeGroups,
   onToggleHasEndDate,
   onChangeEndDate,
   startDate,
@@ -32,6 +38,11 @@ function RepeatPanel({
   const [endDateMonth, setEndDateMonth] = useState(() => normalizeDate(endDate || startDate || new Date()));
   const selectedWeekdays = weekdays ?? [];
   const selectedMonthDays = monthDays ?? [];
+  const selectedDays = frequency === 'weekly' ? selectedWeekdays : selectedMonthDays;
+  const groups = Array.isArray(timeGroups) ? timeGroups : [];
+  const hasTimeGroups = groups.length >= 2;
+  const canConfigureTimeGroups =
+    isEnabled && (frequency === 'weekly' || frequency === 'monthly') && selectedDays.length > 1;
 
   useEffect(() => {
     if (endDate) {
@@ -153,6 +164,127 @@ function RepeatPanel({
                   </SoftPressable>
                 );
               })}
+            </AnimatedReveal>
+          )}
+
+          {canConfigureTimeGroups && (
+            <AnimatedReveal style={styles.timeGroupsSection}>
+              {!hasTimeGroups ? (
+                <SoftPressable
+                  style={styles.timeGroupsEmptyCard}
+                  onPress={onConfigureTimeGroups}
+                  accessibilityRole="button"
+                  accessibilityLabel={labels.noExtraTimeConfig}
+                >
+                  <View style={styles.timeGroupsEmptyIcon}>
+                    <Ionicons name="options-outline" size={20} color="#3C2BA7" />
+                  </View>
+                  <View style={styles.timeGroupsEmptyCopy}>
+                    <Text style={styles.timeGroupsEmptyTitle}>{labels.noExtraTimeConfig}</Text>
+                    <Text style={styles.timeGroupsEmptyHint}>{labels.extraTimeConfigHint}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#7569BE" />
+                </SoftPressable>
+              ) : (
+                <View style={styles.timeGroupsConfigured}>
+                  <View style={styles.timeGroupsHeadingRow}>
+                    <View style={styles.timeGroupsHeadingCopy}>
+                      <Text style={styles.timeGroupsHeading}>{labels.extraTimeConfigured}</Text>
+                      <Text style={styles.timeGroupsHeadingHint}>{labels.oneGroupPerDayHint}</Text>
+                    </View>
+                    <SoftPressable
+                      style={styles.timeGroupsClearButton}
+                      onPress={onClearTimeGroups}
+                      accessibilityRole="button"
+                      accessibilityLabel={labels.removeExtraTimeConfig}
+                    >
+                      <Text style={styles.timeGroupsClearLabel}>{labels.removeExtraTimeConfigShort}</Text>
+                    </SoftPressable>
+                  </View>
+
+                  {groups.map((group, groupIndex) => (
+                    <React.Fragment key={group.id}>
+                      <View style={styles.timeGroupCard}>
+                        <View style={styles.timeGroupHeader}>
+                          <View style={styles.timeGroupNumberBadge}>
+                            <Text style={styles.timeGroupNumber}>{groupIndex + 1}</Text>
+                          </View>
+                          <Text style={styles.timeGroupTitle}>
+                            {labels.timeGroupName.replace('{number}', String(groupIndex + 1))}
+                          </Text>
+                          {groups.length > 2 ? (
+                            <SoftPressable
+                              style={styles.timeGroupRemoveButton}
+                              onPress={() => onRemoveTimeGroup?.(group.id)}
+                              accessibilityRole="button"
+                              accessibilityLabel={labels.removeTimeGroup.replace(
+                                '{number}',
+                                String(groupIndex + 1)
+                              )}
+                            >
+                              <Ionicons name="trash-outline" size={18} color="#A34E61" />
+                            </SoftPressable>
+                          ) : null}
+                        </View>
+                        <View style={styles.timeGroupDayGrid}>
+                          {selectedDays.map((day) => {
+                            const active = group.days.includes(day);
+                            const dayLabel =
+                              frequency === 'weekly'
+                                ? labels.weekdayFullLabels?.[day] ?? day
+                                : labels.dayNumber.replace('{day}', String(day));
+                            const shortLabel =
+                              frequency === 'weekly'
+                                ? labels.weekdayShortLabels?.[day] ?? day
+                                : String(day);
+                            return (
+                              <SoftPressable
+                                key={`${group.id}-${day}`}
+                                style={[
+                                  styles.timeGroupDayPill,
+                                  frequency === 'monthly' && styles.timeGroupMonthDayPill,
+                                  active && styles.timeGroupDayPillActive,
+                                ]}
+                                onPress={() => onAssignTimeGroupDay?.(group.id, day)}
+                                accessibilityRole="button"
+                                accessibilityLabel={`${dayLabel}, ${labels.timeGroupName.replace(
+                                  '{number}',
+                                  String(groupIndex + 1)
+                                )}`}
+                                accessibilityState={{ selected: active }}
+                              >
+                                <Text
+                                  style={[
+                                    styles.timeGroupDayLabel,
+                                    active && styles.timeGroupDayLabelActive,
+                                  ]}
+                                >
+                                  {shortLabel}
+                                </Text>
+                              </SoftPressable>
+                            );
+                          })}
+                        </View>
+                      </View>
+
+                      {groups.length < selectedDays.length ? (
+                        <View style={styles.timeGroupAddRow}>
+                          <View style={styles.timeGroupAddLine} />
+                          <SoftPressable
+                            style={styles.timeGroupAddButton}
+                            onPress={() => onAddTimeGroup?.(groupIndex)}
+                            accessibilityRole="button"
+                            accessibilityLabel={labels.addTimeGroup}
+                          >
+                            <Ionicons name="add" size={22} color="#FFFFFF" />
+                          </SoftPressable>
+                          <View style={styles.timeGroupAddLine} />
+                        </View>
+                      ) : null}
+                    </React.Fragment>
+                  ))}
+                </View>
+              )}
             </AnimatedReveal>
           )}
 

@@ -31,6 +31,13 @@ const formatTaskTime = (time, options = {}) => {
   // Português usa relógio de 24h; inglês mantém AM/PM.
   const use24Hour = options.language === 'pt';
 
+  const groupCount = Array.isArray(time?.groups)
+    ? time.groups.filter((group) => Array.isArray(group?.days) && group.days.length > 0).length
+    : 0;
+  if (groupCount >= 2) {
+    return options.language === 'pt' ? `${groupCount} hor\u00e1rios` : `${groupCount} times`;
+  }
+
   if (!time || !time.specified) {
     return anytimeLabel;
   }

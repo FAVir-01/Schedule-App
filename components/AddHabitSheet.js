@@ -34,6 +34,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { formatTaskTime, formatTimeValue } from '../utils/timeUtils';
+import { resolveTimeForRepeatDate } from '../utils/taskTimeUtils';
 import { lightenColor } from '../utils/colorUtils';
 import {
   getQuantumProgressLabel,
@@ -518,6 +519,10 @@ export default function AddHabitSheet({
   }, [draft.repeat, formatDateLabel, t]);
 
   const timeLabel = useMemo(() => {
+    const groupCount = Array.isArray(draft.time.groups) ? draft.time.groups.length : 0;
+    if (groupCount >= 2) {
+      return t.timeGroupsSummary.replace('{count}', String(groupCount));
+    }
     if (!draft.time.specified) {
       return t.anytime;
     }
@@ -528,7 +533,7 @@ export default function AddHabitSheet({
       draft.time.period.end,
       use24Hour
     )}`;
-  }, [draft.time, t.anytime, use24Hour]);
+  }, [draft.time, t.anytime, t.timeGroupsSummary, use24Hour]);
 
   const reminderOptions = useMemo(() => {
     const labelByKey = {
@@ -539,14 +544,17 @@ export default function AddHabitSheet({
       '30m': t.reminder30m,
       '1h': t.reminder1h,
     };
-    const reference = draft.time.specified
+    const hasGroups = Array.isArray(draft.time.groups) && draft.time.groups.length >= 2;
+    const reference = !hasGroups && draft.time.specified
       ? (draft.time.mode === 'period' ? draft.time.period.start : draft.time.point)
       : null;
     return REMINDER_ORDER.map((key) => {
       const offset = REMINDER_OFFSETS[key];
       let hint = null;
       if (key !== 'none') {
-        hint = reference
+        hint = hasGroups
+          ? t.forEachTimeGroup
+          : reference
           ? formatTimeValue(minutesToTime(timeToMinutes(reference) + offset), use24Hour)
           : t.noTimeSet;
       }
@@ -640,8 +648,12 @@ export default function AddHabitSheet({
   }, [draft.subtasks.length, draft.type, previewQuantum]);
 
   const previewTimeLabel = useMemo(
-    () => formatTaskTime(draft.time, { anytimeLabel: t.anytime, language }),
-    [draft.time, language, t.anytime]
+    () =>
+      formatTaskTime(resolveTimeForRepeatDate(draft.time, draft.repeat, draft.startDate), {
+        anytimeLabel: t.anytime,
+        language,
+      }),
+    [draft.repeat, draft.startDate, draft.time, language, t.anytime]
   );
 
   // ---------------------------------------------------------------- salvar ---
@@ -706,6 +718,62 @@ export default function AddHabitSheet({
     return null;
   }
 
+  const timeGroups = Array.isArray(draft.time.groups) ? draft.time.groups : [];
+  const hasTimeGroups = timeGroups.length >= 2;
+  const formatEditorTime = (time) => {
+    if (!time?.specified) {
+      return t.anytime;
+    }
+    if (time.mode === 'period') {
+      return `${formatTimeValue(time.period.start, use24Hour)} - ${formatTimeValue(
+        time.period.end,
+        use24Hour
+      )}`;
+    }
+    return formatTimeValue(time.point, use24Hour);
+  };
+  const getTimeGroupRowLabel = (group, index) => {
+    if (group.days.length === 1) {
+      const day = group.days[0];
+      const dayLabel =
+        draft.repeat.frequency === 'weekly'
+          ? t.weekdayFullLabels?.[day] ?? day
+          : t.dayNumber.replace('{day}', String(day));
+      return `${t.time} - ${dayLabel}`;
+    }
+    return t.timeGroupName.replace('{number}', String(index + 1));
+  };
+  const timeRows = hasTimeGroups
+    ? timeGroups.map((group, index) => ({
+        key: `time:${group.id}`,
+        icon: 'time-outline',
+        label: getTimeGroupRowLabel(group, index),
+        value: formatEditorTime(group),
+        infoKey: `time:${group.id}`,
+        infoText: t.info.time,
+      }))
+    : [
+        {
+          key: 'time',
+          icon: 'time-outline',
+          label: t.time,
+          value: timeLabel,
+          infoKey: 'time',
+          infoText: t.info.time,
+        },
+      ];
+  const activeTimeGroupId = panel?.key?.startsWith('time:') ? panel.key.slice(5) : null;
+  const activeTimeGroup = activeTimeGroupId
+    ? timeGroups.find((group) => group.id === activeTimeGroupId) ?? null
+    : null;
+  const activeTime = activeTimeGroup ?? draft.time;
+  const patchActiveTime = (value) =>
+    dispatch(
+      activeTimeGroup
+        ? { type: 'patchTimeGroup', id: activeTimeGroup.id, value }
+        : { type: 'patchTime', value }
+    );
+
   const rows = [
     {
       key: 'date',
@@ -724,14 +792,7 @@ export default function AddHabitSheet({
       infoText: t.info.repeat,
       error: errorFor('repeat'),
     },
-    {
-      key: 'time',
-      icon: 'time-outline',
-      label: t.time,
-      value: timeLabel,
-      infoKey: 'time',
-      infoText: t.info.time,
-    },
+    ...timeRows,
     {
       key: 'reminder',
       icon: 'notifications-outline',
@@ -762,7 +823,10 @@ export default function AddHabitSheet({
 
   // "Quando" reune data, repeticao, horario e lembrete; "detalhes" fica com
   // rotulo e tipo. A ajuda de cada item expande dentro do proprio cartao.
-  const sectionRowKeys = { when: ['date', 'repeat', 'time', 'reminder'], details: ['tag', 'type'] };
+  const sectionRowKeys = {
+    when: ['date', 'repeat', ...timeRows.map((row) => row.key), 'reminder'],
+    details: ['tag', 'type'],
+  };
   const sections = [
     { key: 'when', title: t.sectionWhen },
     { key: 'details', title: t.sectionDetails },
@@ -1060,6 +1124,7 @@ export default function AddHabitSheet({
                   interval={draft.repeat.interval}
                   weekdays={draft.repeat.weekdays}
                   monthDays={draft.repeat.monthDays}
+                  timeGroups={timeGroups}
                   hasEndDate={draft.repeat.hasEndDate}
                   endDate={draft.repeat.endDate}
                   startDate={draft.startDate}
@@ -1074,6 +1139,15 @@ export default function AddHabitSheet({
                   }
                   onToggleWeekday={(value) => dispatch({ type: 'toggleWeekday', value })}
                   onToggleMonthDay={(value) => dispatch({ type: 'toggleMonthDay', value })}
+                  onConfigureTimeGroups={() => dispatch({ type: 'configureTimeGroups' })}
+                  onAddTimeGroup={(afterIndex) =>
+                    dispatch({ type: 'addTimeGroup', afterIndex })
+                  }
+                  onAssignTimeGroupDay={(id, day) =>
+                    dispatch({ type: 'assignTimeGroupDay', id, day })
+                  }
+                  onRemoveTimeGroup={(id) => dispatch({ type: 'removeTimeGroup', id })}
+                  onClearTimeGroups={() => dispatch({ type: 'clearTimeGroups' })}
                   onToggleHasEndDate={(hasEndDate) =>
                     dispatch({
                       type: 'patchRepeat',
@@ -1089,16 +1163,16 @@ export default function AddHabitSheet({
               </OptionOverlay>
             ) : null}
 
-            {panel?.key === 'time' ? (
+            {panel?.key === 'time' || panel?.key?.startsWith('time:') ? (
               <OptionOverlay
                 title={
-                  !draft.time.specified
+                  !activeTime.specified
                     ? t.doItAnyTime
-                    : draft.time.mode === 'period'
+                    : activeTime.mode === 'period'
                     ? t.doItFromTo
-                        .replace('{start}', formatTimeValue(draft.time.period.start, use24Hour))
-                        .replace('{end}', formatTimeValue(draft.time.period.end, use24Hour))
-                    : t.doItAt.replace('{time}', formatTimeValue(draft.time.point, use24Hour))
+                        .replace('{start}', formatTimeValue(activeTime.period.start, use24Hour))
+                        .replace('{end}', formatTimeValue(activeTime.period.end, use24Hour))
+                    : t.doItAt.replace('{time}', formatTimeValue(activeTime.point, use24Hour))
                 }
                 onClose={cancelPanel}
                 onApply={closePanel}
@@ -1107,30 +1181,21 @@ export default function AddHabitSheet({
                 reduceMotion={reduceMotion}
               >
                 <TimePanel
-                  specified={draft.time.specified}
-                  onToggleSpecified={(specified) =>
-                    dispatch({ type: 'patchTime', value: { specified } })
-                  }
-                  mode={draft.time.mode}
-                  onModeChange={(value) => dispatch({ type: 'patchTime', value: { mode: value } })}
-                  pointTime={draft.time.point}
+                  specified={activeTime.specified}
+                  onToggleSpecified={(specified) => patchActiveTime({ specified })}
+                  mode={activeTime.mode}
+                  onModeChange={(value) => patchActiveTime({ mode: value })}
+                  pointTime={activeTime.point}
                   onPointTimeChange={(updater) =>
-                    dispatch({
-                      type: 'patchTime',
-                      value: {
-                        point:
-                          typeof updater === 'function' ? updater(draft.time.point) : updater,
-                      },
+                    patchActiveTime({
+                      point: typeof updater === 'function' ? updater(activeTime.point) : updater,
                     })
                   }
-                  periodTime={draft.time.period}
+                  periodTime={activeTime.period}
                   onPeriodTimeChange={(updater) => {
                     const next =
-                      typeof updater === 'function' ? updater(draft.time.period) : updater;
-                    dispatch({
-                      type: 'patchTime',
-                      value: { period: { ...draft.time.period, ...next } },
-                    });
+                      typeof updater === 'function' ? updater(activeTime.period) : updater;
+                    patchActiveTime({ period: { ...activeTime.period, ...next } });
                   }}
                   labels={t}
                   use24Hour={use24Hour}
