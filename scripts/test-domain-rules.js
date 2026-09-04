@@ -168,6 +168,7 @@ const {
   shouldTaskAppearOnDate,
   withScheduleMirror,
 } = require('../domain/taskSchedule');
+const { buildRecentTaskActivity } = require('../domain/taskActivity');
 const {
   createCenteredDateWindow,
   getCalendarDayOffset,
@@ -186,9 +187,14 @@ const {
   getQuantumStepLabel,
   isValidQuantumDefinition,
   clearExpiredRepeatEnd,
+  getTaskPausedSinceKey,
+  getTaskStreak,
   isTaskArchived,
   isTaskExpired,
   isTaskInactive,
+  shouldCountTaskTowardsCompletion,
+  shouldCountTaskTowardsStreak,
+  shouldResetStreakAfterPause,
   reconcileQuantumCompletionState,
   reconcileTaskProgressOnEdit,
   restoreDeletedTaskAtIndex,
@@ -200,9 +206,15 @@ const {
   formatImageSizeLimit,
   getImageErrorMessage,
   getPickedImageExtension,
+  isGifImageAsset,
   isGifImageUri,
   validatePickedImageAsset,
 } = require('../utils/imageUtils');
+const {
+  clampCropTransform,
+  getCoverDimensions,
+  getSquareCropRect,
+} = require('../utils/imageCropUtils');
 const {
   MAX_REFLECTION_NOTE_LENGTH,
   appendRecognizedText,
@@ -1846,6 +1858,78 @@ test('separa tarefa arquivada de tarefa avulsa vencida', () => {
   assert.equal(isTaskExpired({ ...repeating, archived: true }, '2026-08-03'), false);
 });
 
+test('sequencia so existe para o que se repete', () => {
+  const build = (repeat, type = 'default') =>
+    withScheduleMirror({
+      id: 't', type, dateKey: '2026-09-01', repeat,
+      completedDates: { '2026-09-01': true, '2026-09-02': true, '2026-09-03': true },
+    });
+  const repetente = build({ enabled: true, frequency: 'daily', interval: 1 });
+  const avulsa = build({ enabled: false, frequency: 'daily', interval: 1 });
+  const lembrete = build({ enabled: true, frequency: 'daily', interval: 1 }, 'reminder');
+
+  assert.equal(shouldCountTaskTowardsStreak(repetente), true);
+  assert.equal(shouldCountTaskTowardsStreak(avulsa), false);
+  assert.equal(shouldCountTaskTowardsStreak(lembrete), false);
+  assert.equal(getTaskStreak(repetente, new Date(2026, 8, 3)), 3);
+  assert.equal(getTaskStreak(avulsa, new Date(2026, 8, 3)), 0);
+
+  // Predicado separado de propósito: a avulsa continua valendo para o
+  // "terminei tudo hoje", para o relatório do dia e para o gráfico.
+  assert.equal(shouldCountTaskTowardsCompletion(avulsa), true);
+  assert.equal(shouldCountTaskTowardsCompletion(lembrete), false);
+  const serie = buildDailyCompletionSeries({
+    tasks: [avulsa], endDate: new Date(2026, 8, 1), days: 1,
+  });
+  assert.deepEqual(serie.entries[0], { completed: 1, total: 1 });
+
+  // Nas stats do Perfil, avulsa deixa de produzir sequência.
+  const stats = calculateProfileStats({
+    tasks: [avulsa], history: [], today: new Date(2026, 8, 3),
+  });
+  assert.equal(stats.currentStreak, 0);
+});
+
+test('pausa longa reinicia a sequencia, intervalo entre ocorrencias nao', () => {
+  const mensal = withScheduleMirror({
+    id: 'm', type: 'default', dateKey: '2026-06-10',
+    repeat: { enabled: true, frequency: 'monthly', interval: 1, monthDays: [10] },
+    completedDates: { '2026-06-10': true, '2026-07-10': true, '2026-08-10': true },
+  });
+
+  // O caso que motivou a regra: 30 dias entre ocorrências não podem custar
+  // nada, porque o hábito nunca ficou guardado.
+  assert.equal(getTaskPausedSinceKey(mensal), null);
+  assert.equal(shouldResetStreakAfterPause(mensal, '2026-09-05'), false);
+  assert.equal(getTaskStreak(mensal, new Date(2026, 8, 5)), 3);
+
+  // Guardada à mão: a conta é do arquivamento até a reativação.
+  const arquivada = { ...mensal, archived: true, archivedAt: '2026-08-20' };
+  assert.equal(getTaskPausedSinceKey(arquivada), '2026-08-20');
+  assert.equal(shouldResetStreakAfterPause(arquivada, '2026-08-25'), false); // 5 dias
+  assert.equal(shouldResetStreakAfterPause(arquivada, '2026-08-29'), false); // 9 dias
+  assert.equal(shouldResetStreakAfterPause(arquivada, '2026-08-30'), true); // 10 dias
+  assert.equal(shouldResetStreakAfterPause(arquivada, '2026-10-01'), true);
+
+  // Encerrada pela data final conta igual, usando a própria data final.
+  const encerrada = withScheduleMirror({
+    id: 'e', type: 'default', dateKey: '2026-06-10',
+    repeat: { enabled: true, frequency: 'daily', interval: 1, endDate: '2026-08-20' },
+    completedDates: {},
+  });
+  assert.equal(getTaskPausedSinceKey(encerrada), '2026-08-20');
+  assert.equal(shouldResetStreakAfterPause(encerrada, '2026-08-30'), true);
+
+  // O marco corta a contagem: o que veio antes pertence a outra tentativa.
+  const reiniciada = { ...mensal, streakResetAt: '2026-08-30' };
+  assert.equal(getTaskStreak(reiniciada, new Date(2026, 8, 5)), 0);
+  const comNovaConclusao = {
+    ...reiniciada,
+    completedDates: { ...mensal.completedDates, '2026-09-10': true },
+  };
+  assert.equal(getTaskStreak(comNovaConclusao, new Date(2026, 8, 10)), 1);
+});
+
 test('trata habito com data final vencida como encerrado', () => {
   const HOJE = '2026-09-10';
   const build = (repeat, extra = {}) =>
@@ -2406,6 +2490,38 @@ test('reconhece GIFs persistidos para respeitar reduzir movimento', () => {
   assert.equal(isGifImageUri('file:///documents/custom_month_7.GIF?version=2'), true);
   assert.equal(isGifImageUri('file:///documents/custom_month_7.png'), false);
   assert.equal(isGifImageUri(null), false);
+  assert.equal(isGifImageAsset({ mimeType: 'image/gif', uri: 'content://gallery/42' }), true);
+  assert.equal(isGifImageAsset({ fileName: 'animation.GIF', uri: 'content://gallery/43' }), true);
+  assert.equal(isGifImageAsset({ mimeType: 'image/png', fileName: 'photo.png' }), false);
+});
+
+test('calcula um recorte quadrado sem deixar areas vazias', () => {
+  const landscape = getCoverDimensions(4000, 2000, 300);
+  assert.deepEqual(landscape, { width: 600, height: 300 });
+  assert.deepEqual(
+    getSquareCropRect({
+      sourceWidth: 4000,
+      sourceHeight: 2000,
+      imageWidth: landscape.width,
+      imageHeight: landscape.height,
+      frameSize: 300,
+      scale: 1,
+      translateX: 0,
+      translateY: 0,
+    }),
+    { originX: 1000, originY: 0, width: 2000, height: 2000 }
+  );
+  assert.deepEqual(
+    clampCropTransform({
+      scale: 2,
+      translateX: 999,
+      translateY: -999,
+      imageWidth: landscape.width,
+      imageHeight: landscape.height,
+      frameSize: 300,
+    }),
+    { scale: 2, translateX: 450, translateY: -150 }
+  );
 });
 
 test('formata mensagens localizadas com os limites aplicados', () => {
@@ -2815,9 +2931,9 @@ test('anima a folha pela base sem elevar o wrapper durante a edicao', () => {
   assert.equal(sheetSource.includes('name="camera-outline"'), true);
   assert.equal(sheetSource.includes('<Text style={styles.mediaActionText}>{t.photoOrGif}</Text>'), false);
   assert.equal(sheetSource.includes('styles.mediaActionsRow'), false);
-  assert.equal(sheetSource.includes('allowsEditing: true'), true);
-  assert.equal(sheetSource.includes('aspect: [1, 1]'), true);
-  assert.equal(sheetSource.includes("shape: 'rectangle'"), true);
+  assert.equal(sheetSource.includes('allowsEditing: false'), true);
+  assert.equal(sheetSource.includes('setPendingCropAsset(asset)'), true);
+  assert.equal(sheetSource.includes('isGifImageAsset(asset)'), true);
   assert.equal(sheetSource.includes('quality: 1'), true);
   assert.equal(sheetSource.includes('pickRandomEmoji'), false);
   assert.equal(sheetSource.includes('handleShuffleEmoji'), false);
@@ -2864,7 +2980,7 @@ test('anima a folha pela base sem elevar o wrapper durante a edicao', () => {
   );
 });
 
-test('recorta icones quadrados e restaura o zoom das fotos ao soltar', () => {
+test('recorta imagens estaticas no app, preserva GIFs e restaura o zoom das fotos', () => {
   const taskEditorSource = fs.readFileSync(
     path.join(root, 'components/AddHabitSheet.js'),
     'utf8'
@@ -2875,6 +2991,10 @@ test('recorta icones quadrados e restaura o zoom das fotos ao soltar', () => {
   );
   const calendarSource = fs.readFileSync(
     path.join(root, 'components/CustomizeCalendarModal.js'),
+    'utf8'
+  );
+  const cropSource = fs.readFileSync(
+    path.join(root, 'components/ImageCropModal.js'),
     'utf8'
   );
   const zoomSource = fs.readFileSync(
@@ -2890,11 +3010,17 @@ test('recorta icones quadrados e restaura o zoom das fotos ao soltar', () => {
     'utf8'
   );
 
-  assert.equal(taskEditorSource.includes('allowsEditing: true'), true);
-  assert.equal(taskEditorSource.includes('aspect: [1, 1]'), true);
+  assert.equal(taskEditorSource.includes('allowsEditing: false'), true);
+  assert.equal(taskEditorSource.includes('isGifImageAsset(asset)'), true);
+  assert.equal(taskEditorSource.includes('<ImageCropModal'), true);
   assert.equal(reflectionSource.includes('cropSquare: true'), true);
-  assert.equal(reflectionSource.includes("aspect: [1, 1], shape: 'rectangle'"), true);
+  assert.equal(reflectionSource.includes('cropSquare && !isGifImageAsset(asset)'), true);
+  assert.equal(reflectionSource.includes('<ImageCropModal'), true);
   assert.equal(calendarSource.includes('allowsEditing: false'), true);
+  assert.equal(cropSource.includes('PanResponder.create({'), true);
+  assert.equal(cropSource.includes('manipulateAsync(asset.uri, [{ crop }]'), true);
+  assert.equal(cropSource.includes('getSquareCropRect({'), true);
+  assert.equal(cropSource.includes('gesture.startScale * (distance / gesture.startDistance)'), true);
   assert.equal(zoomSource.includes('PanResponder.create({'), true);
   assert.equal(zoomSource.includes('Math.min(MAX_SCALE'), true);
   assert.equal(zoomSource.includes('focalOffsetX'), true);
@@ -3230,6 +3356,55 @@ test('resolve idioma do editor pela prop, nao comparando texto traduzido', () =>
     assert.equal(typeof labels.weekdayRequiredMessage, 'string');
     assert.equal(typeof labels.monthDayRequiredMessage, 'string');
   }
+});
+
+test('monta atividade recente em semanas de segunda a domingo', () => {
+  const heatmapSource = fs.readFileSync(
+    path.join(root, 'components/TaskHeatmap.js'),
+    'utf8'
+  );
+  const appStylesSource = fs.readFileSync(path.join(root, 'styles/appStyles.js'), 'utf8');
+  const task = withScheduleMirror({
+    id: 'heatmap',
+    type: 'default',
+    dateKey: '2026-07-01',
+    repeat: { enabled: true, frequency: 'daily', interval: 1 },
+    completedDates: { '2026-07-01': true, '2026-09-04': true },
+  });
+  const activity = buildRecentTaskActivity(task, { today: new Date(2026, 8, 4) });
+
+  assert.equal(activity.periodStartKey, '2026-07-01');
+  assert.equal(activity.periodEndKey, '2026-09-04');
+  assert.deepEqual(
+    activity.columns[0].days.map((day) => day.date.getDay()),
+    [1, 2, 3, 4, 5, 6, 0]
+  );
+  assert.equal(activity.completed, 2);
+  assert.equal(activity.scheduled, 66);
+  assert.equal(activity.missed, 64);
+  assert.equal(activity.successRate, 3);
+  assert.equal(heatmapSource.includes('monthBoundaryCount * MONTH_GAP'), true);
+  assert.equal(heatmapSource.includes('styles.heatmapMonthBoundary'), true);
+  assert.equal(appStylesSource.includes('heatmapMonthBoundary: {'), true);
+});
+
+test('nao conta hoje incompleto como falha na atividade', () => {
+  const task = withScheduleMirror({
+    id: 'heatmap-hoje',
+    type: 'default',
+    dateKey: '2026-09-01',
+    repeat: { enabled: true, frequency: 'daily', interval: 1 },
+    completedDates: { '2026-09-01': true },
+  });
+  const activity = buildRecentTaskActivity(task, { today: new Date(2026, 8, 4) });
+  const todayCell = activity.columns
+    .flatMap((column) => column.days)
+    .find((day) => day.key === '2026-09-04');
+
+  assert.equal(todayCell.onSchedule, true);
+  assert.equal(todayCell.isEvaluated, false);
+  assert.equal(activity.scheduled, 3);
+  assert.equal(activity.missed, 2);
 });
 
 const runTests = async () => {

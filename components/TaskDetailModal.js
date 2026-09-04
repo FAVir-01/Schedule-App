@@ -1,10 +1,18 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Animated,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns';
 import { getDateLocale, translations } from '../constants/i18n';
-import { FALLBACK_EMOJI } from '../constants/app';
 import { lightenColor } from '../utils/colorUtils';
 import { normalizeDateValue } from '../utils/dateUtils';
 import {
@@ -16,6 +24,8 @@ import {
 import { formatTaskTime } from '../utils/timeUtils';
 import { styles } from '../styles/appStyles';
 import FinishedMilestoneBadge from './FinishedMilestoneBadge';
+import PolaroidFrame from './PolaroidFrame';
+import TaskPhotoSheet from './TaskPhotoSheet';
 
 export default function TaskDetailModal({
   language = 'en',
@@ -25,16 +35,63 @@ export default function TaskDetailModal({
   onClose,
   onToggleSubtask,
   onToggleCompletion,
+  onUpdateNotes,
   onEdit,
   reduceMotion = false,
 }) {
   const insets = useSafeAreaInsets();
+  const originRef = useRef(null);
+  const photoRef = useRef(null);
+  // Um valor só para a aba inteira: a foto, a folha, o backdrop e o recuo do
+  // card são recortes do mesmo percurso, então não têm como sair de fase.
+  const photoProgress = useRef(new Animated.Value(0)).current;
   const [hasImageError, setHasImageError] = useState(false);
+  const [photoFlight, setPhotoFlight] = useState(null);
+  const [isPhotoSheetOpen, setIsPhotoSheetOpen] = useState(false);
   const t = translations[language] ?? translations.en;
 
   useEffect(() => {
     setHasImageError(false);
   }, [task?.customImage, visible]);
+
+  // Mede a moldura no card no instante do toque: é dela que a foto parte.
+  // Duas medidas com o mesmo método (a marca de origem e a moldura) para a
+  // diferença cancelar qualquer deslocamento da janela do Modal no Android.
+  const openPhotoSheet = useCallback(() => {
+    const origin = originRef.current;
+    const photo = photoRef.current;
+    if (!origin || !photo) {
+      return;
+    }
+    origin.measureInWindow((originX, originY) => {
+      photo.measureInWindow((x, y, width, height) => {
+        if (!width || !height) {
+          return;
+        }
+        setPhotoFlight({ x: x - originX, y: y - originY, w: width, h: height });
+        setIsPhotoSheetOpen(true);
+      });
+    });
+  }, []);
+
+  const closePhotoSheet = useCallback(() => setIsPhotoSheetOpen(false), []);
+  const handlePhotoSheetClosed = useCallback(() => setPhotoFlight(null), []);
+
+  // Trocar de tarefa ou fechar o card não pode deixar a aba pendurada.
+  useEffect(() => {
+    setIsPhotoSheetOpen(false);
+    setPhotoFlight(null);
+  }, [task?.id, visible]);
+
+  // Com a aba aberta, o backdrop e o botão voltar fecham só a aba — o card
+  // continua onde estava.
+  const handleClose = useCallback(() => {
+    if (isPhotoSheetOpen) {
+      closePhotoSheet();
+      return;
+    }
+    onClose?.();
+  }, [closePhotoSheet, isPhotoSheetOpen, onClose]);
 
   const streak = useMemo(
     () => (visible && task ? getTaskStreak(task) : 0),
@@ -66,28 +123,64 @@ export default function TaskDetailModal({
       visible={visible}
       transparent
       animationType="slide"
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
-      <View style={styles.detailOverlay}>
-        <Pressable style={styles.detailBackdrop} onPress={onClose} accessibilityRole="button" />
+      <View style={styles.detailRoot}>
+      {/* Marca de origem: referência fixa para medir a moldura do card. */}
+      <View ref={originRef} style={styles.detailOriginMarker} pointerEvents="none" />
+      <KeyboardAvoidingView
+        style={styles.detailOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <Pressable style={styles.detailBackdrop} onPress={handleClose} accessibilityRole="button" />
         <View
           style={[
             styles.detailCardContainer,
             { paddingBottom: Math.max(28, insets.bottom + 16) },
           ]}
         >
-          <View style={[styles.detailCard, { backgroundColor: cardBackground, borderColor: task.color }]}>
+          {/* O card recua enquanto a aba assume: sem isso a folha parece um
+              painel estranho passando por cima, não a mesma tarefa se abrindo. */}
+          <Animated.View
+            style={[
+              styles.detailCard,
+              { backgroundColor: cardBackground, borderColor: task.color },
+              {
+                opacity: photoProgress.interpolate({
+                  inputRange: [0, 0.6],
+                  outputRange: [1, 0.3],
+                  extrapolate: 'clamp',
+                }),
+                transform: [
+                  {
+                    scale: photoProgress.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [1, 0.93],
+                      extrapolate: 'clamp',
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
             <View style={styles.detailHeaderRow}>
               <View style={styles.detailHeaderInfo}>
-              {task.customImage && !hasImageError ? (
-                <Image
-                  source={{ uri: task.customImage }}
-                  style={styles.detailEmojiImage}
-                  onError={() => setHasImageError(true)}
+              <Pressable
+                ref={photoRef}
+                onPress={openPhotoSheet}
+                // Enquanto a foto está voando, a do card sai de cena: são a
+                // mesma fotografia, não duas.
+                style={[styles.detailPhotoTouch, photoFlight && styles.detailPhotoTouchFlying]}
+                accessibilityRole="button"
+                accessibilityLabel={t.taskModal.openPhoto}
+              >
+                <PolaroidFrame
+                  size={96}
+                  task={task}
+                  hasImageError={hasImageError}
+                  onImageError={() => setHasImageError(true)}
                 />
-              ) : (
-                <Text style={styles.detailEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
-              )}
+              </Pressable>
               <View style={styles.detailTitleContainer}>
                 <Text style={styles.detailTitle}>
                   {task.title}{' '}
@@ -217,8 +310,25 @@ export default function TaskDetailModal({
                 />
               ) : null}
             </View>
-          </View>
+          </Animated.View>
         </View>
+      </KeyboardAvoidingView>
+      <TaskPhotoSheet
+        progress={photoProgress}
+        visible={isPhotoSheetOpen}
+        task={task}
+        dateKey={dateKey}
+        flight={photoFlight}
+        language={language}
+        reduceMotion={reduceMotion}
+        topInset={insets.top}
+        bottomInset={insets.bottom}
+        hasImageError={hasImageError}
+        onImageError={() => setHasImageError(true)}
+        onUpdateNotes={onUpdateNotes}
+        onClose={closePhotoSheet}
+        onClosed={handlePhotoSheetClosed}
+      />
       </View>
     </Modal>
   );
