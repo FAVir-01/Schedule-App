@@ -543,6 +543,39 @@ export const getLatestFinishedMilestoneValue = (finishedCount) => {
 export const getTaskLatestFinishedMilestone = (task) =>
   getLatestFinishedMilestoneValue(getTaskFinishedCount(task));
 
+// Cada marco veste uma patente, e a patente e so derivada do numero do marco:
+// nada disso fica gravado na tarefa. Desmarcar uma conclusao antiga recontou o
+// historico, o dia que era o centesimo virou nonagesimo nono e o dia seguinte
+// assume o selo ja com a patente certa. Da 300a em diante o iridescente e teto
+// permanente: os marcos continuam de 50 em 50, mas um metal novo a cada marco
+// nao teria como ser legivel em 24 pixels.
+export const MILESTONE_TIER_STEPS = [
+  { at: 10, id: 'cardboard' },
+  { at: 50, id: 'bronze' },
+  { at: 100, id: 'silver' },
+  { at: 150, id: 'steel' },
+  { at: 200, id: 'violet' },
+  { at: 250, id: 'obsidian' },
+  { at: 300, id: 'iridescent' },
+];
+
+export const getMilestoneTierId = (milestone) => {
+  const value = Number(milestone);
+  if (!Number.isInteger(value)) {
+    return null;
+  }
+  let tierId = null;
+  MILESTONE_TIER_STEPS.forEach((step) => {
+    if (value >= step.at) {
+      tierId = step.id;
+    }
+  });
+  return tierId;
+};
+
+export const getTaskMilestoneTierId = (task) =>
+  getMilestoneTierId(getTaskLatestFinishedMilestone(task));
+
 export const getTaskFinishedMilestoneForDate = (task, dateKey) => {
   if (!dateKey || !task?.completedDates || typeof task.completedDates !== 'object') {
     return null;

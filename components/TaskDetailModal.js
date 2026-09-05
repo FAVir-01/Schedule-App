@@ -36,7 +36,8 @@ export default function TaskDetailModal({
   onClose,
   onToggleSubtask,
   onToggleCompletion,
-  onUpdateNotes,
+  onSaveNote,
+  onDeleteNote,
   onEdit,
   reduceMotion = false,
 }) {
@@ -331,7 +332,8 @@ export default function TaskDetailModal({
         bottomInset={insets.bottom}
         hasImageError={hasImageError}
         onImageError={() => setHasImageError(true)}
-        onUpdateNotes={onUpdateNotes}
+        onSaveNote={onSaveNote}
+        onDeleteNote={onDeleteNote}
         onClose={closePhotoSheet}
         onClosed={handlePhotoSheetClosed}
       />

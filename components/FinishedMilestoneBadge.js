@@ -1,15 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, Pressable, Text, useWindowDimensions, View } from 'react-native';
-import Svg, {
-  Defs,
-  LinearGradient as SvgLinearGradient,
-  Path,
-  Polygon,
-  Stop,
-} from 'react-native-svg';
 import { USE_NATIVE_DRIVER } from '../constants/app';
+import MilestoneSeal, { getMilestoneSealTheme } from './MilestoneSeal';
 
-const SEAL_SIZE = 22;
+// A caixa do selo cresceu de 22 para 24 porque o desenho agora reserva margem
+// para os ecos das ultimas patentes: com a caixa antiga a estrela encolheria.
+const SEAL_SIZE = 24;
 const MESSAGE_GAP = 7;
 
 // Entrada do selo: 1,2s divididos nas mesmas paradas do desenho original
@@ -32,56 +28,14 @@ const MESSAGE_HOLD_MS = 3500;
 const MESSAGE_OUT_MS = 600;
 const MESSAGE_ENTER_SHIFT = -10;
 const MESSAGE_EXIT_SHIFT = 8;
-// A frase e filha absoluta de uma caixa de 22px. No CSS ela transbordaria em
+// A frase e filha absoluta de uma caixa de 24px. No CSS ela transbordaria em
 // shrink-to-fit, mas o Yoga mede a caixa absoluta contra a largura do pai e a
 // frase sairia reticenciada ("10..."). Entao a largura vem do proprio texto,
 // acompanhando a fonte ampliada do sistema.
 const MESSAGE_CHAR_WIDTH = 7.2;
 const MESSAGE_MIN_WIDTH = 48;
 
-const SEAL_STROKE = '#1F6FAE';
-const MESSAGE_COLOR = '#1F6FAE';
-const SEAL_POINTS =
-  '0,-24 6.89,-16.63 16.97,-16.97 16.63,-6.89 24,0 16.63,6.89 16.97,16.97 6.89,16.63 ' +
-  '0,24 -6.89,16.63 -16.97,16.97 -16.63,6.89 -24,0 -16.63,-6.89 -16.97,-16.97 -6.89,-16.63';
-const SPARK_PATH =
-  'M0,-11 C.9,-3.7 3.7,-.9 11,0 C3.7,.9 .9,3.7 0,11 C-.9,3.7 -3.7,.9 -11,0 C-3.7,-.9 -.9,-3.7 0,-11 Z';
-
-let sealGradientSequence = 0;
-
-function MetallicSeal({ animatedStyle }) {
-  // Um id por instancia: o react-native-svg resolve `url(#id)` de forma global
-  // e varios cards na mesma lista herdariam o primeiro gradiente montado.
-  const gradientId = useMemo(() => {
-    sealGradientSequence += 1;
-    return `finished-seal-${sealGradientSequence}`;
-  }, []);
-
-  return (
-    <Animated.View style={animatedStyle}>
-      <Svg width={SEAL_SIZE} height={SEAL_SIZE} viewBox="-28 -28 56 56">
-        <Defs>
-          <SvgLinearGradient id={gradientId} x1="10%" y1="0%" x2="30%" y2="100%">
-            <Stop offset="0" stopColor="#DFF3FF" />
-            <Stop offset="0.3" stopColor="#5FB0E8" />
-            <Stop offset="0.48" stopColor="#FFFFFF" />
-            <Stop offset="0.54" stopColor="#1F6FAE" />
-            <Stop offset="0.8" stopColor="#8FCDF2" />
-            <Stop offset="1" stopColor="#14507F" />
-          </SvgLinearGradient>
-        </Defs>
-        <Polygon
-          points={SEAL_POINTS}
-          fill={`url(#${gradientId})`}
-          stroke={SEAL_STROKE}
-          strokeWidth={3}
-          strokeLinejoin="round"
-        />
-        <Path d={SPARK_PATH} fill="#FFFFFF" />
-      </Svg>
-    </Animated.View>
-  );
-}
+const FALLBACK_MESSAGE_COLOR = '#1F6FAE';
 
 export default function FinishedMilestoneBadge({
   value,
@@ -94,6 +48,9 @@ export default function FinishedMilestoneBadge({
   style,
 }) {
   const { width: windowWidth, fontScale } = useWindowDimensions();
+  // A frase acompanha o metal do marco: prata escrita em azul de aco leria como
+  // outra peca.
+  const messageColor = getMilestoneSealTheme(value)?.label ?? FALLBACK_MESSAGE_COLOR;
   // Repouso e 1: o selo fica assentado e visivel sem depender de animacao, que
   // e o estado de quem apenas abriu a tela ou o dia no calendario.
   const slide = useRef(new Animated.Value(1)).current;
@@ -256,7 +213,9 @@ export default function FinishedMilestoneBadge({
         accessibilityLabel={accessibilityLabel}
         hitSlop={6}
       >
-        <MetallicSeal animatedStyle={sealAnimatedStyle} />
+        <Animated.View style={sealAnimatedStyle}>
+          <MilestoneSeal milestone={value} size={SEAL_SIZE} />
+        </Animated.View>
       </Pressable>
       {message ? (
         <Animated.View
@@ -278,7 +237,7 @@ export default function FinishedMilestoneBadge({
         >
           <Text
             style={{
-              color: MESSAGE_COLOR,
+              color: messageColor,
               fontSize: 12,
               lineHeight: 16,
               fontWeight: '600',

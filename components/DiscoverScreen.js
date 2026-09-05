@@ -1,52 +1,73 @@
-// Aba Discover — esvaziada de propósito.
-//
-// O conteúdo antigo (catálogo de rotinas prontas) foi removido junto com
-// `constants/taskTemplates.js` e a metade de `utils/templateUtils.js` que o
-// alimentava. O que sobrou do assunto template é só a migração de dados das
-// tarefas já gravadas no aparelho, que roda no boot e não tem nada a ver com
-// esta tela.
-//
-// O que entra aqui ainda não foi decidido.
+// Aba Discover: os atalhos nascem um por vez, conforme forem definidos.
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { translations } from '../constants/i18n';
 
-export default function DiscoverScreen({ language = 'en' }) {
+export default function DiscoverScreen({ language = 'en', onOpenNotes }) {
   const t = (translations[language] ?? translations.en).discover;
 
   return (
-    <SafeAreaView style={localStyles.screen} edges={['top']}>
-      <View style={localStyles.empty}>
-        <Text style={localStyles.title}>{t.title}</Text>
-        <Text style={localStyles.description}>{t.description}</Text>
+    <SafeAreaView style={styles.screen} edges={['top']}>
+      <View style={styles.content}>
+        <Pressable
+          style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+          onPress={onOpenNotes}
+          accessibilityRole="button"
+          accessibilityLabel={t.notesCard}
+        >
+          <View style={styles.icon}>
+            <Ionicons name="document-text-outline" size={20} color="#3c2ba7" />
+          </View>
+          <Text style={styles.cardTitle}>{t.notesCard}</Text>
+        </Pressable>
       </View>
     </SafeAreaView>
   );
 }
 
-const localStyles = StyleSheet.create({
+const styles = StyleSheet.create({
   screen: {
     flex: 1,
     width: '100%',
   },
-  empty: {
+  content: {
     flex: 1,
+    alignItems: 'flex-start',
+    paddingTop: 16,
+    paddingHorizontal: 16,
+  },
+  card: {
+    width: 148,
+    minHeight: 96,
+    justifyContent: 'space-between',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e3e5ee',
+    backgroundColor: '#ffffff',
+    shadowColor: '#1a1a2e',
+    shadowOpacity: 0.07,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  cardPressed: {
+    opacity: 0.75,
+  },
+  icon: {
+    width: 34,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 32,
-    gap: 8,
+    borderRadius: 11,
+    backgroundColor: '#ebe8ff',
   },
-  title: {
-    fontSize: 20,
+  cardTitle: {
+    marginTop: 14,
+    fontSize: 15,
     fontWeight: '700',
     color: '#1a1a2e',
-    textAlign: 'center',
-  },
-  description: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#59636f',
-    textAlign: 'center',
   },
 });

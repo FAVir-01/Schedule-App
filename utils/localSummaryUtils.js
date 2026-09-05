@@ -178,6 +178,15 @@ const buildLocalPeriodSummary = ({
         ? current.rate - previous.rate
         : null,
     completedDelta: current.completed - previous.completed,
+    // O periodo anterior e cortado no mesmo ponto do atual (ver getPeriodBounds),
+    // entao a diferenca compara semana com semana, nao semana com semana inteira.
+    // A variacao vai em pontos da escala de 1 a 5, nao em porcentagem: a escala
+    // nao comeca em zero, e de 3,0 para 3,3 "+10%" afirmaria uma melhora que a
+    // nota nao sustenta.
+    moodDelta:
+      current.averageMood != null && previous.averageMood != null
+        ? current.averageMood - previous.averageMood
+        : null,
   };
 };
 
