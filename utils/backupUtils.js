@@ -3,7 +3,8 @@ export const BACKUP_FORMAT = 'favit-backup';
 // 3: o backup virou uma pasta e passou a levar as fotos junto, descritas em
 //    `media.files`. Sem isso, trocar de aparelho perdia toda a mídia: o JSON
 //    só guardava caminhos locais que não existem no aparelho novo.
-export const BACKUP_VERSION = 3;
+// 4: notas soltas passaram a fazer parte do backup.
+export const BACKUP_VERSION = 4;
 export const MAX_BACKUP_TEXT_LENGTH = 10 * 1024 * 1024;
 export const BACKUP_MEDIA_DIRECTORY = 'media';
 
@@ -49,7 +50,8 @@ const isValidData = (data) =>
   isObjectArray(data.history) &&
   isPlainObject(data.monthImages) &&
   isPlainObject(data.dayMoods) &&
-  isPlainObject(data.moodAppearance);
+  isPlainObject(data.moodAppearance) &&
+  isObjectArray(data.notes);
 
 const isValidMediaEntry = (entry) =>
   isPlainObject(entry) &&
@@ -145,6 +147,15 @@ const BACKUP_MIGRATIONS = {
       files: [],
     },
   }),
+  // Backups anteriores à tela Notes não tinham essa coleção.
+  3: (payload) => ({
+    ...payload,
+    version: 4,
+    data: {
+      ...payload.data,
+      notes: [],
+    },
+  }),
 };
 
 export const migrateBackupPayload = (payload) => {
@@ -204,6 +215,7 @@ export const parseAppBackupContents = (contents) => {
       reflectionCount: Object.keys(data.dayMoods).length,
       monthImageCount: Object.keys(data.monthImages).length,
       moodAppearanceCount: Object.keys(data.moodAppearance).length,
+      noteCount: data.notes.length,
       referencedMediaCount: migrated.media.referencedUris.length,
       filesIncluded: migrated.media.filesIncluded,
       bundledMediaCount: Array.isArray(migrated.media.files)

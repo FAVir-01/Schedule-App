@@ -25,7 +25,7 @@ const getMediaMimeType = (fileName) => {
   return 'image/jpeg';
 };
 
-const getReferencedMediaUris = ({ tasks, monthImages, dayMoods, moodAppearance }) => {
+const getReferencedMediaUris = ({ tasks, monthImages, dayMoods, moodAppearance, notes }) => {
   const uris = new Set();
   (tasks ?? []).forEach((task) => {
     if (typeof task?.customImage === 'string') {
@@ -49,6 +49,13 @@ const getReferencedMediaUris = ({ tasks, monthImages, dayMoods, moodAppearance }
     if (typeof uri === 'string') {
       uris.add(uri);
     }
+  });
+  (notes ?? []).forEach((note) => {
+    (Array.isArray(note?.images) ? note.images : []).forEach((uri) => {
+      if (typeof uri === 'string') {
+        uris.add(uri);
+      }
+    });
   });
   return Array.from(uris);
 };
@@ -375,6 +382,21 @@ export const prepareImportedBackupData = async (data, options = {}) => {
       ];
     })
   );
+  const notes = Array.isArray(data.notes)
+    ? await Promise.all(
+        data.notes.map(async (note) => {
+          const resolvedImages = await Promise.all(
+            (Array.isArray(note?.images) ? note.images : []).map(resolveAvailableMediaUri)
+          );
+          const { images: _oldImages, ...base } = note;
+          const availableImages = resolvedImages.filter(Boolean);
+          return {
+            ...base,
+            ...(availableImages.length ? { images: availableImages } : {}),
+          };
+        })
+      )
+    : null;
 
   return {
     data: {
@@ -387,6 +409,7 @@ export const prepareImportedBackupData = async (data, options = {}) => {
       moodAppearance: Object.fromEntries(
         moodAppearanceEntries.filter(([, uri]) => Boolean(uri))
       ),
+      ...(notes ? { notes } : {}),
     },
     missingMediaCount: resolver.getMissingCount(),
     restoredMediaCount: resolver.getRestoredCount(),
@@ -460,6 +483,7 @@ export const exportAppBackup = async ({
   monthImages,
   dayMoods,
   moodAppearance,
+  notes,
   loadFailures = {},
 }) => {
   const exportedAt = new Date().toISOString();
@@ -471,6 +495,7 @@ export const exportAppBackup = async ({
     monthImages,
     dayMoods,
     moodAppearance,
+    notes,
   });
   const includesRecoveryData =
     Object.values(loadFailures).some(Boolean) ||
@@ -489,6 +514,7 @@ export const exportAppBackup = async ({
           monthImages: monthImages ?? {},
           dayMoods: dayMoods ?? {},
           moodAppearance: moodAppearance ?? {},
+          notes: notes ?? [],
         },
         recovery: {
           loadFailures,

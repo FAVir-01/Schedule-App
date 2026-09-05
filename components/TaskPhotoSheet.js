@@ -2,12 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Animated,
   Easing,
-  Keyboard,
   Platform,
   Pressable,
   ScrollView,
   Text,
-  TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -17,6 +15,7 @@ import { getDateLocale, translations } from '../constants/i18n';
 import { lightenColor } from '../utils/colorUtils';
 import { getDateKey, normalizeDateValue } from '../utils/dateUtils';
 import {
+  getMilestoneTierId,
   getQuantumProgressLabel,
   getSubtaskCompletionStatus,
   getTaskFinishedCount,
@@ -29,11 +28,12 @@ import {
   shouldCountTaskTowardsStreak,
 } from '../utils/taskUtils';
 import { formatTaskTime } from '../utils/timeUtils';
-import { NOTES_MAX_LENGTH } from '../domain/taskDraft';
 import { getTaskTimeForDate } from '../domain/taskSchedule';
 import { styles } from '../styles/appStyles';
+import MilestoneSeal from './MilestoneSeal';
 import PolaroidFrame, { getPolaroidHeight } from './PolaroidFrame';
 import TaskHeatmap from './TaskHeatmap';
+import NoteEditorModal from './NoteEditorModal';
 
 const OPEN_DURATION = 460;
 const CLOSE_DURATION = 320;
@@ -44,7 +44,9 @@ const SHEET_END = 0.86;
 const CONTENT_START = 0.44;
 const OPEN_EASING = Easing.bezier(0.05, 0.7, 0.1, 1);
 const CLOSE_EASING = Easing.bezier(0.3, 0, 0.8, 0.15);
-const SHEET_GAP = 40;
+// A aba cobre a tela inteira: o conteudo abaixo da foto e uma lista longa
+// (nota do dia, metricas, heatmap, marcos, dados) e a faixa de card que sobrava
+// no topo so tirava altura de rolagem sem mostrar nada.
 const PHOTO_GAP = 26;
 const MAX_FRAME = 190;
 
@@ -96,6 +98,44 @@ function InfoRows({ rows }) {
   );
 }
 
+function CompactDayNote({ note, task, onPress }) {
+  const cardColor = note.cardColor ?? task.color;
+  const imageCount = Array.isArray(note.images) ? note.images.length : 0;
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.photoSheetCompactNote,
+        {
+          backgroundColor: lightenColor(cardColor, 0.78),
+          borderColor: cardColor,
+        },
+        pressed && styles.photoSheetCompactNotePressed,
+      ]}
+      onPress={onPress}
+      accessibilityRole="button"
+    >
+      <View style={[styles.photoSheetCompactNoteAccent, { backgroundColor: cardColor }]} />
+      <View style={styles.photoSheetCompactNoteContent}>
+        <Text style={styles.photoSheetCompactNoteTitle} numberOfLines={1}>
+          {note.title || task.title}
+        </Text>
+        {note.text ? (
+          <Text style={styles.photoSheetCompactNoteText} numberOfLines={2}>
+            {note.text}
+          </Text>
+        ) : null}
+        {imageCount ? (
+          <View style={styles.photoSheetCompactNoteImages}>
+            <Ionicons name="image-outline" size={14} color="#626778" />
+            <Text style={styles.photoSheetCompactNoteImageCount}>{imageCount}</Text>
+          </View>
+        ) : null}
+      </View>
+      {note.pinned ? <Ionicons name="pin" size={15} color="#655b83" /> : null}
+    </Pressable>
+  );
+}
+
 export default function TaskPhotoSheet({
   visible,
   task,
@@ -108,69 +148,25 @@ export default function TaskPhotoSheet({
   bottomInset = 0,
   hasImageError = false,
   onImageError,
-  onUpdateNotes,
+  onSaveNote,
+  onDeleteNote,
   onClose,
   onClosed,
 }) {
   const { width, height } = useWindowDimensions();
   const onClosedRef = useRef(onClosed);
   const scrollRef = useRef(null);
-  const keyboardHeightRef = useRef(0);
-  const baseWindowHeightRef = useRef(height);
-  const [notesDraft, setNotesDraft] = useState('');
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [isNoteEditorOpen, setIsNoteEditorOpen] = useState(false);
   const t = translations[language] ?? translations.en;
   const locale = getDateLocale(language);
-
-  const scrollNotesIntoView = useCallback((animated = true) => {
-    scrollRef.current?.scrollTo({
-      // A nota é o primeiro bloco desta aba. Mantê-la ancorada no início
-      // evita que o ajuste do teclado corte o rótulo ou as primeiras linhas.
-      y: 0,
-      animated,
-    });
-  }, []);
-
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const onShow = Keyboard.addListener(showEvent, (event) => {
-      const nextHeight = event?.endCoordinates?.height ?? 0;
-      keyboardHeightRef.current = nextHeight;
-      setKeyboardHeight(nextHeight);
-    });
-    const onHide = Keyboard.addListener(hideEvent, () => {
-      keyboardHeightRef.current = 0;
-      setKeyboardHeight(0);
-    });
-    return () => {
-      onShow.remove();
-      onHide.remove();
-    };
-  }, []);
-
-  // Replica o comportamento da nota em Emotions: depois que a janela termina
-  // de se ajustar ao teclado, reposiciona o campo novamente. No Android
-  // edge-to-edge, uma única rolagem no onFocus acontece cedo demais.
-  useEffect(() => {
-    if (keyboardHeight <= 0) {
-      return undefined;
-    }
-    const earlyId = setTimeout(() => scrollNotesIntoView(false), 100);
-    const lateId = setTimeout(() => scrollNotesIntoView(true), 450);
-    return () => {
-      clearTimeout(earlyId);
-      clearTimeout(lateId);
-    };
-  }, [keyboardHeight, scrollNotesIntoView]);
 
   useEffect(() => {
     onClosedRef.current = onClosed;
   }, [onClosed]);
 
   useEffect(() => {
-    setNotesDraft(`${task?.notes ?? ''}`);
-  }, [task?.id, task?.notes]);
+    setIsNoteEditorOpen(false);
+  }, [dateKey, task?.id, visible]);
 
   // O componente permanece montado durante a animação de volta. Sem zerar
   // aqui, a próxima abertura herdava a rolagem anterior e podia começar no
@@ -193,21 +189,6 @@ export default function TaskPhotoSheet({
     };
   }, [task?.id, visible]);
 
-  const taskId = task?.id;
-  const commitNotes = useCallback(() => {
-    if (taskId != null) {
-      onUpdateNotes?.(taskId, notesDraft);
-    }
-  }, [notesDraft, onUpdateNotes, taskId]);
-
-  const wasVisibleRef = useRef(false);
-  useEffect(() => {
-    if (wasVisibleRef.current && !visible) {
-      commitNotes();
-    }
-    wasVisibleRef.current = visible;
-  }, [commitNotes, visible]);
-
   useEffect(() => {
     if (!flight) {
       return undefined;
@@ -227,10 +208,8 @@ export default function TaskPhotoSheet({
   }, [flight, progress, reduceMotion, visible]);
 
   const handleClose = useCallback(() => {
-    commitNotes();
-    Keyboard.dismiss();
     onClose?.();
-  }, [commitNotes, onClose]);
+  }, [onClose]);
 
   const summary = useMemo(() => {
     if (!task) {
@@ -246,6 +225,7 @@ export default function TaskPhotoSheet({
     const isRecurring = shouldCountTaskTowardsStreak(task);
     const isReminder = task.type === 'reminder';
     const selectedKey = dateKey ?? getDateKey(today);
+    const selectedNoteDate = normalizeDateValue(selectedKey);
     const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
     const completedSubtasks = totalSubtasks
       ? task.subtasks.filter((subtask) => getSubtaskCompletionStatus(subtask, selectedKey)).length
@@ -271,6 +251,8 @@ export default function TaskPhotoSheet({
         ? t.taskModal.today
         : formatDate(lastFinishedDate)
       : t.taskModal.noCompletions;
+    const noteDateLabel =
+      selectedKey === getDateKey(today) ? t.taskModal.today : formatDate(selectedNoteDate);
     const activeDaysLabel = `${activeDays} ${
       activeDays === 1 ? t.profile.day : t.profile.days
     }`;
@@ -333,14 +315,29 @@ export default function TaskPhotoSheet({
         ];
 
     const nextMilestone = getNextMilestone(finished);
+    const latestMilestone = getTaskLatestFinishedMilestone(task);
+    const currentTierId = getMilestoneTierId(latestMilestone);
+    const nextTierId = getMilestoneTierId(nextMilestone);
     return {
       detailRows,
       finished,
       isRecurring,
       metrics,
-      latestMilestone: getTaskLatestFinishedMilestone(task),
+      latestMilestone,
+      noteDateLabel,
       nextMilestone,
       milestoneProgress: getMilestoneProgress(finished, nextMilestone),
+      // O selo grande mostra a patente ja conquistada; quem ainda nao chegou ao
+      // decimo ve o primeiro emblema apagado, para saber o que vem.
+      emblemMilestone: latestMilestone ?? nextMilestone,
+      emblemName: t.taskModal.emblems[currentTierId ?? nextTierId],
+      emblemLabel: latestMilestone ? t.taskModal.currentEmblem : t.taskModal.nextEmblem,
+      hasEmblem: Boolean(latestMilestone),
+      // Da 300a em diante a patente e teto: os marcos continuam, o metal nao
+      // muda mais, e ai o rodape anuncia so o proximo numero.
+      nextEmblemName: nextTierId && nextTierId !== currentTierId
+        ? t.taskModal.emblems[nextTierId]
+        : null,
     };
   }, [dateKey, locale, t, task]);
 
@@ -348,15 +345,12 @@ export default function TaskPhotoSheet({
     return null;
   }
 
-  if (keyboardHeight <= 0 && height > baseWindowHeightRef.current) {
-    baseWindowHeightRef.current = height;
-  }
-  const resizeCompensated = Math.max(0, baseWindowHeightRef.current - height);
-  const keyboardOverlap = Math.max(0, keyboardHeight - resizeCompensated);
   const frameSize = Math.min(MAX_FRAME, Math.round(width * 0.46));
   const frameHeight = getPolaroidHeight(frameSize);
-  const sheetTop = topInset + SHEET_GAP;
-  const photoTop = sheetTop + PHOTO_GAP;
+  // A folha ocupa a janela inteira (o `top: 0` esta no estilo), entao quem
+  // afasta o conteudo da barra de status e o recuo de seguranca aplicado ao topo
+  // do que fica dentro dela.
+  const photoTop = topInset + PHOTO_GAP;
   const photoLeft = (width - frameSize) / 2;
   const fromScale = flight.w / frameSize;
   const fromX = flight.x + flight.w / 2 - (photoLeft + frameSize / 2);
@@ -381,10 +375,9 @@ export default function TaskPhotoSheet({
         style={[
           styles.photoSheet,
           {
-            top: sheetTop,
             backgroundColor: lightenColor(task.color, 0.9),
-            paddingTop: PHOTO_GAP + frameHeight + 18,
-            paddingBottom: (keyboardHeight > 0 ? keyboardOverlap : bottomInset) + 16,
+            paddingTop: topInset + PHOTO_GAP + frameHeight + 18,
+            paddingBottom: bottomInset + 16,
             opacity: range([0, 1, 1], [0, SHEET_FADE_END, 1]),
             transform: [
               { translateY: range([height * SHEET_TRAVEL, 0, 0], [0, SHEET_END, 1]) },
@@ -393,7 +386,7 @@ export default function TaskPhotoSheet({
         ]}
       >
         <Pressable
-          style={styles.photoSheetClose}
+          style={[styles.photoSheetClose, { top: topInset + 14 }]}
           onPress={handleClose}
           hitSlop={10}
           accessibilityRole="button"
@@ -425,39 +418,25 @@ export default function TaskPhotoSheet({
             key={task.id}
             ref={scrollRef}
             style={styles.photoSheetScroll}
-            contentContainerStyle={styles.photoSheetScrollContent}
+            contentContainerStyle={[
+              styles.photoSheetScrollContent,
+              { paddingBottom: 108 },
+            ]}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-            onLayout={() => {
-              if (keyboardHeightRef.current > 0) {
-                scrollNotesIntoView(false);
-              }
-            }}
           >
-            <View>
-              <Text style={styles.photoSheetSectionHeading}>{t.taskModal.notes}</Text>
-              <View style={[styles.reflectionNoteField, styles.photoSheetNoteField]}>
-                <TextInput
-                  style={[styles.reflectionNoteInput, styles.photoSheetNotesInput]}
-                  value={notesDraft}
-                  onChangeText={setNotesDraft}
-                  onFocus={() => setTimeout(() => scrollNotesIntoView(true), 120)}
-                  onBlur={commitNotes}
-                  multiline
-                  maxLength={NOTES_MAX_LENGTH}
-                  placeholder={t.taskModal.notesPlaceholder}
-                  placeholderTextColor="#68637f"
-                  selectionColor={task.color}
-                  textAlignVertical="top"
-                  accessibilityLabel={t.taskModal.notes}
+            {task.note ? (
+              <View>
+                <Text style={styles.photoSheetSectionHeading}>
+                  {t.taskModal.notesForDay.replace('{date}', summary.noteDateLabel)}
+                </Text>
+                <CompactDayNote
+                  note={task.note}
+                  task={task}
+                  onPress={() => setIsNoteEditorOpen(true)}
                 />
-                <View style={styles.photoSheetNoteFooter}>
-                  <Text style={styles.photoSheetNoteCount}>
-                    {`${notesDraft.length}/${NOTES_MAX_LENGTH}`}
-                  </Text>
-                </View>
               </View>
-            </View>
+            ) : null}
 
             <View>
               <Text style={styles.photoSheetSectionHeading}>{t.taskModal.overview}</Text>
@@ -491,18 +470,23 @@ export default function TaskPhotoSheet({
                 <Text style={styles.photoSheetSectionHeading}>{t.taskModal.milestone}</Text>
                 <View style={styles.photoSheetMilestone}>
                   <View style={styles.photoSheetMilestoneHeader}>
-                    <View>
-                      <Text style={styles.photoSheetMilestoneLabel}>
-                        {t.taskModal.nextMilestone}
+                    <MilestoneSeal
+                      milestone={summary.emblemMilestone}
+                      size={46}
+                      style={summary.hasEmblem ? null : styles.photoSheetMilestoneSealLocked}
+                    />
+                    <View style={styles.photoSheetMilestoneHeaderText}>
+                      <Text style={styles.photoSheetMilestoneLabel}>{summary.emblemLabel}</Text>
+                      <Text style={styles.photoSheetMilestoneValue} numberOfLines={1}>
+                        {summary.emblemName}
                       </Text>
-                      <Text style={styles.photoSheetMilestoneValue}>{summary.nextMilestone}</Text>
+                      <Text style={styles.photoSheetMilestoneCaption}>
+                        {t.taskModal.emblemMilestone.replace(
+                          '{count}',
+                          String(summary.emblemMilestone)
+                        )}
+                      </Text>
                     </View>
-                    <Text style={styles.photoSheetMilestoneRemaining}>
-                      {t.taskModal.remainingToMilestone.replace(
-                        '{count}',
-                        String(summary.nextMilestone - summary.finished)
-                      )}
-                    </Text>
                   </View>
                   <View style={styles.photoSheetMilestoneTrack}>
                     <View
@@ -515,11 +499,29 @@ export default function TaskPhotoSheet({
                       ]}
                     />
                   </View>
-                  {summary.latestMilestone ? (
-                    <Text style={styles.photoSheetMilestoneLatest}>
-                      {`${t.taskModal.latestMilestone}: ${summary.latestMilestone}`}
+                  <View style={styles.photoSheetMilestoneFooter}>
+                    <Text style={styles.photoSheetMilestoneRemaining}>
+                      {t.taskModal.remainingToMilestone.replace(
+                        '{count}',
+                        String(summary.nextMilestone - summary.finished)
+                      )}
                     </Text>
-                  ) : null}
+                    {summary.hasEmblem ? (
+                      <View style={styles.photoSheetMilestoneNext}>
+                        {summary.nextEmblemName ? (
+                          <MilestoneSeal milestone={summary.nextMilestone} size={18} />
+                        ) : null}
+                        <Text style={styles.photoSheetMilestoneNextText} numberOfLines={1}>
+                          {summary.nextEmblemName
+                            ? `${t.taskModal.nextEmblem}: ${summary.nextEmblemName}`
+                            : t.taskModal.nextMilestoneCount.replace(
+                                '{count}',
+                                String(summary.nextMilestone)
+                              )}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
                 </View>
               </View>
             ) : null}
@@ -530,6 +532,23 @@ export default function TaskPhotoSheet({
             </View>
           </ScrollView>
         </Animated.View>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.notesFab,
+            { bottom: bottomInset + 20 },
+            pressed && styles.notesFabPressed,
+          ]}
+          onPress={() => setIsNoteEditorOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel={task.note ? t.notes.editNote : t.notes.newNote}
+        >
+          <Ionicons
+            name={task.note ? 'pencil' : 'add'}
+            size={task.note ? 24 : 31}
+            color="#ffffff"
+          />
+        </Pressable>
       </Animated.View>
 
       <Animated.View
@@ -554,6 +573,25 @@ export default function TaskPhotoSheet({
           onImageError={onImageError}
         />
       </Animated.View>
+
+      <NoteEditorModal
+        visible={isNoteEditorOpen}
+        note={task.note}
+        defaultTitle={task.title}
+        taskContext={{
+          taskTitle: task.title,
+          taskImage: task.customImage,
+          taskEmoji: task.emoji,
+          taskColor: task.color,
+        }}
+        language={language}
+        reduceMotion={reduceMotion}
+        onClose={() => setIsNoteEditorOpen(false)}
+        onSave={(content) =>
+          onSaveNote?.(task.id, dateKey ?? getDateKey(new Date()), content)
+        }
+        onDelete={onDeleteNote}
+      />
     </View>
   );
 }

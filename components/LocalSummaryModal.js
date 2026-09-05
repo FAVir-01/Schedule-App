@@ -19,11 +19,26 @@ const replaceValues = (template, values) =>
     `${template ?? ''}`
   );
 
-const Metric = ({ icon, label, value }) => (
-  <View style={localStyles.metricCard}>
+const Metric = ({ icon, label, value, delta = null, accessibilityLabel }) => (
+  <View
+    style={localStyles.metricCard}
+    accessible={accessibilityLabel ? true : undefined}
+    accessibilityLabel={accessibilityLabel}
+  >
     <Ionicons name={icon} size={17} color="#665bc2" />
     <Text style={localStyles.metricValue}>{value}</Text>
     <Text style={localStyles.metricLabel}>{label}</Text>
+    {delta ? (
+      <Text
+        style={[
+          localStyles.metricDelta,
+          delta.tone === 'up' && localStyles.metricDeltaUp,
+          delta.tone === 'down' && localStyles.metricDeltaDown,
+        ]}
+      >
+        {delta.text}
+      </Text>
+    ) : null}
   </View>
 );
 
@@ -66,6 +81,28 @@ export default function LocalSummaryModal({
       : replaceValues(roundedDelta > 0 ? labels.aheadRate : labels.behindRate, {
           value: Math.abs(roundedDelta),
         });
+  const moodValue = current.averageMood == null
+    ? labels.noMoodAverage
+    : `${Math.round(current.averageMood * 10) / 10}/5`;
+  // Em pontos da escala de 1 a 5, do jeito que a propria nota e mostrada logo
+  // acima. A comparacao so existe quando os dois periodos tem humor registrado.
+  const roundedMoodDelta = summary.moodDelta == null
+    ? null
+    : Math.round(summary.moodDelta * 10) / 10;
+  const moodDelta = roundedMoodDelta == null
+    ? null
+    : roundedMoodDelta === 0
+      ? { tone: 'flat', text: labels.moodSteady, spoken: labels.moodSteady }
+      : {
+          tone: roundedMoodDelta > 0 ? 'up' : 'down',
+          text: `${roundedMoodDelta > 0 ? '▲' : '▼'} ${Math.abs(roundedMoodDelta)}`,
+          // As setas viram ruido no leitor de tela ("triangulo apontando para
+          // cima"), entao a versao falada usa sinal.
+          spoken: `${roundedMoodDelta > 0 ? '+' : '-'}${Math.abs(roundedMoodDelta)}`,
+        };
+  const moodAccessibilityLabel = moodDelta
+    ? `${labels.averageMood}. ${moodValue}. ${moodDelta.spoken} ${labels.moodVsPrevious}`
+    : `${labels.averageMood}. ${moodValue}`;
   const previousText = replaceValues(labels.previousProgress, {
     completed: previous.completed,
     planned: previous.planned,
@@ -206,11 +243,9 @@ export default function LocalSummaryModal({
             <Metric
               icon="analytics-outline"
               label={labels.averageMood}
-              value={
-                current.averageMood == null
-                  ? labels.noMoodAverage
-                  : `${Math.round(current.averageMood * 10) / 10}/5`
-              }
+              value={moodValue}
+              delta={moodDelta}
+              accessibilityLabel={moodAccessibilityLabel}
             />
             <Metric icon="document-text-outline" label={labels.notes} value={current.notes} />
             <Metric icon="image-outline" label={labels.photos} value={current.photos} />
@@ -489,6 +524,19 @@ const localStyles = StyleSheet.create({
     lineHeight: 12,
     fontWeight: '700',
     color: '#7a7e90',
+  },
+  metricDelta: {
+    marginTop: 6,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+    color: '#6b6f80',
+  },
+  metricDeltaUp: {
+    color: '#166b49',
+  },
+  metricDeltaDown: {
+    color: '#b82f3b',
   },
   attentionCard: {
     borderRadius: 20,

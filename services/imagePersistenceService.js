@@ -82,4 +82,19 @@ const persistPickedImage = async (asset, { prefix, limits = {} } = {}) => {
   }
 };
 
-export { createImagePersistenceError, persistPickedImage };
+const deletePersistedImages = async (uris) => {
+  if (Platform.OS === 'web') {
+    return;
+  }
+  const directory = FileSystem.documentDirectory;
+  if (!directory) {
+    return;
+  }
+  await Promise.all(
+    (Array.isArray(uris) ? uris : [])
+      .filter((uri) => typeof uri === 'string' && uri.startsWith(directory))
+      .map((uri) => FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {}))
+  );
+};
+
+export { createImagePersistenceError, deletePersistedImages, persistPickedImage };

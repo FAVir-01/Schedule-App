@@ -14,6 +14,7 @@ const IMAGE_LIMITS = {
   habitIcon: { maxBytes: 8 * MEGABYTE, maxDimension: 4096 },
   moodAppearance: { maxBytes: 8 * MEGABYTE, maxDimension: 4096 },
   reflectionPhoto: { maxBytes: 10 * MEGABYTE, maxDimension: 4096 },
+  noteImage: { maxBytes: 10 * MEGABYTE, maxDimension: 4096 },
   calendarBackground: { maxBytes: 12 * MEGABYTE, maxDimension: 4096 },
 };
 

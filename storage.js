@@ -4,6 +4,7 @@ const STORAGE_KEYS = {
   TASKS: '@schedule_app/tasks',
   SETTINGS: '@schedule_app/settings',
   HISTORY: '@schedule_app/history',
+  NOTES: '@schedule_app/notes',
   MONTH_IMAGES: '@schedule_app/month_images',
   DAY_MOODS: '@schedule_app/day_moods',
   // Chave legada (lista de expressões); mantida só pro resetStorage limpar.
@@ -64,6 +65,27 @@ export async function saveTasks(tasks) {
     return true;
   } catch (error) {
     console.warn('Failed to save tasks', error);
+    return false;
+  }
+}
+
+// Feed de notas avulsas e eventos diários de tarefa — ver domain/notes.js.
+export async function loadNotes() {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.NOTES);
+    return parseStoredJson(STORAGE_KEYS.NOTES, raw, [], isObjectArray);
+  } catch (error) {
+    console.warn('Failed to load notes', error);
+    return undefined;
+  }
+}
+
+export async function saveNotes(notes) {
+  try {
+    await AsyncStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(notes));
+    return true;
+  } catch (error) {
+    console.warn('Failed to save notes', error);
     return false;
   }
 }
@@ -200,6 +222,7 @@ export async function replaceStoredAppData({
   monthImages,
   dayMoods,
   moodAppearance,
+  notes,
 }) {
   const primaryKeys = Object.values(STORAGE_KEYS);
   try {
@@ -218,6 +241,7 @@ export async function replaceStoredAppData({
       [STORAGE_KEYS.HISTORY, JSON.stringify(history ?? [])],
       [STORAGE_KEYS.MONTH_IMAGES, JSON.stringify(monthImages ?? {})],
       [STORAGE_KEYS.DAY_MOODS, JSON.stringify(dayMoods ?? {})],
+      [STORAGE_KEYS.NOTES, JSON.stringify(notes ?? [])],
       [STORAGE_KEYS.MOOD_APPEARANCE, JSON.stringify(moodAppearance ?? {})],
     ];
     try {

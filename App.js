@@ -42,6 +42,7 @@ import {
 } from 'date-fns';
 import {
   loadDayMoods,
+  loadNotes,
   loadHistory,
   loadMonthImages,
   loadMoodAppearance,
@@ -49,6 +50,7 @@ import {
   loadUserSettings,
   replaceStoredAppData,
   saveDayMoods,
+  saveNotes,
   saveMoodAppearance,
   saveHistory,
   saveMonthImages,
@@ -103,7 +105,14 @@ import {
   createTaskHistoryDetails,
   prependHistoryEntry,
 } from './utils/historyUtils';
-import { normalizeNotes } from './domain/taskDraft';
+import {
+  createNote,
+  migrateLegacyTaskNotes,
+  normalizeNoteCollection,
+  removeNote,
+  upsertTaskNote,
+  updateNoteContent,
+} from './domain/notes';
 import { getWeekdayInitials, translations } from './constants/i18n';
 import { styles } from './styles/appStyles';
 import {
@@ -143,6 +152,7 @@ import AppErrorBoundary from './components/AppErrorBoundary';
 import UndoSnackbar from './components/UndoSnackbar';
 import DiscoverScreen from './components/DiscoverScreen';
 import FirstRunOnboarding from './components/FirstRunOnboarding';
+import NotesScreen from './components/NotesScreen';
 import { CALENDAR_DAY_SIZE, WEEKDAY_ROW_HEIGHT } from './constants/layout';
 import {
   cancelTaskReminders,
@@ -184,6 +194,7 @@ const INITIAL_STORAGE_LOAD_FAILURES = {
   images: true,
   moods: true,
   appearance: true,
+  notes: true,
 };
 
 const buildCalendarMonthItem = (id, baseDate) => {
@@ -267,7 +278,8 @@ const cleanupOrphanImageFiles = async (
   storedTasks,
   storedImages,
   storedMoods,
-  storedAppearance
+  storedAppearance,
+  storedNotes
 ) => {
   try {
     const dir = FileSystem.documentDirectory;
@@ -303,12 +315,23 @@ const cleanupOrphanImageFiles = async (
         }
       });
     }
+    const notesLoaded = storedNotes !== undefined;
+    if (notesLoaded) {
+      (storedNotes ?? []).forEach((note) => {
+        (Array.isArray(note?.images) ? note.images : []).forEach((uri) => {
+          if (typeof uri === 'string') {
+            referenced.add(uri.split('/').pop());
+          }
+        });
+      });
+    }
     const fileNames = await FileSystem.readDirectoryAsync(dir);
     const orphans = fileNames.filter(
       (name) =>
         (name.startsWith('custom_habit_icon_') ||
           name.startsWith('custom_month_') ||
-          (moodsLoaded && name.startsWith('custom_mood_'))) &&
+          (moodsLoaded && name.startsWith('custom_mood_')) ||
+          (notesLoaded && name.startsWith('custom_note_'))) &&
         !referenced.has(name)
     );
     await Promise.all(
@@ -396,6 +419,8 @@ function ScheduleApp() {
   const [customMonthImages, setCustomMonthImages] = useState({});
   // Reflexões diárias: { [dateKey]: { emoji, note, updatedAt } }
   const [dayMoods, setDayMoods] = useState({});
+  const [notes, setNotes] = useState([]);
+  const [isNotesOpen, setIsNotesOpen] = useState(false);
   // Expressões personalizadas (imagens) disponíveis na folha de reflexão.
   const [moodAppearance, setMoodAppearance] = useState({});
   const [reflectionDateKey, setReflectionDateKey] = useState(null);
@@ -419,6 +444,7 @@ function ScheduleApp() {
   const settingsSaveTimeoutRef = useRef(null);
   const historySaveTimeoutRef = useRef(null);
   const dayMoodsSaveTimeoutRef = useRef(null);
+  const notesSaveTimeoutRef = useRef(null);
   const taskDeleteUndoTimeoutRef = useRef(null);
   const taskArchiveUndoTimeoutRef = useRef(null);
   // Marca quais stores falharam ao carregar, p/ não sobrescrever dado bom com estado vazio
@@ -433,6 +459,7 @@ function ScheduleApp() {
   const userSettingsRef = useRef(null);
   const historyRef = useRef(null);
   const dayMoodsRef = useRef(null);
+  const notesRef = useRef(null);
   const isHydratedRef = useRef(false);
   const reminderReconciliationInFlightRef = useRef(false);
   const pendingReminderReconciliationRef = useRef(null);
@@ -1457,6 +1484,21 @@ function ScheduleApp() {
       setShowConfetti(false);
     }
   }, [prefersReducedMotion]);
+  const notesForFeed = useMemo(() => {
+    const taskById = new Map(tasks.map((task) => [`${task.id}`, task]));
+    return notes.map((note) => {
+      const task = note.source === 'task' ? taskById.get(`${note.taskId}`) : null;
+      return task
+        ? {
+            ...note,
+            taskTitle: task.title,
+            taskImage: task.customImage ?? null,
+            taskEmoji: task.emoji ?? null,
+            taskColor: task.color ?? null,
+          }
+        : note;
+    });
+  }, [notes, tasks]);
   const activeTask = useMemo(
     () => tasks.find((task) => task.id === activeTaskId) ?? null,
     [activeTaskId, tasks]
@@ -1535,10 +1577,19 @@ function ScheduleApp() {
   const currentStreakUnit = profileStats.currentStreak === 1 ? t.profile.day : t.profile.days;
   const bestStreakUnit = profileStats.bestStreak === 1 ? t.profile.day : t.profile.days;
   const activeTaskForSelectedDate = useMemo(
-    () =>
-      activeTask
-        ? {
+    () => {
+      if (!activeTask) {
+        return null;
+      }
+      const noteForDay = notesForFeed.find(
+        (note) =>
+          note.source === 'task' &&
+          `${note.taskId}` === `${activeTask.id}` &&
+          note.dateKey === selectedDateKey
+      );
+      return {
             ...activeTask,
+            note: noteForDay ?? null,
             time: getTaskTimeForDate(activeTask, selectedDate),
             completed: getTaskCompletionStatus(activeTask, selectedDateKey),
             subtasks: Array.isArray(activeTask.subtasks)
@@ -1547,9 +1598,9 @@ function ScheduleApp() {
                   completed: getSubtaskCompletionStatus(subtask, selectedDateKey),
                 }))
               : activeTask.subtasks,
-          }
-        : null,
-    [activeTask, selectedDate, selectedDateKey]
+          };
+    },
+    [activeTask, notesForFeed, selectedDate, selectedDateKey]
   );
 
   // Ajuste direto do progresso quantum: amount é segundos (timer) ou unidades
@@ -1866,6 +1917,7 @@ function ScheduleApp() {
           loadedImages,
           storedMoods,
           storedAppearance,
+          storedNotes,
         ] = await Promise.all([
           loadTasks(),
           loadUserSettings(),
@@ -1873,6 +1925,7 @@ function ScheduleApp() {
           loadMonthImages(),
           loadDayMoods(),
           loadMoodAppearance(),
+          loadNotes(),
         ]);
 
         let storedTasks = loadedTasks;
@@ -1887,7 +1940,8 @@ function ScheduleApp() {
               storedTasks,
               storedImages,
               storedMoods,
-              storedAppearance
+              storedAppearance,
+              storedNotes
             );
           }
         }
@@ -1912,6 +1966,7 @@ function ScheduleApp() {
           images: storedImages === undefined,
           moods: storedMoods === undefined,
           appearance: storedAppearance === undefined,
+          notes: storedNotes === undefined,
         };
         loadFailuresRef.current = storageLoadFailures;
 
@@ -1928,8 +1983,22 @@ function ScheduleApp() {
           );
         }
 
-        if (Array.isArray(storedTasks)) {
-          setTasks(normalizeStoredTasks(storedTasks));
+        const normalizedStoredTasks = Array.isArray(storedTasks)
+          ? normalizeStoredTasks(storedTasks)
+          : null;
+        if (normalizedStoredTasks && storedNotes !== undefined) {
+          const migrated = migrateLegacyTaskNotes(normalizedStoredTasks, storedNotes, {
+            history: Array.isArray(storedHistory) ? storedHistory : [],
+          });
+          setTasks(migrated.tasks);
+          setNotes(migrated.notes);
+        } else {
+          if (normalizedStoredTasks) {
+            setTasks(normalizedStoredTasks);
+          }
+          if (storedNotes !== undefined) {
+            setNotes(normalizeNoteCollection(storedNotes));
+          }
         }
 
         if (storedSettings !== undefined) {
@@ -1966,6 +2035,7 @@ function ScheduleApp() {
         if (storedMoods && typeof storedMoods === 'object') {
           setDayMoods(storedMoods);
         }
+
       } catch (error) {
         console.warn('Failed to load stored data', error);
         if (isMounted && !storageProtectionAlertShownRef.current) {
@@ -2153,10 +2223,31 @@ function ScheduleApp() {
   }, [dayMoods, isHydrated, reportStorageWriteResult]);
 
   useEffect(() => {
+    if (!isHydrated || loadFailuresRef.current.notes) {
+      return undefined;
+    }
+
+    if (notesSaveTimeoutRef.current) {
+      clearTimeout(notesSaveTimeoutRef.current);
+    }
+
+    const timeoutId = setTimeout(() => {
+      void reportStorageWriteResult('notes', () => saveNotes(notes));
+    }, 500);
+
+    notesSaveTimeoutRef.current = timeoutId;
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [isHydrated, notes, reportStorageWriteResult]);
+
+  useEffect(() => {
     tasksRef.current = tasks;
     userSettingsRef.current = userSettings;
     historyRef.current = history;
     dayMoodsRef.current = dayMoods;
+    notesRef.current = notes;
     isHydratedRef.current = isHydrated;
   });
 
@@ -2207,6 +2298,13 @@ function ScheduleApp() {
         }
         void reportStorageWriteResult('moods', () => saveDayMoods(dayMoodsRef.current));
       }
+      if (!failures.notes && notesRef.current) {
+        if (notesSaveTimeoutRef.current) {
+          clearTimeout(notesSaveTimeoutRef.current);
+          notesSaveTimeoutRef.current = null;
+        }
+        void reportStorageWriteResult('notes', () => saveNotes(notesRef.current));
+      }
     });
 
     return () => {
@@ -2247,6 +2345,7 @@ function ScheduleApp() {
         monthImages: customMonthImages,
         dayMoods,
         moodAppearance,
+        notes,
         loadFailures: { ...loadFailuresRef.current },
       });
       if (result.status === 'cancelled') {
@@ -2288,6 +2387,7 @@ function ScheduleApp() {
     dayMoods,
     history,
     moodAppearance,
+    notes,
     t.backup,
     tasks,
     userSettings,
@@ -2693,6 +2793,9 @@ function ScheduleApp() {
   const handleChangeTab = useCallback(
     (tabKey) => {
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
+      // Notes is a child page of Discover. Any tap in the main navigation
+      // returns that section to its root, including tapping Discover itself.
+      setIsNotesOpen(false);
       setActiveTab(tabKey);
       updateUserSettings({ activeTab: tabKey });
       void applyNavigationBarThemeForTab(tabKey);
@@ -3318,7 +3421,7 @@ function ScheduleApp() {
         protectPrivateReflections: isDiaryPrivacyEnabled,
         onboardingCompleted: rawSettings.onboardingCompleted === true,
       };
-      const normalizedTasks = normalizeStoredTasks(
+      const normalizedTasksWithLegacyNotes = normalizeStoredTasks(
         importedData.tasks.map((task) =>
           task?.type === 'list' || task?.type === 'normal'
             ? { ...task, type: 'default' }
@@ -3334,6 +3437,13 @@ function ScheduleApp() {
         };
       });
       const nextHistory = importedData.history.slice();
+      const migratedNotes = migrateLegacyTaskNotes(
+        normalizedTasksWithLegacyNotes,
+        importedData.notes,
+        { history: nextHistory }
+      );
+      const normalizedTasks = migratedNotes.tasks;
+      const nextNotes = migratedNotes.notes;
       const replacementData = {
         tasks: normalizedTasks,
         userSettings: nextSettings,
@@ -3341,6 +3451,7 @@ function ScheduleApp() {
         monthImages: importedData.monthImages,
         dayMoods: importedData.dayMoods,
         moodAppearance: importedData.moodAppearance,
+        notes: nextNotes,
       };
 
       [
@@ -3348,6 +3459,7 @@ function ScheduleApp() {
         settingsSaveTimeoutRef,
         historySaveTimeoutRef,
         dayMoodsSaveTimeoutRef,
+        notesSaveTimeoutRef,
       ].forEach((timeoutRef) => {
         if (timeoutRef.current) {
           clearTimeout(timeoutRef.current);
@@ -3362,6 +3474,7 @@ function ScheduleApp() {
         setUserSettings((previous) => ({ ...previous }));
         setHistory((previous) => previous.slice());
         setDayMoods((previous) => ({ ...previous }));
+        setNotes((previous) => previous.slice());
         Alert.alert(t.backup.restoreErrorTitle, t.backup.restoreErrorMessage);
         return;
       }
@@ -3376,6 +3489,7 @@ function ScheduleApp() {
         images: false,
         moods: false,
         appearance: false,
+        notes: false,
       };
       failedStorageWritesRef.current.clear();
       latestStorageWriteSequenceRef.current.clear();
@@ -3391,6 +3505,8 @@ function ScheduleApp() {
       setCustomMonthImages(importedData.monthImages);
       setDayMoods(importedData.dayMoods);
       setMoodAppearance(importedData.moodAppearance);
+      setNotes(nextNotes);
+      setIsNotesOpen(false);
       setActiveTaskId(null);
       setActiveProfileTaskId(null);
       setProfileFilterId(null);
@@ -3433,6 +3549,7 @@ function ScheduleApp() {
         ['{date}', exportedDate],
         ['{tasks}', selected.preview.taskCount],
         ['{reflections}', selected.preview.reflectionCount],
+        ['{notes}', selected.preview.noteCount],
         ['{history}', selected.preview.historyCount],
         ['{media}', selected.preview.referencedMediaCount],
       ].forEach(([token, value]) => {
@@ -3689,25 +3806,77 @@ function ScheduleApp() {
     [appendHistoryEntry, selectedDateKey, tasks]
   );
 
-  // Nota da tarefa: um texto só, não uma entrada por dia — o diário de datas
-  // já é o lugar das reflexões. Só grava quando o texto muda de fato, para o
-  // simples abrir e fechar do card não poluir a linha do tempo.
-  const handleUpdateTaskNotes = useCallback(
-    (taskId, notes) => {
-      const nextNotes = normalizeNotes(notes);
-      const targetTask = tasks.find((task) => task.id === taskId);
-      if (!targetTask || normalizeNotes(targetTask.notes) === nextNotes) {
-        return;
+  // A polaroide cria ou edita a unica nota desta tarefa na data selecionada.
+  const handleSaveTaskNote = useCallback(
+    (taskId, noteDateKey, content) => {
+      if (loadFailuresRef.current.notes) {
+        showDataProtectionAlert();
+        return false;
       }
-      setTasks((previous) =>
-        previous.map((task) => (task.id === taskId ? { ...task, notes: nextNotes } : task))
+      const targetTask = tasks.find((task) => task.id === taskId);
+      if (!targetTask || !noteDateKey || !content) {
+        return false;
+      }
+      setNotes((previous) =>
+        upsertTaskNote(previous, {
+          taskId,
+          taskTitle: targetTask.title,
+          dateKey: noteDateKey,
+          title: content.title,
+          text: content.text,
+          images: content.images,
+          pinned: content.pinned,
+          cardColor: content.cardColor,
+        })
       );
-      appendHistoryEntry(
-        'task_updated',
-        createTaskHistoryDetails(targetTask, { dateKey: selectedDateKey ?? undefined })
-      );
+      return true;
     },
-    [appendHistoryEntry, selectedDateKey, tasks]
+    [showDataProtectionAlert, tasks]
+  );
+
+  // Nota avulsa criada diretamente no feed, sem vínculo com tarefa.
+  const handleCreateNote = useCallback(
+    (text, images = [], title = '', preferences = {}) => {
+      if (loadFailuresRef.current.notes) {
+        showDataProtectionAlert();
+        return false;
+      }
+      const note = createNote(text, { images, title, ...preferences });
+      if (!note) {
+        return false;
+      }
+      setNotes((previous) => [note, ...previous]);
+      triggerImpact(Haptics.ImpactFeedbackStyle.Light);
+      return true;
+    },
+    [showDataProtectionAlert]
+  );
+
+  const handleUpdateNote = useCallback(
+    (noteId, text, images = [], title = '', preferences = {}) => {
+      if (loadFailuresRef.current.notes) {
+        showDataProtectionAlert();
+        return false;
+      }
+      setNotes((previous) =>
+        updateNoteContent(previous, noteId, { text, images, title, ...preferences })
+      );
+      return true;
+    },
+    [showDataProtectionAlert]
+  );
+
+  const handleDeleteNote = useCallback(
+    (noteId) => {
+      if (loadFailuresRef.current.notes) {
+        showDataProtectionAlert();
+        return false;
+      }
+      setNotes((previous) => removeNote(previous, noteId));
+      triggerSelection();
+      return true;
+    },
+    [showDataProtectionAlert]
   );
 
   const openHabitSheet = useCallback((mode, task = null) => {
@@ -4053,6 +4222,7 @@ function ScheduleApp() {
     opacity: todayContentOpacity,
     transform: [{ translateX: todayContentTranslateX }],
   };
+  const isNotesPageOpen = activeTab === 'discover' && isNotesOpen;
 
   return (
     <View
@@ -4067,7 +4237,7 @@ function ScheduleApp() {
     >
       <StatusBar
         barStyle="dark-content"
-        backgroundColor="#f6f6fb"
+        backgroundColor={isNotesPageOpen ? '#ffffff' : '#f6f6fb'}
         translucent={false}
       />
 
@@ -4498,7 +4668,10 @@ function ScheduleApp() {
                 </View>
              </ScrollView>
           ) : (
-            <DiscoverScreen language={language} />
+            <DiscoverScreen
+              language={language}
+              onOpenNotes={() => setIsNotesOpen(true)}
+            />
           )}
           {isCalendarTabActive ? (
             <View
@@ -4684,9 +4857,17 @@ function ScheduleApp() {
               styles.addButton,
               dynamicStyles.addButton,
               isFabOpen && styles.addButtonActive,
-              (isHabitSheetOpen || reflectionDateKey) && { opacity: 0 },
+              (isHabitSheetOpen ||
+                reflectionDateKey ||
+                (activeTab === 'discover' && isNotesOpen)) && { opacity: 0 },
             ]}
-            pointerEvents={isHabitSheetOpen || reflectionDateKey ? 'none' : 'auto'}
+            pointerEvents={
+              isHabitSheetOpen ||
+              reflectionDateKey ||
+              (activeTab === 'discover' && isNotesOpen)
+                ? 'none'
+                : 'auto'
+            }
             onPress={handleToggleFab}
             accessibilityRole="button"
             accessibilityLabel={isFabOpen ? t.common.closeAddMenu : t.common.openAddMenu}
@@ -4923,6 +5104,16 @@ function ScheduleApp() {
           bottom={insets.bottom + 112}
         />
       ) : null}
+      <NotesScreen
+        visible={isNotesPageOpen}
+        language={language}
+        notes={notesForFeed}
+        onCreateNote={handleCreateNote}
+        onUpdateNote={handleUpdateNote}
+        onDeleteNote={handleDeleteNote}
+        onBack={() => setIsNotesOpen(false)}
+        reduceMotion={prefersReducedMotion}
+      />
       <TaskDetailModal
         language={language}
         visible={Boolean(activeTaskForSelectedDate)}
@@ -4930,7 +5121,8 @@ function ScheduleApp() {
         dateKey={selectedDateKey}
         onClose={closeTaskDetail}
         onToggleSubtask={handleToggleSubtask}
-        onUpdateNotes={handleUpdateTaskNotes}
+        onSaveNote={handleSaveTaskNote}
+        onDeleteNote={handleDeleteNote}
         onToggleCompletion={(taskId) => handleToggleTaskCompletion(taskId, selectedDateKey)}
         reduceMotion={prefersReducedMotion}
         onEdit={(taskId) => {

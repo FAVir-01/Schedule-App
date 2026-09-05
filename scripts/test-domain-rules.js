@@ -178,6 +178,8 @@ const { getInterruptedTaskReorderOffset } = require('../utils/taskReorderUtils')
 const {
   getFinishedMilestoneValue,
   getLatestFinishedMilestoneValue,
+  getMilestoneTierId,
+  MILESTONE_TIER_STEPS,
   getTaskRepeatDisplayLabel,
   getTaskFinishedCount,
   getTaskFinishedMilestoneForDate,
@@ -311,6 +313,19 @@ const {
 const { prepareImportedBackupData } = require('../services/backupService');
 const { AppErrorBoundary } = require('../components/AppErrorBoundary');
 const { replaceStoredAppData, saveTasks } = require('../storage');
+const {
+  NOTE_MAX_LENGTH,
+  NOTE_MAX_IMAGES,
+  createNote,
+  getTaskNoteText,
+  migrateLegacyTaskNotes,
+  normalizeNoteCollection,
+  removeNote,
+  upsertTaskNote,
+  updateNoteContent,
+  updateNoteText,
+} = require('../domain/notes');
+const { buildNotesFeed, matchesNoteSearch } = require('../domain/notesFeed');
 
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
@@ -371,6 +386,43 @@ test('resume o periodo local sem misturar lembretes ou inferir causalidade', () 
   assert.equal(summary.current.averageMood, 3);
   assert.equal(summary.current.notes, 1);
   assert.equal(summary.current.photos, 1);
+  // Sem humor registrado no periodo anterior nao ha o que comparar.
+  assert.equal(summary.moodDelta, null);
+});
+
+test('compara o humor medio com o mesmo trecho do periodo anterior', () => {
+  const summary = buildLocalPeriodSummary({
+    tasks: [],
+    dayMoods: {
+      '2026-07-06': { level: 2 },
+      '2026-07-07': { level: 2 },
+      // 08/07 fecha o trecho comparavel: a referencia e uma quarta, entao a
+      // semana anterior tambem para na quarta. 09/07 nao entra na conta.
+      '2026-07-09': { level: 5 },
+      '2026-07-13': { level: 4 },
+      '2026-07-14': { level: 2 },
+      '2026-07-15': { level: 3 },
+    },
+    period: 'weekly',
+    referenceDate: '2026-07-15',
+  });
+
+  assert.equal(summary.previous.averageMood, 2);
+  assert.equal(summary.current.averageMood, 3);
+  // Em pontos da escala de 1 a 5, nao em porcentagem: a escala nao comeca em
+  // zero e a porcentagem exageraria a variacao.
+  assert.equal(summary.moodDelta, 1);
+
+  const modalSource = fs.readFileSync(
+    path.join(root, 'components/LocalSummaryModal.js'),
+    'utf8'
+  );
+  assert.equal(modalSource.includes('delta={moodDelta}'), true);
+  assert.equal(modalSource.includes('accessibilityLabel={moodAccessibilityLabel}'), true);
+  ['pt', 'en'].forEach((language) => {
+    assert.equal(Boolean(translations[language].localSummary.moodVsPrevious), true);
+    assert.equal(Boolean(translations[language].localSummary.moodSteady), true);
+  });
 });
 
 
@@ -492,6 +544,49 @@ test('deriva os selos de conclusao nos marcos 10 e multiplos de 50', () => {
   assert.equal(getTaskFinishedMilestoneForDate(task, completionKeys[50]), 50);
 });
 
+test('veste cada marco com a patente do maior degrau alcancado', () => {
+  assert.equal(getMilestoneTierId(9), null);
+  assert.equal(getMilestoneTierId(10), 'cardboard');
+  assert.equal(getMilestoneTierId(50), 'bronze');
+  assert.equal(getMilestoneTierId(100), 'silver');
+  assert.equal(getMilestoneTierId(150), 'steel');
+  assert.equal(getMilestoneTierId(200), 'violet');
+  assert.equal(getMilestoneTierId(250), 'obsidian');
+  assert.equal(getMilestoneTierId(300), 'iridescent');
+  // Da 300a em diante o iridescente e teto: os marcos continuam de 50 em 50,
+  // mas a peca nao muda mais.
+  assert.equal(getMilestoneTierId(800), 'iridescent');
+  assert.equal(getMilestoneTierId(null), null);
+  assert.equal(getMilestoneTierId(50.5), null);
+
+  // A patente e derivada da recontagem, nao gravada: desmarcar uma conclusao
+  // antiga move o selo e a cor vai junto.
+  MILESTONE_TIER_STEPS.forEach((step) => {
+    assert.equal(getMilestoneTierId(step.at), step.id);
+    assert.equal(Boolean(translations.pt.taskModal.emblems[step.id]), true);
+    assert.equal(Boolean(translations.en.taskModal.emblems[step.id]), true);
+  });
+
+  const sealSource = fs.readFileSync(path.join(root, 'components/MilestoneSeal.js'), 'utf8');
+  const badgeSource = fs.readFileSync(
+    path.join(root, 'components/FinishedMilestoneBadge.js'),
+    'utf8'
+  );
+  const photoSheetSource = fs.readFileSync(
+    path.join(root, 'components/TaskPhotoSheet.js'),
+    'utf8'
+  );
+
+  MILESTONE_TIER_STEPS.forEach((step) => {
+    assert.equal(sealSource.includes(`  ${step.id}: {`), true);
+  });
+  // O selo do card e o mesmo desenho da aba da foto, so muda o tamanho.
+  assert.equal(badgeSource.includes('<MilestoneSeal milestone={value} size={SEAL_SIZE} />'), true);
+  assert.equal(badgeSource.includes('getMilestoneSealTheme(value)?.label'), true);
+  assert.equal(photoSheetSource.includes('size={46}'), true);
+  assert.equal(photoSheetSource.includes('t.taskModal.emblems[currentTierId ?? nextTierId]'), true);
+});
+
 test('traduz rotulos de tarefa pela chave semantica atual', () => {
   assert.equal(
     getTaskTagDisplayLabel(
@@ -596,6 +691,206 @@ test('protege exclusoes e preserva o desfazer completo da tarefa', () => {
   );
 });
 
+test('cria, normaliza, edita e exclui notas soltas sem aceitar texto vazio', () => {
+  const created = createNote('  Primeira nota  ', {
+    now: '2026-09-04T12:00:00.000Z',
+    createId: () => 'note-1',
+  });
+  assert.deepEqual(created, {
+    id: 'note-1',
+    source: 'standalone',
+    text: 'Primeira nota',
+    dateKey: '2026-09-04',
+    createdAt: '2026-09-04T12:00:00.000Z',
+    updatedAt: '2026-09-04T12:00:00.000Z',
+  });
+  assert.equal(createNote('   '), null);
+  assert.equal(createNote('x'.repeat(NOTE_MAX_LENGTH + 20)).text.length, NOTE_MAX_LENGTH);
+  const imageOnly = createNote('', {
+    title: 'Referencias',
+    images: [
+      'file:///nota-1.jpg',
+      'file:///nota-1.jpg',
+      ...Array(8).fill(0).map((_, index) => `file:///nota-${index + 2}.jpg`),
+    ],
+    now: '2026-09-04T12:30:00.000Z',
+    createId: () => 'note-images',
+  });
+  assert.equal(imageOnly.title, 'Referencias');
+  assert.equal(imageOnly.text, '');
+  assert.equal(imageOnly.images.length, NOTE_MAX_IMAGES);
+
+  const normalized = normalizeNoteCollection([
+    created,
+    { ...created, text: 'duplicada' },
+    { id: 'note-2', text: ' Segunda ', createdAt: 'data-invalida' },
+    { id: 'note-3', text: ' ' },
+    null,
+  ]);
+  assert.equal(normalized.length, 2);
+  assert.equal(normalized[1].text, 'Segunda');
+  assert.ok(Number.isFinite(Date.parse(normalized[1].createdAt)));
+
+  const updated = updateNoteText(normalized, 'note-1', 'Texto editado', {
+    now: '2026-09-04T13:00:00.000Z',
+  });
+  assert.equal(updated[0].text, 'Texto editado');
+  assert.equal(updated[0].createdAt, created.createdAt);
+  assert.equal(updated[0].updatedAt, '2026-09-04T13:00:00.000Z');
+  assert.equal(updateNoteText(updated, 'note-1', '   '), updated);
+  const withImage = updateNoteContent(
+    updated,
+    'note-1',
+    {
+      title: 'Ideias',
+      text: '',
+      images: ['file:///ideia.jpg'],
+      pinned: true,
+      cardColor: '#B39DD6',
+    },
+    { now: '2026-09-04T14:00:00.000Z' }
+  );
+  assert.equal(withImage[0].title, 'Ideias');
+  assert.equal(withImage[0].text, '');
+  assert.deepEqual(withImage[0].images, ['file:///ideia.jpg']);
+  assert.equal(withImage[0].pinned, true);
+  assert.equal(withImage[0].cardColor, '#B39DD6');
+  assert.equal(withImage[0].updatedAt, '2026-09-04T14:00:00.000Z');
+  assert.deepEqual(removeNote(updated, 'note-1').map((note) => note.id), ['note-2']);
+});
+
+test('acumula notas de tarefa por dia e edita somente o evento correspondente', () => {
+  const firstDay = upsertTaskNote(
+    [],
+    {
+      taskId: 'task-1',
+      taskTitle: 'Estudar',
+      dateKey: '2026-09-03',
+      text: 'Revisei o capítulo 1',
+    },
+    { now: '2026-09-03T18:00:00.000Z', createId: () => 'task-note-1' }
+  );
+  const twoDays = upsertTaskNote(
+    firstDay,
+    {
+      taskId: 'task-1',
+      taskTitle: 'Estudar',
+      dateKey: '2026-09-04',
+      text: 'Revisei o capítulo 2',
+    },
+    { now: '2026-09-04T18:00:00.000Z', createId: () => 'task-note-2' }
+  );
+
+  assert.equal(twoDays.length, 2);
+  assert.equal(getTaskNoteText(twoDays, 'task-1', '2026-09-03'), 'Revisei o capítulo 1');
+  assert.equal(getTaskNoteText(twoDays, 'task-1', '2026-09-04'), 'Revisei o capítulo 2');
+
+  const edited = upsertTaskNote(
+    twoDays,
+    {
+      taskId: 'task-1',
+      taskTitle: 'Estudar',
+      dateKey: '2026-09-04',
+      text: 'Capítulo 2 concluído',
+    },
+    { now: '2026-09-04T19:00:00.000Z' }
+  );
+  assert.equal(edited.length, 2);
+  assert.equal(getTaskNoteText(edited, 'task-1', '2026-09-04'), 'Capítulo 2 concluído');
+  assert.equal(
+    upsertTaskNote(edited, {
+      taskId: 'task-1',
+      taskTitle: 'Estudar',
+      dateKey: '2026-09-04',
+      text: '',
+    }).length,
+    1
+  );
+  const taskWithImage = updateNoteContent(edited, 'task-note-2', {
+    text: 'Capitulo 2 concluido',
+    title: 'Resumo escolhido',
+    images: ['file:///capitulo.jpg'],
+  });
+  const imageOnlyTask = upsertTaskNote(taskWithImage, {
+    taskId: 'task-1',
+    taskTitle: 'Estudar',
+    dateKey: '2026-09-04',
+    text: '',
+  });
+  assert.equal(imageOnlyTask.length, 2);
+  assert.equal(imageOnlyTask.find((note) => note.id === 'task-note-2').text, '');
+  assert.equal(
+    imageOnlyTask.find((note) => note.id === 'task-note-2').title,
+    'Resumo escolhido'
+  );
+  assert.deepEqual(
+    imageOnlyTask.find((note) => note.id === 'task-note-2').images,
+    ['file:///capitulo.jpg']
+  );
+});
+
+test('migra a nota unica antiga da tarefa para o dia mais recente conhecido', () => {
+  const migrated = migrateLegacyTaskNotes(
+    [{ id: 'task-1', title: 'Estudar', dateKey: '2026-09-01', notes: 'Nota antiga' }],
+    [],
+    {
+      history: [
+        {
+          type: 'task_updated',
+          timestamp: '2026-09-03T20:00:00.000Z',
+          details: { taskId: 'task-1', dateKey: '2026-09-03' },
+        },
+      ],
+      now: '2026-09-04T12:00:00.000Z',
+    }
+  );
+
+  assert.equal(Object.prototype.hasOwnProperty.call(migrated.tasks[0], 'notes'), false);
+  assert.equal(getTaskNoteText(migrated.notes, 'task-1', '2026-09-03'), 'Nota antiga');
+  assert.equal(migrated.notes[0].taskTitle, 'Estudar');
+});
+
+test('busca notas sem acento e agrupa os resultados do dia mais recente', () => {
+  const notes = [
+    {
+      id: '1',
+      text: 'Meditação',
+      pinned: true,
+      createdAt: '2026-09-03T15:00:00.000Z',
+    },
+    {
+      id: '2',
+      source: 'task',
+      taskId: 'task-2',
+      taskTitle: 'Planejar projeto',
+      text: 'Reunião concluída',
+      dateKey: '2026-09-04',
+      createdAt: '2026-09-05T12:00:00.000Z',
+    },
+    { id: '3', text: 'Outra reunião', createdAt: '2026-09-03T18:00:00.000Z' },
+  ];
+
+  notes[2].title = 'Pauta';
+  assert.equal(matchesNoteSearch(notes[0], 'meditacao'), true);
+  assert.equal(matchesNoteSearch(notes[1], 'planejar'), true);
+  assert.equal(matchesNoteSearch(notes[1], 'academia'), false);
+  assert.equal(matchesNoteSearch(notes[2], 'pauta'), true);
+  assert.deepEqual(
+    buildNotesFeed(notes).map((group) => [group.key, group.notes.map((note) => note.id)]),
+    [
+      ['pinned', ['1']],
+      ['2026-09-04', ['2']],
+      ['2026-09-03', ['3']],
+    ]
+  );
+  assert.deepEqual(
+    buildNotesFeed(notes, { search: 'reuniao' })
+      .flatMap((group) => group.notes)
+      .map((note) => note.id),
+    ['2', '3']
+  );
+});
+
 test('valida backup versionado e monta previa sem alterar dados', () => {
   const result = parseAppBackupContents(JSON.stringify({
     format: 'favit-backup',
@@ -620,6 +915,7 @@ test('valida backup versionado e monta previa sem alterar dados', () => {
   assert.equal(result.preview.taskCount, 2);
   assert.equal(result.preview.historyCount, 1);
   assert.equal(result.preview.reflectionCount, 1);
+  assert.equal(result.preview.noteCount, 0);
   assert.equal(result.preview.referencedMediaCount, 1);
   assert.equal(result.data.userSettings.language, 'pt');
 });
@@ -726,6 +1022,11 @@ test('aceita backup com pasta de midia e mantem os antigos validos', () => {
       monthImages: {},
       dayMoods: {},
       moodAppearance: {},
+      notes: [{
+        id: 'note-1',
+        text: 'Vai junto no backup',
+        createdAt: '2026-09-03T12:00:00.000Z',
+      }],
     },
     media,
   });
@@ -737,6 +1038,7 @@ test('aceita backup com pasta de midia e mantem os antigos validos', () => {
   }));
   assert.equal(withMedia.preview.bundledMediaCount, 1);
   assert.equal(withMedia.preview.filesIncluded, true);
+  assert.equal(withMedia.preview.noteCount, 1);
 
   // Backup da versão 2 (arquivo solto, sem fotos) continua importável e sai da
   // migração com manifesto vazio em vez de quebrar a validação.
@@ -757,6 +1059,7 @@ test('aceita backup com pasta de midia e mantem os antigos validos', () => {
   assert.equal(legacy.payload.version, BACKUP_VERSION);
   assert.equal(legacy.preview.bundledMediaCount, 0);
   assert.equal(legacy.preview.referencedMediaCount, 1);
+  assert.deepEqual(legacy.data.notes, []);
 
   // Manifesto malformado é dado inválido, não algo para tentar adivinhar.
   assert.throws(
@@ -871,12 +1174,14 @@ test('restaura as fotos da pasta do backup ao trocar de aparelho', async () => {
 
   const oldPhoto = 'file:///aparelho/antigo/reflection_photo_1_a1.jpg';
   const oldIcon = 'file:///aparelho/antigo/habit_icon_2_b2.png';
+  const oldNoteImage = 'file:///aparelho/antigo/custom_note_image_3_c3.webp';
   const semBackup = 'file:///aparelho/antigo/perdida.jpg';
-  const files = buildMediaManifest([oldPhoto, oldIcon, semBackup]);
+  const files = buildMediaManifest([oldPhoto, oldIcon, oldNoteImage, semBackup]);
   // A pasta do backup trouxe só as duas primeiras.
   const bundleMediaUris = [
     'content://backup/media/reflection_photo_1_a1.jpg',
     'content://backup/media/habit_icon_2_b2.png',
+    'content://backup/media/custom_note_image_3_c3.webp',
   ];
 
   const prepared = await prepareImportedBackupData(
@@ -885,6 +1190,7 @@ test('restaura as fotos da pasta do backup ao trocar de aparelho', async () => {
       monthImages: { 0: semBackup },
       dayMoods: { '2026-09-03': { level: 4, note: 'oi', photo: oldPhoto } },
       moodAppearance: {},
+      notes: [{ id: 'note-1', text: 'Imagem', images: [oldNoteImage] }],
     },
     { mediaFiles: files, bundleMediaUris }
   );
@@ -900,7 +1206,10 @@ test('restaura as fotos da pasta do backup ao trocar de aparelho', async () => {
     prepared.data.tasks[0].customImage,
     'file:///data/app/habit_icon_2_b2.png'
   );
-  assert.equal(prepared.restoredMediaCount, 2);
+  assert.deepEqual(prepared.data.notes[0].images, [
+    'file:///data/app/custom_note_image_3_c3.webp',
+  ]);
+  assert.equal(prepared.restoredMediaCount, 3);
   // A que não veio na pasta é limpa e contabilizada para o aviso da prévia.
   assert.deepEqual(prepared.data.monthImages, {});
   assert.equal(prepared.missingMediaCount, 1);
@@ -1003,8 +1312,14 @@ test('protege estado anterior antes de substituir dados restaurados', async () =
   const replacement = asyncStorageMockState.calls.find(
     (call) => call.operation === 'multiSet'
   );
-  assert.equal(replacement.entries.length, 6);
+  // Tarefas, ajustes, historico, imagens do mes, humores, aparencia e notas.
+  assert.equal(replacement.entries.length, 7);
   assert.equal(JSON.parse(replacement.entries[0][1])[0].id, 'restored');
+  const notesEntry = replacement.entries.find(
+    ([key]) => key === '@schedule_app/notes'
+  );
+  // Restaurar backup sem a colecao nova nao pode deixar a chave sem valor.
+  assert.deepEqual(JSON.parse(notesEntry[1]), []);
 });
 
 test('tenta rollback quando a substituicao restaurada falha', async () => {
@@ -2742,7 +3057,11 @@ test('mostra o selo Finished somente na data do marco, na linha da frequencia', 
   assert.equal(taskDetailSource.includes('finishedMilestoneAnimationToken'), false);
   assert.equal(taskDetailSource.includes('animateOnMount'), true);
   assert.equal(taskDetailSource.includes('animateSealOnPress'), false);
+  // A frase do selo flutua sobre a linha do rodape, entao ela carrega so o
+  // numero: o nome da patente invadiria o link de editar. O nome mora no bloco
+  // de marcos da aba da foto, que tem linha propria para ele.
   assert.equal(taskDetailSource.includes('message={String(finishedMilestone)}'), true);
+  assert.equal(taskDetailSource.includes('taskModal.emblems'), false);
   assert.equal(taskDetailSource.includes('messageSide="left"'), true);
   assert.equal(taskDetailSource.includes('styles.detailFooterRow'), true);
   assert.equal(taskDetailSource.includes('style={styles.detailFinishedMilestoneBadge}'), true);
