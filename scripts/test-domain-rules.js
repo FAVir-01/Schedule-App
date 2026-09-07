@@ -269,8 +269,11 @@ const {
 } = require('../services/reminderService');
 const { translations } = require('../constants/i18n');
 const {
+  REFLECTION_MAX_PHOTOS,
+  getReflectionPhotos,
   hasPrivateReflectionContent,
   hasReflectionContent,
+  toReflectionPhotoFields,
 } = require('../utils/moodUtils');
 const {
   TASK_TEMPLATE_VERSION,
@@ -1376,6 +1379,91 @@ test('protege somente texto e foto privados da reflexao', () => {
   assert.equal(hasPrivateReflectionContent({ note: '   ' }), false);
   assert.equal(hasPrivateReflectionContent({ note: 'Meu dia' }), true);
   assert.equal(hasPrivateReflectionContent({ photo: 'file://reflection.jpg' }), true);
+  assert.equal(hasPrivateReflectionContent({ photos: ['file://reflection.jpg'] }), true);
+});
+
+test('guarda ate seis fotos por reflexao sem perder o registro antigo', () => {
+  assert.equal(REFLECTION_MAX_PHOTOS, 6);
+  // Registro antigo: a foto unica continua sendo lida como lista.
+  assert.deepEqual(getReflectionPhotos({ photo: 'file://a.jpg' }), ['file://a.jpg']);
+  assert.deepEqual(getReflectionPhotos({}), []);
+  assert.deepEqual(getReflectionPhotos(null), []);
+
+  const many = Array(9).fill(0).map((_, index) => `file://foto-${index}.jpg`);
+  const fields = toReflectionPhotoFields(['file://a.jpg', ' ', 'file://a.jpg', ...many]);
+  assert.equal(fields.photos.length, REFLECTION_MAX_PHOTOS);
+  assert.equal(fields.photos[0], 'file://a.jpg');
+  // O campo legado segue apontando para a primeira foto.
+  assert.equal(fields.photo, 'file://a.jpg');
+  assert.equal(toReflectionPhotoFields([]).photo, null);
+  // `photos` manda quando existe; o campo legado nao duplica a lista.
+  assert.deepEqual(
+    getReflectionPhotos({ photo: 'file://a.jpg', photos: ['file://a.jpg', 'file://b.jpg'] }),
+    ['file://a.jpg', 'file://b.jpg']
+  );
+  assert.equal(hasReflectionContent({ photos: ['file://a.jpg'] }), true);
+  assert.equal(hasReflectionContent({ photos: [] }), false);
+
+  const sheetSource = fs.readFileSync(
+    path.join(root, 'components/ReflectionSheet.js'),
+    'utf8'
+  );
+  const deckSource = fs.readFileSync(
+    path.join(root, 'components/MoodPhotoDeck.js'),
+    'utf8'
+  );
+  const viewerSource = fs.readFileSync(
+    path.join(root, 'components/MoodPhotoViewer.js'),
+    'utf8'
+  );
+  const dragSource = fs.readFileSync(
+    path.join(root, 'components/DraggablePhotoGrid.js'),
+    'utf8'
+  );
+  const zoomSource = fs.readFileSync(
+    path.join(root, 'components/PinchToZoomImage.js'),
+    'utf8'
+  );
+  const feedSource = fs.readFileSync(
+    path.join(root, 'components/ReflectionFeed.js'),
+    'utf8'
+  );
+  const reportSource = fs.readFileSync(
+    path.join(root, 'components/DayReportModal.js'),
+    'utf8'
+  );
+  assert.equal(sheetSource.includes('allowsMultipleSelection: true, selectionLimit'), true);
+  assert.equal(sheetSource.includes('REFLECTION_MAX_PHOTOS - photos.length'), true);
+  assert.equal(sheetSource.includes('toReflectionPhotoFields(photos)'), true);
+  // A pilha mostra uma foto so, com o selo dizendo quantas faltam.
+  assert.equal(deckSource.includes('`+${remaining}`'), true);
+  assert.equal(deckSource.includes('MAX_BACK_LAYERS'), true);
+  assert.equal(feedSource.includes('<MoodPhotoDeck'), true);
+  assert.equal(reportSource.includes('<MoodPhotoDeck'), true);
+  // O visualizador pagina de lado e o zoom devolve o gesto de um dedo so.
+  assert.equal(viewerSource.includes('pagingEnabled'), true);
+  assert.equal(feedSource.includes('<MoodPhotoViewer'), true);
+  assert.equal(reportSource.includes('<MoodPhotoViewer'), true);
+  assert.equal(
+    zoomSource.includes('onPanResponderTerminationRequest: () => !gestureRef.current.didPinch'),
+    true
+  );
+  // Reordenar exige segurar antes: o toque simples continua rolando a folha.
+  assert.equal(dragSource.includes('LONG_PRESS_DELAY'), true);
+  assert.equal(dragSource.includes('next.splice(target, 0, uri)'), true);
+  assert.equal(
+    dragSource.includes('onPanResponderTerminationRequest: () => !draggingRef.current'),
+    true
+  );
+  assert.equal(sheetSource.includes('<DraggablePhotoGrid'), true);
+  assert.equal(
+    Object.keys(translations.en.reflection).includes('photoLimitMessage'),
+    true
+  );
+  assert.deepEqual(
+    Object.keys(translations.en.reflection).sort(),
+    Object.keys(translations.pt.reflection).sort()
+  );
 });
 
 test('usa o bloqueio do Android sem renderizar o conteudo real sob o blur', () => {
@@ -2710,7 +2798,7 @@ test('integra o OCR local ao campo sem limite antigo nem sobreposicao visual', (
   assert.equal(reflectionSource.includes('allowsEditing: true'), true);
   assert.equal(reflectionSource.includes('setNote(mergedRecognizedText);'), true);
   assert.equal(reflectionSource.includes('handleOpenPhotoSource'), true);
-  assert.equal(reflectionSource.includes("handlePickPhoto('camera')"), true);
+  assert.equal(reflectionSource.includes("handlePickPhotos('camera')"), true);
   assert.equal(reflectionStyles.includes('reflectionNoteToolbar: {'), true);
   assert.equal(reflectionStyles.includes('maxHeight: 260'), true);
   assert.equal(androidModule.includes('com.google.mlkit.vision.text.TextRecognition'), true);
@@ -2863,9 +2951,15 @@ test('expoe abas e acoes de reflexao ao leitor de tela', () => {
     appSource.includes('accessibilityState={{ selected: isActive, disabled: isFabOpen }}'),
     true
   );
-  assert.equal(feedSource.includes('accessibilityLabel={t.reflection.closePhoto}'), true);
+  const viewerSource = fs.readFileSync(
+    path.join(root, 'components/MoodPhotoViewer.js'),
+    'utf8'
+  );
+  assert.equal(feedSource.includes('closeLabel={t.reflection.closePhoto}'), true);
+  assert.equal(viewerSource.includes('accessibilityLabel={closeLabel}'), true);
   assert.equal(reportSource.includes('accessibilityLabel={t.report.close}'), true);
-  assert.equal(reportSource.includes('accessibilityLabel={t.reflection.openPhoto}'), true);
+  assert.equal(reportSource.includes('closeLabel={t.reflection.closePhoto}'), true);
+  assert.equal(reportSource.includes('t.reflection.openPhoto'), true);
 });
 
 test('mantem a barra inferior legivel com fonte ampliada em portugues', () => {
@@ -3259,7 +3353,10 @@ test('recorta imagens estaticas no app, preserva GIFs e restaura o zoom das foto
   assert.equal(taskEditorSource.includes('isGifImageAsset(asset)'), true);
   assert.equal(taskEditorSource.includes('<ImageCropModal'), true);
   assert.equal(reflectionSource.includes('cropSquare: true'), true);
-  assert.equal(reflectionSource.includes('cropSquare && !isGifImageAsset(asset)'), true);
+  assert.equal(
+    reflectionSource.includes('cropSquare && assets.length === 1 && !isGifImageAsset(assets[0])'),
+    true
+  );
   assert.equal(reflectionSource.includes('<ImageCropModal'), true);
   assert.equal(calendarSource.includes('allowsEditing: false'), true);
   assert.equal(cropSource.includes('PanResponder.create({'), true);
@@ -3278,8 +3375,14 @@ test('recorta imagens estaticas no app, preserva GIFs e restaura o zoom das foto
   assert.equal(zoomSource.includes('toValue: 1'), true);
   assert.equal(zoomSource.includes('toValue: 0'), true);
   assert.equal(zoomSource.includes('onPanResponderRelease:'), true);
-  assert.equal(feedSource.includes('<PinchToZoomImage'), true);
-  assert.equal(reportSource.includes('<PinchToZoomImage'), true);
+  // O zoom vive no visualizador compartilhado pelo feed e pelo relatorio.
+  const photoViewerSource = fs.readFileSync(
+    path.join(root, 'components/MoodPhotoViewer.js'),
+    'utf8'
+  );
+  assert.equal(photoViewerSource.includes('<PinchToZoomImage'), true);
+  assert.equal(feedSource.includes('<MoodPhotoViewer'), true);
+  assert.equal(reportSource.includes('<MoodPhotoViewer'), true);
 });
 
 test('encerra animacoes decorativas e respeita reduzir movimento', () => {

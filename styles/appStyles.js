@@ -2075,7 +2075,66 @@ export const styles = StyleSheet.create({
     width: '100%',
     height: 200,
     borderRadius: 14,
-    marginTop: 12,
+  },
+  // Baralho das fotos do dia: a foto de cima mantem o tamanho de sempre e as
+  // outras ficam atras, tortas o bastante para se notar que ha mais.
+  moodPhotoDeck: {
+    position: 'relative',
+    // As fotos de trás sobem e vão para a direita: o espaço delas sai daqui,
+    // para nenhuma encostar no texto de cima nem vazar da borda do cartão.
+    marginTop: 32,
+    marginRight: 20,
+  },
+  moodPhotoDeckLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#ded9ee',
+  },
+  moodPhotoDeckLayerImage: {
+    width: '100%',
+    height: '100%',
+    opacity: 0.92,
+  },
+  moodPhotoDeckBadge: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: 'rgba(18, 18, 30, 0.72)',
+  },
+  moodPhotoDeckBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  moodPhotoViewerPage: {
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moodPhotoViewerCounter: {
+    position: 'absolute',
+    bottom: 42,
+    alignSelf: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(18, 18, 30, 0.72)',
+  },
+  moodPhotoViewerCounterText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#ffffff',
   },
   diaryPrivacyMask: {
     position: 'relative',
@@ -2482,7 +2541,6 @@ export const styles = StyleSheet.create({
     width: '100%',
     height: 200,
     borderRadius: 14,
-    marginTop: 12,
   },
   reportPhotoViewerOverlay: {
     flex: 1,
@@ -2784,14 +2842,63 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#3c2ba7',
   },
-  reflectionPhotoWrapper: {
-    alignSelf: 'flex-start',
+  reflectionPhotoSection: {
     marginBottom: 18,
+  },
+  // Cada miniatura e posicionada a mao dentro deste tabuleiro (e nao pelo
+  // layout) para que reordenar arrastando seja uma animacao, nao um salto.
+  reflectionPhotoBoard: {
+    position: 'relative',
+  },
+  reflectionPhotoTile: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 96,
+    height: 96,
+  },
+  reflectionPhotoTileDragging: {
+    zIndex: 2,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
   },
   reflectionPhoto: {
     width: 96,
     height: 96,
     borderRadius: 16,
+  },
+  reflectionPhotoAddTile: {
+    position: 'absolute',
+    width: 96,
+    height: 96,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: '#c9c2ec',
+    backgroundColor: '#f4f1ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reflectionPhotoFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 10,
+  },
+  reflectionPhotoCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#68637f',
+  },
+  reflectionPhotoHint: {
+    flexShrink: 1,
+    textAlign: 'right',
+    fontSize: 12,
+    color: '#68637f',
   },
   reflectionPhotoRemove: {
     position: 'absolute',

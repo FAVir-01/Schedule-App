@@ -9,6 +9,10 @@ import {
   createMediaManifestLookup,
   parseAppBackupContents,
 } from '../utils/backupUtils';
+import {
+  getReflectionPhotos,
+  toReflectionPhotoFields,
+} from '../utils/moodUtils';
 
 const MAX_BACKUP_CANDIDATES = 25;
 
@@ -41,9 +45,9 @@ const getReferencedMediaUris = ({ tasks, monthImages, dayMoods, moodAppearance, 
     if (typeof mood?.image === 'string') {
       uris.add(mood.image);
     }
-    if (typeof mood?.photo === 'string') {
-      uris.add(mood.photo);
-    }
+    getReflectionPhotos(mood).forEach((uri) => {
+      uris.add(uri);
+    });
   });
   Object.values(moodAppearance ?? {}).forEach((uri) => {
     if (typeof uri === 'string') {
@@ -372,12 +376,15 @@ export const prepareImportedBackupData = async (data, options = {}) => {
       if (!mood || typeof mood !== 'object' || Array.isArray(mood)) {
         return [key, mood];
       }
+      const resolvedPhotos = await Promise.all(
+        getReflectionPhotos(mood).map(resolveAvailableMediaUri)
+      );
       return [
         key,
         {
           ...mood,
           image: await resolveAvailableMediaUri(mood.image),
-          photo: await resolveAvailableMediaUri(mood.photo),
+          ...toReflectionPhotoFields(resolvedPhotos.filter(Boolean)),
         },
       ];
     })

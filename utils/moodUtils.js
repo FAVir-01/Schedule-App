@@ -12,21 +12,58 @@ export const DEFAULT_MOOD_EMOJIS = {
 
 export const MOOD_TAG_KEYS = ['anxious', 'tired', 'calm', 'excited', 'stressed', 'focused'];
 
+export const REFLECTION_MAX_PHOTOS = 6;
+
+// Lista limpa de fotos: sem vazias, sem repetidas e no maximo o limite.
+export function normalizeReflectionPhotos(value) {
+  const entries = Array.isArray(value) ? value : [value];
+  const seen = new Set();
+  return entries.reduce((photos, entry) => {
+    const uri = typeof entry === 'string' ? entry.trim() : '';
+    if (!uri || seen.has(uri) || photos.length >= REFLECTION_MAX_PHOTOS) {
+      return photos;
+    }
+    seen.add(uri);
+    photos.push(uri);
+    return photos;
+  }, []);
+}
+
+// Registros antigos guardavam uma unica `photo`; os novos guardam `photos`.
+// Quem exibe le sempre por aqui e recebe a lista nos dois formatos.
+export function getReflectionPhotos(reflection) {
+  if (!reflection) {
+    return [];
+  }
+  return normalizeReflectionPhotos(
+    Array.isArray(reflection.photos) ? reflection.photos : [reflection.photo]
+  );
+}
+
+// Ao salvar, `photo` continua recebendo a primeira foto: backups antigos e
+// versoes anteriores do app seguem enxergando a foto do dia.
+export function toReflectionPhotoFields(value) {
+  const photos = normalizeReflectionPhotos(value);
+  return { photos, photo: photos[0] ?? null };
+}
+
 export function hasReflectionContent(reflection) {
   return Boolean(
     reflection?.level ||
       reflection?.emoji ||
       reflection?.image ||
-      reflection?.photo ||
+      getReflectionPhotos(reflection).length > 0 ||
       `${reflection?.note ?? ''}`.trim() ||
       (Array.isArray(reflection?.tags) && reflection.tags.length > 0)
   );
 }
 
-// Only the free-form note and the daily photo are private. Mood level and
+// Only the free-form note and the daily photos are private. Mood level and
 // tags remain visible so statistics and the calendar keep working normally.
 export function hasPrivateReflectionContent(reflection) {
-  return Boolean(`${reflection?.note ?? ''}`.trim() || reflection?.photo);
+  return Boolean(
+    `${reflection?.note ?? ''}`.trim() || getReflectionPhotos(reflection).length > 0
+  );
 }
 
 // Resolve o que desenhar para um registro de humor: registros novos usam o

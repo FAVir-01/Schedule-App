@@ -29,18 +29,23 @@ import {
   DEFAULT_MOOD_EMOJIS,
   MOOD_LEVELS,
   MOOD_TAG_KEYS,
+  REFLECTION_MAX_PHOTOS,
+  getReflectionPhotos,
   hasPrivateReflectionContent,
   hasReflectionContent,
+  normalizeReflectionPhotos,
+  toReflectionPhotoFields,
 } from '../utils/moodUtils';
 import {
   MAX_REFLECTION_NOTE_LENGTH,
   appendRecognizedText,
 } from '../utils/textRecognitionUtils';
 import DiaryPrivacyMask from './DiaryPrivacyMask';
+import DraggablePhotoGrid from './DraggablePhotoGrid';
 import ImageCropModal from './ImageCropModal';
 
 // Folha de reflexão do dia: humor em escala de 1-5 (registro rápido), tags de
-// sentimento, nota e foto opcionais. A aparência de cada nível é personalizável
+// sentimento, nota e até seis fotos opcionais. A aparência de cada nível é personalizável
 // (segurar o humor), mas o dado salvo é sempre o nível — estatísticas estáveis.
 function ReflectionSheet({
   visible,
@@ -66,10 +71,13 @@ function ReflectionSheet({
   const [selectedLevel, setSelectedLevel] = useState(null);
   const [selectedTags, setSelectedTags] = useState([]);
   const [note, setNote] = useState('');
-  const [photo, setPhoto] = useState(null);
+  const [photos, setPhotos] = useState([]);
   const [isLoadingImage, setIsLoadingImage] = useState(false);
   const [pendingCropRequest, setPendingCropRequest] = useState(null);
   const [isRecognizingText, setIsRecognizingText] = useState(false);
+  // Enquanto uma foto está na mão a folha não rola: sem isso o ScrollView
+  // nativo assume o gesto no primeiro movimento torto e derruba o arrasto.
+  const [isDraggingPhoto, setIsDraggingPhoto] = useState(false);
   // `null` = editor normal. Uma string, inclusive vazia durante a edição,
   // representa a etapa interna de revisão e ainda não altera `note`.
   const [recognizedTextDraft, setRecognizedTextDraft] = useState(null);
@@ -99,7 +107,7 @@ function ReflectionSheet({
       setSelectedLevel(mood?.level ?? null);
       setSelectedTags(Array.isArray(mood?.tags) ? mood.tags : []);
       setNote(mood?.note ?? '');
-      setPhoto(mood?.photo ?? null);
+      setPhotos(getReflectionPhotos(mood));
       setRecognizedTextDraft(null);
       setIsRecognizingText(false);
       setPendingCropRequest(null);
@@ -158,7 +166,7 @@ function ReflectionSheet({
     level: selectedLevel,
     tags: selectedTags,
     note,
-    photo,
+    photos,
     emoji: selectedLevel ? null : mood?.emoji,
     image: selectedLevel ? null : mood?.image,
   });
@@ -189,7 +197,7 @@ function ReflectionSheet({
       level: selectedLevel,
       tags: selectedTags,
       note: note.trim(),
-      photo,
+      ...toReflectionPhotoFields(photos),
       // Sem nível novo escolhido, preserva a aparência legada do registro.
       emoji: selectedLevel ? null : mood?.emoji ?? null,
       image: selectedLevel ? null : mood?.image ?? null,
@@ -212,16 +220,17 @@ function ReflectionSheet({
     );
   };
 
-  const pickImage = async ({
+  const pickImages = async ({
     source = 'gallery',
     quality = 1,
     limits,
     prefix,
     cropSquare = false,
     cropLevel = null,
+    selectionLimit = 1,
   }) => {
     if (isLoadingImage) {
-      return null;
+      return [];
     }
     try {
       setIsLoadingImage(true);
@@ -232,7 +241,7 @@ function ReflectionSheet({
             t.reflection.photoCameraPermissionTitle,
             t.reflection.photoCameraPermissionMessage
           );
-          return null;
+          return [];
         }
       }
       const launch =
@@ -244,28 +253,38 @@ function ReflectionSheet({
         // Mantém o arquivo original. GIFs seguem direto e imagens estáticas
         // usam o editor quadrado do próprio app quando solicitado.
         allowsEditing: false,
+        // A câmera devolve uma foto por vez; só a galeria aceita várias.
+        ...(source === 'gallery' && selectionLimit > 1
+          ? { allowsMultipleSelection: true, selectionLimit }
+          : {}),
         quality,
       });
       if (result.canceled || !result.assets?.length) {
-        return null;
+        return [];
       }
-      const asset = result.assets[0];
-      if (cropSquare && !isGifImageAsset(asset)) {
-        setPendingCropRequest({ asset, prefix, limits, level: cropLevel });
-        return null;
+      const assets = result.assets.slice(0, Math.max(1, selectionLimit));
+      if (cropSquare && assets.length === 1 && !isGifImageAsset(assets[0])) {
+        setPendingCropRequest({ asset: assets[0], prefix, limits, level: cropLevel });
+        return [];
       }
-      return await persistPickedImage(asset, { prefix, limits });
+      const persisted = [];
+      for (const asset of assets) {
+        persisted.push(await persistPickedImage(asset, { prefix, limits }));
+      }
+      return persisted;
     } catch (error) {
       console.warn('Failed to select or persist reflection image', error);
       Alert.alert(
         imageText.errorTitle,
         getImageErrorMessage(imageText, error, limits)
       );
-      return null;
+      return [];
     } finally {
       setIsLoadingImage(false);
     }
   };
+
+  const pickImage = async (options) => (await pickImages(options))[0] ?? null;
 
   const handleConfirmCrop = async (croppedAsset) => {
     if (!pendingCropRequest) {
@@ -295,31 +314,50 @@ function ReflectionSheet({
     );
   };
 
-  const handlePickPhoto = async (source) => {
-    const uri = await pickImage({
+  const handlePickPhotos = async (source) => {
+    const remaining = REFLECTION_MAX_PHOTOS - photos.length;
+    if (remaining <= 0) {
+      return;
+    }
+    const uris = await pickImages({
       source,
       quality: 0.75,
       limits: IMAGE_LIMITS.reflectionPhoto,
       prefix: 'custom_mood_photo',
+      selectionLimit: remaining,
     });
-    if (uri) {
-      setPhoto(uri);
+    if (uris.length) {
+      setPhotos((previous) => normalizeReflectionPhotos([...previous, ...uris]));
     }
+  };
+
+  const handleRemovePhoto = (uri) => {
+    setPhotos((previous) => previous.filter((entry) => entry !== uri));
   };
 
   const handleOpenPhotoSource = () => {
     Keyboard.dismiss();
+    if (photos.length >= REFLECTION_MAX_PHOTOS) {
+      Alert.alert(
+        t.reflection.photoLimitTitle,
+        t.reflection.photoLimitMessage.replace(
+          '{count}',
+          String(REFLECTION_MAX_PHOTOS)
+        )
+      );
+      return;
+    }
     Alert.alert(
       t.reflection.photoSourceTitle,
       t.reflection.photoSourceMessage,
       [
         {
           text: t.reflection.scan.camera,
-          onPress: () => void handlePickPhoto('camera'),
+          onPress: () => void handlePickPhotos('camera'),
         },
         {
           text: t.reflection.scan.gallery,
-          onPress: () => void handlePickPhoto('gallery'),
+          onPress: () => void handlePickPhotos('gallery'),
         },
         { text: t.reflection.cancel, style: 'cancel' },
       ]
@@ -484,7 +522,7 @@ function ReflectionSheet({
             </View>
             <DiaryPrivacyMask
               hasText={Boolean(`${mood?.note ?? ''}`.trim())}
-              hasPhoto={Boolean(mood?.photo)}
+              hasPhoto={getReflectionPhotos(mood).length > 0}
               editor
               label={t.diaryPrivacy.unlock}
               onUnlock={onRequestDiaryUnlock}
@@ -606,6 +644,7 @@ function ReflectionSheet({
               ref={scrollRef}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.reflectionScrollContent}
+              scrollEnabled={!isDraggingPhoto}
               onLayout={() => {
                 // O viewport muda de tamanho quando o teclado abre; nesse momento
                 // rola até a nota pra ela continuar à vista.
@@ -761,17 +800,30 @@ function ReflectionSheet({
               </View>
             </View>
 
-            {photo ? (
-              <View style={styles.reflectionPhotoWrapper}>
-                <Image source={{ uri: photo }} style={styles.reflectionPhoto} />
-                <TouchableOpacity
-                  style={styles.reflectionPhotoRemove}
-                  onPress={() => setPhoto(null)}
-                  hitSlop={8}
-                  accessibilityLabel={t.reflection.remove}
-                >
-                  <Ionicons name="close" size={16} color="#ffffff" />
-                </TouchableOpacity>
+            {photos.length ? (
+              <View style={styles.reflectionPhotoSection}>
+                <DraggablePhotoGrid
+                  photos={photos}
+                  onReorder={setPhotos}
+                  onRemove={handleRemovePhoto}
+                  onAdd={handleOpenPhotoSource}
+                  onDragStateChange={setIsDraggingPhoto}
+                  canAdd={photos.length < REFLECTION_MAX_PHOTOS}
+                  isBusy={isLoadingImage || isRecognizingText}
+                  addLabel={t.reflection.addMorePhotos}
+                  removeLabel={t.reflection.remove}
+                  reorderHint={t.reflection.reorderPhotosHint}
+                />
+                <View style={styles.reflectionPhotoFooter}>
+                  <Text style={styles.reflectionPhotoCount}>
+                    {`${photos.length}/${REFLECTION_MAX_PHOTOS}`}
+                  </Text>
+                  {photos.length > 1 ? (
+                    <Text style={styles.reflectionPhotoHint}>
+                      {t.reflection.reorderPhotosHint}
+                    </Text>
+                  ) : null}
+                </View>
               </View>
             ) : (
               <TouchableOpacity

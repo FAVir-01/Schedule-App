@@ -190,7 +190,10 @@ function PinchToZoomImage({
           }
         },
         onPanResponderTerminate: resetTransform,
-        onPanResponderTerminationRequest: () => false,
+        // Um dedo só pode virar arrasto do carrossel de fotos; a pinça, não:
+        // durante ela o gesto fica aqui para o zoom não escapar meio caminho.
+        onPanResponderTerminationRequest: () => !gestureRef.current.didPinch,
+        onShouldBlockNativeResponder: () => gestureRef.current.didPinch,
       }),
     [onPress, resetTransform, scale, translateX, translateY]
   );

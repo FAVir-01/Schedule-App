@@ -61,7 +61,7 @@ import AddHabitSheet from './components/AddHabitSheet';
 import { DEFAULT_USER_SETTINGS } from './constants/userSettings';
 import { getNavigationBarThemeForTab } from './constants/navigation';
 import { lightenColor } from './utils/colorUtils';
-import { getMoodMarker } from './utils/moodUtils';
+import { getMoodMarker, getReflectionPhotos } from './utils/moodUtils';
 import {
   getDateKey,
   getMonthId,
@@ -310,9 +310,9 @@ const cleanupOrphanImageFiles = async (
         if (typeof mood?.image === 'string') {
           referenced.add(mood.image.split('/').pop());
         }
-        if (typeof mood?.photo === 'string') {
-          referenced.add(mood.photo.split('/').pop());
-        }
+        getReflectionPhotos(mood).forEach((uri) => {
+          referenced.add(uri.split('/').pop());
+        });
       });
     }
     const notesLoaded = storedNotes !== undefined;

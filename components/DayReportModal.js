@@ -17,7 +17,11 @@ import { getMonthImageSource, getMonthReducedMotionColor } from '../constants/mo
 import { translations } from '../constants/i18n';
 import { getDateKey } from '../utils/dateUtils';
 import { lightenColor } from '../utils/colorUtils';
-import { getMoodMarker, hasPrivateReflectionContent } from '../utils/moodUtils';
+import {
+  getMoodMarker,
+  getReflectionPhotos,
+  hasPrivateReflectionContent,
+} from '../utils/moodUtils';
 import {
   getQuantumProgressLabel,
   getTaskFinishedMilestoneForDate,
@@ -27,7 +31,8 @@ import { FALLBACK_EMOJI } from '../constants/app';
 import { styles } from '../styles/appStyles';
 import FinishedMilestoneBadge from './FinishedMilestoneBadge';
 import DiaryPrivacyMask from './DiaryPrivacyMask';
-import PinchToZoomImage from './PinchToZoomImage';
+import MoodPhotoDeck from './MoodPhotoDeck';
+import MoodPhotoViewer from './MoodPhotoViewer';
 
 function DayReportModal({
   visible,
@@ -45,7 +50,7 @@ function DayReportModal({
   reduceMotion = false,
 }) {
   const { height } = useWindowDimensions();
-  const [isPhotoOpen, setIsPhotoOpen] = useState(false);
+  const [openPhotoIndex, setOpenPhotoIndex] = useState(null);
 
   // 1. Configuração da Animação
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -72,6 +77,7 @@ function DayReportModal({
     isDiaryPrivacyEnabled &&
     !isDiaryUnlocked &&
     hasPrivateReflectionContent(mood);
+  const moodPhotos = getReflectionPhotos(mood);
 
   useEffect(() => {
     setImageErrors({});
@@ -79,7 +85,7 @@ function DayReportModal({
 
   useEffect(() => {
     if (isPrivateLocked) {
-      setIsPhotoOpen(false);
+      setOpenPhotoIndex(null);
     }
   }, [isPrivateLocked]);
 
@@ -215,7 +221,7 @@ function DayReportModal({
                 {isPrivateLocked ? (
                   <DiaryPrivacyMask
                     hasText={Boolean(`${mood.note ?? ''}`.trim())}
-                    hasPhoto={Boolean(mood.photo)}
+                    hasPhoto={moodPhotos.length > 0}
                     label={t.diaryPrivacy.unlock}
                     onUnlock={onRequestDiaryUnlock}
                   />
@@ -224,45 +230,29 @@ function DayReportModal({
                     {mood.note ? (
                       <Text style={styles.reportMoodNote}>{mood.note}</Text>
                     ) : null}
-                    {mood.photo ? (
-                      <Pressable
-                        onPress={() => setIsPhotoOpen(true)}
-                        accessibilityRole="button"
-                        accessibilityLabel={t.reflection.openPhoto}
-                      >
-                        <Image
-                          source={{ uri: mood.photo }}
-                          style={styles.reportMoodPhoto}
-                          accessible={false}
-                        />
-                      </Pressable>
-                    ) : null}
+                    <MoodPhotoDeck
+                      photos={moodPhotos}
+                      onOpen={setOpenPhotoIndex}
+                      photoStyle={styles.reportMoodPhoto}
+                      accessibilityLabel={
+                        moodPhotos.length > 1
+                          ? t.reflection.openPhotos.replace(
+                              '{count}',
+                              String(moodPhotos.length)
+                            )
+                          : t.reflection.openPhoto
+                      }
+                    />
                   </>
                 )}
-                {mood.photo && !isPrivateLocked ? (
-                  <Modal
-                    visible={isPhotoOpen}
-                    transparent
-                    animationType="fade"
-                    onRequestClose={() => setIsPhotoOpen(false)}
-                  >
-                    <View style={styles.reportPhotoViewerOverlay}>
-                      <Pressable
-                        style={styles.reportPhotoViewerBackdrop}
-                        onPress={() => setIsPhotoOpen(false)}
-                        accessibilityRole="button"
-                        accessibilityLabel={t.reflection.closePhoto}
-                      />
-                      <PinchToZoomImage
-                        source={{ uri: mood.photo }}
-                        style={styles.reportPhotoViewerImage}
-                        resizeMode="contain"
-                        onPress={() => setIsPhotoOpen(false)}
-                        accessibilityLabel={t.reflection.closePhoto}
-                      />
-                    </View>
-                  </Modal>
-                ) : null}
+                <MoodPhotoViewer
+                  visible={openPhotoIndex != null && !isPrivateLocked}
+                  photos={moodPhotos}
+                  initialIndex={openPhotoIndex ?? 0}
+                  onClose={() => setOpenPhotoIndex(null)}
+                  closeLabel={t.reflection.closePhoto}
+                  positionLabel={t.reflection.photoPosition}
+                />
               </View>
             ) : (
               <Pressable
