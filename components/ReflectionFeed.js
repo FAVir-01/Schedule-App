@@ -1,17 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, Image, Modal, Platform, Pressable, Text, View } from 'react-native';
+import { FlatList, Image, Platform, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { getDateLocale, translations } from '../constants/i18n';
 import { normalizeDateValue } from '../utils/dateUtils';
 import {
   getMoodMarker,
+  getReflectionPhotos,
   hasPrivateReflectionContent,
   hasReflectionContent,
 } from '../utils/moodUtils';
 import { styles } from '../styles/appStyles';
 import DiaryPrivacyMask from './DiaryPrivacyMask';
-import PinchToZoomImage from './PinchToZoomImage';
+import MoodPhotoDeck from './MoodPhotoDeck';
+import MoodPhotoViewer from './MoodPhotoViewer';
 
 // Post individual: memo evita re-render dos demais posts ao rolar/atualizar.
 const FeedPostCard = React.memo(({
@@ -28,6 +30,7 @@ const FeedPostCard = React.memo(({
   onRequestDiaryUnlock,
 }) => {
   const marker = getMoodMarker(mood, moodAppearance);
+  const photos = getReflectionPhotos(mood);
   const date = normalizeDateValue(dateKey);
   const dateLabel = date
     ? format(date, 'EEEE, d MMM', { locale: getDateLocale(language) })
@@ -86,26 +89,23 @@ const FeedPostCard = React.memo(({
       {isPrivateLocked ? (
         <DiaryPrivacyMask
           hasText={Boolean(`${mood.note ?? ''}`.trim())}
-          hasPhoto={Boolean(mood.photo)}
+          hasPhoto={photos.length > 0}
           label={t.diaryPrivacy.unlock}
           onUnlock={onRequestDiaryUnlock}
         />
       ) : (
         <>
           {mood.note ? <Text style={styles.feedPostNote}>{mood.note}</Text> : null}
-          {mood.photo ? (
-            <Pressable
-              onPress={() => onOpenPhoto(mood.photo)}
-              accessibilityRole="button"
-              accessibilityLabel={`${t.reflection.openPhoto}. ${dateLabel}`}
-            >
-              <Image
-                source={{ uri: mood.photo }}
-                style={styles.feedPostPhoto}
-                accessible={false}
-              />
-            </Pressable>
-          ) : null}
+          <MoodPhotoDeck
+            photos={photos}
+            onOpen={(index) => onOpenPhoto(photos, index)}
+            photoStyle={styles.feedPostPhoto}
+            accessibilityLabel={`${
+              photos.length > 1
+                ? t.reflection.openPhotos.replace('{count}', String(photos.length))
+                : t.reflection.openPhoto
+            }. ${dateLabel}`}
+          />
         </>
       )}
     </Pressable>
@@ -125,7 +125,7 @@ function ReflectionFeed({
   bottomPadding = 60,
 }) {
   const t = translations[language] ?? translations.en;
-  const [openPhoto, setOpenPhoto] = useState(null);
+  const [openPhotos, setOpenPhotos] = useState(null);
 
   // Posts em ordem cronológica inversa, com um cabeçalho por mês ("JULHO 2026").
   const feedItems = useMemo(() => {
@@ -155,13 +155,13 @@ function ReflectionFeed({
   }, [dayMoods, language]);
   const hasPosts = feedItems.length > 0;
 
-  const handleOpenPhoto = useCallback((photo) => {
-    setOpenPhoto(photo);
+  const handleOpenPhoto = useCallback((photos, index) => {
+    setOpenPhotos({ photos, index });
   }, []);
 
   useEffect(() => {
     if (isDiaryPrivacyEnabled && !isDiaryUnlocked) {
-      setOpenPhoto(null);
+      setOpenPhotos(null);
     }
   }, [isDiaryPrivacyEnabled, isDiaryUnlocked]);
 
@@ -228,28 +228,14 @@ function ReflectionFeed({
         removeClippedSubviews={Platform.OS === 'android'}
         contentContainerStyle={{ paddingTop: 4, paddingBottom: bottomPadding }}
       />
-      <Modal
-        visible={Boolean(openPhoto) && (!isDiaryPrivacyEnabled || isDiaryUnlocked)}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setOpenPhoto(null)}
-      >
-        <View style={styles.reportPhotoViewerOverlay}>
-          <Pressable
-            style={styles.reportPhotoViewerBackdrop}
-            onPress={() => setOpenPhoto(null)}
-            accessibilityRole="button"
-            accessibilityLabel={t.reflection.closePhoto}
-          />
-          <PinchToZoomImage
-            source={{ uri: openPhoto }}
-            style={styles.reportPhotoViewerImage}
-            resizeMode="contain"
-            onPress={() => setOpenPhoto(null)}
-            accessibilityLabel={t.reflection.closePhoto}
-          />
-        </View>
-      </Modal>
+      <MoodPhotoViewer
+        visible={Boolean(openPhotos) && (!isDiaryPrivacyEnabled || isDiaryUnlocked)}
+        photos={openPhotos?.photos ?? []}
+        initialIndex={openPhotos?.index ?? 0}
+        onClose={() => setOpenPhotos(null)}
+        closeLabel={t.reflection.closePhoto}
+        positionLabel={t.reflection.photoPosition}
+      />
     </>
   );
 }

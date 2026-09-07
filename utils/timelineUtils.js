@@ -1,5 +1,5 @@
 import { getDateKey, normalizeDateValue } from './dateUtils';
-import { hasReflectionContent } from './moodUtils';
+import { getReflectionPhotos, hasReflectionContent } from './moodUtils';
 
 export const TIMELINE_PAGE_SIZE = 60;
 
@@ -160,7 +160,8 @@ export const buildSearchableTimelineItems = ({
         if (requireNote && !note) {
           return;
         }
-        if (requirePhoto && !reflection?.photo) {
+        const reflectionPhotos = getReflectionPhotos(reflection);
+        if (requirePhoto && reflectionPhotos.length === 0) {
           return;
         }
         const localizedTags = tags.map((tag) => tagLabels[tag] ?? tag);
@@ -179,7 +180,7 @@ export const buildSearchableTimelineItems = ({
           note,
           tags,
           level: Number(reflection?.level) || null,
-          hasPhoto: Boolean(reflection?.photo),
+          hasPhoto: reflectionPhotos.length > 0,
         });
       }
     );

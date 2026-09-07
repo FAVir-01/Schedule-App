@@ -12,6 +12,7 @@ import {
   getDateKey,
   normalizeDateValue,
 } from './dateUtils';
+import { getReflectionPhotos } from './moodUtils';
 import {
   getTaskCompletionStatus,
   shouldCountTaskTowardsCompletion,
@@ -95,9 +96,7 @@ const summarizeRange = ({ preparedTasks, dayMoods, startDate, endDate }) => {
       if (`${reflection.note ?? ''}`.trim()) {
         totals.notes += 1;
       }
-      if (reflection.photo) {
-        totals.photos += 1;
-      }
+      totals.photos += getReflectionPhotos(reflection).length;
       return totals;
     },
     { reflections: 0, moodCount: 0, moodTotal: 0, notes: 0, photos: 0 }

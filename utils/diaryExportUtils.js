@@ -14,7 +14,7 @@
 import { format } from 'date-fns';
 import { getDateLocale } from '../constants/i18n';
 import { normalizeDateValue } from './dateUtils';
-import { hasReflectionContent } from './moodUtils';
+import { getReflectionPhotos, hasReflectionContent } from './moodUtils';
 
 const SECTION_RULE = '='.repeat(46);
 
@@ -83,7 +83,7 @@ export const buildDiaryTextExport = ({
     if (summary) {
       lines.push(summary);
     }
-    if (mood.photo) {
+    if (getReflectionPhotos(mood).length > 0) {
       // A foto não cabe num .txt, mas apagar o rastro dela faria o dia parecer
       // menos do que foi. O arquivo da imagem sai no backup em pasta.
       lines.push(labels.photoAttached);
