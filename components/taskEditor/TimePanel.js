@@ -1,7 +1,7 @@
 import React from 'react';
 import { Platform, Switch, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { formatNumber } from '../../utils/timeUtils';
+import { formatNumber, formatTimePeriodDuration } from '../../utils/timeUtils';
 import { HOUR_VALUES, HOUR_VALUES_24, MERIDIEM_VALUES, MINUTE_VALUES, to24Hour } from './constants';
 import { AnimatedReveal, SegmentedControlButton } from './parts';
 import WheelColumn from './WheelColumn';
@@ -39,6 +39,7 @@ function TimePanel({
   const endHourIndex = getHourIndex(periodTime.end);
   const endMinuteIndex = Math.max(0, MINUTE_VALUES.indexOf(periodTime.end.minute));
   const endMeridiemIndex = Math.max(0, MERIDIEM_VALUES.indexOf(periodTime.end.meridiem));
+  const duration = formatTimePeriodDuration(periodTime);
 
   return (
     <View style={styles.timePanel}>
@@ -204,6 +205,9 @@ function TimePanel({
                   </View>
                 </View>
               </View>
+              {duration && <Text style={styles.periodDuration} accessibilityLiveRegion="polite">
+                {labels.periodDuration.replace('{duration}', duration)}
+              </Text>}
             </AnimatedReveal>
           )}
         </AnimatedReveal>

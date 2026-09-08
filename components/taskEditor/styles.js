@@ -1230,6 +1230,13 @@ const styles = StyleSheet.create({
   periodLabelSpacer: {
     marginTop: 2,
   },
+  periodDuration: {
+    color: '#626B78',
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+  },
 
   infoLabelRow: {
     flexDirection: 'row',
