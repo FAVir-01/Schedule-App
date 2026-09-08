@@ -34,6 +34,7 @@ import MilestoneSeal from './MilestoneSeal';
 import PolaroidFrame, { getPolaroidHeight } from './PolaroidFrame';
 import TaskHeatmap from './TaskHeatmap';
 import NoteEditorModal from './NoteEditorModal';
+import TaskScheduleSummary from './TaskScheduleSummary';
 
 const OPEN_DURATION = 460;
 const CLOSE_DURATION = 320;
@@ -526,6 +527,7 @@ export default function TaskPhotoSheet({
               </View>
             ) : null}
 
+            <TaskScheduleSummary task={task} language={language} />
             <View>
               <Text style={styles.photoSheetSectionHeading}>{t.taskModal.details}</Text>
               <InfoRows rows={summary.detailRows} />
