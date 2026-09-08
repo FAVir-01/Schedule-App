@@ -30,6 +30,16 @@ function TaskAvatar({ task }) {
   return <View style={s.avatar}>{task?.customImage && !failed ? <Image source={{ uri: task.customImage }} style={s.avatarImage} onError={() => setFailed(true)} /> : <Text style={s.emoji}>{task?.emoji || FALLBACK_EMOJI}</Text>}</View>;
 }
 
+function MetricSheetLayer({ kind, onClose, reduceMotion, children }) {
+  // A ajuda tem sua própria janela: não depende da sobreposição/layout do editor.
+  if (kind === 'help') {
+    return <Modal visible transparent animationType={reduceMotion ? 'none' : 'fade'} onRequestClose={onClose}>
+      <View style={s.helpOverlay} accessibilityViewIsModal>{children}</View>
+    </Modal>;
+  }
+  return <View style={s.overlay} accessibilityViewIsModal>{children}</View>;
+}
+
 function OptionRow({ title, description, icon, selected, onPress, danger = false }) {
   return <Pressable onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: Boolean(selected) }} style={({ pressed }) => [s.optionRow, pressed && s.pressed]}>
     {icon && <Ionicons name={icon} size={21} color={danger ? '#a13c52' : accent} />}
@@ -230,7 +240,7 @@ export default function MetricsScreen({ language = 'en', config, tasks = [], his
         </>}
       </ScrollView>
 
-      {sheet && <View style={s.overlay} accessibilityViewIsModal>
+      {sheet && <MetricSheetLayer kind={sheet.kind} onClose={() => setSheet(null)} reduceMotion={reduceMotion}>
         <Pressable style={s.backdrop} onPress={() => setSheet(null)} accessibilityRole="button" accessibilityLabel={t.close} />
         <View style={[s.sheet, sheet.kind === 'help' && s.guideSheet, { paddingBottom: insets.bottom + 12, marginTop: insets.top + 12 }]}>
           <View style={s.sheetHandle} />
@@ -238,7 +248,7 @@ export default function MetricsScreen({ language = 'en', config, tasks = [], his
             <Text style={[s.sheetTitle, s.grow]}>{sheet.kind === 'source' ? t.pickerTitle : sheet.kind === 'help' ? t.helpTitle : sheet.kind === 'data' ? t.dataTitle : sheet.kind === 'period' ? t.period : sheet.kind === 'display' ? t.display : sheet.kind === 'group' ? t.grouping : sheet.kind === 'dates' ? t.periods.custom : t.menu}</Text>
             <IconButton icon="close" label={t.close} onPress={() => setSheet(null)} />
           </View>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.sheetContent}>
+          <ScrollView style={sheet.kind === 'help' ? s.body : undefined} keyboardShouldPersistTaps="handled" contentContainerStyle={s.sheetContent}>
             {sheet.kind === 'source' ? <>
               <Text style={s.secondary}>{t.pickerHint}</Text>
               <View style={s.search}><Ionicons name="search-outline" size={19} color="#82778f" /><TextInput style={s.searchInput} value={search} onChangeText={setSearch} placeholder={t.search} placeholderTextColor="#82778f" accessibilityLabel={t.search} /></View>
@@ -293,7 +303,7 @@ export default function MetricsScreen({ language = 'en', config, tasks = [], his
               </> : null}
           </ScrollView>
         </View>
-      </View>}
+      </MetricSheetLayer>}
     </KeyboardAvoidingView>
   </Modal>;
 }
@@ -316,7 +326,8 @@ const s = StyleSheet.create({
   error: { color: '#a13c52', fontSize: 12, lineHeight: 19 }, inspect: { flexDirection: 'row', gap: 9, alignItems: 'center', minHeight: 48, justifyContent: 'center' }, textAction: { minHeight: 44, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 5 }, textActionLabel: { color: accent, fontWeight: '500', fontSize: 13 }, smallAction: { color: accent, fontSize: 11 },
   widget: { backgroundColor: '#ffffff', borderRadius: 22, padding: 21, gap: 6, borderWidth: 1, borderColor: '#ece5f1' }, widgetTitle: { color: '#42334f', fontSize: 19, fontWeight: '600' }, periodLabel: { color: '#796d83', fontSize: 12 }, widgetFooter: { borderTopWidth: 1, borderTopColor: '#f0eaf4', paddingTop: 13, marginTop: 9, gap: 6 }, smallFormula: { color: '#69517d', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12 }, sourceCaption: { color: '#796d83', fontSize: 11, lineHeight: 17 }, miniRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 }, miniValue: { color: '#53435f', fontSize: 13 },
   overlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end' }, backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(30,19,43,0.3)' }, sheet: { maxHeight: '92%', backgroundColor: '#fcfafd', borderTopLeftRadius: 26, borderTopRightRadius: 26, flexShrink: 1 }, sheetHandle: { alignSelf: 'center', width: 35, height: 4, borderRadius: 3, backgroundColor: '#d6ccdf', marginTop: 10, marginBottom: 6 }, sheetHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingBottom: 8 }, sheetTitle: { color: '#42334f', fontSize: 20, fontWeight: '600' }, sheetContent: { paddingHorizontal: 23, paddingBottom: 20, gap: 16 },
-  guideSheet: { flex: 1, maxHeight: '100%' },
+  helpOverlay: { flex: 1, justifyContent: 'flex-end' },
+  guideSheet: { height: '92%' },
   search: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, backgroundColor: '#f0ebf5', paddingHorizontal: 13 }, searchInput: { flex: 1, minHeight: 48, color: '#42334f', fontSize: 14 }, taskRow: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 13, borderBottomWidth: 1, borderBottomColor: '#eee8f3', paddingVertical: 10 }, avatar: { width: 42, height: 42, borderRadius: 14, backgroundColor: '#eee7f4', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, avatarImage: { width: '100%', height: '100%' }, emoji: { fontSize: 23 }, selectedCard: { flexDirection: 'row', gap: 12, alignItems: 'center', marginBottom: 4 },
   optionRow: { flexDirection: 'row', alignItems: 'center', gap: 13, minHeight: 60, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: '#eee8f3' }, optionTitle: { color: '#42334f', fontSize: 15, lineHeight: 22, fontWeight: '500' }, danger: { color: '#a13c52', fontSize: 14 }, recipe: { gap: 8, backgroundColor: '#f0eaf6', padding: 15, borderRadius: 14 }, recipeFormula: { color: accent, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 13, lineHeight: 21 }, functionRow: { flexDirection: 'row', gap: 13 }, functionName: { color: accent, fontSize: 11, minWidth: 95, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', paddingTop: 2 },
   rangeField: { gap: 8 }, dateInput: { minHeight: 49, backgroundColor: '#f0ebf5', borderRadius: 12, paddingHorizontal: 13, fontSize: 16, color: '#42334f' },
