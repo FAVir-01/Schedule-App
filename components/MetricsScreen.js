@@ -1,7 +1,8 @@
-import React, { useMemo, useReducer, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Alert, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FALLBACK_EMOJI } from '../constants/app';
 import { workspaceTranslations } from '../constants/metricWorkspaceI18n';
 import { createMetricId } from '../domain/metrics';
 import { compileMetricFormula } from '../domain/metricFormula';
@@ -25,7 +26,8 @@ function IconButton({ icon, label, onPress }) {
 
 function TaskAvatar({ task }) {
   const [failed, setFailed] = useState(false);
-  return <View style={s.avatar}>{task?.image && !failed ? <Image source={{ uri: task.image }} style={s.avatarImage} onError={() => setFailed(true)} /> : <Text style={s.emoji}>{task?.emoji || '✓'}</Text>}</View>;
+  useEffect(() => setFailed(false), [task?.id, task?.customImage]);
+  return <View style={s.avatar}>{task?.customImage && !failed ? <Image source={{ uri: task.customImage }} style={s.avatarImage} onError={() => setFailed(true)} /> : <Text style={s.emoji}>{task?.emoji || FALLBACK_EMOJI}</Text>}</View>;
 }
 
 function OptionRow({ title, description, icon, selected, onPress, danger = false }) {
