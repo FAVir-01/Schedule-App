@@ -27,7 +27,6 @@ import { styles } from '../styles/appStyles';
 import FinishedMilestoneBadge from './FinishedMilestoneBadge';
 import PolaroidFrame from './PolaroidFrame';
 import TaskPhotoSheet from './TaskPhotoSheet';
-import TaskScheduleSummary from './TaskScheduleSummary';
 
 export default function TaskDetailModal({
   language = 'en',
@@ -243,7 +242,6 @@ export default function TaskDetailModal({
               )}
             </View>
             <ScrollView style={styles.detailSubtasksContainer}>
-              <TaskScheduleSummary task={task} language={language} />
               {totalSubtasks === 0 ? (
                 <Text style={styles.detailEmptySubtasks}>
                   {isReminder ? t.taskModal.noReminders : t.taskModal.noSubtasks}
