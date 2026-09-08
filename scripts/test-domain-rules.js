@@ -2174,11 +2174,31 @@ test('separa tarefa arquivada de tarefa avulsa vencida', () => {
   // Vencida é derivado da data; arquivada é estado que o usuário escreveu.
   assert.equal(isTaskArchived(oneTime), false);
   assert.equal(isTaskExpired(oneTime, '2026-08-03'), true);
-  assert.equal(isTaskInactive(oneTime, '2026-08-03'), true);
+  assert.equal(isTaskInactive(oneTime, '2026-08-03'), false);
   assert.equal(isTaskExpired(oneTime, '2026-07-13'), false);
   assert.equal(isTaskExpired(repeating, '2026-08-03'), false);
   assert.equal(isTaskArchived({ ...repeating, archived: true }), true);
   assert.equal(isTaskExpired({ ...repeating, archived: true }, '2026-08-03'), false);
+});
+
+test('lembretes só vão para Arquivadas manualmente ou após a data de término', () => {
+  for (const repeat of [
+    { enabled: false },
+    { enabled: true, frequency: 'weekly', weekdays: ['tue'] },
+    { enabled: true, frequency: 'daily', endDate: '2026-09-08' },
+  ]) {
+    const reminder = withScheduleMirror({
+      id: 'aula', type: 'reminder', dateKey: '2026-09-08', repeat,
+      time: { specified: true, mode: 'point', point: '08:00' },
+    });
+    for (const day of ['2026-09-08', '2026-09-09', '2026-10-01']) {
+      const ended = Boolean(repeat.endDate && day > repeat.endDate);
+      assert.equal(isTaskInactive(reminder, day), ended);
+      assert.equal(isTaskInactive({ ...reminder, completedDates: { '2026-09-08': true } }, day), ended);
+      assert.equal(isTaskInactive({ ...reminder, archived: true }, day), true);
+      assert.equal(isTaskInactive({ ...reminder, archived: false }, day), ended);
+    }
+  }
 });
 
 test('sequencia so existe para o que se repete', () => {
@@ -2265,8 +2285,7 @@ test('trata habito com data final vencida como encerrado', () => {
       ...extra,
     });
 
-  // São dois jeitos de uma tarefa acabar. Antes só o primeiro contava, e um
-  // hábito encerrado ficava para sempre na aba Ativas sem nunca mais aparecer.
+  // A data final passada move a tarefa para Arquivadas sem gravar arquivamento.
   const encerrado = build({
     enabled: true,
     frequency: 'daily',
@@ -2281,6 +2300,7 @@ test('trata habito com data final vencida como encerrado', () => {
 
   // No próprio dia do fim ainda está valendo: encerra a partir do dia seguinte.
   assert.equal(isTaskExpired(encerrado, '2026-09-05'), false);
+  assert.equal(isTaskInactive(encerrado, '2026-09-05'), false);
 
   // Os demais casos continuam como eram.
   const emAndamento = build({
@@ -2293,7 +2313,7 @@ test('trata habito com data final vencida como encerrado', () => {
   const semFim = build({ enabled: true, frequency: 'daily', interval: 1 });
   assert.equal(isTaskInactive(semFim, HOJE), false);
   const avulsa = build({ enabled: false, frequency: 'daily', interval: 1 });
-  assert.equal(isTaskInactive(avulsa, HOJE), true);
+  assert.equal(isTaskInactive(avulsa, HOJE), false);
   const arquivada = build(
     { enabled: true, frequency: 'daily', interval: 1 },
     { archived: true, archivedAt: '2026-09-06' }

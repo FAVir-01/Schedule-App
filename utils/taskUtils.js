@@ -4,13 +4,12 @@ import {
 } from '../constants/app';
 import {
   getCurrentScheduleVersion,
-  getTaskTimeForDate,
   shouldTaskAppearOnDate,
   toScheduleKey,
 } from '../domain/taskSchedule';
 import { getCalendarDayOrdinal, getDateKey, normalizeDateValue } from './dateUtils';
 import { clamp01 } from './mathUtils';
-import { formatDuration, getTimerTotalSeconds, toMinutes } from './timeUtils';
+import { formatDuration, getTimerTotalSeconds } from './timeUtils';
 
 const getTaskCompletionStatus = (task, date) => {
   if (!task || !date) {
@@ -490,10 +489,17 @@ export const clearExpiredRepeatEnd = (repeat, todayKey) => {
   return withoutEnd;
 };
 
-// O que a aba "Arquivadas" de "Suas tarefas" mostra: continuam duas abas, mas
-// as duas regras deixam de colidir dentro de um predicado só.
-export const isTaskInactive = (task, todayKey) =>
-  isTaskArchived(task) || isTaskExpired(task, todayKey);
+// Arquivadas reúne arquivamento manual e repetições cuja data de término passou.
+// Passar a data/horário de uma ocorrência avulsa não arquiva a tarefa.
+export const isTaskInactive = (task, todayKey) => {
+  if (isTaskArchived(task)) {
+    return true;
+  }
+  const version = getCurrentScheduleVersion(task);
+  const repeat = normalizeRepeatConfig(version?.repeat);
+  const endKey = toScheduleKey(repeat.endDate);
+  return Boolean(repeat.enabled && endKey && todayKey && endKey < todayKey);
+};
 
 export const getTaskLastCompletionDateKey = (task) => {
   if (!task?.completedDates || typeof task.completedDates !== 'object') {
@@ -638,43 +644,6 @@ export const shouldResetStreakAfterPause = (
     return false;
   }
   return getCalendarDayOrdinal(today) - getCalendarDayOrdinal(pausedSince) >= toleranceDays;
-};
-
-export const isReminderExpiredForDate = (task, targetDate, now = new Date()) => {
-  if (!task || task.type !== 'reminder') {
-    return false;
-  }
-
-  const normalizedTargetDate = normalizeDateValue(targetDate);
-  const normalizedNowDate = normalizeDateValue(now);
-
-  if (!normalizedTargetDate || !normalizedNowDate) {
-    return false;
-  }
-
-  if (normalizedTargetDate.getTime() < normalizedNowDate.getTime()) {
-    return true;
-  }
-
-  if (normalizedTargetDate.getTime() > normalizedNowDate.getTime()) {
-    return false;
-  }
-
-  const taskTime = getTaskTimeForDate(task, normalizedTargetDate);
-  if (!taskTime?.specified) {
-    return false;
-  }
-
-  const nowSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-  if (taskTime.mode === 'period' && taskTime.period?.end) {
-    return nowSeconds > toMinutes(taskTime.period.end) * 60;
-  }
-
-  if (taskTime.point) {
-    return nowSeconds > toMinutes(taskTime.point) * 60;
-  }
-
-  return false;
 };
 
 // Sequência de ocorrências consecutivas concluídas, respeitando a repetição:
