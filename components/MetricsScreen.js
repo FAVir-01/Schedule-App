@@ -77,7 +77,6 @@ export default function MetricsScreen({ language = 'en', config, tasks = [], his
   const [tableLimit, setTableLimit] = useState(20);
   const [formError, setFormError] = useState(null);
   const [rangeDraft, setRangeDraft] = useState({ start: '', end: '' });
-  const [expandedSources, setExpandedSources] = useState({});
   const [allFunctions, setAllFunctions] = useState(false);
   const formulaInput = useRef(null);
   const formulaSelection = useRef({ start: 0, end: 0 });
@@ -92,7 +91,7 @@ export default function MetricsScreen({ language = 'en', config, tasks = [], his
     originalDraft.current = JSON.stringify(next);
     Keyboard.dismiss(); setSearch('');
     dispatchEditor({ type: 'open', draft: next, sheet: widget ? null : { kind: 'source' } });
-    setFormError(null); setTableLimit(20); setExpandedSources({});
+    setFormError(null); setTableLimit(20);
   };
   const closeEditor = () => {
     Keyboard.dismiss();
@@ -156,11 +155,10 @@ export default function MetricsScreen({ language = 'en', config, tasks = [], his
     const field = result?.fields.get(binding.ref);
     return <View key={binding.ref} style={s.reference}>
       <TaskAvatar key={binding.taskId} task={description.task} />
-      <Pressable disabled={!interactive} onPress={() => setExpandedSources((previous) => ({ ...previous, [binding.ref]: !previous[binding.ref] }))} style={s.referenceSource} accessibilityRole={interactive ? 'button' : undefined} accessibilityState={interactive ? { expanded: Boolean(expandedSources[binding.ref]) } : undefined} accessibilityLabel={`${description.taskTitle}: ${interactive ? t.variables : description.field}`}>
+      <Pressable disabled={!interactive} onPress={() => openSheet({ kind: 'source', ref: binding.ref })} style={s.referenceSource} accessibilityRole={interactive ? 'button' : undefined} accessibilityLabel={`${description.taskTitle}: ${interactive ? t.changeCard : description.field}`}>
         <Text style={s.sourceTitle}>{description.taskTitle}</Text>
         {!interactive && <><Text style={s.sourceField}>{description.field}{description.unit ? ` · ${description.unit}` : ''}</Text><Text style={s.refValue}>{metricNumber(field?.error ? null : field?.total, language)} · {field?.constant != null ? t.fixed : t.inPeriod}</Text></>}
       </Pressable>
-      {interactive && <Ionicons name={expandedSources[binding.ref] ? 'chevron-up' : 'chevron-down'} size={13} color={accent} />}
       <Pressable onPress={interactive ? () => insertText(displayMetricReference(binding.ref)) : undefined} accessibilityRole={interactive ? 'button' : undefined} accessibilityLabel={t.insertRef.replace('{ref}', binding.ref)} style={s.refBadge}><Text style={s.refLetter}>{displayMetricReference(binding.ref)}</Text></Pressable>
     </View>;
   };
@@ -204,17 +202,11 @@ export default function MetricsScreen({ language = 'en', config, tasks = [], his
           </View>
           <View style={s.sourcePanel}>
             <View style={s.row}><Text style={[s.eyebrow, s.grow]}>{t.sources}</Text><Text style={s.secondary}>{metricSources(draft.bindings).length}/6</Text>{nextSourceLetter(draft.bindings) && <IconButton icon="add" label={t.addSource} onPress={() => openSheet({ kind: 'source' })} />}</View>
-            {metricSources(draft.bindings).map((binding) => {
-              const children = draft.bindings.filter((item) => sourceOf(item) === binding.ref);
-              return <View key={binding.ref} style={s.sourceGroup}>
+            {metricSources(draft.bindings).map((binding) => (
+              <View key={binding.ref} style={s.sourceGroup}>
                 {referenceRow(binding)}
-                {expandedSources[binding.ref] && <>
-                  <TaskScheduleSummary task={tasks.find((task) => String(task.id) === binding.taskId)} language={language} />
-                  {children.map((child) => <Pressable key={child.ref} style={s.subtaskRow} accessibilityRole="button" accessibilityLabel={`${t.insertRef.replace('{ref}', child.ref)}: ${describeMetricBinding(child, tasks, t).field}`} onPress={() => insertText(displayMetricReference(child.ref))}><Text style={[s.sourceField, s.grow]}>{describeMetricBinding(child, tasks, t).field}</Text><Text style={s.variableRef}>{displayMetricReference(child.ref)}</Text></Pressable>)}
-                  <View style={s.sourceActions}><Pressable style={s.textAction} accessibilityRole="button" onPress={() => openSheet({ kind: 'source', ref: binding.ref })}><Text style={s.smallAction}>{t.changeCard}</Text></Pressable><Pressable style={s.textAction} accessibilityRole="button" onPress={() => patch({ bindings: draft.bindings.filter((item) => sourceOf(item) !== binding.ref) })}><Text style={s.smallAction}>{t.removeRef}</Text></Pressable></View>
-                </>}
-              </View>;
-            })}
+              </View>
+            ))}
             {!draft.bindings.length && <Text style={s.secondary}>{t.noReferences}</Text>}
           </View>
           <View style={s.formulaPanel}>
@@ -280,9 +272,11 @@ export default function MetricsScreen({ language = 'en', config, tasks = [], his
                 {draft.bindings.length ? draft.bindings.map((binding) => {
                   const description = describeMetricBinding(binding, tasks, t);
                   return <View key={binding.ref} style={s.recipe}>
-                    <Text style={s.recipeFormula}>{displayMetricReference(binding.ref)} · {description.taskTitle}</Text>
+                    <View style={s.row}><TaskAvatar task={description.task} /><Text style={[s.sourceTitle, s.grow]}>{description.taskTitle}</Text></View>
+                    <Pressable accessibilityRole="button" accessibilityLabel={t.insertRef.replace('{ref}', displayMetricReference(binding.ref))} style={s.textAction} onPress={() => { setSheet(null); insertText(displayMetricReference(binding.ref)); }}><Text style={s.recipeFormula}>{displayMetricReference(binding.ref)}</Text><Ionicons name="add-circle-outline" size={18} color={accent} /></Pressable>
                     <Text style={s.sourceTitle}>{description.field}</Text>
                     <Text style={s.secondary}>{t.fieldHelp[binding.field]}</Text>
+                    {binding.ref === sourceOf(binding) && <TaskScheduleSummary task={description.task} language={language} />}
                   </View>;
                 }) : <Text style={s.secondary}>{t.helpNoSources}</Text>}
                 <Text style={s.eyebrow}>{t.helpPeriodTitle}</Text>
