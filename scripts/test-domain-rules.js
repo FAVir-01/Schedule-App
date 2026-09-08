@@ -282,7 +282,7 @@ const {
   TASK_TEMPLATE_VERSION,
   migrateImportedTemplateTasks,
 } = require('../utils/templateUtils');
-const { getTimerParts, getTimerTotalSeconds } = require('../utils/timeUtils');
+const { formatTimePeriodDuration, getTimerParts, getTimerTotalSeconds } = require('../utils/timeUtils');
 const {
   getWaterDisplayPercent,
   WATER_IDLE_FILL_PERCENT,
@@ -3867,6 +3867,19 @@ test('preserva o horario antigo no historico ao adicionar grupos depois', () => 
     minute: 30,
     meridiem: 'PM',
   });
+});
+
+test('duração do período mostra horas e minutos, incluindo meio-dia e meia-noite', () => {
+  const duration = (hour, minute, meridiem, endHour, endMinute, endMeridiem) => formatTimePeriodDuration({
+    start: { hour, minute, meridiem }, end: { hour: endHour, minute: endMinute, meridiem: endMeridiem },
+  });
+  assert.equal(duration(8, 0, 'AM', 9, 30, 'AM'), '1h 30min');
+  assert.equal(duration(8, 0, 'AM', 10, 0, 'AM'), '2h');
+  assert.equal(duration(8, 0, 'AM', 8, 45, 'AM'), '45min');
+  assert.equal(duration(11, 30, 'AM', 1, 0, 'PM'), '1h 30min');
+  assert.equal(duration(11, 30, 'PM', 12, 30, 'AM'), '1h');
+  assert.equal(duration(8, 0, 'AM', 8, 0, 'AM'), '0min');
+  assert.equal(formatTimePeriodDuration(null), null);
 });
 
 test('a data de inicio fora dos grupos recebe um horario concreto', () => {

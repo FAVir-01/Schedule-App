@@ -67,6 +67,15 @@ const toTimerSeconds = (hours, minutes) => {
   return safeHours * 3600 + safeMinutes * 60;
 };
 
+export const formatTimePeriodDuration = (period) => {
+  if (!period?.start || !period?.end) return null;
+  const minutes = (toMinutes(period.end) - toMinutes(period.start) + 1440) % 1440;
+  if (!Number.isFinite(minutes)) return null;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return [hours ? `${hours}h` : '', remainder || !hours ? `${remainder}min` : ''].filter(Boolean).join(' ');
+};
+
 // Timers antigos usavam `minutes`/`seconds` para representar horas/minutos.
 // O formato atual usa `hours`/`minutesPart`, mas a leitura continua compatível.
 const getTimerParts = (timer) => ({
