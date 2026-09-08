@@ -23,6 +23,7 @@
     },
     "production_apk": {
       "credentialsSource": "remote",
+      "autoIncrement": true,
       "distribution": "internal",
       "channel": "production",
       "android": {
