@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { translations } from '../constants/i18n';
 
-export default function DiscoverScreen({ language = 'en', onOpenNotes }) {
+export default function DiscoverScreen({ language = 'en', onOpenNotes, onOpenMetrics }) {
   const t = (translations[language] ?? translations.en).discover;
 
   return (
@@ -22,6 +22,17 @@ export default function DiscoverScreen({ language = 'en', onOpenNotes }) {
           </View>
           <Text style={styles.cardTitle}>{t.notesCard}</Text>
         </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+          onPress={onOpenMetrics}
+          accessibilityRole="button"
+          accessibilityLabel={t.metricsCard}
+        >
+          <View style={styles.icon}>
+            <Ionicons name="stats-chart-outline" size={20} color="#3c2ba7" />
+          </View>
+          <Text style={styles.cardTitle}>{t.metricsCard}</Text>
+        </Pressable>
       </View>
     </SafeAreaView>
   );
@@ -34,6 +45,10 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignContent: 'flex-start',
+    gap: 12,
     alignItems: 'flex-start',
     paddingTop: 16,
     paddingHorizontal: 16,

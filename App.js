@@ -151,6 +151,8 @@ import PerformanceChart from './components/PerformanceChart';
 import AppErrorBoundary from './components/AppErrorBoundary';
 import UndoSnackbar from './components/UndoSnackbar';
 import DiscoverScreen from './components/DiscoverScreen';
+import MetricsScreen from './components/MetricsScreen';
+import { normalizeMetricWorkspace } from './domain/metricWorkspace';
 import FirstRunOnboarding from './components/FirstRunOnboarding';
 import NotesScreen from './components/NotesScreen';
 import { CALENDAR_DAY_SIZE, WEEKDAY_ROW_HEIGHT } from './constants/layout';
@@ -421,6 +423,7 @@ function ScheduleApp() {
   const [dayMoods, setDayMoods] = useState({});
   const [notes, setNotes] = useState([]);
   const [isNotesOpen, setIsNotesOpen] = useState(false);
+  const [isMetricsOpen, setIsMetricsOpen] = useState(false);
   // Expressões personalizadas (imagens) disponíveis na folha de reflexão.
   const [moodAppearance, setMoodAppearance] = useState({});
   const [reflectionDateKey, setReflectionDateKey] = useState(null);
@@ -2319,6 +2322,15 @@ function ScheduleApp() {
     );
   }, [t.dataProtection]);
 
+  const handleChangeMetrics = useCallback((metrics) => {
+    if (!isHydrated || loadFailuresRef.current.settings) {
+      showDataProtectionAlert();
+      return false;
+    }
+    updateUserSettings({ discoverMetrics: normalizeMetricWorkspace(metrics) });
+    return true;
+  }, [isHydrated, showDataProtectionAlert, updateUserSettings]);
+
   const handleUpdateMonthImage = useCallback(
     async (monthIndex, uri) => {
       if (loadFailuresRef.current.images) {
@@ -2793,9 +2805,10 @@ function ScheduleApp() {
   const handleChangeTab = useCallback(
     (tabKey) => {
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
-      // Notes is a child page of Discover. Any tap in the main navigation
+      // Notes and Metrics are child pages of Discover. Main navigation
       // returns that section to its root, including tapping Discover itself.
       setIsNotesOpen(false);
+      setIsMetricsOpen(false);
       setActiveTab(tabKey);
       updateUserSettings({ activeTab: tabKey });
       void applyNavigationBarThemeForTab(tabKey);
@@ -3420,6 +3433,7 @@ function ScheduleApp() {
         // silently enable or disable it when restored.
         protectPrivateReflections: isDiaryPrivacyEnabled,
         onboardingCompleted: rawSettings.onboardingCompleted === true,
+        discoverMetrics: normalizeMetricWorkspace(rawSettings.discoverMetrics),
       };
       const normalizedTasksWithLegacyNotes = normalizeStoredTasks(
         importedData.tasks.map((task) =>
@@ -3507,6 +3521,7 @@ function ScheduleApp() {
       setMoodAppearance(importedData.moodAppearance);
       setNotes(nextNotes);
       setIsNotesOpen(false);
+      setIsMetricsOpen(false);
       setActiveTaskId(null);
       setActiveProfileTaskId(null);
       setProfileFilterId(null);
@@ -4671,6 +4686,7 @@ function ScheduleApp() {
             <DiscoverScreen
               language={language}
               onOpenNotes={() => setIsNotesOpen(true)}
+              onOpenMetrics={() => setIsMetricsOpen(true)}
             />
           )}
           {isCalendarTabActive ? (
@@ -5104,6 +5120,18 @@ function ScheduleApp() {
           bottom={insets.bottom + 112}
         />
       ) : null}
+      {activeTab === 'discover' && isMetricsOpen && (
+        <MetricsScreen
+          language={language}
+          config={userSettings.discoverMetrics}
+          tasks={tasks}
+          history={history}
+          today={today}
+          onChange={handleChangeMetrics}
+          onBack={() => setIsMetricsOpen(false)}
+          reduceMotion={prefersReducedMotion}
+        />
+      )}
       <NotesScreen
         visible={isNotesPageOpen}
         language={language}

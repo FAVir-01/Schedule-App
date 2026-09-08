@@ -215,6 +215,23 @@ componentChecks.forEach(([name, foreground, background]) => {
   );
 });
 
+const metricStylesSource = fs.readFileSync(path.join(root, 'components', 'MetricsScreen.js'), 'utf8');
+const metricColor = (name) => {
+  const block = metricStylesSource.match(new RegExp(`\\b${name}:\\s*\\{([^}]+)\\}`))?.[1];
+  const color = block?.match(/\bcolor:\s*'([^']+)'/)?.[1];
+  if (color) return color;
+  if (/\bcolor:\s*accent/.test(block ?? '')) return metricStylesSource.match(/const accent = '([^']+)'/)[1];
+  throw new Error(`Cor dos mostradores nao encontrada: ${name}`);
+};
+[
+  ['emptyTitle', '#f8f6fa'], ['emptyBody', '#f8f6fa'], ['secondary', '#fcfafd'],
+  ['eyebrow', '#f8f6fa'], ['sourceTitle', '#f8f6fa'], ['sourceField', '#f8f6fa'],
+  ['refValue', '#f8f6fa'], ['refLetter', '#eae1f3'], ['formulaHint', '#f0eaf6'],
+  ['formulaLabel', '#f0eaf6'], ['formulaInput', '#f0eaf6'], ['dateRange', '#f8f6fa'],
+  ['sourceCaption', '#ffffff'], ['periodLabel', '#ffffff'], ['settingValue', '#f8f6fa'],
+  ['resultUnit', '#ffffff'], ['resultNumber', '#f8f6fa'], ['primaryText', '#654b91'],
+].forEach(([name, background]) => check(`mostradores ${name}`, metricColor(name), background, 4.5));
+
 if (failures.length) {
   console.error('Falhas de contraste:');
   failures.forEach(({ name, foreground, background, minimum, ratio }) => {

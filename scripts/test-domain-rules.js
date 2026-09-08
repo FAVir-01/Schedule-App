@@ -4059,6 +4059,367 @@ test('nao conta hoje incompleto como falha na atividade', () => {
   assert.equal(activity.missed, 2);
 });
 
+const { evaluateMetric, normalizeMetrics, parseMetricValue } = require('../domain/metrics');
+const readingSource = { id: 'pages', name: 'Páginas', unit: 'páginas', rules: [{ taskId: 'reading', subtaskId: 'five', value: 5 }] };
+const readingWidget = { id: 'monthly', title: 'Leitura', sourceId: 'pages', calculation: 'total', period: 'month', display: 'number' };
+const readingTask = (completedDates) => ({ id: 'reading', title: 'Leitura', subtasks: [{ id: 'five', title: 'Qualquer texto', completedDates }] });
+
+test('mostradores usam a subtask exata e corrigem desmarcar/remarcar sem duplicar', () => {
+  const options = { today: new Date(2026, 8, 7) };
+  const task = readingTask({ '2026-09-01': true, '2026-09-07': true, '2026-08-31': true, '2026-09-08': true });
+  task.completedDates = { '2026-09-03': true };
+  task.subtasks.push({ id: 'another', title: 'Qualquer texto', completedDates: { '2026-09-04': true } });
+  assert.equal(evaluateMetric(readingSource, readingWidget, [task], options).value, 10);
+  task.subtasks[0].completedDates['2026-09-07'] = false;
+  assert.equal(evaluateMetric(readingSource, readingWidget, [task], options).value, 5);
+  task.subtasks[0].completedDates['2026-09-07'] = true;
+  assert.equal(evaluateMetric(readingSource, readingWidget, [task], options).value, 10);
+  assert.equal(evaluateMetric(readingSource, readingWidget, [task], options).value, 10);
+});
+
+test('mesmo dado alimenta total, media diaria e media por dia ativo', () => {
+  const task = readingTask({ '2026-09-01': true, '2026-09-04': true });
+  const source = { ...readingSource, rules: [...readingSource.rules, { taskId: 'reading', subtaskId: 'article', value: 2 }] };
+  task.subtasks.push({ id: 'article', completedDates: { '2026-09-01': true } });
+  const options = { today: new Date(2026, 8, 6) };
+  assert.equal(evaluateMetric(source, readingWidget, [task], options).value, 12);
+  assert.equal(evaluateMetric(source, { ...readingWidget, calculation: 'dailyAverage' }, [task], options).value, 2);
+  const active = evaluateMetric(source, { ...readingWidget, calculation: 'activeDayAverage' }, [task], options);
+  assert.equal(active.value, 6);
+  assert.equal(active.activeDays, 2);
+  assert.equal(active.completions, 3);
+  assert.equal(evaluateMetric(source, { ...readingWidget, calculation: 'activeDayAverage' }, [], options).value, 0);
+});
+
+test('mostradores aceitam valores negativos, decimais e regras de cards inteiros', () => {
+  const source = { ...readingSource, rules: [
+    { taskId: 'income', subtaskId: null, value: 10.5 },
+    { taskId: 'cost', subtaskId: null, value: -2.25 },
+  ] };
+  const result = evaluateMetric(source, readingWidget, [
+    { id: 'income', completedDates: { '2026-09-01': true } },
+    { id: 'cost', completedDates: { '2026-09-02': true } },
+  ], { today: new Date(2026, 8, 2) });
+  assert.equal(result.value, 8.25);
+  assert.deepEqual(result.buckets.map((bucket) => bucket.value), [10.5, -2.25]);
+  assert.equal(parseMetricValue('-2,25'), -2.25);
+  for (const invalid of ['', ' ', '1.2.3', 'Infinity', '5 páginas', '2+3', null]) assert.equal(parseMetricValue(invalid), null);
+});
+
+test('periodos usam calendario local, ano bissexto e excluem datas futuras ou invalidas', () => {
+  const task = readingTask({ '2024-02-29': true, '2024-02-30': true, '2024-03-01': true, '2024-04-01': true });
+  const options = { today: new Date(2024, 2, 2) };
+  const previous = evaluateMetric(readingSource, { ...readingWidget, period: 'previousMonth', calculation: 'dailyAverage' }, [task], options);
+  assert.equal(previous.value, 5 / 29);
+  assert.equal(previous.days, 29);
+  assert.equal(previous.buckets.length, 29);
+  const year = evaluateMetric(readingSource, { ...readingWidget, period: 'year', display: 'bars' }, [task], options);
+  assert.equal(year.value, 10);
+  assert.deepEqual(year.buckets.map((bucket) => bucket.value), [0, 5, 5]);
+  const week = evaluateMetric(readingSource, { ...readingWidget, period: 'week' }, [task], options);
+  assert.equal(week.startKey, '2024-02-26');
+  assert.equal(week.endKey, '2024-03-02');
+});
+
+test('historico completo inicia na primeira conclusao e medias mensais usam os dias de cada mes', () => {
+  const task = readingTask({ '2026-08-31': true, '2026-09-01': true });
+  const result = evaluateMetric(readingSource, { ...readingWidget, period: 'all', calculation: 'dailyAverage' }, [task], { today: new Date(2026, 8, 2) });
+  assert.equal(result.startKey, '2026-08-31');
+  assert.equal(result.value, 10 / 3);
+  assert.deepEqual(result.buckets.map((bucket) => bucket.value), [5, 2.5]);
+});
+
+test('origem removida preserva historico disponivel sem ressuscitar conclusoes desmarcadas', () => {
+  const event = (dateKey, completed) => ({ type: 'subtask_completion_toggled', details: { taskId: 'reading', subtaskId: 'five', dateKey, completed } });
+  const history = [event('2026-09-02', false), event('2026-09-01', true), event('2026-09-02', true), event('2026-09-01', true)];
+  const options = { today: new Date(2026, 8, 7), history };
+  const deleted = evaluateMetric(readingSource, readingWidget, [], options);
+  assert.equal(deleted.value, 5);
+  assert.equal(deleted.missingRules.length, 1);
+  // When the source still exists, its current state overrides old toggle events.
+  assert.equal(evaluateMetric(readingSource, readingWidget, [readingTask({})], options).value, 0);
+});
+
+test('normalizacao dos mostradores rejeita regras duplicadas e referencias invalidas', () => {
+  const normalized = normalizeMetrics({ sources: [null, { ...readingSource, rules: [
+    ...readingSource.rules, ...readingSource.rules, { taskId: 'other', value: '2,5' }, { value: 3 },
+  ] }, readingSource], widgets: [readingWidget, readingWidget, { ...readingWidget, id: 'missing', sourceId: 'missing' }] });
+  assert.equal(normalized.sources.length, 1);
+  assert.equal(normalized.sources[0].rules.length, 2);
+  assert.equal(normalized.sources[0].rules[1].value, 2.5);
+  assert.equal(normalized.widgets.length, 1);
+  assert.deepEqual(normalizeMetrics(JSON.parse(JSON.stringify(normalized))), normalized);
+  assert.deepEqual(normalizeMetrics(null), { sources: [], widgets: [] });
+});
+
+test('restauracao persiste definicoes reutilizaveis dos mostradores junto aos ajustes', async () => {
+  const metrics = normalizeMetrics({ sources: [readingSource], widgets: [readingWidget, { ...readingWidget, id: 'average', calculation: 'dailyAverage' }] });
+  asyncStorageMockState.calls = [];
+  const saved = await replaceStoredAppData({ tasks: [readingTask({ '2026-09-01': true })], userSettings: { language: 'pt', discoverMetrics: metrics } });
+  assert.equal(saved, true);
+  const entries = asyncStorageMockState.calls.find((call) => call.operation === 'multiSet').entries;
+  const settings = JSON.parse(entries.find(([key]) => key === '@schedule_app/settings')[1]);
+  assert.deepEqual(settings.discoverMetrics, metrics);
+});
+
+const { compileMetricFormula, runMetricFormula } = require('../domain/metricFormula');
+const { availableMetricFields, describeMetricBinding, evaluateMetricWidget, normalizeMetricWorkspace } = require('../domain/metricWorkspace');
+const { workspaceTranslations } = require('../constants/metricWorkspaceI18n');
+const { initialMetricEditor, metricEditorReducer } = require('../domain/metricEditor');
+const { buildMetricSource, metricNameError, metricSources, nextSourceLetter, prepareMetricSources, suggestMetricName } = require('../domain/metricSources');
+
+test('sources de A a F incluem subtasks numeradas sem consumir outra letra', () => {
+  const task = { id: 'reading', title: 'Leitura', subtasks: [{ id: 'one', title: 'Ler', completedDates: { '2026-09-01': true } }, { id: 'two', title: 'Anotar' }] };
+  let bindings = [];
+  for (const ref of ['A', 'B', 'C', 'D', 'E', 'F']) {
+    assert.equal(nextSourceLetter(bindings), ref);
+    bindings.push(...buildMetricSource(task, ref));
+  }
+  assert.equal(nextSourceLetter(bindings), null);
+  assert.equal(metricSources(bindings).length, 6);
+  assert.deepEqual(bindings.slice(0, 3).map((binding) => binding.ref), ['A', 'A1', 'A2']);
+  const result = evaluateMetricWidget(formulaWidget('A1 * 5 + B1 / 2', bindings), [task], { today: new Date(2026, 8, 1) });
+  assert.equal(result.value, 5.5);
+  const saved = normalizeMetricWorkspace({ widgets: [formulaWidget('A1 * 5', bindings)] });
+  assert.equal(saved.widgets[0].bindings[1].sourceRef, 'A');
+  assert.deepEqual(prepareMetricSources(saved.widgets[0], [task]), saved.widgets[0]);
+});
+
+test('referencias de subtasks preservam identidade ao reordenar excluir e acrescentar', () => {
+  const task = { id: 'reading', title: 'Leitura', subtasks: [{ id: 'one' }, { id: 'two' }, { id: 'three' }] };
+  const initial = buildMetricSource(task, 'A');
+  const reordered = buildMetricSource({ ...task, subtasks: [task.subtasks[2], task.subtasks[0], { id: 'new' }] }, 'A', 'completion', initial);
+  assert.equal(reordered.find((binding) => binding.subtaskId === 'one').ref, 'A1');
+  assert.equal(reordered.find((binding) => binding.subtaskId === 'three').ref, 'A3');
+  assert.equal(reordered.find((binding) => binding.subtaskId === 'new').ref, 'A4');
+  assert.equal(reordered.find((binding) => binding.subtaskId === 'two').ref, 'A2');
+  const widget = { bindings: initial, formula: 'A3 * 5' };
+  const refreshed = prepareMetricSources(widget, [{ ...task, subtasks: [...task.subtasks, { id: 'new' }] }]);
+  assert.equal(refreshed.formula, 'A3 * 5');
+  assert.equal(refreshed.bindings.find((binding) => binding.subtaskId === 'new').ref, 'A4');
+});
+
+test('migracao de sources reescreve apenas variaveis e preserva valor das formulas', () => {
+  const task = readingTask({ '2026-09-01': true, '2026-09-02': true });
+  const old = formulaWidget('SUM(A * 5) / DAYS()');
+  const migrated = prepareMetricSources(old, [task]);
+  assert.equal(migrated.formula, 'SUM(A1 * 5) / DAYS()');
+  assert.deepEqual(migrated.bindings.map((binding) => binding.ref), ['A', 'A1', 'A.SUBTASKS', 'A.TOTAL_SUBTASKS']);
+  const options = { today: new Date(2026, 8, 2) };
+  assert.equal(evaluateMetricWidget(migrated, [task], options).value, evaluateMetricWidget(old, [task], options).value);
+  const restored = normalizeMetricWorkspace({ widgets: [migrated] }).widgets[0];
+  assert.deepEqual(prepareMetricSources(restored, [task]), restored);
+});
+
+test('nomes de metricas sao identificadores unicos e duplicatas recebem um nome valido', () => {
+  for (const name of ['paginas_lidas', 'readingPages2', '_reading']) assert.equal(metricNameError(name), null);
+  for (const name of ['', '5paginas', 'páginas', 'ler paginas', 'A', 'F3', 'return', 'SUM', 'a-b', 'a'.repeat(65)]) assert.equal(metricNameError(name), 'invalidName');
+  const widgets = [{ id: 'one', title: 'paginas_lidas' }];
+  assert.equal(metricNameError('PAGINAS_LIDAS', widgets), 'duplicateName');
+  assert.equal(metricNameError('paginas_lidas', widgets, 'one'), null);
+  assert.equal(suggestMetricName('páginas lidas', widgets), 'paginas_lidas_2');
+  assert.equal(metricNameError(suggestMetricName('5 páginas!')), null);
+});
+
+test('selecionar task disponibiliza count meta conclusoes e subtasks para a formula', () => {
+  const task = { id: 'counter', title: 'Leitura', type: 'quantum', completedDates: {}, quantum: { mode: 'count', count: { value: 10, unit: 'pages' }, progressByDate: { '2026-09-01': { doneCount: 4 } } }, subtasks: [{ id: 'read', completedDates: { '2026-09-01': true } }] };
+  const bindings = buildMetricSource(task, 'A');
+  const widget = formulaWidget('A.count + A1 * 5 + A.meta + A', bindings);
+  const options = { today: new Date(2026, 8, 1) };
+  assert.equal(evaluateMetricWidget(widget, [task], options).value, 19);
+  assert.equal(evaluateMetricWidget({ ...widget, formula: 'A.COUNT / A.goal' }, [task], options).value, 0.4);
+  const restored = normalizeMetricWorkspace(JSON.parse(JSON.stringify({ widgets: [widget] }))).widgets[0];
+  assert.equal(evaluateMetricWidget(restored, [task], options).value, 19);
+  assert.equal(evaluateMetricWidget({ ...widget, formula: 'A.tempo' }, [task], options).error.code, 'unknownReference');
+});
+
+test('referencias com ponto aceitam apenas dados conhecidos sem acesso a objetos JavaScript', () => {
+  for (const formula of ['A.constructor', 'A.__proto__', 'A.count.constructor', 'A[count]', 'globalThis.process.exit()']) assert.throws(() => compileMetricFormula(formula));
+  assert.deepEqual(compileMetricFormula('a.time + A.tempo + A.minutes + A.goal').references, ['A.TEMPO', 'A.META']);
+  const task = { id: 'timer', title: 'Tempo', type: 'quantum', quantum: { mode: 'timer', timer: { hours: 0, minutes: 30, seconds: 0 }, progressByDate: { '2026-09-01': { doneSeconds: 120 } } } };
+  assert.equal(evaluateMetricWidget(formulaWidget('A.tempo * 2', buildMetricSource(task, 'A')), [task], { today: new Date(2026, 8, 1) }).value, 4);
+});
+
+test('antiga letra de count vira propriedade explicita sem mudar o resultado', () => {
+  const task = { id: 'counter', title: 'Count', type: 'quantum', quantum: { mode: 'count', count: { value: 10 }, progressByDate: { '2026-09-01': { doneCount: 4 } } } };
+  const old = formulaWidget('SUM(A) / 2 + A.count', [{ ref: 'A', sourceRef: 'A', taskId: task.id, field: 'count' }, { ref: 'A.COUNT', sourceRef: 'A', taskId: task.id, field: 'count' }]);
+  const migrated = prepareMetricSources(old, [task]);
+  assert.equal(migrated.formula, 'SUM(A.count) / 2 + A.count');
+  assert.equal(migrated.bindings[0].field, 'completion');
+  const options = { today: new Date(2026, 8, 1) };
+  assert.equal(evaluateMetricWidget(migrated, [task], options).value, evaluateMetricWidget(old, [task], options).value);
+  assert.deepEqual(prepareMetricSources(migrated, [task]), migrated);
+  const legacy = prepareMetricSources(formulaWidget('A / 2', [{ ref: 'A', taskId: task.id, field: 'count' }]), [task]);
+  assert.equal(legacy.formula, 'A.count / 2');
+});
+
+test('fechar mostrador fecha seus seletores e ignora eventos atrasados do rascunho', () => {
+  const draft = { id: 'reading', formula: 'A * 5', bindings: [] };
+  for (const kind of ['source', 'period', 'display', 'group', 'dates', 'data', 'help']) {
+    const opened = metricEditorReducer(initialMetricEditor, { type: 'open', draft, sheet: { kind } });
+    assert.equal(opened.sheet.kind, kind);
+    const closed = metricEditorReducer(opened, { type: 'close', draftId: draft.id });
+    assert.deepEqual(closed, { draft: null, sheet: null });
+    assert.equal(metricEditorReducer(closed, { type: 'sheet', sheet: { kind } }), closed);
+    assert.equal(metricEditorReducer(closed, { type: 'patch', draftId: draft.id, values: { formula: 'A / 2' } }), closed);
+    assert.equal(metricEditorReducer(closed, { type: 'sheet', draftId: draft.id, sheet: { kind } }), closed);
+  }
+});
+
+test('abrir outro mostrador limpa o seletor anterior e protege o novo rascunho', () => {
+  const first = metricEditorReducer(initialMetricEditor, { type: 'open', draft: { id: 'first' }, sheet: { kind: 'period' } });
+  const second = metricEditorReducer(first, { type: 'open', draft: { id: 'second', formula: 'A' } });
+  assert.equal(second.sheet, null);
+  assert.equal(metricEditorReducer(second, { type: 'close', draftId: 'first' }), second);
+  assert.equal(metricEditorReducer(second, { type: 'patch', draftId: 'first', values: { formula: 'A * 5' } }), second);
+  const patched = metricEditorReducer(second, { type: 'patch', draftId: 'second', values: { formula: 'A / 2' } });
+  assert.equal(patched.draft.formula, 'A / 2');
+  const menu = metricEditorReducer(initialMetricEditor, { type: 'sheet', sheet: { kind: 'menu', widget: { id: 'first' } } });
+  assert.equal(menu.sheet.kind, 'menu');
+  assert.equal(metricEditorReducer(menu, { type: 'open', draft: { id: 'copy' } }).sheet, null);
+});
+const formulaWidget = (formula, bindings = [{ ref: 'A', taskId: 'reading', field: 'subtask', subtaskId: 'five', taskTitle: 'Leitura', subtaskTitle: 'Ler 5 páginas' }]) => ({ id: 'formula', title: 'Leitura', formula, formulaLanguage: 'en', bindings, period: 'month', display: 'number', groupBy: 'auto' });
+
+test('formulas aplicam precedencia, parenteses, porcentagem e potencia sem executar JavaScript', () => {
+  const run = (formula, language) => runMetricFormula(compileMetricFormula(formula, language), { fields: new Map(), dateKeys: ['2026-09-01'] });
+  assert.equal(run('=2 + 3 * 4'), 14);
+  assert.equal(run('(2 + 3) * 4'), 20);
+  assert.equal(run('-2^2'), -4);
+  assert.equal(run('2^3^2'), 512);
+  assert.equal(run('50 * 10%'), 5);
+  assert.equal(run('SOMA(1,5; 2,5)', 'pt'), 4);
+  assert.equal(run('MÉDIA(1; 3)', 'pt'), 2);
+  assert.equal(run('SUM(1.5, 2.5)', 'en'), 4);
+  assert.equal(run('SE(2 >= 2; ARRED(5 / 3; 2); 0)', 'pt'), 1.67);
+  for (const formula of ['globalThis.process.exit()', 'A.constructor', '[1]', 'SUM()', 'IF(1,2)', '1+', '2(3)', 'unknown(1)']) assert.throws(() => compileMetricFormula(formula));
+});
+
+test('leitura de dez conclusoes mostra cinquenta paginas e desfazer atualiza a formula', () => {
+  const dates = Object.fromEntries(Array.from({ length: 10 }, (_, index) => [`2026-09-${String(index + 1).padStart(2, '0')}`, true]));
+  const task = readingTask(dates);
+  const widget = formulaWidget('A * 5');
+  const options = { today: new Date(2026, 8, 10) };
+  const result = evaluateMetricWidget(widget, [task], options);
+  assert.equal(result.value, 50);
+  assert.equal(result.fields.get('A').total, 10);
+  assert.equal(result.rows.length, 10);
+  assert.equal(result.rows[0].values.A, 1);
+  delete task.subtasks[0].completedDates['2026-09-10'];
+  assert.equal(evaluateMetricWidget(widget, [task], options).value, 45);
+  task.subtasks[0].completedDates['2026-09-10'] = true;
+  assert.equal(evaluateMetricWidget(widget, [task], options).value, 50);
+});
+
+test('formulas livres e agregacoes diarias mantem a semantica dos dias sem registro', () => {
+  const task = readingTask({ '2026-09-01': true, '2026-09-03': true });
+  const evaluate = (formula) => evaluateMetricWidget(formulaWidget(formula), [task], { today: new Date(2026, 8, 4) });
+  assert.equal(evaluate('A / 2').value, 1);
+  assert.equal(evaluate('(A * 5) / DAYS()').value, 2.5);
+  assert.equal(evaluate('AVERAGE(A * 5)').value, 2.5);
+  assert.equal(evaluate('SUM(A * 5)').value, 10);
+  assert.equal(evaluate('AVERAGE(SUM(A))').value, 2);
+  assert.equal(evaluate('MIN(A)').value, 0);
+  assert.equal(evaluate('MAX(A)').value, 1);
+  assert.equal(evaluate('LAST(A)').value, 0);
+  assert.equal(evaluate('ACTIVE_DAYS(A)').value, 2);
+  assert.equal(evaluate('SUM(A * SUM(A))').value, 4);
+});
+
+test('divisao por zero e referencias invalidas aparecem como erros sem resultados inventados', () => {
+  const task = readingTask({});
+  const options = { today: new Date(2026, 8, 2) };
+  assert.equal(evaluateMetricWidget(formulaWidget('5/A'), [task], options).error.code, 'divisionByZero');
+  assert.equal(evaluateMetricWidget(formulaWidget('IF(A=0,0,5/A)'), [task], options).value, 0);
+  assert.equal(evaluateMetricWidget(formulaWidget('B * 5'), [task], options).error.detail, 'B');
+  const broken = evaluateMetricWidget(formulaWidget('A +'), [readingTask({ '2026-09-01': true })], options);
+  assert.equal(broken.fields.get('A').total, 1);
+  assert.equal(broken.rows[0].values.A, 1);
+  assert.equal(broken.value, null);
+});
+
+test('count realizado le progresso parcial e meta atual e um valor fixo na formula', () => {
+  const task = { id: 'count', type: 'quantum', quantum: { mode: 'count', count: { value: 10, unit: 'páginas' }, progressByDate: { '2026-09-01': { doneCount: 3 }, '2026-09-02': { doneCount: 7 } } } };
+  const bindings = [{ ref: 'A', taskId: 'count', field: 'count' }, { ref: 'B', taskId: 'count', field: 'goal' }];
+  const result = evaluateMetricWidget(formulaWidget('A/B', bindings), [task], { today: new Date(2026, 8, 3) });
+  assert.equal(result.value, 1);
+  assert.equal(result.fields.get('A').total, 10);
+  assert.equal(result.fields.get('B').total, 10);
+  assert.equal(result.fields.get('B').constant, 10);
+  assert.deepEqual(result.rows.map((row) => row.values.A), [3, 7, 0]);
+  assert.equal(evaluateMetricWidget(formulaWidget('SUM(B)', bindings), [task], { today: new Date(2026, 8, 3) }).value, 10);
+  task.quantum.progressByDate['2026-09-02'].doneCount = 2;
+  assert.equal(evaluateMetricWidget(formulaWidget('A', bindings), [task], { today: new Date(2026, 8, 3) }).value, 5);
+});
+
+test('timer fornece minutos reais e mantem compatibilidade com conclusoes antigas', () => {
+  const task = { id: 'timer', type: 'quantum', quantum: { mode: 'timer', timer: { hours: 1, minutesPart: 0 }, progressByDate: { '2026-09-01': { doneSeconds: 90 } } }, completedDates: { '2026-09-02': true } };
+  const bindings = [{ ref: 'A', taskId: 'timer', field: 'minutes' }];
+  const result = evaluateMetricWidget(formulaWidget('A', bindings), [task], { today: new Date(2026, 8, 2) });
+  assert.equal(result.value, 61.5);
+  assert.deepEqual(result.rows.map((row) => row.values.A), [1.5, 60]);
+});
+
+test('seletor oferece os campos reais do card e mostra caminho completo da subtask', () => {
+  const task = readingTask({});
+  const fields = availableMetricFields(task).map((field) => field.field);
+  assert.deepEqual(fields, ['completion', 'subtasksCompleted', 'subtasksTotal', 'subtask']);
+  assert.equal(fields.includes('count'), false);
+  const description = describeMetricBinding(formulaWidget('A').bindings[0], [task], workspaceTranslations.pt);
+  assert.equal(description.path, 'Leitura → Subtask: Qualquer texto');
+  const quantum = { ...task, type: 'quantum', quantum: { mode: 'count' } };
+  assert.equal(availableMetricFields(quantum).some((field) => field.field === 'count'), true);
+});
+
+test('formula distingue subtasks individuais de quantidade cumprida e quantidade fixa', () => {
+  const task = readingTask({ '2026-09-01': true });
+  task.subtasks.push({ id: 'other', completedDates: { '2026-09-01': true, '2026-09-02': true } });
+  const bindings = [...formulaWidget('A').bindings, { ref: 'B', taskId: 'reading', field: 'subtasksCompleted' }, { ref: 'C', taskId: 'reading', field: 'subtasksTotal' }];
+  const result = evaluateMetricWidget(formulaWidget('A * 5 + B - C', bindings), [task], { today: new Date(2026, 8, 2) });
+  assert.equal(result.value, 6);
+  assert.equal(result.fields.get('B').total, 3);
+  assert.equal(result.fields.get('C').constant, 2);
+});
+
+test('campos removidos ou alterados nao se passam por progresso zero', () => {
+  const bindings = [{ ref: 'A', taskId: 'missing', field: 'count' }];
+  const result = evaluateMetricWidget(formulaWidget('A', bindings), [], { today: new Date(2026, 8, 2) });
+  assert.equal(result.value, null);
+  assert.equal(result.error.code, 'missingField');
+  assert.equal(result.rows[0].values.A, null);
+  const changed = { id: 'missing', type: 'default' };
+  assert.equal(evaluateMetricWidget(formulaWidget('A', bindings), [changed]).error.code, 'missingField');
+});
+
+test('formulas respeitam periodo personalizado e graficos recalculam cada grupo', () => {
+  const task = readingTask({ '2026-08-31': true, '2026-09-01': true, '2026-09-02': true });
+  const widget = { ...formulaWidget('A * 5'), period: 'custom', startDate: '2026-08-01', endDate: '2026-09-30', groupBy: 'month' };
+  const result = evaluateMetricWidget(widget, [task], { today: new Date(2026, 8, 2) });
+  assert.equal(result.endKey, '2026-09-02');
+  assert.equal(result.value, 15);
+  assert.deepEqual(result.buckets.map((bucket) => bucket.value), [5, 10]);
+  assert.equal(evaluateMetricWidget({ ...widget, startDate: '2026-09-03' }, [task], { today: new Date(2026, 8, 2) }).error.code, 'invalidRange');
+});
+
+test('migracao para formulas preserva os mostradores anteriores e suas medias', () => {
+  const previous = { sources: [readingSource], widgets: [readingWidget, { ...readingWidget, id: 'average', calculation: 'dailyAverage' }, { ...readingWidget, id: 'active', calculation: 'activeDayAverage' }] };
+  const normalized = normalizeMetricWorkspace(previous);
+  assert.equal(normalized.widgets.length, 3);
+  assert.equal(normalized.widgets[0].bindings[0].subtaskId, 'five');
+  assert.equal(normalized.widgets[0].formula, 'A * 5');
+  const tasks = [readingTask({ '2026-09-01': true, '2026-09-03': true })];
+  const options = { today: new Date(2026, 8, 4) };
+  assert.deepEqual(normalized.widgets.map((widget) => evaluateMetricWidget(widget, tasks, options).value), [10, 2.5, 5]);
+  assert.deepEqual(normalizeMetricWorkspace(JSON.parse(JSON.stringify(normalized))), normalized);
+  assert.deepEqual(normalized.sources, normalizeMetrics(previous).sources);
+});
+
+test('restauracao de formulas mantem referencias e traducoes completas', () => {
+  const config = normalizeMetricWorkspace({ widgets: [formulaWidget('A * 5')] });
+  assert.equal(normalizeMetricWorkspace(JSON.parse(JSON.stringify(config))).widgets[0].formula, 'A * 5');
+  const keys = (object) => Object.entries(object).flatMap(([key, value]) => value && typeof value === 'object' && !Array.isArray(value) ? keys(value).map((child) => `${key}.${child}`) : [key]).sort();
+  assert.deepEqual(keys(workspaceTranslations.pt), keys(workspaceTranslations.en));
+});
+
 const runTests = async () => {
   let failures = 0;
   for (const { name, run } of tests) {
