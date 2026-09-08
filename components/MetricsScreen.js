@@ -263,8 +263,21 @@ export default function MetricsScreen({ language = 'en', config, tasks = [], his
                 <Text style={s.secondary}>{t.rowsHint}</Text>{draft.bindings.map((binding) => referenceRow(binding, false))}
                 <Text style={s.secondary}>{t.dayBasis}</Text><ValueTable result={result} language={language} t={t} raw limit={tableLimit} onMore={() => setTableLimit(tableLimit + 30)} />
               </> : sheet.kind === 'help' ? <>
+                {t.helpSteps.map((step) => <View key={step.title} style={s.recipe}><Text style={s.sourceTitle}>{step.title}</Text><Text style={s.secondary}>{step.body}</Text></View>)}
+                <Text style={s.eyebrow}>{t.helpReferences}</Text>
+                {draft.bindings.length ? draft.bindings.map((binding) => {
+                  const description = describeMetricBinding(binding, tasks, t);
+                  return <View key={binding.ref} style={s.recipe}>
+                    <Text style={s.recipeFormula}>{displayMetricReference(binding.ref)} · {description.taskTitle}</Text>
+                    <Text style={s.sourceTitle}>{description.field}</Text>
+                    <Text style={s.secondary}>{t.fieldHelp[binding.field]}</Text>
+                  </View>;
+                }) : <Text style={s.secondary}>{t.helpNoSources}</Text>}
+                <Text style={s.eyebrow}>{t.helpPeriodTitle}</Text>
+                <Text style={s.secondary}>{t.helpPeriodBody}</Text>
                 <Text style={s.emptyBody}>{t.helpIntro}</Text><Text style={s.secondary}>{t.subtaskHint}</Text>
                 <Text style={s.eyebrow}>{t.examples}</Text>
+                <Text style={s.secondary}>{t.helpExampleHint}</Text>
                 {recipes.map((formula, index) => <Pressable key={formula} style={s.recipe} onPress={() => { patch({ formula }); setSheet(null); }} accessibilityRole="button" accessibilityLabel={`${t.useExample}: ${t.recipes[index]}`}><Text style={s.sourceTitle}>{t.recipes[index]}</Text><Text style={s.recipeFormula}>= {formula}</Text></Pressable>)}
                 <Text style={s.eyebrow}>{t.functions}</Text>
                 {Object.entries(t.functionHelp).filter(([name]) => allFunctions || ['AVERAGE', 'DAYS'].includes(name)).map(([name, description]) => <View key={name} style={s.functionRow}><Text style={s.functionName}>{names(name)}({name === 'DAYS' ? '' : name === 'IF' ? `A > 0${separator}A${separator}0` : name === 'ROUND' ? `A${separator}2` : 'A'})</Text><Text style={[s.secondary, s.grow]}>{description}</Text></View>)}
