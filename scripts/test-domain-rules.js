@@ -195,6 +195,8 @@ const {
   isTaskArchived,
   isTaskExpired,
   isTaskInactive,
+  isReminderTimeElapsed,
+  getTaskCompletionStatus,
   shouldCountTaskTowardsCompletion,
   shouldCountTaskTowardsStreak,
   shouldResetStreakAfterPause,
@@ -2199,6 +2201,29 @@ test('lembretes só vão para Arquivadas manualmente ou após a data de término
       assert.equal(isTaskInactive({ ...reminder, archived: false }, day), ended);
     }
   }
+});
+
+test('horário encerrado resolve visualmente lembretes sem arquivar ou registrar conclusão', () => {
+  const reminder = {
+    type: 'reminder', dateKey: '2026-09-08', repeat: { enabled: false },
+    time: { specified: true, mode: 'point', point: { hour: 8, minute: 0, meridiem: 'AM' } },
+    completedDates: {},
+  };
+  const snapshot = JSON.stringify(reminder);
+  assert.equal(isReminderTimeElapsed(reminder, '2026-09-08', new Date(2026, 8, 8, 7, 59)), false);
+  assert.equal(isReminderTimeElapsed(reminder, '2026-09-08', new Date(2026, 8, 8, 8, 0, 1)), true);
+  assert.equal(isTaskInactive(reminder, '2026-09-08'), false);
+  assert.equal(getTaskCompletionStatus(reminder, '2026-09-08'), false);
+  assert.equal(JSON.stringify(reminder), snapshot);
+  const period = { ...reminder, time: { specified: true, mode: 'period', period: {
+    start: { hour: 8, minute: 0, meridiem: 'AM' }, end: { hour: 9, minute: 0, meridiem: 'AM' },
+  } } };
+  assert.equal(isReminderTimeElapsed(period, '2026-09-08', new Date(2026, 8, 8, 8, 30)), false);
+  assert.equal(isReminderTimeElapsed(period, '2026-09-08', new Date(2026, 8, 8, 9, 0, 1)), true);
+  assert.equal(isReminderTimeElapsed({ ...reminder, time: null }, '2026-09-08', new Date(2026, 8, 8, 12)), false);
+  assert.equal(isReminderTimeElapsed({ ...reminder, type: 'default' }, '2026-09-08', new Date(2026, 8, 8, 12)), false);
+  assert.equal(isReminderTimeElapsed(reminder, '2026-09-08', new Date(2026, 8, 7, 12)), false);
+  assert.equal(isReminderTimeElapsed(reminder, '2026-09-08', new Date(2026, 8, 9, 12)), true);
 });
 
 test('sequencia so existe para o que se repete', () => {

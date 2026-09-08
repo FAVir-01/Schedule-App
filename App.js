@@ -89,6 +89,7 @@ import {
   getTaskTagDisplayLabel,
   normalizeTaskTagKey,
   isPassiveTaskType,
+  isReminderTimeElapsed,
   isTaskExpired,
   isTaskInactive,
   reconcileQuantumCompletionState,
@@ -1198,8 +1199,9 @@ function ScheduleApp() {
   const visibleTasksForSelectedDay = useMemo(
     () =>
       visibleTasks.map((task) => {
-        // Passar o horário de um lembrete não informa se a pessoa compareceu.
-        const completed = getTaskCompletionStatus(task, selectedDateKey);
+        // Risca e move lembretes encerrados para baixo sem registrar falta/conclusão.
+        const completed = getTaskCompletionStatus(task, selectedDateKey)
+          || isReminderTimeElapsed(task, selectedDateKey, currentTime);
         const cached = visibleTaskStateCacheRef.current.get(task);
         if (
           cached &&
@@ -1216,7 +1218,7 @@ function ScheduleApp() {
         });
         return value;
       }),
-    [selectedDateKey, visibleTasks]
+    [currentTime, selectedDateKey, visibleTasks]
   );
   const sortedVisibleTasksForSelectedDay = useMemo(() => {
     const incomplete = [];
