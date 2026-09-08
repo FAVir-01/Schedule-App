@@ -10,6 +10,7 @@ import { initialMetricEditor, metricEditorReducer } from '../domain/metricEditor
 import { availableMetricFields, describeMetricBinding, evaluateMetricWidget, metricPeriodRange, normalizeMetricWorkspace, WORKSPACE_DISPLAYS, WORKSPACE_PERIODS } from '../domain/metricWorkspace';
 import { buildMetricSource, displayMetricReference, metricNameError, metricSources, nextSourceLetter, prepareMetricSources, sourceOf, suggestMetricName } from '../domain/metricSources';
 import MetricPlot, { metricDate, metricNumber } from './MetricPlot';
+import TaskScheduleSummary from './TaskScheduleSummary';
 
 const accent = '#654b91';
 const emptyWidget = (language) => ({ id: createMetricId(), title: '', unit: '', formula: '', formulaLanguage: language, bindings: [], period: 'month', display: 'number', groupBy: 'auto', startDate: '', endDate: '' });
@@ -208,6 +209,7 @@ export default function MetricsScreen({ language = 'en', config, tasks = [], his
               return <View key={binding.ref} style={s.sourceGroup}>
                 {referenceRow(binding)}
                 {expandedSources[binding.ref] && <>
+                  <TaskScheduleSummary task={tasks.find((task) => String(task.id) === binding.taskId)} language={language} />
                   {children.map((child) => <Pressable key={child.ref} style={s.subtaskRow} accessibilityRole="button" accessibilityLabel={`${t.insertRef.replace('{ref}', child.ref)}: ${describeMetricBinding(child, tasks, t).field}`} onPress={() => insertText(displayMetricReference(child.ref))}><Text style={[s.sourceField, s.grow]}>{describeMetricBinding(child, tasks, t).field}</Text><Text style={s.variableRef}>{displayMetricReference(child.ref)}</Text></Pressable>)}
                   <View style={s.sourceActions}><Pressable style={s.textAction} accessibilityRole="button" onPress={() => openSheet({ kind: 'source', ref: binding.ref })}><Text style={s.smallAction}>{t.changeCard}</Text></Pressable><Pressable style={s.textAction} accessibilityRole="button" onPress={() => patch({ bindings: draft.bindings.filter((item) => sourceOf(item) !== binding.ref) })}><Text style={s.smallAction}>{t.removeRef}</Text></Pressable></View>
                 </>}
