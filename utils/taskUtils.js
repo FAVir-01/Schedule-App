@@ -4,12 +4,13 @@ import {
 } from '../constants/app';
 import {
   getCurrentScheduleVersion,
+  getTaskTimeForDate,
   shouldTaskAppearOnDate,
   toScheduleKey,
 } from '../domain/taskSchedule';
 import { getCalendarDayOrdinal, getDateKey, normalizeDateValue } from './dateUtils';
 import { clamp01 } from './mathUtils';
-import { formatDuration, getTimerTotalSeconds } from './timeUtils';
+import { formatDuration, getTimerTotalSeconds, toMinutes } from './timeUtils';
 
 const getTaskCompletionStatus = (task, date) => {
   if (!task || !date) {
@@ -26,6 +27,21 @@ const getTaskCompletionStatus = (task, date) => {
   }
 
   return false;
+};
+
+// Estado visual do lembrete: horário encerrado não significa falta nem arquivamento.
+export const isReminderTimeElapsed = (task, targetDate, now = new Date()) => {
+  if (task?.type !== 'reminder') return false;
+  const target = normalizeDateValue(targetDate);
+  const today = normalizeDateValue(now);
+  if (!target || !today) return false;
+  if (target.getTime() !== today.getTime()) return target < today;
+  const time = getTaskTimeForDate(task, target);
+  if (!time?.specified) return false;
+  const end = time.mode === 'period' ? time.period?.end : time.point;
+  if (!end) return false;
+  const seconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  return seconds > toMinutes(end) * 60;
 };
 
 const getSubtaskCompletionStatus = (subtask, dateKey) => {
