@@ -89,7 +89,6 @@ import {
   getTaskTagDisplayLabel,
   normalizeTaskTagKey,
   isPassiveTaskType,
-  isReminderExpiredForDate,
   isTaskExpired,
   isTaskInactive,
   reconcileQuantumCompletionState,
@@ -1199,29 +1198,25 @@ function ScheduleApp() {
   const visibleTasksForSelectedDay = useMemo(
     () =>
       visibleTasks.map((task) => {
-        // Lembrete expirado conta como "resolvido" para ordenação/progresso,
-        // mas ganha a flag `missed` para o card mostrar o visual de perdido.
-        const missed = isReminderExpiredForDate(task, selectedDate, currentTime);
-        const completed = getTaskCompletionStatus(task, selectedDateKey) || missed;
+        // Passar o horário de um lembrete não informa se a pessoa compareceu.
+        const completed = getTaskCompletionStatus(task, selectedDateKey);
         const cached = visibleTaskStateCacheRef.current.get(task);
         if (
           cached &&
           cached.dateKey === selectedDateKey &&
-          cached.completed === completed &&
-          cached.missed === missed
+          cached.completed === completed
         ) {
           return cached.value;
         }
-        const value = { ...task, completed, missed };
+        const value = { ...task, completed };
         visibleTaskStateCacheRef.current.set(task, {
           dateKey: selectedDateKey,
           completed,
-          missed,
           value,
         });
         return value;
       }),
-    [currentTime, selectedDate, selectedDateKey, visibleTasks]
+    [selectedDateKey, visibleTasks]
   );
   const sortedVisibleTasksForSelectedDay = useMemo(() => {
     const incomplete = [];

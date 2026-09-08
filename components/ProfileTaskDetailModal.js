@@ -46,7 +46,7 @@ export default function ProfileTaskDetailModal({
   const typeLabel = getTaskTypeDisplayLabel(task, t.taskDisplay.types);
   const isQuantum = task.type === 'quantum';
   const todayKey = getDateKey(new Date());
-  // "Arquivada" inclui avulsa com data passada — as ações seguem esse estado.
+  // As ações seguem o arquivamento manual ou a data de término já passada.
   const archived = isTaskInactive(task, todayKey);
   const quantumLabel = isQuantum ? getQuantumProgressLabel(task, todayKey) : null;
   const quantumModeLabel = t.taskDisplay.quantumModes[task.quantum?.mode]

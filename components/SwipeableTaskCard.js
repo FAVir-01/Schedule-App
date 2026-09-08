@@ -569,7 +569,6 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
         {...panResponder.panHandlers}
         style={[
           styles.taskCard,
-          task.missed && styles.taskCardMissed,
           {
             backgroundColor: backgroundColor || '#fff',
             borderColor,
@@ -639,7 +638,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
             )}
             <View style={styles.taskDetails}>
               <Text
-                style={[styles.taskTitle, task.completed && !task.missed && styles.taskTitleCompleted]}
+                style={[styles.taskTitle, task.completed && styles.taskTitleCompleted]}
                 numberOfLines={1}
               >
                 {task.title}
@@ -673,13 +672,6 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
             </View>
           </View>
         </Pressable>
-        {isReminder && task.missed && (
-          <View style={styles.missedBadge} pointerEvents="none">
-            <Text style={styles.missedBadgeText}>
-              {t.today.missed}
-            </Text>
-          </View>
-        )}
         {!isReminder && (
           <View style={styles.taskToggleGroup}>
             <Pressable
