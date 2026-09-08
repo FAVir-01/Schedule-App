@@ -62,7 +62,7 @@ const restoreDeletedTaskAtIndex = (tasks, task, index) => {
   return restored;
 };
 
-const getQuantumProgressValues = (task, dateKey) => {
+export const getQuantumProgressValues = (task, dateKey) => {
   if (!task || task.type !== 'quantum' || !task.quantum) {
     return { doneSeconds: 0, doneCount: 0 };
   }

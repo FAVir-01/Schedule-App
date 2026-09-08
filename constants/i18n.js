@@ -467,6 +467,7 @@ const translations = {
       title: 'Discover',
       description: 'Nothing here yet.',
       notesCard: 'Notes',
+      metricsCard: 'Metrics',
       onboarding: {
         eyebrow: 'WELCOME TO FAVIT',
         title: 'Build a routine that fits real life',
@@ -1239,6 +1240,7 @@ const translations = {
       title: 'Descubra',
       description: 'Ainda não tem nada aqui.',
       notesCard: 'Notas',
+      metricsCard: 'Mostradores',
       onboarding: {
         eyebrow: 'BOAS-VINDAS AO FAVIT',
         title: 'Crie uma rotina que cabe na vida real',
