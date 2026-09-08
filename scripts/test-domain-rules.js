@@ -205,6 +205,7 @@ const {
   restoreDeletedTaskAtIndex,
   shouldResetTaskProgress,
 } = require('../utils/taskUtils');
+const { getTaskScheduleDetails } = require('../utils/taskScheduleDetails');
 const {
   IMAGE_ERROR_CODES,
   IMAGE_LIMITS,
@@ -2224,6 +2225,37 @@ test('horário encerrado resolve visualmente lembretes sem arquivar ou registrar
   assert.equal(isReminderTimeElapsed({ ...reminder, type: 'default' }, '2026-09-08', new Date(2026, 8, 8, 12)), false);
   assert.equal(isReminderTimeElapsed(reminder, '2026-09-08', new Date(2026, 8, 7, 12)), false);
   assert.equal(isReminderTimeElapsed(reminder, '2026-09-08', new Date(2026, 8, 9, 12)), true);
+});
+
+test('detalhes mostram dias e cada horário da versão atual do agendamento', () => {
+  const task = {
+    dateKey: '2026-09-01', repeat: { enabled: false },
+    schedule: [{ effectiveFrom: '2026-09-01', repeat: {
+      enabled: true, frequency: 'weekly', interval: 2, weekdays: ['tue', 'thu'], endDate: '2026-12-31',
+    }, time: { groups: [
+      { days: ['tue'], specified: true, mode: 'point', point: { hour: 8, minute: 30, meridiem: 'AM' } },
+      { days: ['thu'], specified: true, mode: 'period', period: {
+        start: { hour: 6, minute: 0, meridiem: 'PM' }, end: { hour: 7, minute: 30, meridiem: 'PM' },
+      } },
+    ] } }],
+  };
+  const rows = getTaskScheduleDetails(task, 'pt');
+  assert.ok(rows.includes('A cada 2 semanas'));
+  assert.ok(rows.includes('terça-feira: 08:30'));
+  assert.ok(rows.includes('quinta-feira: 18:00 - 19:30'));
+  assert.ok(rows.some((row) => row.startsWith('Data final:') && row.includes('2026')));
+  assert.ok(getTaskScheduleDetails(task, 'en').includes('Tuesday: 8:30 AM')
+    || getTaskScheduleDetails(task, 'en').includes('Tuesday: 08:30 AM'));
+});
+
+test('detalhes de agenda distinguem mensal, avulsa e repetição sem término', () => {
+  const task = { dateKey: '2026-09-08', repeat: { enabled: true, frequency: 'monthly', monthDays: [20, 8] } };
+  assert.ok(getTaskScheduleDetails(task, 'pt').includes('Dias 8, 20'));
+  assert.ok(getTaskScheduleDetails(task, 'pt').includes('Sem data de término'));
+  const oneTime = getTaskScheduleDetails({ ...task, repeat: { enabled: false } }, 'pt');
+  assert.ok(!oneTime.includes('Sem data de término'));
+  assert.ok(!oneTime.includes('Dias 8, 20'));
+  assert.deepEqual(getTaskScheduleDetails(null), []);
 });
 
 test('sequencia so existe para o que se repete', () => {

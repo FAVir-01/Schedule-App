@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Image, Modal, Pressable, Text, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { getDateLocale, translations } from '../constants/i18n';
@@ -17,6 +17,7 @@ import {
 import { formatTaskTime } from '../utils/timeUtils';
 import { lightenColor } from '../utils/colorUtils';
 import { styles } from '../styles/appStyles';
+import TaskScheduleSummary from './TaskScheduleSummary';
 
 export default function ProfileTaskDetailModal({
   visible,
@@ -60,7 +61,7 @@ export default function ProfileTaskDetailModal({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.profileDetailOverlay}>
         <Pressable style={styles.profileDetailBackdrop} onPress={onClose} accessibilityRole="button" />
-        <View style={styles.profileDetailCard}>
+        <View style={[styles.profileDetailCard, { maxHeight: '90%' }]}>
           <View style={styles.profileDetailHeader}>
             <View style={styles.profileDetailHeaderInfo}>
               <View
@@ -119,6 +120,8 @@ export default function ProfileTaskDetailModal({
               </Pressable>
             </View>
           </View>
+          <ScrollView style={{ flexShrink: 1 }}>
+          <TaskScheduleSummary task={task} language={language} />
           <View style={styles.profileDetailInfoCard}>
             <View style={styles.profileDetailRow}>
               <Text style={styles.profileDetailLabel}>{t.taskDetails.startDate}</Text>
@@ -156,6 +159,7 @@ export default function ProfileTaskDetailModal({
               </View>
             )}
           </View>
+          </ScrollView>
           <View style={styles.profileDetailActions}>
             <Pressable
               style={[
