@@ -3215,7 +3215,7 @@ test('mostra o selo Finished somente na data do marco, na linha da frequencia', 
   assert.equal(badgeSource.includes('animateOnMount && value'), true);
   // A frase flutua, entao entrar e sair dela nao pode mexer no layout do card.
   assert.equal(badgeSource.includes("position: 'absolute'"), true);
-  assert.equal(taskCardSource.includes('getTaskFinishedMilestoneForDate(task, dateKey)'), true);
+  assert.equal(taskCardSource.includes('getTaskFinishedMilestoneForDate(task, progressKey)'), true);
   assert.equal(taskCardSource.includes('animationToken={finishedMilestoneAnimationToken}'), true);
   assert.equal(taskCardSource.includes('style={styles.taskTimeRow}'), true);
   assert.equal(taskCardSource.includes('message={finishedMilestoneMessage}'), true);
@@ -3517,7 +3517,7 @@ test('anima o painel quantum e reordena cards sem saltos interrompidos', () => {
   assert.equal(appSource.includes('zIndex: item.completed ? 0 : 1'), true);
   assert.equal(appSource.includes('CellRendererComponent={renderTodayCell}'), true);
   assert.equal(appSource.includes('previousPosition.index === index'), true);
-  assert.equal(appSource.includes('handleTaskLayout(item.id, index, event)'), true);
+  assert.equal(appSource.includes('handleTaskLayout(getTaskListKey(item), index, event)'), true);
   assert.equal(taskCardSource.includes('Animated.timing(adjustPanelProgress'), true);
   assert.equal(taskCardSource.includes('hasMeasuredCollapsedCardRef'), true);
   assert.equal(taskCardSource.includes('const waterRenderHeight = cardSize.height + QUANTUM_STEPPER_EXPANSION'), true);
@@ -3680,7 +3680,7 @@ test('mantem as invariantes do rascunho num lugar so', () => {
   );
 });
 
-test('divide os dias semanais em horarios exclusivos e limita a quantidade de grupos', () => {
+test('reparte os dias semanais e deixa o mesmo dia ter dois horarios', () => {
   const today = new Date(2026, 8, 7);
   let draft = createEmptyDraft({ today });
   draft = taskDraftReducer(draft, { type: 'setTitle', value: 'Computacao' });
@@ -3708,22 +3708,48 @@ test('divide os dias semanais em horarios exclusivos e limita a quantidade de gr
     ['fri'],
   ]);
 
-  // Um dia so pode mudar de grupo quando o grupo de origem nao fica vazio.
+  // O chip liga o dia NAQUELE grupo: quarta passa a valer nos dois horarios.
   draft = taskDraftReducer(draft, {
     type: 'assignTimeGroupDay',
     id: draft.time.groups[1].id,
     day: 'wed',
   });
+  assert.deepEqual(draft.time.groups.map((group) => group.days), [
+    ['mon', 'wed'],
+    ['wed', 'fri'],
+  ]);
+
+  // E desliga de volta, porque quarta continua coberta pelo outro grupo.
+  draft = taskDraftReducer(draft, {
+    type: 'assignTimeGroupDay',
+    id: draft.time.groups[0].id,
+    day: 'wed',
+  });
   assert.deepEqual(draft.time.groups.map((group) => group.days), [['mon'], ['wed', 'fri']]);
 
+  // Segunda ficaria sem horario nenhum: o toque nao faz nada.
+  const orphaned = taskDraftReducer(draft, {
+    type: 'assignTimeGroupDay',
+    id: draft.time.groups[0].id,
+    day: 'mon',
+  });
+  assert.equal(orphaned, draft);
+
+  // Enquanto houver grupo com mais de um dia, o + reparte.
   draft = taskDraftReducer(draft, { type: 'addTimeGroup', afterIndex: 1 });
   assert.deepEqual(draft.time.groups.map((group) => group.days), [['mon'], ['wed'], ['fri']]);
-  const atMaximum = taskDraftReducer(draft, { type: 'addTimeGroup', afterIndex: 2 });
-  assert.equal(atMaximum, draft);
+
+  // Sem o que repartir, o + repete o dia do doador: sexta acontece duas vezes.
+  draft = taskDraftReducer(draft, { type: 'addTimeGroup', afterIndex: 2 });
+  assert.deepEqual(draft.time.groups.map((group) => group.days), [
+    ['mon'],
+    ['wed'],
+    ['fri'],
+    ['fri'],
+  ]);
 
   const allDays = draft.time.groups.flatMap((group) => group.days);
-  assert.deepEqual(allDays.sort(), ['fri', 'mon', 'wed']);
-  assert.equal(new Set(allDays).size, 3);
+  assert.deepEqual(allDays.slice().sort(), ['fri', 'fri', 'mon', 'wed']);
 });
 
 test('persiste horarios por dia e resolve cada ocorrencia com seu proprio horario', () => {
@@ -3979,6 +4005,110 @@ test('agenda lembretes em fila usando o horario correspondente a cada dia', () =
   );
 });
 
+test('materia com duas aulas na mesma segunda rende duas ocorrencias, presencas e lembretes', () => {
+  const { getOccurrenceKey, getTaskListKey } = require('../utils/taskTimeUtils');
+  const { getTaskOccurrencesForDate, isTaskDayCompleted } = require('../domain/taskSchedule');
+  const { collectMetricRecords } = require('../domain/metrics');
+  const period = (startHour, startMinute, startMeridiem, endHour, endMinute, endMeridiem) => ({
+    specified: true,
+    mode: 'period',
+    period: {
+      start: { hour: startHour, minute: startMinute, meridiem: startMeridiem },
+      end: { hour: endHour, minute: endMinute, meridiem: endMeridiem },
+    },
+  });
+
+  const today = new Date(2026, 8, 7);
+  let draft = taskDraftReducer(createEmptyDraft({ today }), { type: 'setTitle', value: 'Calculo' });
+  draft = taskDraftReducer(draft, {
+    type: 'patchRepeat',
+    value: { enabled: true, frequency: 'weekly', weekdays: ['mon'] },
+  });
+  // Um dia so tambem abre a configuracao extra: nao ha o que repartir, entao os
+  // dois grupos ficam na mesma segunda.
+  draft = taskDraftReducer(draft, { type: 'configureTimeGroups' });
+  assert.deepEqual(draft.time.groups.map((group) => group.days), [['mon'], ['mon']]);
+
+  draft = taskDraftReducer(draft, {
+    type: 'patchTimeGroup',
+    id: draft.time.groups[0].id,
+    value: period(7, 20, 'AM', 9, 0, 'AM'),
+  });
+  draft = taskDraftReducer(draft, {
+    type: 'patchTimeGroup',
+    id: draft.time.groups[1].id,
+    value: period(3, 20, 'PM', 5, 0, 'PM'),
+  });
+  draft = taskDraftReducer(draft, { type: 'patch', value: { reminder: 'at_time' } });
+  assert.equal(getDraftError(validateDraft(draft), 'time'), null);
+
+  const task = { ...draftToTask(draft), id: 'calculo', date: today, dateKey: '2026-09-07' };
+
+  // Salvar e reabrir preserva as duas aulas em vez de fundir de volta numa so.
+  const reopened = draftFromTask({ ...task, startDate: today }, { today });
+  assert.deepEqual(reopened.time.groups.map((group) => group.days), [['mon'], ['mon']]);
+  assert.deepEqual(
+    reopened.time.groups.map((group) => group.period.start.hour),
+    [7, 3]
+  );
+
+  const monday = new Date(2026, 8, 14);
+  const occurrences = getTaskOccurrencesForDate(task, monday);
+  assert.equal(occurrences.length, 2);
+  assert.deepEqual(occurrences.map((occurrence) => occurrence.time.period.start.hour), [7, 3]);
+
+  const keys = occurrences.map((occurrence) => getOccurrenceKey('2026-09-14', occurrence.id));
+  assert.deepEqual(keys, ['2026-09-14#time-group-1', '2026-09-14#time-group-2']);
+  // Mesmo id de tarefa, dois cards: a lista precisa de identidades distintas.
+  assert.equal(
+    new Set(
+      occurrences.map((occurrence) =>
+        getTaskListKey({ id: task.id, occurrenceId: occurrence.id })
+      )
+    ).size,
+    2
+  );
+
+  // Presenca por aula: marcar a da manha nao fecha o dia, e o total conta duas.
+  const morningOnly = { ...task, completedDates: { [keys[0]]: true } };
+  assert.equal(isTaskDayCompleted(morningOnly, monday), false);
+  assert.equal(getTaskFinishedCount(morningOnly), 1);
+  const bothClasses = { ...task, completedDates: { [keys[0]]: true, [keys[1]]: true } };
+  assert.equal(isTaskDayCompleted(bothClasses, monday), true);
+  assert.equal(getTaskFinishedCount(bothClasses), 2);
+
+  // Metricas: duas conclusoes somam dois no total e um unico dia ativo.
+  const { records } = collectMetricRecords(
+    { rules: [{ taskId: 'calculo', subtaskId: null, value: 1 }] },
+    [bothClasses]
+  );
+  assert.equal(records.length, 2);
+  assert.deepEqual(
+    new Set(records.map((record) => record.dateKey)),
+    new Set(['2026-09-14'])
+  );
+
+  // Dois lembretes por segunda, em ordem cronologica.
+  const plan = getTaskReminderPlan(task, new Date(2026, 8, 7, 6, 0));
+  assert.equal(plan.status, 'ready');
+  assert.equal(plan.mode, 'queued');
+  assert.deepEqual(
+    plan.triggers
+      .slice(0, 4)
+      .map((trigger) => [
+        trigger.date.getDate(),
+        trigger.date.getHours(),
+        trigger.date.getMinutes(),
+      ]),
+    [
+      [7, 7, 20],
+      [7, 15, 20],
+      [14, 7, 20],
+      [14, 15, 20],
+    ]
+  );
+});
+
 test('mostra a escolha de horario geral e cria linhas de Time por grupo', () => {
   const repeatSource = fs.readFileSync(
     path.join(root, 'components/taskEditor/RepeatPanel.js'),
@@ -3989,12 +4119,12 @@ test('mostra a escolha de horario geral e cria linhas de Time por grupo', () => 
 
   assert.equal(translations.pt.sheet.noExtraTimeConfig, 'Mesmo hor\u00e1rio em todos os dias');
   assert.ok(repeatSource.includes('onConfigureTimeGroups'));
-  assert.ok(repeatSource.includes('groups.length < selectedDays.length'));
+  assert.ok(repeatSource.includes('groups.length < MAX_TIME_GROUPS'));
   assert.ok(editorSource.includes('key: `time:${group.id}`'));
   assert.ok(editorSource.includes("panel?.key?.startsWith('time:')"));
   assert.equal(translations.en.sheet.timeGroupName, 'Time Group {number}');
   assert.equal(editorSource.includes('`${t.time} - ${t.timeGroupName'), false);
-  assert.ok(cardSource.includes('getTaskTimeForDate(task, dateKey)'));
+  assert.ok(cardSource.includes('getTaskTimeForOccurrence(task, dateKey)'));
 });
 
 test('nao persiste configuracao quantum fora do tipo de meta', () => {

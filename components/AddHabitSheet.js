@@ -733,8 +733,13 @@ export default function AddHabitSheet({
     return formatTimeValue(time.point, use24Hour);
   };
   const getTimeGroupRowLabel = (group, index) => {
-    if (group.days.length === 1) {
-      const day = group.days[0];
+    const day = group.days.length === 1 ? group.days[0] : null;
+    // Nomear pelo dia so ajuda quando o dia identifica a linha. Numa materia que
+    // acontece duas vezes na segunda as duas linhas se chamariam "Segunda-feira"
+    // e nao daria para saber qual e a da manha: ai vale o numero do grupo.
+    const sharesDay =
+      day != null && timeGroups.filter((other) => other.days.includes(day)).length > 1;
+    if (day != null && !sharesDay) {
       const dayLabel =
         draft.repeat.frequency === 'weekly'
           ? t.weekdayFullLabels?.[day] ?? day

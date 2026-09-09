@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform, Switch, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { normalizeDateValue as normalizeDate } from '../../utils/dateUtils';
-import { WEEKDAY_KEYS } from '../../domain/taskDraft';
+import { MAX_TIME_GROUPS, WEEKDAY_KEYS } from '../../domain/taskDraft';
 import { INTERVAL_VALUES } from './constants';
 import { AnimatedReveal, SegmentedControlButton, SoftPressable } from './parts';
 import DatePanel from './DatePanel';
@@ -41,8 +41,11 @@ function RepeatPanel({
   const selectedDays = frequency === 'weekly' ? selectedWeekdays : selectedMonthDays;
   const groups = Array.isArray(timeGroups) ? timeGroups : [];
   const hasTimeGroups = groups.length >= 2;
+  // Basta um dia selecionado: a materia que acontece so na segunda, mas duas
+  // vezes na segunda, precisa entrar aqui tanto quanto a que se divide entre
+  // dias diferentes.
   const canConfigureTimeGroups =
-    isEnabled && (frequency === 'weekly' || frequency === 'monthly') && selectedDays.length > 1;
+    isEnabled && (frequency === 'weekly' || frequency === 'monthly') && selectedDays.length > 0;
 
   useEffect(() => {
     if (endDate) {
@@ -267,7 +270,7 @@ function RepeatPanel({
                         </View>
                       </View>
 
-                      {groups.length < selectedDays.length ? (
+                      {groups.length < MAX_TIME_GROUPS ? (
                         <View style={styles.timeGroupAddRow}>
                           <View style={styles.timeGroupAddLine} />
                           <SoftPressable

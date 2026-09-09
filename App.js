@@ -71,11 +71,14 @@ import {
 import {
   appendScheduleVersion,
   getCurrentScheduleVersion,
+  getTaskOccurrencesForDate,
   getTaskTimeForDate,
+  isTaskDayCompleted,
   restartScheduleAt,
   shouldTaskAppearOnDate,
   withScheduleMirror,
 } from './domain/taskSchedule';
+import { getOccurrenceKey, getTaskListKey, getTaskOccurrenceKey } from './utils/taskTimeUtils';
 import {
   createCenteredDateWindow,
   getCalendarDayOffset,
@@ -750,8 +753,7 @@ function ScheduleApp() {
       const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, date));
       const scoredTasks = dayTasks.filter(shouldCountTaskTowardsCompletion);
       const allCompleted =
-        scoredTasks.length > 0 &&
-        scoredTasks.every((task) => getTaskCompletionStatus(task, key));
+        scoredTasks.length > 0 && scoredTasks.every((task) => isTaskDayCompleted(task, date));
       return {
         date,
         key,
@@ -890,8 +892,7 @@ function ScheduleApp() {
       const dayTasks = tasks.filter((task) => shouldTaskAppearOnDate(task, day));
       const scoredTasks = dayTasks.filter(shouldCountTaskTowardsCompletion);
       const allCompleted =
-        scoredTasks.length > 0 &&
-        scoredTasks.every((task) => getTaskCompletionStatus(task, dateKey));
+        scoredTasks.length > 0 && scoredTasks.every((task) => isTaskDayCompleted(task, day));
       const status = allCompleted ? 'success' : 'pending';
       store.dayStatusCache.set(dateKey, status);
       dayStatusByKey[dateKey] = status;
@@ -922,20 +923,21 @@ function ScheduleApp() {
 
     return tasks
       .filter((task) => shouldTaskAppearOnDate(task, reportDate))
-      .map((task) => {
-        const isCompleted = getTaskCompletionStatus(task, dateKey);
-
+      // Uma linha por ocorrência, igual à agenda: a matéria com aula de manhã e
+      // de tarde aparece duas vezes, cada uma com a sua presença.
+      .flatMap((task) => {
         const subtasks = Array.isArray(task.subtasks) ? task.subtasks : [];
         const totalSubtasks = subtasks.length;
         const completedSubtasks = subtasks.filter((s) => getSubtaskCompletionStatus(s, dateKey)).length;
 
-        return {
+        return getTaskOccurrencesForDate(task, reportDate).map((occurrence) => ({
           ...task,
-          time: getTaskTimeForDate(task, reportDate),
-          completed: isCompleted,
+          time: occurrence.time,
+          ...(occurrence.id ? { occurrenceId: occurrence.id } : {}),
+          completed: getTaskCompletionStatus(task, getOccurrenceKey(dateKey, occurrence.id)),
           totalSubtasks,
           completedSubtasks,
-        };
+        }));
       });
   }, [reportDate, tasks]);
 
@@ -1121,15 +1123,23 @@ function ScheduleApp() {
     const cache = resolvedTaskTimeCacheRef.current;
     const filtered = tasks
       .filter((task) => shouldTaskAppearOnDate(task, selectedDate))
-      .map((task) => {
+      // Um dia que aparece em dois grupos de horário rende dois cards: a mesma
+      // matéria das 07:20 e das 15:20 na segunda, cada um com sua presença.
+      .flatMap((task) => {
         const cached = cache.get(task);
         if (cached && cached.dateKey === selectedDateKey) {
           return cached.value;
         }
-        const resolvedTime = getTaskTimeForDate(task, selectedDate);
-        // Sem grupos de horário nada muda: manter a mesma referência evita
-        // recriar a lista inteira em tarefas comuns.
-        const value = resolvedTime === task.time ? task : { ...task, time: resolvedTime };
+        const value = getTaskOccurrencesForDate(task, selectedDate).map((occurrence) => {
+          // Sem grupos de horário nada muda: manter a mesma referência evita
+          // recriar a lista inteira em tarefas comuns.
+          if (!occurrence.id && occurrence.time === task.time) {
+            return task;
+          }
+          return occurrence.id
+            ? { ...task, time: occurrence.time, occurrenceId: occurrence.id }
+            : { ...task, time: occurrence.time };
+        });
         cache.set(task, { dateKey: selectedDateKey, value });
         return value;
       });
@@ -1200,7 +1210,7 @@ function ScheduleApp() {
     () =>
       visibleTasks.map((task) => {
         // Risca e move lembretes encerrados para baixo sem registrar falta/conclusão.
-        const completed = getTaskCompletionStatus(task, selectedDateKey)
+        const completed = getTaskCompletionStatus(task, getTaskOccurrenceKey(task, selectedDateKey))
           || isReminderTimeElapsed(task, selectedDateKey, currentTime);
         const cached = visibleTaskStateCacheRef.current.get(task);
         if (
@@ -1342,7 +1352,7 @@ function ScheduleApp() {
     [selectedDateKey, sortedVisibleTasksForSelectedDay]
   );
   const visibleTaskOrder = useMemo(
-    () => sortedVisibleTasksForSelectedDay.map((task) => task.id),
+    () => sortedVisibleTasksForSelectedDay.map((task) => getTaskListKey(task)),
     [sortedVisibleTasksForSelectedDay]
   );
   const visibleTaskOrderKey = visibleTaskOrder.join(':');
@@ -1404,13 +1414,18 @@ function ScheduleApp() {
     () => tasksForSelectedDate.filter(shouldCountTaskTowardsCompletion),
     [tasksForSelectedDate]
   );
+  // A lista já vem expandida em ocorrências, então a matéria com duas aulas
+  // conta como duas no "x de y" — e cada uma é lida na sua própria chave.
   const allTasksCompletedForSelectedDay =
     scorableTasksForSelectedDate.length > 0 &&
-    scorableTasksForSelectedDate.every((task) => getTaskCompletionStatus(task, selectedDateKey));
+    scorableTasksForSelectedDate.every((task) =>
+      getTaskCompletionStatus(task, getTaskOccurrenceKey(task, selectedDateKey))
+    );
   const completedTaskCount = useMemo(
     () =>
-      scorableTasksForSelectedDate.filter((task) => getTaskCompletionStatus(task, selectedDateKey))
-        .length,
+      scorableTasksForSelectedDate.filter((task) =>
+        getTaskCompletionStatus(task, getTaskOccurrenceKey(task, selectedDateKey))
+      ).length,
     [scorableTasksForSelectedDate, selectedDateKey]
   );
   const [showConfetti, setShowConfetti] = useState(false);
@@ -1591,7 +1606,7 @@ function ScheduleApp() {
             ...activeTask,
             note: noteForDay ?? null,
             time: getTaskTimeForDate(activeTask, selectedDate),
-            completed: getTaskCompletionStatus(activeTask, selectedDateKey),
+            completed: isTaskDayCompleted(activeTask, selectedDate),
             subtasks: Array.isArray(activeTask.subtasks)
               ? activeTask.subtasks.map((subtask) => ({
                   ...subtask,
@@ -1607,7 +1622,7 @@ function ScheduleApp() {
   // (count). Chamado pelo stepper inline do card — sem modal, a água/contador
   // reage na hora.
   const applyQuantumDelta = useCallback(
-    (taskId, direction, amount) => {
+    (taskId, direction, amount, occurrenceKey = null) => {
       const deltaAmount = Math.round(amount);
       if (!taskId || !deltaAmount || deltaAmount <= 0) {
         return;
@@ -1618,10 +1633,14 @@ function ScheduleApp() {
         dateKey ??
         targetTask?.dateKey ??
         (targetTask?.date ? getDateKey(targetTask.date) : null);
+      // A data continua guiando o confete; o progresso e a conclusao passam a
+      // ser indexados pela ocorrencia, para duas sessoes do mesmo dia nao
+      // dividirem o mesmo contador.
+      const resolvedOccurrenceKey = occurrenceKey ?? baseDateKey;
       const isTimer = targetTask?.quantum?.mode === 'timer';
       const currentValue = isTimer
-        ? targetTask?.quantum?.progressByDate?.[baseDateKey]?.doneSeconds ?? 0
-        : targetTask?.quantum?.progressByDate?.[baseDateKey]?.doneCount ?? 0;
+        ? targetTask?.quantum?.progressByDate?.[resolvedOccurrenceKey]?.doneSeconds ?? 0
+        : targetTask?.quantum?.progressByDate?.[resolvedOccurrenceKey]?.doneCount ?? 0;
       const limitValue = isTimer
         ? getTimerTotalSeconds(targetTask?.quantum?.timer)
         : targetTask?.quantum?.count?.value ?? 0;
@@ -1645,15 +1664,15 @@ function ScheduleApp() {
             if (!limitSeconds) {
               return task;
             }
-            const baseDateKey =
-              dateKey ?? task.dateKey ?? (task.date ? getDateKey(task.date) : null);
-            if (!baseDateKey) {
+            const occurrenceIndexKey =
+              occurrenceKey ?? dateKey ?? task.dateKey ?? (task.date ? getDateKey(task.date) : null);
+            if (!occurrenceIndexKey) {
               return task;
             }
             const progressByDate = {
               ...(task.quantum?.progressByDate ?? {}),
             };
-            const currentEntry = progressByDate[baseDateKey] ?? {};
+            const currentEntry = progressByDate[occurrenceIndexKey] ?? {};
             const currentSeconds = currentEntry?.doneSeconds ?? 0;
             const nextSeconds = clampValue(
               currentSeconds + direction * deltaSeconds,
@@ -1661,11 +1680,11 @@ function ScheduleApp() {
               limitSeconds
             );
             const completedDates = { ...(task.completedDates ?? {}) };
-            if (baseDateKey) {
+            if (occurrenceIndexKey) {
               if (nextSeconds === limitSeconds) {
-                completedDates[baseDateKey] = true;
+                completedDates[occurrenceIndexKey] = true;
               } else {
-                delete completedDates[baseDateKey];
+                delete completedDates[occurrenceIndexKey];
               }
             }
             return {
@@ -1675,7 +1694,7 @@ function ScheduleApp() {
                 ...task.quantum,
                 progressByDate: {
                   ...progressByDate,
-                  [baseDateKey]: {
+                  [occurrenceIndexKey]: {
                     ...currentEntry,
                     doneSeconds: nextSeconds,
                   },
@@ -1691,15 +1710,15 @@ function ScheduleApp() {
           if (!limitCount) {
             return task;
           }
-          const baseDateKey =
-            dateKey ?? task.dateKey ?? (task.date ? getDateKey(task.date) : null);
-          if (!baseDateKey) {
+          const occurrenceIndexKey =
+            occurrenceKey ?? dateKey ?? task.dateKey ?? (task.date ? getDateKey(task.date) : null);
+          if (!occurrenceIndexKey) {
             return task;
           }
           const progressByDate = {
             ...(task.quantum?.progressByDate ?? {}),
           };
-          const currentEntry = progressByDate[baseDateKey] ?? {};
+          const currentEntry = progressByDate[occurrenceIndexKey] ?? {};
           const currentCount = currentEntry?.doneCount ?? 0;
           const nextCount = clampValue(
             currentCount + direction * deltaCount,
@@ -1707,11 +1726,11 @@ function ScheduleApp() {
             limitCount
           );
           const completedDates = { ...(task.completedDates ?? {}) };
-          if (baseDateKey) {
+          if (occurrenceIndexKey) {
             if (nextCount === limitCount) {
-              completedDates[baseDateKey] = true;
+              completedDates[occurrenceIndexKey] = true;
             } else {
-              delete completedDates[baseDateKey];
+              delete completedDates[occurrenceIndexKey];
             }
           }
           return {
@@ -1721,7 +1740,7 @@ function ScheduleApp() {
               ...task.quantum,
               progressByDate: {
                 ...progressByDate,
-                [baseDateKey]: {
+                [occurrenceIndexKey]: {
                   ...currentEntry,
                   doneCount: nextCount,
                 },
@@ -2935,8 +2954,12 @@ function ScheduleApp() {
     ]
   );
 
+  // `dateKey` continua sendo a data (confete, histórico, celebração do dia);
+  // `occurrenceKey` é o índice em `completedDates`. Numa tarefa com uma
+  // ocorrência por dia os dois são a mesma string — que é o que já estava
+  // gravado antes de existir aula de manhã e de tarde na mesma segunda.
   const handleToggleTaskCompletion = useCallback(
-    (taskId, dateKey = selectedDateKey) => {
+    (taskId, dateKey = selectedDateKey, occurrenceKey = null) => {
       const initialDateKey = dateKey ?? selectedDateKey;
       const targetTask = tasksRef.current?.find((task) => task.id === taskId);
       if (!targetTask || isPassiveTaskType(targetTask)) {
@@ -2946,8 +2969,9 @@ function ScheduleApp() {
         initialDateKey ??
         targetTask?.dateKey ??
         (targetTask?.date ? getDateKey(targetTask.date) : null);
+      const resolvedOccurrenceKey = occurrenceKey ?? resolvedDateKey;
       const wasCompleted = targetTask
-        ? getTaskCompletionStatus(targetTask, resolvedDateKey)
+        ? getTaskCompletionStatus(targetTask, resolvedOccurrenceKey)
         : false;
 
       pendingCompletionActionDateRef.current = !wasCompleted ? resolvedDateKey : null;
@@ -2960,18 +2984,70 @@ function ScheduleApp() {
           }
 
           const completedDates = { ...(task.completedDates ?? {}) };
-          const isCompletedForDate = getTaskCompletionStatus(task, resolvedDateKey);
+          const isCompletedForDate = getTaskCompletionStatus(task, resolvedOccurrenceKey);
 
           if (isCompletedForDate) {
-            delete completedDates[resolvedDateKey];
-          } else if (resolvedDateKey) {
-            completedDates[resolvedDateKey] = true;
+            delete completedDates[resolvedOccurrenceKey];
+          } else if (resolvedOccurrenceKey) {
+            completedDates[resolvedOccurrenceKey] = true;
           }
 
           return {
             ...task,
             completedDates,
           };
+        })
+      );
+
+      appendHistoryEntry('task_completion_toggled', createTaskHistoryDetails(targetTask, {
+        dateKey: resolvedDateKey,
+        completed: !wasCompleted,
+      }));
+    },
+    [appendHistoryEntry, selectedDateKey]
+  );
+
+  // O card marca uma aula; o modal de detalhes fala do dia inteiro e mostra
+  // "concluída" só quando todas as ocorrências estão marcadas — então o botão
+  // dele marca (ou desmarca) todas de uma vez.
+  const handleToggleTaskDayCompletion = useCallback(
+    (taskId, dateKey = selectedDateKey) => {
+      const targetTask = tasksRef.current?.find((task) => task.id === taskId);
+      if (!targetTask || isPassiveTaskType(targetTask)) {
+        return;
+      }
+      const resolvedDateKey =
+        dateKey ??
+        selectedDateKey ??
+        targetTask?.dateKey ??
+        (targetTask?.date ? getDateKey(targetTask.date) : null);
+      if (!resolvedDateKey) {
+        return;
+      }
+      const occurrenceKeys = getTaskOccurrencesForDate(targetTask, resolvedDateKey).map(
+        (occurrence) => getOccurrenceKey(resolvedDateKey, occurrence.id)
+      );
+      const wasCompleted = occurrenceKeys.every((key) =>
+        getTaskCompletionStatus(targetTask, key)
+      );
+
+      pendingCompletionActionDateRef.current = !wasCompleted ? resolvedDateKey : null;
+
+      triggerImpact(Haptics.ImpactFeedbackStyle.Light);
+      setTasks((previous) =>
+        previous.map((task) => {
+          if (task.id !== taskId) {
+            return task;
+          }
+          const completedDates = { ...(task.completedDates ?? {}) };
+          occurrenceKeys.forEach((key) => {
+            if (wasCompleted) {
+              delete completedDates[key];
+            } else {
+              completedDates[key] = true;
+            }
+          });
+          return { ...task, completedDates };
         })
       );
 
@@ -3903,12 +3979,23 @@ function ScheduleApp() {
   // só o card tocado re-renderiza ao completar/ajustar.
   const handleCardPress = useCallback((task) => setActiveTaskId(task.id), []);
   const handleCardToggle = useCallback(
-    (task) => handleToggleTaskCompletion(task.id, selectedDateKey),
+    (task) =>
+      handleToggleTaskCompletion(
+        task.id,
+        selectedDateKey,
+        getTaskOccurrenceKey(task, selectedDateKey)
+      ),
     [handleToggleTaskCompletion, selectedDateKey]
   );
   const handleCardQuantumDelta = useCallback(
-    (task, direction, amount) => applyQuantumDelta(task.id, direction, amount),
-    [applyQuantumDelta]
+    (task, direction, amount) =>
+      applyQuantumDelta(
+        task.id,
+        direction,
+        amount,
+        getTaskOccurrenceKey(task, selectedDateKey)
+      ),
+    [applyQuantumDelta, selectedDateKey]
   );
   const handleCardCopy = useCallback(
     (task) => {
@@ -3971,6 +4058,7 @@ function ScheduleApp() {
         backgroundColor={task.backgroundColor}
         borderColor={task.borderColor}
         dateKey={selectedDateKey}
+        occurrenceKey={getTaskOccurrenceKey(task, selectedDateKey)}
         totalSubtasks={task.totalSubtasks}
         completedSubtasks={task.completedSubtasks}
         onPress={handleCardPress}
@@ -4005,7 +4093,7 @@ function ScheduleApp() {
         renderToHardwareTextureAndroid={isTodayPageTransitioning}
         onLayout={(event) => {
           onLayout?.(event);
-          handleTaskLayout(item.id, index, event);
+          handleTaskLayout(getTaskListKey(item), index, event);
         }}
         style={[
           style,
@@ -4019,7 +4107,7 @@ function ScheduleApp() {
             opacity: todayContentOpacity,
             transform: [
               { translateX: todayContentTranslateX },
-              { translateY: getTaskTranslateY(item.id) },
+              { translateY: getTaskTranslateY(getTaskListKey(item)) },
             ],
           },
         ]}
@@ -4274,7 +4362,7 @@ function ScheduleApp() {
               data={visibleTasksWithStats}
               renderItem={renderTodayTask}
               CellRendererComponent={renderTodayCell}
-              keyExtractor={(task) => String(task.id)}
+              keyExtractor={(task) => getTaskListKey(task)}
               contentContainerStyle={[
                 styles.todayContent,
                 !isSelectedToday && styles.todayContentWithTemporalAction,
@@ -5148,7 +5236,7 @@ function ScheduleApp() {
         onToggleSubtask={handleToggleSubtask}
         onSaveNote={handleSaveTaskNote}
         onDeleteNote={handleDeleteNote}
-        onToggleCompletion={(taskId) => handleToggleTaskCompletion(taskId, selectedDateKey)}
+        onToggleCompletion={(taskId) => handleToggleTaskDayCompletion(taskId, selectedDateKey)}
         reduceMotion={prefersReducedMotion}
         onEdit={(taskId) => {
           const taskToEdit = tasks.find((task) => task.id === taskId);

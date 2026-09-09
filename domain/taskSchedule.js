@@ -26,7 +26,11 @@ import {
   getWeekdayKeyFromDate,
   normalizeDateValue,
 } from '../utils/dateUtils';
-import { resolveTimeForRepeatDate } from '../utils/taskTimeUtils';
+import {
+  getOccurrenceKey,
+  getTimeOccurrencesForDate,
+  resolveTimeForRepeatDate,
+} from '../utils/taskTimeUtils';
 
 const normalizeRepeatCollection = (value) => {
   if (!value) {
@@ -191,6 +195,36 @@ export const getTaskTimeForDate = (task, targetDate) => {
   const time = version?.time ?? task?.time ?? null;
   const repeat = version?.repeat ?? task?.repeat ?? null;
   return resolveTimeForRepeatDate(time, repeat, targetDate);
+};
+
+// Contagem de conclusoes e por OCORRENCIA — duas aulas na segunda somam duas.
+// Ja sequencia e mapa de calor falam de DIAS, e um dia com duas aulas so esta
+// cumprido quando as duas foram marcadas.
+export const isTaskDayCompleted = (task, targetDate) => {
+  const dateKey = toScheduleKey(targetDate);
+  const completedDates = task?.completedDates;
+  if (!dateKey || !completedDates || typeof completedDates !== 'object') {
+    return false;
+  }
+  return getTaskOccurrencesForDate(task, targetDate).every((occurrence) =>
+    Boolean(completedDates[getOccurrenceKey(dateKey, occurrence.id)])
+  );
+};
+
+// Numa copia ja expandida para a lista do dia o horario da ocorrencia esta em
+// `task.time` — resolver de novo pela data devolveria sempre a primeira, e as
+// duas aulas da segunda mostrariam o mesmo horario.
+export const getTaskTimeForOccurrence = (task, targetDate) =>
+  task?.occurrenceId ? task.time ?? null : getTaskTimeForDate(task, targetDate);
+
+// Todas as ocorrencias da tarefa naquele dia, na versao vigente daquela data.
+// Devolve sempre pelo menos uma; so passa de uma quando o dia esta em mais de
+// um grupo de horario.
+export const getTaskOccurrencesForDate = (task, targetDate) => {
+  const version = getScheduleVersionForKey(task, targetDate);
+  const time = version?.time ?? task?.time ?? null;
+  const repeat = version?.repeat ?? task?.repeat ?? null;
+  return getTimeOccurrencesForDate(time, repeat, targetDate);
 };
 
 export const getScheduleSignature = (version, { isQuantum = false } = {}) => {

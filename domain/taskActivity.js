@@ -1,5 +1,5 @@
 import { getDateKey, normalizeDateValue } from '../utils/dateUtils';
-import { createTaskScheduleMatcher } from './taskSchedule';
+import { createTaskScheduleMatcher, isTaskDayCompleted } from './taskSchedule';
 
 export const RECENT_ACTIVITY_MONTHS = 3;
 
@@ -51,7 +51,9 @@ export const buildRecentTaskActivity = (
       const key = getDateKey(date);
       const isOutsidePeriod = key < periodStartKey || key > todayKey;
       const onSchedule = !isOutsidePeriod && isScheduled(date);
-      const isCompleted = onSchedule && Boolean(task?.completedDates?.[key]);
+      // O mapa de calor pinta DIAS: com duas aulas na mesma segunda, o dia só
+      // fica cheio quando as duas foram marcadas.
+      const isCompleted = onSchedule && isTaskDayCompleted(task, date);
       // Hoje ainda pode ser cumprido. Ele só entra no denominador se já foi
       // concluído, evitando transformar uma ocorrência aberta em falha.
       const isEvaluated = onSchedule && (key < todayKey || isCompleted);
