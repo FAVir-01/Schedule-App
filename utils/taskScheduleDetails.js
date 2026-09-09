@@ -42,3 +42,44 @@ export function getTaskScheduleDetails(task, language = 'en') {
   else if (enabled) rows.push(pt ? 'Sem data de término' : 'No end date');
   return rows;
 }
+
+// As mesmas informacoes, mas como linhas rotuladas para o card de detalhes da
+// polaroide. O bloco de texto solto repetia "Weekly" e a data de inicio logo
+// acima do card que ja mostra os dois; aqui sobra so o que e novo, o horario de
+// cada dia. Um dia que acontece duas vezes rende duas linhas com o mesmo rotulo.
+export function getTaskScheduleRows(task, language = 'en') {
+  const version = getCurrentScheduleVersion(task);
+  if (!version) return [];
+  const repeat = normalizeRepeatConfig(version.repeat);
+  const enabled = repeat.enabled && repeat.option !== 'off' && version.repeat?.option !== 'off';
+  const frequency = repeat.frequency === 'interval' ? 'daily' : repeat.frequency;
+  const groups = getTimeGroups(version.time);
+  if (!enabled || !['weekly', 'monthly'].includes(frequency) || groups.length < 2) {
+    return [];
+  }
+  const t = translations[language] ?? translations.en;
+  const locale = getDateLocale(language);
+  const anchor = normalizeDateValue(version.effectiveFrom);
+  const dayName = (key) => format(new Date(2026, 0, 4 + weekdays.indexOf(key)), 'EEEE', { locale });
+  const chosen = frequency === 'weekly'
+    ? weekdays.filter((key) => (repeat.weekdays ?? []).includes(key))
+    : [...(repeat.monthDays ?? [])].sort((a, b) => a - b);
+  const days = chosen.length
+    ? chosen
+    : [frequency === 'weekly' ? weekdays[anchor.getDay()] : anchor.getDate()];
+  const rows = [];
+  days.forEach((day) => {
+    groups
+      .filter((group) => group.days.includes(day))
+      .forEach((group, index) => {
+        rows.push({
+          key: `schedule-${day}-${group.id ?? index}`,
+          label: frequency === 'weekly'
+            ? dayName(day)
+            : t.sheet.dayNumber.replace('{day}', String(day)),
+          value: formatTaskTime(group, { language }),
+        });
+      });
+  });
+  return rows;
+}

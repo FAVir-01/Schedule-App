@@ -205,7 +205,7 @@ const {
   restoreDeletedTaskAtIndex,
   shouldResetTaskProgress,
 } = require('../utils/taskUtils');
-const { getTaskScheduleDetails } = require('../utils/taskScheduleDetails');
+const { getTaskScheduleDetails, getTaskScheduleRows } = require('../utils/taskScheduleDetails');
 const {
   IMAGE_ERROR_CODES,
   IMAGE_LIMITS,
@@ -2246,6 +2246,45 @@ test('detalhes mostram dias e cada horário da versão atual do agendamento', ()
   assert.ok(rows.some((row) => row.startsWith('Data final:') && row.includes('2026')));
   assert.ok(getTaskScheduleDetails(task, 'en').includes('Tuesday: 8:30 AM')
     || getTaskScheduleDetails(task, 'en').includes('Tuesday: 08:30 AM'));
+});
+
+test('a polaroide lista o horario de cada dia como linha do card, sem repetir o card', () => {
+  const point = (hour, minute, meridiem) => ({
+    specified: true, mode: 'point', point: { hour, minute, meridiem },
+  });
+  const task = {
+    dateKey: '2026-09-07', repeat: { enabled: false },
+    schedule: [{ effectiveFrom: '2026-09-07', repeat: {
+      enabled: true, frequency: 'weekly', interval: 1, weekdays: ['mon', 'tue'],
+    }, time: { groups: [
+      { id: 'time-group-1', days: ['mon'], ...point(5, 5, 'PM') },
+      { id: 'time-group-2', days: ['tue'], ...point(3, 20, 'PM') },
+    ] } }],
+  };
+  const rows = getTaskScheduleRows(task, 'en');
+  assert.deepEqual(rows.map((row) => row.label), ['Monday', 'Tuesday']);
+  // Nada de "Weekly" nem data de inicio: essas linhas ja existem no card.
+  assert.ok(rows.every((row) => !/Weekly|September/.test(row.value)));
+  assert.equal(new Set(rows.map((row) => row.key)).size, 2);
+
+  // A materia que acontece duas vezes na segunda rende duas linhas "Monday",
+  // na ordem dos horarios configurados.
+  const twicePerDay = {
+    dateKey: '2026-09-07', repeat: { enabled: false },
+    schedule: [{ effectiveFrom: '2026-09-07', repeat: {
+      enabled: true, frequency: 'weekly', interval: 1, weekdays: ['mon'],
+    }, time: { groups: [
+      { id: 'time-group-1', days: ['mon'], ...point(7, 20, 'AM') },
+      { id: 'time-group-2', days: ['mon'], ...point(3, 20, 'PM') },
+    ] } }],
+  };
+  const twiceRows = getTaskScheduleRows(twicePerDay, 'en');
+  assert.deepEqual(twiceRows.map((row) => row.label), ['Monday', 'Monday']);
+  assert.equal(new Set(twiceRows.map((row) => row.key)).size, 2);
+
+  // Sem grupos nao ha o que acrescentar: o cabecalho ja mostra o horario.
+  assert.deepEqual(getTaskScheduleRows({ dateKey: '2026-09-07', repeat: { enabled: true, frequency: 'weekly', weekdays: ['mon'] } }, 'en'), []);
+  assert.deepEqual(getTaskScheduleRows(null), []);
 });
 
 test('detalhes de agenda distinguem mensal, avulsa e repetição sem término', () => {
