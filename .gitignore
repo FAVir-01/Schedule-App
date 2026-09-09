@@ -10,6 +10,9 @@ android/build/
 modules/*/android/build/
 android/local.properties
 
+# Saida do bundle do `eas update` / `expo export`, refeita a cada publicacao
+dist/
+
 # Expo / React Native logs
 *.log
 npm-debug.log*
