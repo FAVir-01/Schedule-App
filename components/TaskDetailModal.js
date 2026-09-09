@@ -212,6 +212,11 @@ export default function TaskDetailModal({
                     {`${t.sheet.endDate}: ${endDateLabel}`}
                   </Text>
                 ) : null}
+                {task.definitionRecord?.dateKey === dateKey ? (
+                  <Text style={styles.detailSubtaskSummaryLabel}>
+                    {language === 'pt' ? 'Novo recorde de meta' : 'New goal record'} · +{task.definitionRecord.improvement}%
+                  </Text>
+                ) : null}
                 {quantumLabel ? (
                   <Text style={styles.detailSubtaskSummaryLabel}>{quantumLabel}</Text>
                 ) : !isReminder && totalSubtasks > 0 ? (

@@ -1,5 +1,6 @@
 import { getCalendarDayOrdinal, getDateKey, normalizeDateValue } from '../utils/dateUtils';
 import { getDateKeyFromOccurrenceKey } from '../utils/taskTimeUtils';
+import { getHistoricalSubtask } from './taskDefinition';
 
 export const METRIC_CALCULATIONS = ['total', 'dailyAverage', 'activeDayAverage'];
 export const METRIC_PERIODS = ['month', 'previousMonth', 'week', 'year', 'all'];
@@ -70,7 +71,7 @@ export const collectMetricRecords = (source, tasks, history = []) => {
     if (seen.has(key)) continue;
     seen.add(key);
     const task = taskMap.get(id(rule.taskId));
-    const element = rule.subtaskId == null ? task : array(task?.subtasks).find((item) => id(item.id) === id(rule.subtaskId));
+    const element = rule.subtaskId == null ? task : getHistoricalSubtask(task, rule.subtaskId);
     let dates = element?.completedDates ?? {};
     if (!element) {
       missingRules.push(rule);

@@ -1,3 +1,4 @@
+import { getTaskForDate, updateTaskForDate, preserveTaskDefinitionOnEdit } from './domain/taskDefinition';
 import React, {
   useCallback,
   useEffect,
@@ -923,6 +924,7 @@ function ScheduleApp() {
 
     return tasks
       .filter((task) => shouldTaskAppearOnDate(task, reportDate))
+      .map((task) => getTaskForDate(task, dateKey))
       // Uma linha por ocorrência, igual à agenda: a matéria com aula de manhã e
       // de tarde aparece duas vezes, cada uma com a sua presença.
       .flatMap((task) => {
@@ -1130,15 +1132,16 @@ function ScheduleApp() {
         if (cached && cached.dateKey === selectedDateKey) {
           return cached.value;
         }
-        const value = getTaskOccurrencesForDate(task, selectedDate).map((occurrence) => {
+        const datedTask = getTaskForDate(task, selectedDateKey);
+        const value = getTaskOccurrencesForDate(datedTask, selectedDate).map((occurrence) => {
           // Sem grupos de horário nada muda: manter a mesma referência evita
           // recriar a lista inteira em tarefas comuns.
           if (!occurrence.id && occurrence.time === task.time) {
-            return task;
+            return datedTask;
           }
           return occurrence.id
-            ? { ...task, time: occurrence.time, occurrenceId: occurrence.id }
-            : { ...task, time: occurrence.time };
+            ? { ...datedTask, time: occurrence.time, occurrenceId: occurrence.id }
+            : { ...datedTask, time: occurrence.time };
         });
         cache.set(task, { dateKey: selectedDateKey, value });
         return value;
@@ -1596,6 +1599,7 @@ function ScheduleApp() {
       if (!activeTask) {
         return null;
       }
+      const datedTask = getTaskForDate(activeTask, selectedDateKey);
       const noteForDay = notesForFeed.find(
         (note) =>
           note.source === 'task' &&
@@ -1603,16 +1607,16 @@ function ScheduleApp() {
           note.dateKey === selectedDateKey
       );
       return {
-            ...activeTask,
+            ...datedTask,
             note: noteForDay ?? null,
             time: getTaskTimeForDate(activeTask, selectedDate),
             completed: isTaskDayCompleted(activeTask, selectedDate),
-            subtasks: Array.isArray(activeTask.subtasks)
-              ? activeTask.subtasks.map((subtask) => ({
+            subtasks: Array.isArray(datedTask.subtasks)
+              ? datedTask.subtasks.map((subtask) => ({
                   ...subtask,
                   completed: getSubtaskCompletionStatus(subtask, selectedDateKey),
                 }))
-              : activeTask.subtasks,
+              : datedTask.subtasks,
           };
     },
     [activeTask, notesForFeed, selectedDate, selectedDateKey]
@@ -1628,7 +1632,7 @@ function ScheduleApp() {
         return;
       }
       const dateKey = selectedDateKey;
-      const targetTask = tasksRef.current?.find((task) => task.id === taskId);
+      const targetTask = getTaskForDate(tasksRef.current?.find((task) => task.id === taskId), dateKey);
       const baseDateKey =
         dateKey ??
         targetTask?.dateKey ??
@@ -1658,6 +1662,7 @@ function ScheduleApp() {
           if (task.id !== taskId) {
             return task;
           }
+          return updateTaskForDate(task, dateKey, (task) => {
           if (task.quantum?.mode === 'timer') {
             const deltaSeconds = deltaAmount;
             const limitSeconds = getTimerTotalSeconds(task.quantum?.timer);
@@ -1750,6 +1755,7 @@ function ScheduleApp() {
               wavePulse: Date.now(),
             },
           };
+          });
         })
       );
     },
@@ -1880,7 +1886,7 @@ function ScheduleApp() {
           })()
         : task.quantum;
 
-      const reconciledQuantumState = task.type === 'quantum'
+      const reconciledQuantumState = task.type === 'quantum' && !task.definitionHistory?.length
         ? reconcileQuantumCompletionState(normalizedQuantum, completedDates)
         : { quantum: normalizedQuantum, completedDates };
 
@@ -2961,7 +2967,7 @@ function ScheduleApp() {
   const handleToggleTaskCompletion = useCallback(
     (taskId, dateKey = selectedDateKey, occurrenceKey = null) => {
       const initialDateKey = dateKey ?? selectedDateKey;
-      const targetTask = tasksRef.current?.find((task) => task.id === taskId);
+      const targetTask = getTaskForDate(tasksRef.current?.find((task) => task.id === taskId), initialDateKey);
       if (!targetTask || isPassiveTaskType(targetTask)) {
         return;
       }
@@ -3012,7 +3018,7 @@ function ScheduleApp() {
   // dele marca (ou desmarca) todas de uma vez.
   const handleToggleTaskDayCompletion = useCallback(
     (taskId, dateKey = selectedDateKey) => {
-      const targetTask = tasksRef.current?.find((task) => task.id === taskId);
+      const targetTask = getTaskForDate(tasksRef.current?.find((task) => task.id === taskId), dateKey);
       if (!targetTask || isPassiveTaskType(targetTask)) {
         return;
       }
@@ -3744,6 +3750,7 @@ function ScheduleApp() {
         completedDates: nextCompletedDates,
         quantum: mergedQuantum,
       } = reconcileTaskProgressOnEdit(existingTask, nextType, nextQuantum);
+      const nextSubtasks = convertSubtasks(habit?.subtasks ?? [], existingTask.subtasks ?? []);
       const nextDateKey = getDateKey(nextDate);
       const nextRepeat = normalizeRepeatConfig(habit?.repeat ?? existingTask.repeat);
       const nextTime = habit?.time ?? null;
@@ -3770,7 +3777,7 @@ function ScheduleApp() {
           if (task.id !== taskId) {
             return task;
           }
-          return withScheduleMirror({
+          return preserveTaskDefinitionOnEdit(task, withScheduleMirror({
             ...task,
             schedule: nextSchedule,
             title: nextTitle,
@@ -3780,7 +3787,7 @@ function ScheduleApp() {
             // não usar o valor antigo como fallback, senão remover não funciona.
             customImage: habit?.customImage ?? null,
             time: habit?.time,
-            subtasks: convertSubtasks(habit?.subtasks ?? [], task.subtasks ?? []),
+            subtasks: nextSubtasks,
             repeat: normalizeRepeatConfig(habit?.repeat ?? task.repeat),
             reminder: habit?.reminder,
             tag: habit?.tag,
@@ -3795,11 +3802,11 @@ function ScheduleApp() {
             notificationIds: [],
             notificationId: null,
             notificationScheduleMode: null,
-          });
+          }), todayKey);
         })
       );
       if (existingTask) {
-        const updatedTask = withScheduleMirror({
+        const updatedTask = preserveTaskDefinitionOnEdit(existingTask, withScheduleMirror({
           ...existingTask,
           schedule: nextSchedule,
           title: nextTitle,
@@ -3807,7 +3814,7 @@ function ScheduleApp() {
           emoji: habit?.emoji ?? existingTask.emoji,
           customImage: habit?.customImage ?? null,
           time: habit?.time,
-          subtasks: convertSubtasks(habit?.subtasks ?? [], existingTask.subtasks ?? []),
+          subtasks: nextSubtasks,
           repeat: normalizeRepeatConfig(habit?.repeat ?? existingTask.repeat),
           reminder: habit?.reminder,
           tag: habit?.tag,
@@ -3822,18 +3829,20 @@ function ScheduleApp() {
           notificationIds: [],
           notificationId: null,
           notificationScheduleMode: null,
-        });
+        }), todayKey);
         void refreshTaskReminder(updatedTask, existingTask, { notifyOnFailure: true });
+        appendHistoryEntry('task_updated', {
+          taskId,
+          title: nextTitle,
+          dateKey: todayKey,
+          definitionRecord: updatedTask.definitionRecords.length > (existingTask.definitionRecords?.length ?? 0)
+            ? updatedTask.definitionRecord : null,
+        });
       }
       triggerImpact(Haptics.ImpactFeedbackStyle.Light);
-      if (normalizedDate) {
+      if (normalizedDate && nextDateKey !== existingTask.dateKey) {
         setSelectedDate(normalizedDate);
       }
-      appendHistoryEntry('task_updated', {
-        taskId,
-        title: nextTitle,
-        dateKey: normalizedDate ? getDateKey(normalizedDate) : undefined,
-      });
     },
     [
       appendHistoryEntry,
@@ -3854,7 +3863,7 @@ function ScheduleApp() {
         selectedDateKey ??
         targetTask?.dateKey ??
         (targetTask?.date ? getDateKey(targetTask.date) : null);
-      const targetSubtask = targetTask?.subtasks?.find((item) => item.id === subtaskId);
+      const targetSubtask = getTaskForDate(targetTask, targetDateKey)?.subtasks?.find((item) => item.id === subtaskId);
       const wasCompleted = targetSubtask
         ? getSubtaskCompletionStatus(targetSubtask, targetDateKey)
         : false;
@@ -3863,9 +3872,9 @@ function ScheduleApp() {
           if (task.id !== taskId) {
             return task;
           }
-          return {
-            ...task,
-            subtasks: (task.subtasks ?? []).map((subtask) => {
+          return updateTaskForDate(task, targetDateKey, (datedTask) => ({
+            ...datedTask,
+            subtasks: (datedTask.subtasks ?? []).map((subtask) => {
               if (subtask.id !== subtaskId) {
                 return subtask;
               }
@@ -3881,7 +3890,7 @@ function ScheduleApp() {
                 completedDates,
               };
             }),
-          };
+          }));
         })
       );
       appendHistoryEntry('subtask_completion_toggled', createTaskHistoryDetails(targetTask, {

@@ -646,7 +646,12 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
                 numberOfLines={1}
               >
                 {task.title}
-              </Text>
+                </Text>
+                {task.definitionRecord?.dateKey === dateKey ? (
+                  <Text style={styles.taskTime}>
+                    {language === 'pt' ? 'Novo recorde de meta' : 'New goal record'} · +{task.definitionRecord.improvement}%
+                  </Text>
+                ) : null}
               <View style={styles.taskTimeRow}>
                 <Text style={styles.taskTime} numberOfLines={1}>
                   {formatTaskTime(getTaskTimeForOccurrence(task, dateKey), {

@@ -1,3 +1,4 @@
+import { getTaskForDate } from '../domain/taskDefinition';
 import {
   DEFAULT_REPEAT_CONFIG,
   STREAK_PAUSE_TOLERANCE_DAYS,
@@ -80,6 +81,7 @@ const restoreDeletedTaskAtIndex = (tasks, task, index) => {
 };
 
 export const getQuantumProgressValues = (task, dateKey) => {
+  task = getTaskForDate(task, dateKey);
   if (!task || task.type !== 'quantum' || !task.quantum) {
     return { doneSeconds: 0, doneCount: 0 };
   }
@@ -125,6 +127,7 @@ export const getQuantumProgressValues = (task, dateKey) => {
 };
 
 const getQuantumProgressLabel = (task, dateKey) => {
+  task = getTaskForDate(task, dateKey);
   if (!task || task.type !== 'quantum' || !task.quantum) {
     return null;
   }
@@ -157,6 +160,7 @@ const normalizeTagToken = (value) => value
   .replace(/^_|_$/g, '');
 
 const getQuantumProgressPercent = (task, dateKey) => {
+  task = getTaskForDate(task, dateKey);
   if (!task || task.type !== 'quantum' || !task.quantum) {
     return 0;
   }
@@ -263,15 +267,16 @@ const normalizeTaskBehaviorType = (type) => {
   return type;
 };
 
-const getQuantumDefinitionSignature = (quantum) => {
+// A different target keeps the same measured progress. Only an incompatible
+// measurement (mode or unit) needs a fresh current definition.
+const getQuantumMeasurementSignature = (quantum) => {
   const mode = quantum?.mode;
   if (mode === 'timer') {
-    return `timer:${getTimerTotalSeconds(quantum.timer)}`;
+    return 'timer';
   }
   if (mode === 'count') {
-    const value = Number.parseInt(quantum?.count?.value, 10) || 0;
     const unit = quantum?.count?.unit?.trim().toLowerCase() ?? '';
-    return `count:${value}:${unit}`;
+    return `count:${unit}`;
   }
   return `unknown:${mode ?? ''}`;
 };
@@ -329,8 +334,8 @@ const shouldResetTaskProgress = (existingTask, nextType, nextQuantum) => {
     return false;
   }
   return (
-    getQuantumDefinitionSignature(existingTask.quantum) !==
-    getQuantumDefinitionSignature(nextQuantum)
+    getQuantumMeasurementSignature(existingTask.quantum) !==
+    getQuantumMeasurementSignature(nextQuantum)
   );
 };
 

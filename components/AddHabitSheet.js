@@ -157,6 +157,8 @@ export default function AddHabitSheet({
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
 
   const titleInputRef = useRef(null);
+  const initialDraftSnapshotRef = useRef(null);
+  const discardAlertOpenRef = useRef(false);
   const isClosingRef = useRef(false);
   const isRequestingNotificationPermissionRef = useRef(false);
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -192,6 +194,8 @@ export default function AddHabitSheet({
     const nextDraft = initialHabit
       ? draftFromTask(initialHabit)
       : createEmptyDraft();
+    initialDraftSnapshotRef.current = JSON.stringify(nextDraft);
+    discardAlertOpenRef.current = false;
     dispatch({ type: 'hydrate', draft: nextDraft });
     setPanel(null);
     setShowErrors(false);
@@ -281,8 +285,21 @@ export default function AddHabitSheet({
     if (!visible) {
       return;
     }
+    if (initialDraftSnapshotRef.current !== JSON.stringify(draft)) {
+      if (discardAlertOpenRef.current) return;
+      discardAlertOpenRef.current = true;
+      const dismissAlert = () => { discardAlertOpenRef.current = false; };
+      Alert.alert(t.unsavedChangesTitle, t.unsavedChangesMessage, [
+        { text: t.continueEditing, style: 'cancel', onPress: dismissAlert },
+        { text: t.discardChanges, style: 'destructive', onPress: () => {
+          dismissAlert();
+          onClose?.();
+        } },
+      ], { cancelable: true, onDismiss: dismissAlert });
+      return;
+    }
     onClose?.();
-  }, [onClose, visible]);
+  }, [draft, onClose, t.continueEditing, t.discardChanges, t.unsavedChangesMessage, t.unsavedChangesTitle, visible]);
 
   const closePanel = useCallback(() => {
     setPanel(null);
@@ -683,7 +700,7 @@ export default function AddHabitSheet({
       } else {
         onCreate?.(payload);
       }
-      handleClose();
+      onClose?.();
     };
 
     if (
@@ -702,7 +719,7 @@ export default function AddHabitSheet({
     common.cancel,
     draft,
     errors,
-    handleClose,
+    onClose,
     initialHabit,
     isEditMode,
     onCreate,

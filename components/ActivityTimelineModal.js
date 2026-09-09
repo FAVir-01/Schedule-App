@@ -180,6 +180,11 @@ export default function ActivityTimelineModal({
           <Text style={styles.activityRowLabel} numberOfLines={isReflection ? 3 : 2}>
             {title}
           </Text>
+          {item.definitionRecord ? (
+            <Text style={styles.activityRowLabel}>
+              {language === 'pt' ? 'Novo recorde de meta' : 'New goal record'} · +{item.definitionRecord.improvement}%
+            </Text>
+          ) : null}
           {tagLine ? (
             <Text style={styles.activityRowMeta} numberOfLines={1}>
               {tagLine}
