@@ -25,7 +25,7 @@ import {
   getQuantumStepLabel,
 } from '../utils/taskUtils';
 import { formatTaskTime, getTimerTotalSeconds } from '../utils/timeUtils';
-import { getTaskTimeForDate } from '../domain/taskSchedule';
+import { getTaskTimeForOccurrence } from '../domain/taskSchedule';
 import {
   buildRepeatingWavePath,
   getWaterDisplayPercent,
@@ -54,6 +54,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
   backgroundColor,
   borderColor,
   dateKey,
+  occurrenceKey,
   totalSubtasks,
   completedSubtasks,
   onPress,
@@ -67,6 +68,9 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
   reduceMotion = false,
 }) {
   const t = translations[language] ?? translations.en;
+  // Presenca e progresso sao indexados pela ocorrencia: num dia com duas aulas
+  // cada card tem a sua. Sem grupos, `occurrenceKey` e o proprio `dateKey`.
+  const progressKey = occurrenceKey ?? dateKey;
   const translateX = useRef(new Animated.Value(0)).current;
   const waveShiftAnim = useRef(new Animated.Value(0)).current;
   const waveIntensityAnim = useRef(new Animated.Value(1)).current;
@@ -175,7 +179,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
   );
 
   const totalLabel = useMemo(() => {
-    const quantumLabel = getQuantumProgressLabel(task, dateKey);
+    const quantumLabel = getQuantumProgressLabel(task, progressKey);
     if (quantumLabel) {
       return quantumLabel;
     }
@@ -183,10 +187,10 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
       return null;
     }
     return `${completedSubtasks}/${totalSubtasks}`;
-  }, [completedSubtasks, dateKey, task, totalSubtasks]);
+  }, [completedSubtasks, progressKey, task, totalSubtasks]);
   const finishedMilestone = useMemo(
-    () => getTaskFinishedMilestoneForDate(task, dateKey),
-    [dateKey, task]
+    () => getTaskFinishedMilestoneForDate(task, progressKey),
+    [progressKey, task]
   );
   const finishedMilestoneMessage = useMemo(
     () =>
@@ -200,22 +204,22 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     const previous = previousCompletionRef.current;
     const completed = Boolean(task.completed);
     if (
-      previous.dateKey === dateKey &&
+      previous.dateKey === progressKey &&
       !previous.completed &&
       completed &&
       finishedMilestone
     ) {
       setFinishedMilestoneAnimationToken((token) => token + 1);
     }
-    previousCompletionRef.current = { dateKey, completed };
-  }, [dateKey, finishedMilestone, task.completed]);
+    previousCompletionRef.current = { dateKey: progressKey, completed };
+  }, [progressKey, finishedMilestone, task.completed]);
 
   const isQuantum = task.type === 'quantum';
   const isReminder = task.type === 'reminder';
   const isWaterAnimation = task.quantum?.animation === 'water';
   const waterPercent = useMemo(
-    () => getQuantumProgressPercent(task, dateKey),
-    [dateKey, task]
+    () => getQuantumProgressPercent(task, progressKey),
+    [progressKey, task]
   );
   const waterDisplayPercent = useMemo(
     () => getWaterDisplayPercent(waterPercent),
@@ -407,7 +411,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     waveIntensityAnim,
   ]);
   const isQuantumComplete =
-    isQuantum && getQuantumProgressLabel(task, dateKey) && task.completed;
+    isQuantum && getQuantumProgressLabel(task, progressKey) && task.completed;
 
   // Stepper inline: tap no ⊕ soma o passo direto (água/contador reagem na hora);
   // long-press abre o painel com −/+, presets e OK.
@@ -645,7 +649,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
               </Text>
               <View style={styles.taskTimeRow}>
                 <Text style={styles.taskTime} numberOfLines={1}>
-                  {formatTaskTime(getTaskTimeForDate(task, dateKey), {
+                  {formatTaskTime(getTaskTimeForOccurrence(task, dateKey), {
                     language,
                     anytimeLabel: t.sheet.anytime,
                   })}

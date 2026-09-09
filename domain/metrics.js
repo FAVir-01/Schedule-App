@@ -1,4 +1,5 @@
 import { getCalendarDayOrdinal, getDateKey, normalizeDateValue } from '../utils/dateUtils';
+import { getDateKeyFromOccurrenceKey } from '../utils/taskTimeUtils';
 
 export const METRIC_CALCULATIONS = ['total', 'dailyAverage', 'activeDayAverage'];
 export const METRIC_PERIODS = ['month', 'previousMonth', 'week', 'year', 'all'];
@@ -87,7 +88,10 @@ export const collectMetricRecords = (source, tasks, history = []) => {
         dates[details.dateKey] = details.completed === true;
       }
     }
-    for (const [dateKey, completed] of Object.entries(dates)) {
+    for (const [occurrenceKey, completed] of Object.entries(dates)) {
+      // Duas aulas na mesma segunda sao dois registros no mesmo dia: o total
+      // soma dois, e "dias ativos" continua contando um.
+      const dateKey = getDateKeyFromOccurrenceKey(occurrenceKey);
       if (completed === true && validDay(dateKey)) records.push({ dateKey, value: rule.value, ruleKey: key });
     }
   }

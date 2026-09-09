@@ -35,6 +35,11 @@ export const QUANTUM_MODES = ['timer', 'count'];
 export const QUANTUM_ANIMATIONS = ['default', 'water'];
 export const REPEAT_FREQUENCIES = ['daily', 'weekly', 'monthly'];
 
+// Teto so para o + nao virar lista infinita. Fica muito acima de qualquer uso
+// real (uma materia com duas ou tres aulas no mesmo dia), entao nunca aparece
+// como limite para quem esta configurando.
+export const MAX_TIME_GROUPS = 12;
+
 // Chave -> deslocamento em minutos em relação ao horário da tarefa.
 export const REMINDER_OFFSETS = {
   none: null,
@@ -187,9 +192,12 @@ const sortDaysForRepeat = (days, repeat) => {
   return selectedDays.filter((day) => days.includes(day));
 };
 
+// Um dia PODE estar em mais de um grupo — e assim que a materia que acontece de
+// manha e de tarde na mesma segunda existe. O que continua proibido e o
+// contrario: grupo vazio, e dia selecionado que nao esta em grupo nenhum.
 const reconcileTimeGroups = (time, repeat) => {
   const selectedDays = getRepeatDays(repeat);
-  if (selectedDays.length < 2 || !Array.isArray(time?.groups) || time.groups.length < 2) {
+  if (selectedDays.length < 1 || !Array.isArray(time?.groups) || time.groups.length < 2) {
     const remainingDay = selectedDays[0];
     const fallbackGroup =
       time?.groups?.find((group) => group?.days?.includes(remainingDay)) ?? time?.groups?.[0];
@@ -212,9 +220,11 @@ const reconcileTimeGroups = (time, repeat) => {
         id = `time-group-${suffix}`;
       }
       usedIds.add(id);
+      const seen = new Set();
       const days = [];
       (Array.isArray(group?.days) ? group.days : []).forEach((day) => {
-        if (selectedSet.has(day) && !assigned.has(day)) {
+        if (selectedSet.has(day) && !seen.has(day)) {
+          seen.add(day);
           assigned.add(day);
           days.push(day);
         }
@@ -627,12 +637,17 @@ export const taskDraftReducer = (draft, action) => {
 
     case 'configureTimeGroups': {
       const days = getRepeatDays(draft.repeat);
-      if (days.length < 2) {
+      if (days.length < 1) {
         return draft;
       }
       const splitAt = Math.ceil(days.length / 2);
       const configuration = normalizeTimeConfiguration(draft.time);
-      const groups = [days.slice(0, splitAt), days.slice(splitAt)].map((groupDays, index) => ({
+      // Com varios dias a intencao e repartir ("segunda de manha, quarta a
+      // tarde"). Com um dia so nao ha o que repartir: os dois grupos ficam com
+      // o mesmo dia, que e a materia acontecendo duas vezes na segunda.
+      const split =
+        days.length > 1 ? [days.slice(0, splitAt), days.slice(splitAt)] : [days.slice(), days.slice()];
+      const groups = split.map((groupDays, index) => ({
         id: `time-group-${index + 1}`,
         days: groupDays,
         ...configuration,
@@ -653,48 +668,66 @@ export const taskDraftReducer = (draft, action) => {
       return withInvariants({ ...draft, time: { ...draft.time, groups } });
     }
 
+    // O chip liga/desliga o dia NAQUELE grupo. Ligar um dia que ja esta em outro
+    // grupo nao o tira de la: ele passa a acontecer nos dois horarios. As duas
+    // unicas travas sao nao deixar um grupo vazio e nao deixar um dia
+    // selecionado sem horario nenhum.
     case 'assignTimeGroupDay': {
       const groups = draft.time.groups ?? [];
-      const sourceIndex = groups.findIndex((group) => group.days.includes(action.day));
       const targetIndex = groups.findIndex((group) => group.id === action.id);
-      if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+      if (targetIndex < 0) {
         return draft;
       }
-      // Um grupo nunca pode ficar vazio: para dividi-lo, o usuario usa o +.
-      if (groups[sourceIndex].days.length <= 1) {
-        return draft;
+      const target = groups[targetIndex];
+      if (target.days.includes(action.day)) {
+        const coveredElsewhere = groups.some(
+          (group, index) => index !== targetIndex && group.days.includes(action.day)
+        );
+        if (target.days.length <= 1 || !coveredElsewhere) {
+          return draft;
+        }
+        const nextGroups = groups.map((group, index) =>
+          index === targetIndex
+            ? { ...group, days: group.days.filter((day) => day !== action.day) }
+            : group
+        );
+        return { ...draft, time: { ...draft.time, groups: nextGroups } };
       }
-      const nextGroups = groups.map((group, index) => {
-        const days =
-          index === sourceIndex
-            ? group.days.filter((day) => day !== action.day)
-            : index === targetIndex
-            ? [...group.days, action.day]
-            : group.days;
-        return { ...group, days: sortDaysForRepeat(days, draft.repeat) };
-      });
+      const nextGroups = groups.map((group, index) =>
+        index === targetIndex
+          ? { ...group, days: sortDaysForRepeat([...group.days, action.day], draft.repeat) }
+          : group
+      );
       return { ...draft, time: { ...draft.time, groups: nextGroups } };
     }
 
     case 'addTimeGroup': {
       const groups = draft.time.groups ?? [];
       const days = getRepeatDays(draft.repeat);
-      if (groups.length < 2 || groups.length >= days.length) {
+      if (groups.length < 2 || days.length === 0 || groups.length >= MAX_TIME_GROUPS) {
         return draft;
       }
       const requestedIndex = Number.isInteger(action.afterIndex) ? action.afterIndex : groups.length - 1;
       const preferredDonor = Math.max(0, Math.min(groups.length - 1, requestedIndex));
-      const donorIndex =
+      // Enquanto houver grupo com mais de um dia, o novo horario nasce tirando
+      // um dia dele — repartir e o caso comum. Quando todo grupo ja tem um dia
+      // so, nao ha o que repartir: o novo grupo REPETE o dia do doador, que e a
+      // materia acontecendo mais uma vez no mesmo dia.
+      const splitDonorIndex =
         groups[preferredDonor]?.days.length > 1
           ? preferredDonor
           : groups.findIndex((group) => group.days.length > 1);
-      if (donorIndex < 0) {
+      const donorIndex = splitDonorIndex >= 0 ? splitDonorIndex : preferredDonor;
+      const donor = groups[donorIndex];
+      if (!donor || donor.days.length === 0) {
         return draft;
       }
-      const donor = groups[donorIndex];
+      const duplicatesDay = splitDonorIndex < 0;
       const movedDay = donor.days[donor.days.length - 1];
       const nextGroups = groups.map((group, index) =>
-        index === donorIndex ? { ...group, days: group.days.slice(0, -1) } : group
+        index === donorIndex && !duplicatesDay
+          ? { ...group, days: group.days.slice(0, -1) }
+          : group
       );
       const insertionIndex = Math.max(0, Math.min(nextGroups.length, requestedIndex + 1));
       nextGroups.splice(insertionIndex, 0, {

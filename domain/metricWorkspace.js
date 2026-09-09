@@ -1,5 +1,6 @@
 import { getDateKey, normalizeDateValue } from '../utils/dateUtils';
 import { getQuantumProgressValues } from '../utils/taskUtils';
+import { getDateKeyFromOccurrenceKey } from '../utils/taskTimeUtils';
 import { getTimerTotalSeconds } from '../utils/timeUtils';
 import { collectMetricRecords, normalizeMetrics } from './metrics';
 import { compileMetricFormula, MetricFormulaError, runMetricFormula } from './metricFormula';
@@ -94,7 +95,9 @@ export const normalizeMetricWorkspace = (input) => {
 export const collectBindingValues = (binding, tasks, history = []) => {
   const task = tasks.find((item) => String(item.id) === binding.taskId);
   const values = new Map();
-  const add = (key, value) => { if (validDay(key)) values.set(key, (values.get(key) ?? 0) + number(value)); };
+  // A chave pode vir com o sufixo da ocorrencia: as duas aulas da segunda somam
+  // no mesmo dia do grafico.
+  const add = (rawKey, value) => { const key = getDateKeyFromOccurrenceKey(rawKey); if (validDay(key)) values.set(key, (values.get(key) ?? 0) + number(value)); };
   const result = { binding, values, constant: null, missing: false, error: null };
   if (binding.field === 'completion' || binding.field === 'subtask') {
     const records = collectMetricRecords({ rules: [{ ...binding, subtaskId: binding.field === 'subtask' ? binding.subtaskId : null, value: 1 }] }, tasks, history);

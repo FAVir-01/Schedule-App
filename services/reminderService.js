@@ -1,6 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { NOTIFICATIONS_SUPPORTED, REMINDER_OFFSETS } from '../constants/app';
-import { getTaskTimeForDate, shouldTaskAppearOnDate } from '../domain/taskSchedule';
+import { getTaskOccurrencesForDate, shouldTaskAppearOnDate } from '../domain/taskSchedule';
 import { normalizeDateValue } from '../utils/dateUtils';
 import { scheduledReminderContentMatches } from '../utils/notificationUtils';
 import { toMinutes } from '../utils/timeUtils';
@@ -59,6 +59,11 @@ const isValidTime = (time) =>
 const isValidDate = (date) =>
   date instanceof Date && !Number.isNaN(date.getTime());
 
+const getOccurrenceSortValue = (occurrence) => {
+  const baseTime = getReminderBaseTime(occurrence?.time);
+  return isValidTime(baseTime) ? toMinutes(baseTime) : Number.MAX_SAFE_INTEGER;
+};
+
 const buildReminderDateTime = (date, timeValue, offsetMinutes) => {
   if (!date || !isValidTime(timeValue) || typeof offsetMinutes !== 'number') {
     return null;
@@ -96,13 +101,25 @@ const getUpcomingReminderDates = (
     if (!shouldTaskAppearOnDate(task, candidateDate)) {
       continue;
     }
-    const baseTime = getReminderBaseTime(getTaskTimeForDate(task, candidateDate));
-    if (!isValidTime(baseTime)) {
-      continue;
-    }
-    const reminderDate = buildReminderDateTime(candidateDate, baseTime, offsetMinutes);
-    if (reminderDate && reminderDate > now) {
-      reminderDates.push(reminderDate);
+    // Um dia com duas ocorrências rende dois lembretes: um antes da aula das
+    // 07:20 e outro antes da das 15:20. Em ordem cronológica, porque a fila é
+    // consumida do primeiro para o último e a ordem dos grupos no editor é a do
+    // usuário, não a do relógio.
+    const occurrences = getTaskOccurrencesForDate(task, candidateDate)
+      .slice()
+      .sort((left, right) => getOccurrenceSortValue(left) - getOccurrenceSortValue(right));
+    for (const occurrence of occurrences) {
+      if (reminderDates.length >= maxCount) {
+        break;
+      }
+      const baseTime = getReminderBaseTime(occurrence.time);
+      if (!isValidTime(baseTime)) {
+        continue;
+      }
+      const reminderDate = buildReminderDateTime(candidateDate, baseTime, offsetMinutes);
+      if (reminderDate && reminderDate > now) {
+        reminderDates.push(reminderDate);
+      }
     }
   }
 

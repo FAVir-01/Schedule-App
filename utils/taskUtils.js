@@ -5,12 +5,14 @@ import {
 import {
   getCurrentScheduleVersion,
   getTaskTimeForDate,
+  isTaskDayCompleted,
   shouldTaskAppearOnDate,
   toScheduleKey,
 } from '../domain/taskSchedule';
 import { getCalendarDayOrdinal, getDateKey, normalizeDateValue } from './dateUtils';
 import { clamp01 } from './mathUtils';
 import { formatDuration, getTimerTotalSeconds, toMinutes } from './timeUtils';
+import { getDateKeyFromOccurrenceKey } from './taskTimeUtils';
 
 const getTaskCompletionStatus = (task, date) => {
   if (!task || !date) {
@@ -522,8 +524,10 @@ export const getTaskLastCompletionDateKey = (task) => {
     return null;
   }
   let latest = null;
-  Object.entries(task.completedDates).forEach(([dateKey, completed]) => {
-    if (completed && (!latest || dateKey > latest)) {
+  Object.entries(task.completedDates).forEach(([occurrenceKey, completed]) => {
+    // A chave pode trazer o sufixo da ocorrência; quem chama espera uma data.
+    const dateKey = getDateKeyFromOccurrenceKey(occurrenceKey);
+    if (completed && dateKey && (!latest || dateKey > latest)) {
       latest = dateKey;
     }
   });
@@ -691,7 +695,9 @@ export const getTaskStreak = (task, today = new Date()) => {
       break;
     }
     if (shouldTaskAppearOnDate(task, cursor)) {
-      if (getTaskCompletionStatus(task, getDateKey(cursor))) {
+      // Sequência conta DIAS: a segunda com duas aulas só entra quando as duas
+      // foram marcadas.
+      if (isTaskDayCompleted(task, cursor)) {
         streak += 1;
       } else if (i > 0) {
         break;
