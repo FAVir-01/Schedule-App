@@ -187,6 +187,7 @@ const {
   getTaskTagDisplayLabel,
   getTaskTypeDisplayLabel,
   getQuantumProgressLabel,
+  getQuantumProgressValues,
   getQuantumStepLabel,
   isValidQuantumDefinition,
   clearExpiredRepeatEnd,
@@ -2616,13 +2617,13 @@ test('preserva progresso quando somente a apresentação muda', () => {
   assert.equal(reconciled.completedDates['2026-07-13'], true);
 });
 
-test('reinicia progresso quando meta, unidade, modo ou tipo muda', () => {
+test('preserva progresso ao mudar a meta e reinicia quando unidade, modo ou tipo muda', () => {
   assert.equal(
     shouldResetTaskProgress(existingQuantumTask, 'quantum', {
       mode: 'count',
       count: { value: 20, unit: 'pages' },
     }),
-    true
+    false
   );
   assert.equal(
     shouldResetTaskProgress(existingQuantumTask, 'quantum', {
@@ -4695,5 +4696,105 @@ const runTests = async () => {
   console.log(`\n${tests.length - failures}/${tests.length} testes passaram.`);
   process.exitCode = failures > 0 ? 1 : 0;
 };
+
+const { getTaskForDate, updateTaskForDate, preserveTaskDefinitionOnEdit, getHistoricalSubtask } = require('../domain/taskDefinition');
+
+test('task edits preserve past subtasks, titles and completions across reloads', () => {
+  const old = { id: 'history-task', title: 'Original', type: 'default', dateKey: '2026-09-01', completedDates: { '2026-09-08': true }, subtasks: [{ id: 'one', title: 'First', completedDates: { '2026-09-08': true } }] };
+  const changed = preserveTaskDefinitionOnEdit(old, { ...old, title: 'Updated', subtasks: [...old.subtasks, { id: 'two', title: 'Second', completedDates: {} }] }, '2026-09-09');
+  const reloaded = JSON.parse(JSON.stringify(changed));
+  assert.equal(getTaskForDate(reloaded, '2026-09-08').subtasks.length, 1);
+  assert.equal(getTaskForDate(reloaded, '2026-09-08').title, 'Original');
+  assert.equal(getTaskForDate(reloaded, '2026-09-09').subtasks.length, 2);
+  assert.equal(reloaded.definitionRecord.improvement, 100);
+  const removed = preserveTaskDefinitionOnEdit(reloaded, { ...reloaded, subtasks: [] }, '2026-09-10');
+  assert.equal(getTaskForDate(removed, '2026-09-09').subtasks.length, 2);
+  assert.equal(getHistoricalSubtask(removed, 'one').completedDates['2026-09-08'], true);
+  const corrected = updateTaskForDate(removed, '2026-09-08', (task) => ({ ...task, subtasks: task.subtasks.map((item) => ({ ...item, completedDates: {} })) }));
+  assert.equal(getHistoricalSubtask(corrected, 'one').completedDates['2026-09-08'], false);
+  assert.equal(getHistoricalSubtask(removed, 'one').completedDates['2026-09-08'], true);
+  assert.equal(corrected.completedDates['2026-09-08'], true);
+});
+
+test('goal increases retain actual progress and compare compatible units only', () => {
+  const old = { id: 'goal', type: 'quantum', completedDates: { '2026-09-08#am': true, '2026-09-09': true }, quantum: { mode: 'count', count: { value: 10, unit: 'pages' }, progressByDate: { '2026-09-09': { doneCount: 10 } } } };
+  const quantum = { ...old.quantum, count: { value: 20, unit: 'pages' } };
+  const changed = preserveTaskDefinitionOnEdit(old, { ...old, ...reconcileTaskProgressOnEdit(old, 'quantum', quantum) }, '2026-09-09');
+  assert.equal(changed.completedDates['2026-09-08#am'], true);
+  assert.equal(changed.completedDates['2026-09-09'], undefined);
+  assert.equal(getQuantumProgressValues(changed, '2026-09-08#am').doneCount, 10);
+  assert.equal(getQuantumProgressValues(changed, '2026-09-09').doneCount, 10);
+  assert.equal(changed.definitionRecord.improvement, 100);
+  const twice = preserveTaskDefinitionOnEdit(changed, { ...changed, title: 'Renamed' }, '2026-09-09');
+  assert.equal(twice.definitionHistory.length, 1);
+  assert.equal(getTaskForDate(twice, '2026-09-08').quantum.count.value, 10);
+  const differentUnit = preserveTaskDefinitionOnEdit(twice, { ...twice, quantum: { ...quantum, count: { value: 30, unit: 'km' } } }, '2026-09-10');
+  assert.equal(differentUnit.definitionRecord, null);
+});
+
+test('count target edits retain daily progress and historical goals after reload', () => {
+  const old = {
+    type: 'quantum', completedDates: { '2026-09-08': true },
+    quantum: { mode: 'count', count: { value: 10, unit: 'pages' },
+      progressByDate: { '2026-09-08': { doneCount: 10 }, '2026-09-09': { doneCount: 6 } } },
+  };
+  const edit = (task, value, day) => {
+    const quantum = { mode: 'count', count: { value, unit: 'pages' } };
+    assert.equal(shouldResetTaskProgress(task, 'quantum', quantum), false);
+    const reconciled = reconcileTaskProgressOnEdit(task, 'quantum', quantum);
+    assert.equal(reconciled.progressReset, false);
+    return JSON.parse(JSON.stringify(preserveTaskDefinitionOnEdit(task, { ...task, ...reconciled }, day)));
+  };
+  const raised = edit(old, 20, '2026-09-09');
+  assert.equal(getQuantumProgressValues(raised, '2026-09-09').doneCount, 6);
+  assert.equal(getTaskForDate(raised, '2026-09-08').quantum.count.value, 10);
+  assert.equal(raised.completedDates['2026-09-08'], true);
+  const lowered = edit(raised, 5, '2026-09-09');
+  assert.equal(lowered.completedDates['2026-09-09'], true);
+  assert.equal(getQuantumProgressValues(lowered, '2026-09-09').doneCount, 6);
+  assert.equal(lowered.definitionHistory.length, 1);
+  const nextDay = edit(lowered, 30, '2026-09-10');
+  assert.equal(getTaskForDate(nextDay, '2026-09-09').quantum.count.value, 5);
+  assert.equal(nextDay.completedDates['2026-09-09'], true);
+  assert.equal(getTaskForDate(nextDay, '2026-09-10').quantum.count.value, 30);
+});
+
+test('timer target edits preserve elapsed time without a reset', () => {
+  const old = { type: 'quantum', completedDates: { '2026-09-08': true, '2026-09-09': true },
+    quantum: { mode: 'timer', timer: { hours: 0, minutesPart: 5 }, progressByDate: { '2026-09-09': { doneSeconds: 300 } } } };
+  const quantum = { mode: 'timer', timer: { hours: 0, minutesPart: 10 } };
+  assert.equal(shouldResetTaskProgress(old, 'quantum', quantum), false);
+  const changed = preserveTaskDefinitionOnEdit(old, { ...old, ...reconcileTaskProgressOnEdit(old, 'quantum', quantum) }, '2026-09-09');
+  assert.equal(getQuantumProgressValues(changed, '2026-09-09').doneSeconds, 300);
+  assert.equal(changed.completedDates['2026-09-09'], undefined);
+  assert.equal(changed.completedDates['2026-09-08'], true);
+  assert.equal(getTaskForDate(changed, '2026-09-08').quantum.timer.minutesPart, 5);
+});
+
+test('metric rows use the subtask total and goal effective on each day', () => {
+  const old = { id: 'versioned', type: 'default', subtasks: [{ id: 'one', completedDates: { '2026-09-08': true } }] };
+  const task = preserveTaskDefinitionOnEdit(old, { ...old, subtasks: [...old.subtasks, { id: 'two' }] }, '2026-09-09');
+  const binding = { ref: 'A', taskId: 'versioned', field: 'subtasksTotal' };
+  const widget = { ...formulaWidget('A', [binding]), period: 'custom', startDate: '2026-09-08', endDate: '2026-09-09' };
+  const result = evaluateMetricWidget(widget, [task], { today: new Date(2026, 8, 9) });
+  assert.equal(result.error, null);
+  assert.deepEqual(result.rows.map((row) => row.values.A), [1, 2]);
+  assert.deepEqual(result.buckets.map((row) => row.value), [1, 2]);
+  const removed = preserveTaskDefinitionOnEdit(task, { ...task, subtasks: [] }, '2026-09-10');
+  const completions = evaluateMetricWidget({ ...widget, bindings: [{ ...binding, field: 'subtasksCompleted' }] }, [removed], { today: new Date(2026, 8, 10) });
+  assert.equal(completions.value, 1);
+  const originalSubtask = evaluateMetricWidget({ ...widget, bindings: [{ ...binding, field: 'subtask', subtaskId: 'one' }] }, [removed], { today: new Date(2026, 8, 10) });
+  assert.equal(originalSubtask.value, 1);
+});
+
+test('same-day edits cannot erase a record or inflate an old goal', () => {
+  const original = { type: 'default', subtasks: [{ id: 'a' }] };
+  const raised = preserveTaskDefinitionOnEdit(original, { ...original, subtasks: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] }, '2026-09-09');
+  const lowered = preserveTaskDefinitionOnEdit(raised, { ...raised, subtasks: [{ id: 'a' }] }, '2026-09-09');
+  const partial = preserveTaskDefinitionOnEdit(lowered, { ...lowered, subtasks: [{ id: 'a' }, { id: 'b' }] }, '2026-09-09');
+  assert.equal(partial.definitionRecord, null);
+  assert.equal(partial.definitionRecords.length, 1);
+  assert.equal(getTaskForDate(partial, '2026-09-08').subtasks.length, 1);
+});
 
 void runTests();

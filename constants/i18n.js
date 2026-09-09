@@ -524,6 +524,10 @@ const translations = {
     sheet: {
       newTask: 'New Task',
       closeTaskEditor: 'Close task editor',
+      unsavedChangesTitle: 'Discard changes?',
+      unsavedChangesMessage: 'You have unsaved changes to this task. If you leave now, those changes will be lost.',
+      continueEditing: 'Continue editing',
+      discardChanges: 'Discard changes',
       goBack: 'Go back',
       createHabitAnnouncement: 'Create habit',
       editHabitAnnouncement: 'Edit habit',
@@ -1298,6 +1302,10 @@ const translations = {
     sheet: {
       newTask: 'Nova Tarefa',
       closeTaskEditor: 'Fechar editor de tarefa',
+      unsavedChangesTitle: 'Descartar alterações?',
+      unsavedChangesMessage: 'Você tem alterações não salvas nesta tarefa. Se sair agora, essas alterações serão perdidas.',
+      continueEditing: 'Continuar editando',
+      discardChanges: 'Descartar alterações',
       goBack: 'Voltar',
       createHabitAnnouncement: 'Criar hábito',
       editHabitAnnouncement: 'Editar hábito',

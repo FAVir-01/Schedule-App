@@ -136,6 +136,7 @@ export const buildSearchableTimelineItems = ({
         timestamp: timestamp.toISOString(),
         dateKey: getDateKey(timestamp),
         title,
+        ...(entry.details?.definitionRecord ? { definitionRecord: entry.details.definitionRecord } : {}),
       });
     });
   }

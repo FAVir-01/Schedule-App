@@ -94,6 +94,24 @@ export const normalizeMetricWorkspace = (input) => {
 
 export const collectBindingValues = (binding, tasks, history = []) => {
   const task = tasks.find((item) => String(item.id) === binding.taskId);
+  if (task?.definitionHistory?.length && binding.field !== 'completion') {
+    const versions = [...task.definitionHistory.map((item) => ({ ...task, ...item.definition, definitionHistory: [] })), { ...task, definitionHistory: [] }];
+    const fields = versions.map((version) => collectBindingValues(binding, [version], history));
+    const indexFor = (key) => {
+      const index = task.definitionHistory.findIndex((item) => key < item.until);
+      return index < 0 ? fields.length - 1 : index;
+    };
+    const values = new Map();
+    fields.forEach((field, index) => field.values.forEach((value, key) => {
+      if (indexFor(key) === index) values.set(key, value);
+    }));
+    return { ...fields[fields.length - 1], values,
+      missing: fields.every((field) => field.missing),
+      error: fields.every((field) => field.error) ? 'missingField' : null,
+      valueForDate: ['goal', 'subtasksTotal'].includes(binding.field)
+        ? (key) => fields[indexFor(key)].constant ?? 0 : null,
+    };
+  }
   const values = new Map();
   // A chave pode vir com o sufixo da ocorrencia: as duas aulas da segunda somam
   // no mesmo dia do grafico.
@@ -147,6 +165,12 @@ export const metricPeriodRange = (widget, today, collected = []) => {
 };
 
 const scopeFields = (collected, dateKeys) => new Map(collected.map((field) => {
+  if (field.valueForDate) {
+    const values = new Map(dateKeys.map((key) => [key, field.valueForDate(key)]));
+    const distinct = new Set(values.values());
+    const constant = distinct.size === 1 ? [...distinct][0] : null;
+    return [field.binding.ref, { ...field, constant, values, total: constant ?? [...values.values()].reduce((sum, value) => sum + value, 0) }];
+  }
   const values = new Map(dateKeys.filter((key) => field.values.has(key)).map((key) => [key, field.values.get(key)]));
   return [field.binding.ref, { ...field, values, total: field.constant ?? [...values.values()].reduce((sum, value) => sum + value, 0) }];
 }));

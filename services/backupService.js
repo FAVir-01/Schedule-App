@@ -35,6 +35,9 @@ const getReferencedMediaUris = ({ tasks, monthImages, dayMoods, moodAppearance, 
     if (typeof task?.customImage === 'string') {
       uris.add(task.customImage);
     }
+    (task?.definitionHistory ?? []).forEach((version) => {
+      if (typeof version.definition?.customImage === 'string') uris.add(version.definition.customImage);
+    });
   });
   Object.values(monthImages ?? {}).forEach((uri) => {
     if (typeof uri === 'string') {
@@ -357,6 +360,10 @@ export const prepareImportedBackupData = async (data, options = {}) => {
     data.tasks.map(async (task) => ({
       ...task,
       customImage: await resolveAvailableMediaUri(task.customImage),
+      ...(task.definitionHistory ? { definitionHistory: await Promise.all(task.definitionHistory.map(async (version) => ({
+        ...version,
+        definition: { ...version.definition, customImage: await resolveAvailableMediaUri(version.definition?.customImage) },
+      }))) } : {}),
     }))
   );
   const monthImageEntries = await Promise.all(
