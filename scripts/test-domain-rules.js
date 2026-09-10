@@ -4841,4 +4841,71 @@ test('same-day edits cannot erase a record or inflate an old goal', () => {
   assert.equal(getTaskForDate(partial, '2026-09-08').subtasks.length, 1);
 });
 
+const { editSubtaskLines, reconcileSubtaskEntries } = require('../domain/subtaskEditor');
+const { getNoteProtection, normalizeNotePrivacy, protectNoteForDisplay, setNoteProtection } = require('../domain/notePrivacy');
+
+test('inline item editing saves the final line and retains renamed subtask progress', () => {
+  const existing = [
+    { id: 'a', title: 'Read', completedDates: { '2026-09-09': true } },
+    { id: 'b', title: 'Walk', completedDates: {} },
+  ];
+  let entries = editSubtaskLines(existing, 'Read a chapter\nWalk\nDrink water');
+  const draft = taskDraftReducer(draftFromTask({ type: 'default', subtasks: existing }), {
+    type: 'patch', value: { subtaskEntries: entries, subtasks: entries.map((item) => item.title) },
+  });
+  const payload = draftToTask(draft);
+  const saved = reconcileSubtaskEntries(payload.subtaskEntries, existing, (index) => `new-${index}`);
+  assert.deepEqual(saved.map((item) => item.title), ['Read a chapter', 'Walk', 'Drink water']);
+  assert.equal(saved[0].id, 'a');
+  assert.equal(saved[0].completedDates['2026-09-09'], true);
+  entries = editSubtaskLines(entries, 'Read a chapter\nDrink water');
+  assert.equal(entries[0].id, 'a');
+  assert.equal(entries[1].id, null);
+  assert.deepEqual(reconcileSubtaskEntries(editSubtaskLines(entries, ''), existing, () => 'new'), []);
+  assert.deepEqual(reconcileSubtaskEntries(['Walk'], existing, () => 'new'), [existing[1]]);
+});
+
+test('inline insertion and blank lines do not move existing subtask identities', () => {
+  const existing = [{ id: 'a', title: 'One' }, { id: 'b', title: 'Two' }];
+  const inserted = editSubtaskLines(existing, 'One\nNew\nTwo\n');
+  assert.deepEqual(inserted.map((item) => item.id), ['a', null, 'b', null]);
+  assert.deepEqual(reconcileSubtaskEntries(inserted, existing, (index) => `new-${index}`).map((item) => item.id), ['a', 'new-1', 'b']);
+  const reminderDraft = taskDraftReducer(draftFromTask({ type: 'reminder', subtasks: existing }), {
+    type: 'patch', value: { subtaskEntries: inserted, subtasks: inserted.map((item) => item.title) },
+  });
+  assert.deepEqual(draftToTask(reminderDraft).subtasks, ['One', 'New', 'Two']);
+  assert.equal(draftToTask(createEmptyDraft()).subtaskEntries, undefined);
+});
+
+test('note protection hides content and search matches without changing saved data', () => {
+  const note = { id: 'n', source: 'task', taskId: 'task', taskTitle: 'Reading', title: 'Secret title', text: 'Private words', images: ['secret.jpg'] };
+  const settings = setNoteProtection({}, note, 'note', true);
+  const hidden = protectNoteForDisplay(note, settings, false, 'Protected note');
+  assert.equal(hidden.isLocked, true);
+  assert.equal(hidden.title, 'Protected note');
+  assert.equal(hidden.text, '');
+  assert.deepEqual(hidden.images, []);
+  assert.deepEqual(buildNotesFeed([hidden], { search: 'Private words' }), []);
+  assert.deepEqual(buildNotesFeed([hidden], { search: 'Secret title' }), []);
+  assert.equal(note.text, 'Private words');
+  assert.equal(protectNoteForDisplay(note, settings, true, 'Protected note').text, 'Private words');
+  assert.equal(protectNoteForDisplay(note, settings, false, 'Protected note').isLocked, true);
+});
+
+test('task-wide note protection includes future notes, survives backup, and keeps individual locks', () => {
+  const note = { id: 'n', source: 'task', taskId: 'task', text: 'First' };
+  let settings = setNoteProtection({}, note, 'task', true);
+  settings = setNoteProtection(settings, note, 'note', true);
+  settings = normalizeNotePrivacy(JSON.parse(JSON.stringify(settings)));
+  const future = { ...note, id: 'next', dateKey: '2026-09-11', text: 'Next' };
+  assert.equal(protectNoteForDisplay(future, settings, false, 'Locked').isLocked, true);
+  assert.equal(protectNoteForDisplay({ ...future, taskId: 'another' }, settings, false, 'Locked').isLocked, false);
+  settings = setNoteProtection(settings, note, 'task', false);
+  assert.equal(protectNoteForDisplay(future, settings, false, 'Locked').isLocked, false);
+  assert.equal(getNoteProtection(note, settings).noteProtected, true);
+  settings = setNoteProtection(settings, note, 'note', false);
+  assert.equal(protectNoteForDisplay(note, settings, false, 'Locked').isLocked, false);
+  assert.deepEqual(normalizeNotePrivacy({}), { protectedNoteIds: [], protectedNoteTaskIds: [] });
+});
+
 void runTests();

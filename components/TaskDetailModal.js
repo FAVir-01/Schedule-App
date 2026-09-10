@@ -39,6 +39,8 @@ export default function TaskDetailModal({
   onToggleCompletion,
   onSaveNote,
   onDeleteNote,
+  onUnlockNotes,
+  onNotePrivacyOptions,
   onEdit,
   reduceMotion = false,
 }) {
@@ -341,6 +343,8 @@ export default function TaskDetailModal({
         onImageError={() => setHasImageError(true)}
         onSaveNote={onSaveNote}
         onDeleteNote={onDeleteNote}
+        onUnlockNotes={onUnlockNotes}
+        onNotePrivacyOptions={onNotePrivacyOptions}
         onClose={closePhotoSheet}
         onClosed={handlePhotoSheetClosed}
       />

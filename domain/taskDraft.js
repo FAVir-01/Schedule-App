@@ -494,6 +494,7 @@ export const draftToTask = (draft, { tagOptions = [] } = {}) => {
         }
       : null,
     subtasks: normalizeSubtasks(draft.subtasks),
+    ...(draft.subtaskEntries ? { subtaskEntries: draft.subtaskEntries.filter((item) => item.title.trim()) } : {}),
     notes: normalizeNotes(draft.notes),
   };
 };

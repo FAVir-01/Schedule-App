@@ -1,4 +1,6 @@
 import { getTaskForDate, updateTaskForDate, preserveTaskDefinitionOnEdit } from './domain/taskDefinition';
+import { reconcileSubtaskEntries } from './domain/subtaskEditor';
+import { getNoteProtection, normalizeNotePrivacy, protectNoteForDisplay, setNoteProtection } from './domain/notePrivacy';
 import React, {
   useCallback,
   useEffect,
@@ -426,6 +428,9 @@ function ScheduleApp() {
   // Reflexões diárias: { [dateKey]: { emoji, note, updatedAt } }
   const [dayMoods, setDayMoods] = useState({});
   const [notes, setNotes] = useState([]);
+  const [notesUnlocked, setNotesUnlocked] = useState(false);
+  const notesPrivacyGenerationRef = useRef(0);
+  const notesAuthenticationPendingRef = useRef(false);
   const [isNotesOpen, setIsNotesOpen] = useState(false);
   const [isMetricsOpen, setIsMetricsOpen] = useState(false);
   // Expressões personalizadas (imagens) disponíveis na folha de reflexão.
@@ -1502,21 +1507,73 @@ function ScheduleApp() {
       setShowConfetti(false);
     }
   }, [prefersReducedMotion]);
+  const requestNotesUnlock = useCallback(async (reveal = true) => {
+    if (notesAuthenticationPendingRef.current) return false;
+    const generation = notesPrivacyGenerationRef.current;
+    notesAuthenticationPendingRef.current = true;
+    const result = await authenticateDiaryAccess({ ...t.diaryPrivacy,
+      promptTitle: t.notes.unlockPrompt, promptSubtitle: t.notes.lockedNote, promptDescription: '',
+    });
+    notesAuthenticationPendingRef.current = false;
+    if (!result.success) {
+      if (result.reason === 'not_configured') Alert.alert(t.diaryPrivacy.notConfiguredTitle, t.diaryPrivacy.notConfiguredMessage);
+      else if (result.reason === 'unavailable') Alert.alert(t.diaryPrivacy.unavailableTitle, t.diaryPrivacy.unavailableMessage);
+      return false;
+    }
+    if (generation !== notesPrivacyGenerationRef.current) return false;
+    if (reveal) setNotesUnlocked(true);
+    return true;
+  }, [t.diaryPrivacy, t.notes.lockedNote, t.notes.unlockPrompt]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'background') {
+        // Android may background the app while showing its device PIN screen.
+        if (!notesAuthenticationPendingRef.current) notesPrivacyGenerationRef.current += 1;
+        setNotesUnlocked(false);
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  const showNotePrivacyOptions = useCallback((note) => {
+    const protection = getNoteProtection(note, userSettings);
+    const change = async (scope, enabled) => {
+      if (!isHydrated || loadFailuresRef.current.settings) {
+        Alert.alert(t.dataProtection.loadErrorTitle, t.dataProtection.loadErrorMessage);
+        return;
+      }
+      if (!(await requestNotesUnlock(false))) return;
+      setUserSettings((current) => setNoteProtection(current, note, scope, enabled));
+      setNotesUnlocked(false);
+    };
+    Alert.alert(t.notes.privacyTitle, t.notes.privacyHint, [
+      { text: protection.noteProtected ? t.notes.unprotectNote : t.notes.protectNote,
+        onPress: () => { void change('note', !protection.noteProtected); } },
+      ...(note.source === 'task' ? [{
+        text: protection.taskNotesProtected ? t.notes.unprotectTaskNotes : t.notes.protectTaskNotes,
+        onPress: () => { void change('task', !protection.taskNotesProtected); },
+      }] : []),
+      { text: t.common.cancel, style: 'cancel' },
+    ]);
+  }, [isHydrated, requestNotesUnlock, t.common.cancel, t.dataProtection, t.notes, userSettings]);
+
   const notesForFeed = useMemo(() => {
     const taskById = new Map(tasks.map((task) => [`${task.id}`, task]));
     return notes.map((note) => {
       const task = note.source === 'task' ? taskById.get(`${note.taskId}`) : null;
+      const displayNote = protectNoteForDisplay(note, userSettings, notesUnlocked, t.notes.lockedNote);
       return task
         ? {
-            ...note,
+            ...displayNote,
             taskTitle: task.title,
             taskImage: task.customImage ?? null,
             taskEmoji: task.emoji ?? null,
             taskColor: task.color ?? null,
           }
-        : note;
+        : displayNote;
     });
-  }, [notes, tasks]);
+  }, [notes, notesUnlocked, tasks, t.notes.lockedNote, userSettings]);
   const activeTask = useMemo(
     () => tasks.find((task) => task.id === activeTaskId) ?? null,
     [activeTaskId, tasks]
@@ -3066,23 +3123,9 @@ function ScheduleApp() {
   );
 
   const convertSubtasks = useCallback((subtasks, existing = []) => {
-    const remainingExisting = [...existing];
     const now = Date.now();
-    return subtasks
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .map((title, index) => {
-        const existingIndex = remainingExisting.findIndex((subtask) => subtask.title === title);
-        if (existingIndex >= 0) {
-          const [found] = remainingExisting.splice(existingIndex, 1);
-          return { ...found, title, completedDates: found.completedDates ?? {} };
-        }
-        return {
-          id: `${now}-${index}-${Math.random().toString(36).slice(2, 8)}`,
-          title,
-          completedDates: {},
-        };
-      });
+    return reconcileSubtaskEntries(subtasks, existing,
+      (index) => `${now}-${index}-${Math.random().toString(36).slice(2, 8)}`);
   }, []);
 
   const getUniqueTitle = useCallback(
@@ -3511,6 +3554,7 @@ function ScheduleApp() {
         // This is a device security preference, so a data backup must not
         // silently enable or disable it when restored.
         protectPrivateReflections: isDiaryPrivacyEnabled,
+        ...normalizeNotePrivacy(rawSettings),
         onboardingCompleted: rawSettings.onboardingCompleted === true,
         discoverMetrics: normalizeMetricWorkspace(rawSettings.discoverMetrics),
       };
@@ -3599,6 +3643,8 @@ function ScheduleApp() {
       setDayMoods(importedData.dayMoods);
       setMoodAppearance(importedData.moodAppearance);
       setNotes(nextNotes);
+      notesPrivacyGenerationRef.current += 1;
+      setNotesUnlocked(false);
       setIsNotesOpen(false);
       setIsMetricsOpen(false);
       setActiveTaskId(null);
@@ -3750,7 +3796,7 @@ function ScheduleApp() {
         completedDates: nextCompletedDates,
         quantum: mergedQuantum,
       } = reconcileTaskProgressOnEdit(existingTask, nextType, nextQuantum);
-      const nextSubtasks = convertSubtasks(habit?.subtasks ?? [], existingTask.subtasks ?? []);
+      const nextSubtasks = convertSubtasks(habit?.subtaskEntries ?? habit?.subtasks ?? [], existingTask.subtasks ?? []);
       const nextDateKey = getDateKey(nextDate);
       const nextRepeat = normalizeRepeatConfig(habit?.repeat ?? existingTask.repeat);
       const nextTime = habit?.time ?? null;
@@ -4054,7 +4100,7 @@ function ScheduleApp() {
       openHabitSheet('edit', {
         ...task,
         startDate: task.date,
-        subtasks: task.subtasks?.map((subtask) => subtask.title) ?? [],
+        subtasks: task.subtasks ?? [],
       });
     },
     [openHabitSheet]
@@ -5230,10 +5276,15 @@ function ScheduleApp() {
         visible={isNotesPageOpen}
         language={language}
         notes={notesForFeed}
+        tasks={tasks}
+        todayKey={todayKey}
+        onSaveTaskNote={handleSaveTaskNote}
+        onUnlockNotes={requestNotesUnlock}
+        onNotePrivacyOptions={showNotePrivacyOptions}
         onCreateNote={handleCreateNote}
         onUpdateNote={handleUpdateNote}
         onDeleteNote={handleDeleteNote}
-        onBack={() => setIsNotesOpen(false)}
+        onBack={() => { setIsNotesOpen(false); setNotesUnlocked(false); }}
         reduceMotion={prefersReducedMotion}
       />
       <TaskDetailModal
@@ -5244,6 +5295,8 @@ function ScheduleApp() {
         onClose={closeTaskDetail}
         onToggleSubtask={handleToggleSubtask}
         onSaveNote={handleSaveTaskNote}
+        onUnlockNotes={requestNotesUnlock}
+        onNotePrivacyOptions={showNotePrivacyOptions}
         onDeleteNote={handleDeleteNote}
         onToggleCompletion={(taskId) => handleToggleTaskDayCompletion(taskId, selectedDateKey)}
         reduceMotion={prefersReducedMotion}
@@ -5255,7 +5308,7 @@ function ScheduleApp() {
           const editable = {
             ...taskToEdit,
             startDate: taskToEdit.date,
-            subtasks: taskToEdit.subtasks?.map((subtask) => subtask.title) ?? [],
+            subtasks: taskToEdit.subtasks ?? [],
           };
           openHabitSheet('edit', editable);
           closeTaskDetail();
