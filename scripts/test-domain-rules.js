@@ -4697,7 +4697,25 @@ const runTests = async () => {
   process.exitCode = failures > 0 ? 1 : 0;
 };
 
-const { getTaskForDate, updateTaskForDate, preserveTaskDefinitionOnEdit, getHistoricalSubtask } = require('../domain/taskDefinition');
+const { getTaskForDate, updateTaskForDate, preserveTaskDefinitionOnEdit, getHistoricalSubtask, getTaskDefinitionChangeLabel } = require('../domain/taskDefinition');
+
+test('card shows subtle goal changes on the edited day, including existing history and decreases', () => {
+  const original = { type: 'quantum', quantum: { mode: 'count', count: { value: 10, unit: 'pages' } } };
+  const edit = (task, value, day) => preserveTaskDefinitionOnEdit(task, {
+    ...task, quantum: { ...task.quantum, count: { value, unit: 'pages' } },
+  }, day);
+  const raised = JSON.parse(JSON.stringify(edit(original, 20, '2026-09-09')));
+  assert.equal(getTaskDefinitionChangeLabel(raised, '2026-09-09#am', 'pt'), 'Meta: 10 → 20 pages');
+  assert.equal(getTaskDefinitionChangeLabel(raised, '2026-09-08', 'pt'), null);
+  assert.equal(getTaskDefinitionChangeLabel(raised, '2026-09-10', 'pt'), null);
+  const lowered = edit(raised, 5, '2026-09-10');
+  assert.equal(getTaskDefinitionChangeLabel(lowered, '2026-09-10', 'en'), 'Goal: 20 → 5 pages');
+  assert.equal(getTaskDefinitionChangeLabel(getTaskForDate(lowered, '2026-09-09'), '2026-09-09', 'pt'), 'Meta: 10 → 20 pages');
+  const sameDay = edit(lowered, 8, '2026-09-10');
+  assert.equal(getTaskDefinitionChangeLabel(sameDay, '2026-09-10', 'pt'), 'Meta: 20 → 8 pages');
+  assert.equal(getTaskDefinitionChangeLabel(edit(sameDay, 20, '2026-09-10'), '2026-09-10', 'pt'), null);
+  assert.equal(getTaskDefinitionChangeLabel(original, '2026-09-09', 'pt'), null);
+});
 
 test('task edits preserve past subtasks, titles and completions across reloads', () => {
   const old = { id: 'history-task', title: 'Original', type: 'default', dateKey: '2026-09-01', completedDates: { '2026-09-08': true }, subtasks: [{ id: 'one', title: 'First', completedDates: { '2026-09-08': true } }] };

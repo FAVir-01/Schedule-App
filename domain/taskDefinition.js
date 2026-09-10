@@ -48,6 +48,25 @@ const measure = (task) => {
   return { unit: task.type === 'reminder' ? 'reminder' : 'subtasks', value: task.subtasks?.length ?? 0 };
 };
 
+// Derive the day's change from saved definitions, including edits made before
+// this indicator existed. Same-day edits compare the original and final goal.
+export const getTaskDefinitionChangeLabel = (task, rawKey, language = 'en') => {
+  const key = getDateKeyFromOccurrenceKey(rawKey);
+  const previous = task?.definitionHistory?.find((item) => item.until === key)?.definition;
+  if (!previous) return null;
+  const before = measure(previous);
+  const after = measure(getTaskForDate(task, key));
+  if (before.unit !== after.unit || before.value === after.value) return null;
+  const isSubtasks = after.unit === 'subtasks';
+  const label = isSubtasks
+    ? (language === 'pt' ? 'Subtarefas' : 'Subtasks')
+    : (language === 'pt' ? 'Meta' : 'Goal');
+  const unit = after.unit === 'seconds' ? ' min' : after.unit.startsWith('count:')
+    ? (after.unit.slice(6) ? ` ${after.unit.slice(6)}` : '') : '';
+  const divisor = after.unit === 'seconds' ? 60 : 1;
+  return `${label}: ${before.value / divisor} → ${after.value / divisor}${unit}`;
+};
+
 export const preserveTaskDefinitionOnEdit = (previous, next, todayKey) => {
   const history = previous.definitionHistory ?? [];
   const definitionHistory = history.some((item) => item.until === todayKey)
