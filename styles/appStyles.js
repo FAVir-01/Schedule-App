@@ -457,6 +457,12 @@ export const styles = StyleSheet.create({
     fontSize: 13,
     color: '#59636f',
   },
+  taskDefinitionChange: {
+    marginTop: 3,
+    fontSize: 11,
+    color: '#59636f',
+    fontWeight: '400',
+  },
   taskMetaRow: {
     marginTop: 6,
     flexDirection: 'row',

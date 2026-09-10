@@ -26,6 +26,7 @@ import {
 } from '../utils/taskUtils';
 import { formatTaskTime, getTimerTotalSeconds } from '../utils/timeUtils';
 import { getTaskTimeForOccurrence } from '../domain/taskSchedule';
+import { getTaskDefinitionChangeLabel } from '../domain/taskDefinition';
 import {
   buildRepeatingWavePath,
   getWaterDisplayPercent,
@@ -68,6 +69,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
   reduceMotion = false,
 }) {
   const t = translations[language] ?? translations.en;
+  const definitionChangeLabel = getTaskDefinitionChangeLabel(task, dateKey, language);
   // Presenca e progresso sao indexados pela ocorrencia: num dia com duas aulas
   // cada card tem a sua. Sem grupos, `occurrenceKey` e o proprio `dateKey`.
   const progressKey = occurrenceKey ?? dateKey;
@@ -646,12 +648,12 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
                 numberOfLines={1}
               >
                 {task.title}
+              </Text>
+              {definitionChangeLabel ? (
+                <Text style={styles.taskDefinitionChange} numberOfLines={1}>
+                  {definitionChangeLabel}
                 </Text>
-                {task.definitionRecord?.dateKey === dateKey ? (
-                  <Text style={styles.taskTime}>
-                    {language === 'pt' ? 'Novo recorde de meta' : 'New goal record'} · +{task.definitionRecord.improvement}%
-                  </Text>
-                ) : null}
+              ) : null}
               <View style={styles.taskTimeRow}>
                 <Text style={styles.taskTime} numberOfLines={1}>
                   {formatTaskTime(getTaskTimeForOccurrence(task, dateKey), {

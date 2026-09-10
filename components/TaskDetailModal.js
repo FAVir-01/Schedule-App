@@ -23,6 +23,7 @@ import {
 } from '../utils/taskUtils';
 import { formatTaskTime } from '../utils/timeUtils';
 import { getTaskTimeForDate } from '../domain/taskSchedule';
+import { getTaskDefinitionChangeLabel } from '../domain/taskDefinition';
 import { styles } from '../styles/appStyles';
 import FinishedMilestoneBadge from './FinishedMilestoneBadge';
 import PolaroidFrame from './PolaroidFrame';
@@ -113,6 +114,7 @@ export default function TaskDetailModal({
     ? task.subtasks.filter((item) => getSubtaskCompletionStatus(item, dateKey)).length
     : 0;
   const quantumLabel = getQuantumProgressLabel(task, dateKey);
+  const definitionChangeLabel = getTaskDefinitionChangeLabel(task, dateKey, language);
   const isReminder = task.type === 'reminder';
   const cardBackground = lightenColor(task.color, 0.85);
   const endDate = normalizeDateValue(task.repeat?.endDate);
@@ -212,9 +214,9 @@ export default function TaskDetailModal({
                     {`${t.sheet.endDate}: ${endDateLabel}`}
                   </Text>
                 ) : null}
-                {task.definitionRecord?.dateKey === dateKey ? (
-                  <Text style={styles.detailSubtaskSummaryLabel}>
-                    {language === 'pt' ? 'Novo recorde de meta' : 'New goal record'} · +{task.definitionRecord.improvement}%
+                {definitionChangeLabel ? (
+                  <Text style={styles.taskDefinitionChange}>
+                    {definitionChangeLabel}
                   </Text>
                 ) : null}
                 {quantumLabel ? (
