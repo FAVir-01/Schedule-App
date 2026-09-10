@@ -75,6 +75,7 @@ import RepeatPanel from './taskEditor/RepeatPanel';
 import TimePanel from './taskEditor/TimePanel';
 import QuantumPanel from './taskEditor/QuantumFields';
 import SubtasksPanel from './taskEditor/SubtasksPanel';
+import EditableSubtasksField from './taskEditor/EditableSubtasksField';
 import TypePreviewCard from './taskEditor/TypePreviewCard';
 import ImageCropModal from './ImageCropModal';
 import styles from './taskEditor/styles';
@@ -194,6 +195,12 @@ export default function AddHabitSheet({
     const nextDraft = initialHabit
       ? draftFromTask(initialHabit)
       : createEmptyDraft();
+    if (isEditMode) {
+      nextDraft.subtaskEntries = (initialHabit?.subtasks ?? []).map((item) => ({
+        id: typeof item === 'string' ? null : item.id,
+        title: typeof item === 'string' ? item : item.title ?? '',
+      }));
+    }
     initialDraftSnapshotRef.current = JSON.stringify(nextDraft);
     discardAlertOpenRef.current = false;
     dispatch({ type: 'hydrate', draft: nextDraft });
@@ -204,7 +211,7 @@ export default function AddHabitSheet({
     setPendingCropAsset(null);
     setCustomTags([]);
     setCalendarMonth(new Date(nextDraft.startDate.getFullYear(), nextDraft.startDate.getMonth(), 1));
-  }, [initialHabit, visible]);
+  }, [initialHabit, isEditMode, visible]);
 
   useEffect(() => {
     if (visible) {
@@ -1084,7 +1091,16 @@ export default function AddHabitSheet({
                 </AnimatedReveal>
               ) : (
                 <AnimatedReveal key={`list-fields-${draft.type}`}>
-                  <SubtasksPanel
+                  {isEditMode ? (
+                    <EditableSubtasksField
+                      value={draft.subtaskEntries}
+                      onChange={(subtaskEntries) => dispatch({ type: 'patch', value: {
+                        subtaskEntries, subtasks: subtaskEntries.map((item) => item.title),
+                      } })}
+                      title={draft.type === 'reminder' ? t.reminders : t.subtasks}
+                      hint={t.editItemsHint}
+                    />
+                  ) : <SubtasksPanel
                     value={draft.subtasks}
                     onChange={(subtasks) => dispatch({ type: 'setSubtasks', value: subtasks })}
                     infoText={
@@ -1104,7 +1120,7 @@ export default function AddHabitSheet({
                     removeAccessibilityPrefix={
                       draft.type === 'reminder' ? t.removeReminder : t.removeSubtask
                     }
-                  />
+                  />}
                 </AnimatedReveal>
               )}
             </ScrollView>

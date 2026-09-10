@@ -151,6 +151,8 @@ export default function TaskPhotoSheet({
   onImageError,
   onSaveNote,
   onDeleteNote,
+  onUnlockNotes,
+  onNotePrivacyOptions,
   onClose,
   onClosed,
 }) {
@@ -158,6 +160,10 @@ export default function TaskPhotoSheet({
   const onClosedRef = useRef(onClosed);
   const scrollRef = useRef(null);
   const [isNoteEditorOpen, setIsNoteEditorOpen] = useState(false);
+  const openNoteEditor = async () => {
+    if (task?.note?.isLocked && !(await onUnlockNotes?.())) return;
+    setIsNoteEditorOpen(true);
+  };
   const t = translations[language] ?? translations.en;
   const locale = getDateLocale(language);
 
@@ -435,7 +441,7 @@ export default function TaskPhotoSheet({
                 <CompactDayNote
                   note={task.note}
                   task={task}
-                  onPress={() => setIsNoteEditorOpen(true)}
+                  onPress={openNoteEditor}
                 />
               </View>
             ) : null}
@@ -541,7 +547,7 @@ export default function TaskPhotoSheet({
             { bottom: bottomInset + 20 },
             pressed && styles.notesFabPressed,
           ]}
-          onPress={() => setIsNoteEditorOpen(true)}
+          onPress={openNoteEditor}
           accessibilityRole="button"
           accessibilityLabel={task.note ? t.notes.editNote : t.notes.newNote}
         >
@@ -577,7 +583,7 @@ export default function TaskPhotoSheet({
       </Animated.View>
 
       <NoteEditorModal
-        visible={isNoteEditorOpen}
+        visible={isNoteEditorOpen && !task.note?.isLocked}
         note={task.note}
         defaultTitle={task.title}
         taskContext={{
@@ -593,6 +599,7 @@ export default function TaskPhotoSheet({
           onSaveNote?.(task.id, dateKey ?? getDateKey(new Date()), content)
         }
         onDelete={onDeleteNote}
+        onPrivacyOptions={onNotePrivacyOptions}
       />
     </View>
   );

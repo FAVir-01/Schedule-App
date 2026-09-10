@@ -133,6 +133,7 @@ export default function NoteEditorModal({
   reduceMotion = false,
   onSave,
   onDelete,
+  onPrivacyOptions,
   onClose,
 }) {
   const insets = useSafeAreaInsets();
@@ -434,6 +435,9 @@ export default function NoteEditorModal({
     ],
   };
 
+  // Protected content must not remain mounted behind a dismissed modal.
+  if (!visible || note?.isLocked) return null;
+
   return (
     <Modal
       visible={visible}
@@ -648,6 +652,18 @@ export default function NoteEditorModal({
                 <Text style={styles.noteEditorTaskLabelText} numberOfLines={2}>
                   {taskContext.taskTitle || t.unknownTask}
                 </Text>
+                {note?.id && onPrivacyOptions ? (
+                  <Pressable hitSlop={8} accessibilityRole="button" accessibilityLabel={t.privacyOptions}
+                    onPress={() => {
+                      const changed = editor.title !== (note.title ?? defaultTitle ?? '') || editor.text !== note.text ||
+                        JSON.stringify(editor.images) !== JSON.stringify(note.images ?? []) ||
+                        editor.pinned !== (note.pinned === true) || editor.cardColor !== (note.cardColor ?? null);
+                      if (changed) Alert.alert(t.privacyTitle, t.saveBeforePrivacy);
+                      else onPrivacyOptions(note);
+                    }}>
+                    <Ionicons name="ellipsis-horizontal" size={18} color="#646b76" />
+                  </Pressable>
+                ) : null}
               </View>
             ) : null}
 

@@ -4,6 +4,8 @@ const DEFAULT_USER_SETTINGS = {
   language: 'en',
   privateNotificationContent: true,
   protectPrivateReflections: false,
+  protectedNoteIds: [],
+  protectedNoteTaskIds: [],
   onboardingCompleted: false,
 };
 
