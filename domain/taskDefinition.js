@@ -39,28 +39,34 @@ export const getHistoricalSubtask = (task, subtaskId) => {
 };
 
 const measure = (task) => {
+  // Reminder items are informational, not a measurable goal.
+  if (task.type === 'reminder') return { unit: 'reminder', value: 0 };
   if (task.type === 'quantum' && task.quantum?.mode === 'timer') {
     return { unit: 'seconds', value: getTimerTotalSeconds(task.quantum.timer) };
   }
   if (task.type === 'quantum' && task.quantum?.mode === 'count') {
     return { unit: `count:${(task.quantum.count?.unit ?? '').trim().toLowerCase()}`, value: Number(task.quantum.count?.value) || 0 };
   }
-  return { unit: task.type === 'reminder' ? 'reminder' : 'subtasks', value: task.subtasks?.length ?? 0 };
+  return { unit: 'subtasks', value: task.subtasks?.length ?? 0 };
 };
 
 // Derive the day's change from saved definitions, including edits made before
 // this indicator existed. Same-day edits compare the original and final goal.
 export const getTaskDefinitionChangeLabel = (task, rawKey, language = 'en') => {
   const key = getDateKeyFromOccurrenceKey(rawKey);
+  const current = getTaskForDate(task, key);
+  if (!current || current.type === 'reminder') return null;
   const previous = task?.definitionHistory?.find((item) => item.until === key)?.definition;
   if (!previous) return null;
   const before = measure(previous);
-  const after = measure(getTaskForDate(task, key));
+  const after = measure(current);
   if (before.unit !== after.unit || before.value === after.value) return null;
   const isSubtasks = after.unit === 'subtasks';
   const label = isSubtasks
     ? (language === 'pt' ? 'Subtarefas' : 'Subtasks')
-    : (language === 'pt' ? 'Meta' : 'Goal');
+    : after.unit === 'seconds'
+      ? (language === 'pt' ? 'Duração' : 'Duration')
+      : (language === 'pt' ? 'Meta' : 'Goal');
   const unit = after.unit === 'seconds' ? ' min' : after.unit.startsWith('count:')
     ? (after.unit.slice(6) ? ` ${after.unit.slice(6)}` : '') : '';
   const divisor = after.unit === 'seconds' ? 60 : 1;
@@ -104,6 +110,7 @@ export const preserveTaskDefinitionOnEdit = (previous, next, todayKey) => {
       ...Object.fromEntries(Object.entries(previous.completedDates ?? {}).filter(([key]) => getDateKeyFromOccurrenceKey(key) < todayKey)),
       ...next.completedDates,
     },
-    definitionRecord: record ?? (JSON.stringify(current) === JSON.stringify(measure(previous)) ? previous.definitionRecord : null),
+    definitionRecord: next.type === 'reminder' ? null
+      : record ?? (JSON.stringify(current) === JSON.stringify(measure(previous)) ? previous.definitionRecord : null),
   };
 };
