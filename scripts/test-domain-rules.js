@@ -4717,6 +4717,32 @@ test('card shows subtle goal changes on the edited day, including existing histo
   assert.equal(getTaskDefinitionChangeLabel(original, '2026-09-09', 'pt'), null);
 });
 
+test('reminders never display goal changes or create goal records', () => {
+  const old = { type: 'reminder', subtasks: [] };
+  const edited = preserveTaskDefinitionOnEdit(old, { ...old, subtasks: [{ id: 'a' }, { id: 'b' }] }, '2026-09-10');
+  for (const language of ['pt', 'en']) {
+    assert.equal(getTaskDefinitionChangeLabel(edited, '2026-09-10', language), null);
+    assert.equal(getTaskDefinitionChangeLabel(JSON.parse(JSON.stringify(edited)), '2026-09-10#am', language), null);
+  }
+  const legacy = { ...edited, definitionRecord: { unit: 'reminder', value: 2, improvement: 100 } };
+  const raised = preserveTaskDefinitionOnEdit(legacy, { ...legacy, subtasks: [...legacy.subtasks, { id: 'c' }] }, '2026-09-11');
+  assert.equal(raised.definitionRecord, null);
+  assert.deepEqual(raised.definitionRecords, []);
+  assert.equal(getTaskDefinitionChangeLabel(raised, '2026-09-10', 'pt'), null);
+  assert.equal(getTaskDefinitionChangeLabel(raised, '2026-09-11', 'pt'), null);
+});
+
+test('change captions distinguish subtask totals and timer duration', () => {
+  const task = { type: 'default', subtasks: [] };
+  const checklist = preserveTaskDefinitionOnEdit(task, { ...task, subtasks: [{ id: 'a' }, { id: 'b' }] }, '2026-09-10');
+  assert.equal(getTaskDefinitionChangeLabel(checklist, '2026-09-10', 'pt'), 'Subtarefas: 0 → 2');
+  assert.equal(getTaskDefinitionChangeLabel(checklist, '2026-09-10', 'en'), 'Subtasks: 0 → 2');
+  const timer = { type: 'quantum', quantum: { mode: 'timer', timer: { hours: 0, minutesPart: 20 } } };
+  const shortened = preserveTaskDefinitionOnEdit(timer, { ...timer, quantum: { ...timer.quantum, timer: { hours: 0, minutesPart: 10 } } }, '2026-09-10');
+  assert.equal(getTaskDefinitionChangeLabel(shortened, '2026-09-10', 'pt'), 'Duração: 20 → 10 min');
+  assert.equal(getTaskDefinitionChangeLabel(shortened, '2026-09-10', 'en'), 'Duration: 20 → 10 min');
+});
+
 test('task edits preserve past subtasks, titles and completions across reloads', () => {
   const old = { id: 'history-task', title: 'Original', type: 'default', dateKey: '2026-09-01', completedDates: { '2026-09-08': true }, subtasks: [{ id: 'one', title: 'First', completedDates: { '2026-09-08': true } }] };
   const changed = preserveTaskDefinitionOnEdit(old, { ...old, title: 'Updated', subtasks: [...old.subtasks, { id: 'two', title: 'Second', completedDates: {} }] }, '2026-09-09');
