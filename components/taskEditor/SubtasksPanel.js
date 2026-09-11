@@ -78,8 +78,8 @@ function SubtasksPanel({
         ) : null}
       </View>
       <InlineInfo visible={isInfoVisible} text={infoText} />
-      <View style={styles.subtasksCard}>
-        {hasSubtasks && (
+      {hasSubtasks ? (
+        <View style={styles.subtasksCard}>
           <View style={styles.subtasksList}>
             {list.map((item, index) => (
               <View
@@ -100,8 +100,6 @@ function SubtasksPanel({
                       handleRemove(index, true);
                     }
                   }}
-                  placeholder={addLabel ?? labels.addSubtask}
-                  placeholderTextColor="#B5BDCB"
                   blurOnSubmit={false}
                   returnKeyType="next"
                   accessibilityLabel={`${titleLabel ?? labels.subtasks} ${index + 1}`}
@@ -118,18 +116,19 @@ function SubtasksPanel({
               </View>
             ))}
           </View>
-        )}
+        </View>
+      ) : null}
+      <View style={styles.timeGroupAddRow}>
+        <View style={styles.timeGroupAddLine} />
         <SoftPressable
+          style={styles.timeGroupAddButton}
           onPress={() => handleInsert(list.length)}
           accessibilityRole="button"
           accessibilityLabel={addLabel ?? labels.addSubtask}
-          style={[styles.subtaskComposer, hasSubtasks && styles.subtaskComposerWithDivider]}
         >
-          <View style={styles.subtaskComposerAdd}>
-            <Ionicons name="add" size={20} color="#6B7288" />
-          </View>
-          <Text style={styles.subtaskAddLabel}>{addLabel ?? labels.addSubtask}</Text>
+          <Ionicons name="add" size={22} color="#FFFFFF" />
         </SoftPressable>
+        <View style={styles.timeGroupAddLine} />
       </View>
       <Text style={styles.subtasksPanelHint}>{hintLabel ?? labels.subtasksHint}</Text>
     </View>

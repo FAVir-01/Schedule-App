@@ -650,37 +650,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     paddingVertical: 0,
   },
-  subtaskAddLabel: {
-    flex: 1,
-    color: '#6B7288',
-    fontSize: 15,
-    fontWeight: '600',
-  },
   subtaskRemoveButton: {
     padding: 4,
-  },
-  subtaskComposer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 4,
-    paddingVertical: 8,
-  },
-  subtaskComposerWithDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E2E8F5',
-    paddingTop: 10,
-  },
-  subtaskComposerAdd: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E2E8F5',
   },
   subtasksPanelHint: {
     color: '#7F8A9A',
