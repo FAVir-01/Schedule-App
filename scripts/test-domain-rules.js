@@ -4864,40 +4864,50 @@ test('same-day edits cannot erase a record or inflate an old goal', () => {
   assert.equal(getTaskForDate(partial, '2026-09-08').subtasks.length, 1);
 });
 
-const { editSubtaskLines, reconcileSubtaskEntries } = require('../domain/subtaskEditor');
+const {
+  createSubtaskEntries, insertSubtaskEntry, reconcileSubtaskEntries, removeSubtaskEntry, setSubtaskEntryTitle,
+} = require('../domain/subtaskEditor');
 const { getNoteProtection, normalizeNotePrivacy, protectNoteForDisplay, setNoteProtection } = require('../domain/notePrivacy');
 
-test('inline item editing saves the final line and retains renamed subtask progress', () => {
+test('editable rows rename, insert and remove items while retaining saved identities', () => {
   const existing = [
     { id: 'a', title: 'Read', completedDates: { '2026-09-09': true } },
     { id: 'b', title: 'Walk', completedDates: {} },
   ];
-  let entries = editSubtaskLines(existing, 'Read a chapter\nWalk\nDrink water');
-  const draft = taskDraftReducer(draftFromTask({ type: 'default', subtasks: existing }), {
-    type: 'patch', value: { subtaskEntries: entries, subtasks: entries.map((item) => item.title) },
-  });
+  let draft = draftFromTask({ type: 'default', subtasks: existing });
+  assert.deepEqual(draft.subtaskEntries.map((item) => item.id), ['a', 'b']);
+  const apply = (entries) => (draft = taskDraftReducer(draft, { type: 'setSubtaskEntries', value: entries }));
+  apply(setSubtaskEntryTitle(draft.subtaskEntries, 0, 'Read a chapter'));
+  apply(insertSubtaskEntry(draft.subtaskEntries, 1, 'new-1'));
+  assert.deepEqual(draft.subtasks, ['Read a chapter', 'Walk']);
+  apply(setSubtaskEntryTitle(draft.subtaskEntries, 1, 'Drink water'));
+  assert.deepEqual(draft.subtasks, ['Read a chapter', 'Drink water', 'Walk']);
   const payload = draftToTask(draft);
+  assert.deepEqual(payload.subtaskEntries, [
+    { id: 'a', title: 'Read a chapter' }, { id: null, title: 'Drink water' }, { id: 'b', title: 'Walk' },
+  ]);
   const saved = reconcileSubtaskEntries(payload.subtaskEntries, existing, (index) => `new-${index}`);
-  assert.deepEqual(saved.map((item) => item.title), ['Read a chapter', 'Walk', 'Drink water']);
-  assert.equal(saved[0].id, 'a');
+  assert.deepEqual(saved.map((item) => item.id), ['a', 'new-1', 'b']);
   assert.equal(saved[0].completedDates['2026-09-09'], true);
-  entries = editSubtaskLines(entries, 'Read a chapter\nDrink water');
-  assert.equal(entries[0].id, 'a');
-  assert.equal(entries[1].id, null);
-  assert.deepEqual(reconcileSubtaskEntries(editSubtaskLines(entries, ''), existing, () => 'new'), []);
+  assert.equal(saved[2].title, 'Walk');
+  apply(removeSubtaskEntry(draft.subtaskEntries, 2));
+  assert.deepEqual(draftToTask(draft).subtaskEntries.map((item) => item.id), ['a', null]);
+  apply(setSubtaskEntryTitle(draft.subtaskEntries, 1, '   '));
+  assert.deepEqual(draft.subtasks, ['Read a chapter']);
+  assert.deepEqual(reconcileSubtaskEntries(draftToTask(draft).subtaskEntries, existing, () => 'new').map((item) => item.id), ['a']);
   assert.deepEqual(reconcileSubtaskEntries(['Walk'], existing, () => 'new'), [existing[1]]);
 });
 
-test('inline insertion and blank lines do not move existing subtask identities', () => {
-  const existing = [{ id: 'a', title: 'One' }, { id: 'b', title: 'Two' }];
-  const inserted = editSubtaskLines(existing, 'One\nNew\nTwo\n');
-  assert.deepEqual(inserted.map((item) => item.id), ['a', null, 'b', null]);
-  assert.deepEqual(reconcileSubtaskEntries(inserted, existing, (index) => `new-${index}`).map((item) => item.id), ['a', 'new-1', 'b']);
-  const reminderDraft = taskDraftReducer(draftFromTask({ type: 'reminder', subtasks: existing }), {
-    type: 'patch', value: { subtaskEntries: inserted, subtasks: inserted.map((item) => item.title) },
+test('new and duplicated tasks start with fresh entries and blank rows are dropped', () => {
+  assert.deepEqual(draftToTask(createEmptyDraft()).subtaskEntries, []);
+  assert.deepEqual(createSubtaskEntries(['One', ' ', { id: 'x', title: 'Two' }]), [
+    { id: null, key: null, title: 'One' }, { id: 'x', key: 'x', title: 'Two' },
+  ]);
+  const reminderDraft = taskDraftReducer(draftFromTask({ type: 'reminder', subtasks: [{ id: 'a', title: 'One' }] }), {
+    type: 'setSubtaskEntries', value: [{ id: 'a', title: 'One' }, { id: null, key: 'new-1', title: '' }],
   });
-  assert.deepEqual(draftToTask(reminderDraft).subtasks, ['One', 'New', 'Two']);
-  assert.equal(draftToTask(createEmptyDraft()).subtaskEntries, undefined);
+  assert.deepEqual(draftToTask(reminderDraft).subtasks, ['One']);
+  assert.deepEqual(draftToTask(reminderDraft).subtaskEntries, [{ id: 'a', title: 'One' }]);
 });
 
 test('note protection hides content and search matches without changing saved data', () => {

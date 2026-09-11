@@ -539,7 +539,6 @@ const translations = {
     },
     sheet: {
       newTask: 'New Task',
-      editItemsHint: 'One item per line. Edit the text and save the task.',
       closeTaskEditor: 'Close task editor',
       unsavedChangesTitle: 'Discard changes?',
       unsavedChangesMessage: 'You have unsaved changes to this task. If you leave now, those changes will be lost.',
@@ -1334,7 +1333,6 @@ const translations = {
     },
     sheet: {
       newTask: 'Nova Tarefa',
-      editItemsHint: 'Um item por linha. Altere o texto e salve a tarefa.',
       closeTaskEditor: 'Fechar editor de tarefa',
       unsavedChangesTitle: 'Descartar alterações?',
       unsavedChangesMessage: 'Você tem alterações não salvas nesta tarefa. Se sair agora, essas alterações serão perdidas.',

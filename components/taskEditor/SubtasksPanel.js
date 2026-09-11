@@ -1,9 +1,16 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  insertSubtaskEntry,
+  removeSubtaskEntry,
+  setSubtaskEntryTitle,
+} from '../../domain/subtaskEditor';
 import { InlineInfo, SoftPressable } from './parts';
 import styles from './styles';
 
+// Cada item e uma linha editavel no lugar, na criacao e na edicao. Enter na
+// linha abre a proxima; backspace numa linha vazia volta para a anterior.
 function SubtasksPanel({
   value,
   onChange,
@@ -16,33 +23,38 @@ function SubtasksPanel({
   hintLabel,
   removeAccessibilityPrefix,
 }) {
-  const [draft, setDraft] = useState('');
-  const trimmedDraft = draft.trim();
   const list = Array.isArray(value) ? value : [];
   const hasSubtasks = list.length > 0;
+  const inputRefs = useRef([]);
+  const nextKeyRef = useRef(0);
+  const [pendingFocus, setPendingFocus] = useState(null);
 
-  const handleAdd = useCallback(() => {
-    if (!trimmedDraft) {
+  useEffect(() => {
+    if (pendingFocus == null) {
       return;
     }
-    onChange((prev) => {
-      const next = Array.isArray(prev) ? [...prev] : [];
-      next.push(trimmedDraft);
-      return next;
-    });
-    setDraft('');
-  }, [onChange, trimmedDraft]);
+    inputRefs.current[pendingFocus]?.focus();
+    setPendingFocus(null);
+  }, [pendingFocus, list.length]);
 
-  const handleRemove = useCallback(
+  const handleInsert = useCallback(
     (index) => {
-      onChange((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+      nextKeyRef.current += 1;
+      onChange(insertSubtaskEntry(list, index, `new-${nextKeyRef.current}`));
+      setPendingFocus(index);
     },
-    [onChange]
+    [list, onChange]
   );
 
-  const handleSubmitEditing = useCallback(() => {
-    handleAdd();
-  }, [handleAdd]);
+  const handleRemove = useCallback(
+    (index, focusPrevious = false) => {
+      onChange(removeSubtaskEntry(list, index));
+      if (focusPrevious && index > 0) {
+        setPendingFocus(index - 1);
+      }
+    },
+    [list, onChange]
+  );
 
   return (
     <View style={styles.subtasksPanel}>
@@ -71,14 +83,32 @@ function SubtasksPanel({
           <View style={styles.subtasksList}>
             {list.map((item, index) => (
               <View
-                key={`${item}-${index}`}
+                key={item.key ?? item.id ?? `row-${index}`}
                 style={[styles.subtaskItem, index === list.length - 1 && styles.subtaskItemLast]}
               >
                 <Ionicons name="ellipse-outline" size={18} color="#94A3B8" />
-                <Text style={styles.subtaskText}>{item}</Text>
+                <TextInput
+                  ref={(ref) => {
+                    inputRefs.current[index] = ref;
+                  }}
+                  style={styles.subtaskInput}
+                  value={item.title}
+                  onChangeText={(title) => onChange(setSubtaskEntryTitle(list, index, title))}
+                  onSubmitEditing={() => handleInsert(index + 1)}
+                  onKeyPress={({ nativeEvent }) => {
+                    if (nativeEvent.key === 'Backspace' && !item.title) {
+                      handleRemove(index, true);
+                    }
+                  }}
+                  placeholder={addLabel ?? labels.addSubtask}
+                  placeholderTextColor="#B5BDCB"
+                  blurOnSubmit={false}
+                  returnKeyType="next"
+                  accessibilityLabel={`${titleLabel ?? labels.subtasks} ${index + 1}`}
+                />
                 <SoftPressable
                   onPress={() => handleRemove(index)}
-                  accessibilityLabel={`${removeAccessibilityPrefix ?? labels.removeSubtask} ${item}`}
+                  accessibilityLabel={`${removeAccessibilityPrefix ?? labels.removeSubtask} ${item.title}`}
                   accessibilityRole="button"
                   hitSlop={8}
                   style={styles.subtaskRemoveButton}
@@ -89,31 +119,17 @@ function SubtasksPanel({
             ))}
           </View>
         )}
-        <View style={[styles.subtaskComposer, hasSubtasks && styles.subtaskComposerWithDivider]}>
-          <TextInput
-            style={styles.subtaskComposerInput}
-            placeholder={addLabel ?? labels.addSubtask}
-            placeholderTextColor="#626B78"
-            value={draft}
-            onChangeText={setDraft}
-            onSubmitEditing={handleSubmitEditing}
-            returnKeyType="done"
-            accessibilityLabel={addLabel ?? labels.addSubtask}
-          />
-          <SoftPressable
-            onPress={handleAdd}
-            accessibilityRole="button"
-            accessibilityLabel={addLabel ?? labels.addSubtask}
-            style={[styles.subtaskComposerAdd, trimmedDraft.length === 0 && styles.subtaskComposerAddDisabled]}
-            disabled={trimmedDraft.length === 0}
-          >
-            <Ionicons
-              name="add"
-              size={20}
-              color={trimmedDraft.length === 0 ? '#C3CCDC' : '#6B7288'}
-            />
-          </SoftPressable>
-        </View>
+        <SoftPressable
+          onPress={() => handleInsert(list.length)}
+          accessibilityRole="button"
+          accessibilityLabel={addLabel ?? labels.addSubtask}
+          style={[styles.subtaskComposer, hasSubtasks && styles.subtaskComposerWithDivider]}
+        >
+          <View style={styles.subtaskComposerAdd}>
+            <Ionicons name="add" size={20} color="#6B7288" />
+          </View>
+          <Text style={styles.subtaskAddLabel}>{addLabel ?? labels.addSubtask}</Text>
+        </SoftPressable>
       </View>
       <Text style={styles.subtasksPanelHint}>{hintLabel ?? labels.subtasksHint}</Text>
     </View>

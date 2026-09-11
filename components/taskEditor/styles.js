@@ -643,9 +643,16 @@ const styles = StyleSheet.create({
   subtaskItemLast: {
     borderBottomWidth: 0,
   },
-  subtaskText: {
+  subtaskInput: {
     flex: 1,
     color: '#1F2742',
+    fontSize: 15,
+    fontWeight: '600',
+    paddingVertical: 0,
+  },
+  subtaskAddLabel: {
+    flex: 1,
+    color: '#6B7288',
     fontSize: 15,
     fontWeight: '600',
   },
@@ -665,13 +672,6 @@ const styles = StyleSheet.create({
     borderTopColor: '#E2E8F5',
     paddingTop: 10,
   },
-  subtaskComposerInput: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1F2742',
-    paddingVertical: 0,
-  },
   subtaskComposerAdd: {
     width: 34,
     height: 34,
@@ -681,10 +681,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#E2E8F5',
-  },
-  subtaskComposerAddDisabled: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#EDF1F7',
   },
   subtasksPanelHint: {
     color: '#7F8A9A',

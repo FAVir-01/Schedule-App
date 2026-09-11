@@ -11,6 +11,7 @@ import { getWeekdayKeyFromDate, isValidDateRange, normalizeDateValue } from '../
 import { getTimerParts } from '../utils/timeUtils';
 import { getTimeConfigurations, hasGroupedTaskTimes } from '../utils/taskTimeUtils';
 import { getCurrentScheduleVersion } from './taskSchedule';
+import { createSubtaskEntries } from './subtaskEditor';
 
 export const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
@@ -142,11 +143,9 @@ export const ensureValidPeriod = (period) => {
   return { start, end: minutesToTime(timeToMinutes(start) + 60) };
 };
 
-// O editor trabalha com uma lista de títulos (texto puro): é o que o painel
-// desenha e o que `convertSubtasks`, no App, espera receber de volta para
-// reconciliar com as subtarefas já gravadas (que são objetos com id e
-// histórico). Uma tarefa em edição chega com esses objetos, então a conversão
-// para título acontece aqui — antes, os objetos vazavam direto para a tela.
+// O editor desenha `subtaskEntries` (objetos com id e título, ver
+// `domain/subtaskEditor`); `subtasks` é a lista de títulos derivada dela, que o
+// resto da tela (prévia do card, validação) e o App, ao criar, continuam lendo.
 const normalizeSubtasks = (subtasks) => {
   if (!Array.isArray(subtasks)) {
     return [];
@@ -302,6 +301,7 @@ export const createEmptyDraft = ({ today = new Date(), emoji } = {}) => {
       countUnit: '',
     },
     subtasks: [],
+    subtaskEntries: [],
     notes: '',
   };
 };
@@ -428,6 +428,7 @@ export const draftFromTask = (task, { today = new Date() } = {}) => {
       countUnit: `${task.quantum?.count?.unit ?? ''}`,
     },
     subtasks: normalizeSubtasks(task.subtasks),
+    subtaskEntries: createSubtaskEntries(task.subtasks),
     notes: `${task.notes ?? ''}`.slice(0, NOTES_MAX_LENGTH),
   };
 };
@@ -494,7 +495,9 @@ export const draftToTask = (draft, { tagOptions = [] } = {}) => {
         }
       : null,
     subtasks: normalizeSubtasks(draft.subtasks),
-    ...(draft.subtaskEntries ? { subtaskEntries: draft.subtaskEntries.filter((item) => item.title.trim()) } : {}),
+    subtaskEntries: (draft.subtaskEntries ?? [])
+      .filter((item) => item.title.trim())
+      .map((item) => ({ id: item.id ?? null, title: item.title.trim() })),
     notes: normalizeNotes(draft.notes),
   };
 };
@@ -782,12 +785,9 @@ export const taskDraftReducer = (draft, action) => {
       return { ...draft, quantum: { ...draft.quantum, ...value } };
     }
 
-    case 'setSubtasks': {
-      // O painel de subtarefas atualiza por função (`onChange(prev => ...)`),
-      // como um setState.
-      const next =
-        typeof action.value === 'function' ? action.value(draft.subtasks) : action.value;
-      return { ...draft, subtasks: Array.isArray(next) ? next : draft.subtasks };
+    case 'setSubtaskEntries': {
+      const subtaskEntries = Array.isArray(action.value) ? action.value : draft.subtaskEntries;
+      return { ...draft, subtaskEntries, subtasks: normalizeSubtasks(subtaskEntries) };
     }
 
     default:

@@ -1,19 +1,20 @@
-// Keep saved item identities while editing a plain, newline-separated list.
-export const editSubtaskLines = (entries, text) => {
-  const previous = entries ?? [];
-  const lines = text.replace(/\r\n?/g, '\n').split('\n');
-  const remaining = previous.map((entry, index) => ({ ...entry, index }));
-  // Match unchanged lines first, including moves and duplicate titles. A new
-  // line must never take the identity of an unchanged line farther down.
-  const matched = lines.map((title) => {
-    const index = remaining.findIndex((entry) => entry.title === title);
-    return index < 0 ? null : remaining.splice(index, 1)[0];
-  });
-  return lines.map((title, index) => ({
-    id: (matched[index] ?? remaining.shift())?.id ?? null,
-    title,
-  }));
-};
+// Linhas do editor de itens. Um item salvo carrega o proprio `id` (e com ele o
+// historico de conclusao); uma linha nova tem `id: null` e so uma `key` local
+// para o React ate o App gerar o id ao salvar.
+export const createSubtaskEntries = (subtasks) => (Array.isArray(subtasks) ? subtasks : [])
+  .map((item) => (typeof item === 'string'
+    ? { id: null, key: null, title: item }
+    : { id: item?.id ?? null, key: item?.id ?? null, title: `${item?.title ?? ''}` }))
+  .filter((item) => item.title.trim());
+
+export const setSubtaskEntryTitle = (entries, index, title) =>
+  entries.map((item, i) => (i === index ? { ...item, title } : item));
+
+export const insertSubtaskEntry = (entries, index, key) => [
+  ...entries.slice(0, index), { id: null, key, title: '' }, ...entries.slice(index),
+];
+
+export const removeSubtaskEntry = (entries, index) => entries.filter((_, i) => i !== index);
 
 export const reconcileSubtaskEntries = (entries, existing, createId) => {
   const remaining = [...existing];
