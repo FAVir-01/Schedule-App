@@ -333,6 +333,28 @@ export const updateNoteContent = (
   return changed ? next : notes;
 };
 
+// Reassign without changing identity/date or replacing another task's daily note.
+export const saveNoteFromEditor = (notes, content, { dateKey, now = new Date() } = {}) => {
+  const existing = content.id ? notes.find((note) => note.id === content.id) : null;
+  if (content.id && !existing) return { notes, error: 'missing' };
+  const day = existing?.dateKey ?? toDateKey(dateKey) ?? getDateKey(now);
+  if (content.source === 'task' && (content.taskId == null || notes.some((note) =>
+    note.id !== content.id && note.source === 'task' &&
+    String(note.taskId) === String(content.taskId) && note.dateKey === day
+  ))) return { notes, error: 'occupied' };
+  const saved = existing
+    ? updateNoteContent(notes, existing.id, content, { now }).find((note) => note.id === existing.id)
+    : createNote(content.text, { ...content, now });
+  if (!saved) return { notes, error: 'empty' };
+  const { taskId: _taskId, taskTitle: _taskTitle, ...base } = saved;
+  const result = {
+    ...base, dateKey: day, source: content.source === 'task' ? 'task' : 'standalone',
+    ...(content.source === 'task' ? { taskId: String(content.taskId), taskTitle: content.taskTitle } : {}),
+    updatedAt: toIsoString(now),
+  };
+  return { notes: existing ? notes.map((note) => note.id === existing.id ? result : note) : [result, ...notes] };
+};
+
 export const removeNote = (notes, noteId) => {
   if (!Array.isArray(notes) || !noteId) {
     return notes;

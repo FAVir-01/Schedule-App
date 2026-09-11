@@ -115,6 +115,8 @@ const createEditorState = (note, defaultTitle, taskContext) => {
   return {
     id: note?.id ?? null,
     source: note?.source ?? (taskContext ? 'task' : 'standalone'),
+    taskId: note?.taskId ?? taskContext?.taskId ?? null,
+    taskTitle: note?.taskTitle ?? taskContext?.taskTitle ?? '',
     title: note?.title ?? defaultTitle ?? '',
     text: note?.text ?? '',
     images: [...images],
@@ -129,6 +131,8 @@ export default function NoteEditorModal({
   note = null,
   defaultTitle = '',
   taskContext = null,
+  tasks = [],
+  initialSourcePicker = false,
   language = 'en',
   reduceMotion = false,
   onSave,
@@ -141,6 +145,8 @@ export default function NoteEditorModal({
   const t = localePack.notes;
   const imageText = localePack.imageHandling;
   const [editor, setEditor] = useState(null);
+  const [choosingSource, setChoosingSource] = useState(false);
+  const [taskSearch, setTaskSearch] = useState('');
   const [isPickingImages, setIsPickingImages] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [editorMenu, setEditorMenu] = useState(null);
@@ -161,6 +167,8 @@ export default function NoteEditorModal({
     setEditorMenu(null);
     setFeedback(null);
     setEditor(createEditorState(note, defaultTitle, taskContext));
+    setChoosingSource(initialSourcePicker);
+    setTaskSearch('');
   }, [defaultTitle, note?.id, taskContext?.taskTitle, visible]);
 
   useEffect(() => {
@@ -372,6 +380,8 @@ export default function NoteEditorModal({
     const saved = onSave?.({
       id: editor.id,
       source: editor.source,
+      taskId: editor.taskId,
+      taskTitle: editor.taskTitle,
       title: editor.title,
       text: editor.text,
       images: editor.images,
@@ -434,6 +444,11 @@ export default function NoteEditorModal({
       { scale: menuProgress.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
     ],
   };
+  const selectedTask = tasks.find((task) => String(task.id) === String(editor?.taskId));
+  const selectedTaskContext = selectedTask ? {
+    taskTitle: selectedTask.title, taskImage: selectedTask.customImage,
+    taskEmoji: selectedTask.emoji, taskColor: selectedTask.color,
+  } : taskContext;
 
   // Protected content must not remain mounted behind a dismissed modal.
   if (!visible || note?.isLocked) return null;
@@ -646,16 +661,21 @@ export default function NoteEditorModal({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {taskContext ? (
-              <View style={styles.noteEditorTaskLabel}>
-                <TaskOriginAvatar context={taskContext} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+                <Pressable style={[styles.noteEditorTaskLabel, { marginBottom: 0, flexShrink: 1 }]}
+                  accessibilityRole="button" accessibilityLabel={t.chooseSource}
+                  onPress={() => { Keyboard.dismiss(); setTaskSearch(''); setChoosingSource(true); }}>
+                {editor?.source === 'task' ? <TaskOriginAvatar context={selectedTaskContext} /> :
+                  <Ionicons name="document-text-outline" size={20} color="#35268f" />}
                 <Text style={styles.noteEditorTaskLabelText} numberOfLines={2}>
-                  {taskContext.taskTitle || t.unknownTask}
+                  {editor?.source === 'task' ? editor.taskTitle || t.unknownTask : t.generalNote}
                 </Text>
+                <Ionicons name="chevron-down" size={14} color="#35268f" />
+                </Pressable>
                 {note?.id && onPrivacyOptions ? (
                   <Pressable hitSlop={8} accessibilityRole="button" accessibilityLabel={t.privacyOptions}
                     onPress={() => {
-                      const changed = editor.title !== (note.title ?? defaultTitle ?? '') || editor.text !== note.text ||
+                      const changed = editor.source !== note.source || String(editor.taskId ?? '') !== String(note.taskId ?? '') || editor.title !== (note.title ?? defaultTitle ?? '') || editor.text !== note.text ||
                         JSON.stringify(editor.images) !== JSON.stringify(note.images ?? []) ||
                         editor.pinned !== (note.pinned === true) || editor.cardColor !== (note.cardColor ?? null);
                       if (changed) Alert.alert(t.privacyTitle, t.saveBeforePrivacy);
@@ -665,7 +685,6 @@ export default function NoteEditorModal({
                   </Pressable>
                 ) : null}
               </View>
-            ) : null}
 
             <TextInput
               style={styles.noteEditorTitleInput}
@@ -720,6 +739,41 @@ export default function NoteEditorModal({
           ) : null}
         </KeyboardAvoidingView>
       </SafeAreaView>
+      <Modal visible={choosingSource} transparent animationType="fade" onRequestClose={() => setChoosingSource(false)}>
+        <View style={styles.reportOverlay}>
+          <Pressable style={styles.reportBackdrop} onPress={() => setChoosingSource(false)} />
+          <View style={[styles.reflectionSheet, { maxHeight: '80%', paddingBottom: insets.bottom + 20 }]}>
+            <View style={styles.reflectionHeader}>
+              <Text style={styles.reflectionTitle}>{t.chooseSource}</Text>
+              <Pressable onPress={() => setChoosingSource(false)} hitSlop={10} accessibilityLabel={t.cancel} accessibilityRole="button">
+                <Ionicons name="close" size={22} color="#504B67" />
+              </Pressable>
+            </View>
+            <Pressable style={styles.settingsRow} accessibilityRole="button" onPress={() => {
+              setEditor((current) => ({ ...current, source: 'standalone', taskId: null, taskTitle: '' }));
+              setChoosingSource(false);
+            }}>
+              <Ionicons name="document-text-outline" size={22} color="#504B67" />
+              <Text style={styles.settingsRowTitle}>{t.generalNote}</Text>
+              {editor?.source === 'standalone' && <Ionicons name="checkmark" size={18} color="#35268f" />}
+            </Pressable>
+            <TextInput value={taskSearch} onChangeText={setTaskSearch} placeholder={t.searchTasks}
+              accessibilityLabel={t.searchTasks} style={[styles.notesSearchInput, { marginHorizontal: 20, minHeight: 44, flex: 0 }]} />
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {tasks.filter((task) => task.title?.toLocaleLowerCase().includes(taskSearch.trim().toLocaleLowerCase())).map((task) => (
+                <Pressable key={task.id} style={styles.settingsRow} accessibilityRole="button" onPress={() => {
+                  setEditor((current) => ({ ...current, source: 'task', taskId: task.id, taskTitle: task.title }));
+                  setChoosingSource(false);
+                }}>
+                  <Text>{task.emoji}</Text>
+                  <Text style={[styles.settingsRowTitle, { flex: 1 }]}>{task.title}</Text>
+                  {editor?.source === 'task' && String(editor.taskId) === String(task.id) && <Ionicons name="checkmark" size={18} color="#35268f" />}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 }

@@ -116,7 +116,7 @@ function TaskNoteAvatar({ note, size = 22 }) {
   );
 }
 
-function NoteCard({ note, title, onPress, onPrivacyOptions, labels, reduceMotion }) {
+function NoteCard({ note, title, onPress, onSourcePress, onPrivacyOptions, labels, reduceMotion }) {
   const isTaskNote = note.source === 'task';
   const entrance = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
 
@@ -159,6 +159,18 @@ function NoteCard({ note, title, onPress, onPrivacyOptions, labels, reduceMotion
         accessibilityRole="button"
         accessibilityLabel={`${title}: ${note.text}`}
       >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10 }}>
+          <Pressable style={{ flex: 1, borderRadius: 10, backgroundColor: '#f1efff', padding: 6 }} accessibilityRole="button" accessibilityLabel={labels.chooseSource} onPress={(event) => { event.stopPropagation(); onSourcePress(); }}>
+          <Text style={[styles.noteGridCardText, { fontSize: 11, color: '#35268f' }]} numberOfLines={1}>
+            {isTaskNote ? note.taskTitle || labels.unknownTask : labels.generalNote}
+          </Text>
+          </Pressable>
+          {(note.noteProtected || note.taskNotesProtected) && <Ionicons name="lock-closed-outline" size={12} color="#646b76" />}
+          <Pressable onPress={(event) => { event.stopPropagation(); onPrivacyOptions?.(note); }}
+            hitSlop={8} accessibilityRole="button" accessibilityLabel={labels.privacyOptions}>
+            <Ionicons name="ellipsis-horizontal" size={18} color="#646b76" />
+          </Pressable>
+        </View>
         <View style={styles.noteGridCardHeader}>
           {isTaskNote ? (
             <TaskNoteAvatar note={note} />
@@ -183,16 +195,6 @@ function NoteCard({ note, title, onPress, onPrivacyOptions, labels, reduceMotion
             <Text style={styles.noteGridCardText}>{labels.unlockNote}</Text>
           </View>
         ) : <NoteImages images={note.images} />}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10 }}>
-          <Text style={[styles.noteGridCardText, { flex: 1, fontSize: 11 }]} numberOfLines={1}>
-            {isTaskNote ? note.taskTitle || labels.unknownTask : labels.generalNote}
-          </Text>
-          {(note.noteProtected || note.taskNotesProtected) && <Ionicons name="lock-closed-outline" size={12} color="#646b76" />}
-          <Pressable onPress={(event) => { event.stopPropagation(); onPrivacyOptions?.(note); }}
-            hitSlop={8} accessibilityRole="button" accessibilityLabel={labels.privacyOptions}>
-            <Ionicons name="ellipsis-horizontal" size={18} color="#646b76" />
-          </Pressable>
-        </View>
       </Pressable>
     </Animated.View>
   );
@@ -204,11 +206,9 @@ export default function NotesScreen({
   notes = [],
   tasks = [],
   todayKey,
-  onSaveTaskNote,
+  onSaveNote,
   onUnlockNotes,
   onNotePrivacyOptions,
-  onCreateNote,
-  onUpdateNote,
   onDeleteNote,
   onBack,
   reduceMotion = false,
@@ -219,19 +219,16 @@ export default function NotesScreen({
   const locale = getDateLocale(language);
   const [search, setSearch] = useState('');
   const [editorTarget, setEditorTarget] = useState(null);
-  const [choosingSource, setChoosingSource] = useState(false);
-  const [taskSearch, setTaskSearch] = useState('');
   const groups = useMemo(() => buildNotesFeed(notes, { search }), [notes, search]);
   const hasNotes = notes.length > 0;
 
   const openCreateEditor = useCallback(() => {
-    setTaskSearch('');
-    setChoosingSource(true);
-  }, []);
+    setEditorTarget({ key: `new-${Date.now()}`, dateKey: todayKey });
+  }, [todayKey]);
 
-  const openExistingEditor = useCallback(async (note) => {
+  const openExistingEditor = useCallback(async (note, initialSourcePicker = false) => {
     if (note.isLocked && !(await onUnlockNotes?.())) return;
-    setEditorTarget({ key: note.id, noteId: note.id });
+    setEditorTarget({ key: note.id, noteId: note.id, initialSourcePicker });
   }, [onUnlockNotes]);
 
   const editorNote = notes.find((note) => note.id === editorTarget?.noteId) ?? null;
@@ -246,22 +243,8 @@ export default function NotesScreen({
         }
       : editorTarget?.taskContext ?? null;
 
-  const chooseTask = async (task) => {
-    const existing = task && notes.find((note) => note.source === 'task' && String(note.taskId) === String(task.id) && note.dateKey === todayKey);
-    if (existing) {
-      await openExistingEditor(existing);
-      setChoosingSource(false);
-      return;
-    }
-    setEditorTarget({ key: `new-${Date.now()}`, dateKey: todayKey, taskContext: task ? {
-      taskId: task.id, taskTitle: task.title, taskImage: task.customImage,
-      taskEmoji: task.emoji, taskColor: task.color,
-    } : null });
-    setChoosingSource(false);
-  };
-
   useEffect(() => {
-    if (!visible) { setEditorTarget(null); setChoosingSource(false); }
+    if (!visible) { setEditorTarget(null); }
   }, [visible]);
 
   return (
@@ -355,6 +338,7 @@ export default function NotesScreen({
                                 note={note}
                                 title={title}
                                 onPress={() => openExistingEditor(note)}
+                                onSourcePress={() => openExistingEditor(note, true)}
                                 onPrivacyOptions={onNotePrivacyOptions}
                                 labels={t}
                                 reduceMotion={reduceMotion}
@@ -388,65 +372,17 @@ export default function NotesScreen({
             visible={Boolean(editorTarget) && !editorNote?.isLocked}
             note={editorNote}
             taskContext={taskContext}
+            tasks={tasks}
+            initialSourcePicker={editorTarget?.initialSourcePicker}
             defaultTitle={taskContext?.taskTitle ?? ''}
             language={language}
             reduceMotion={reduceMotion}
             onClose={() => setEditorTarget(null)}
             onPrivacyOptions={onNotePrivacyOptions}
-            onSave={(content) => {
-              const preferences = {
-                pinned: content.pinned,
-                cardColor: content.cardColor,
-              };
-              if (taskContext && !content.id) {
-                return onSaveTaskNote?.(taskContext.taskId, editorTarget.dateKey, content);
-              }
-              return content.id
-                ? onUpdateNote?.(
-                    content.id,
-                    content.text,
-                    content.images,
-                    content.title,
-                    preferences
-                  )
-                : onCreateNote?.(
-                    content.text,
-                    content.images,
-                    content.title,
-                    preferences
-                  );
-            }}
+            onSave={(content) => onSaveNote?.(content, editorTarget.dateKey ?? todayKey)}
             onDelete={onDeleteNote}
           />
-          <Modal visible={choosingSource} transparent animationType="fade" onRequestClose={() => setChoosingSource(false)}>
-            <View style={styles.reportOverlay}>
-              <Pressable style={styles.reportBackdrop} onPress={() => setChoosingSource(false)} />
-              <View style={[styles.reflectionSheet, { maxHeight: '80%', paddingBottom: insets.bottom + 20 }]}>
-                <View style={styles.reflectionHeader}>
-                  <Text style={styles.reflectionTitle}>{t.chooseSource}</Text>
-                  <Pressable onPress={() => setChoosingSource(false)} hitSlop={10} accessibilityLabel={localePack.common.cancel} accessibilityRole="button">
-                    <Ionicons name="close" size={22} color="#504B67" />
-                  </Pressable>
-                </View>
-                <Pressable style={styles.settingsRow} onPress={() => chooseTask(null)} accessibilityRole="button">
-                  <Ionicons name="document-text-outline" size={22} color="#504B67" />
-                  <Text style={styles.settingsRowTitle}>{t.generalNote}</Text>
-                </Pressable>
-                <Text style={[styles.noteGridCardText, { marginHorizontal: 20 }]}>{t.chooseTaskHint}</Text>
-                <TextInput value={taskSearch} onChangeText={setTaskSearch} placeholder={t.searchTasks}
-                  accessibilityLabel={t.searchTasks} style={[styles.notesSearchInput, { marginHorizontal: 20, minHeight: 44, flex: 0 }]} />
-                <ScrollView keyboardShouldPersistTaps="handled">
-                  {tasks.filter((task) => task.title?.toLocaleLowerCase().includes(taskSearch.trim().toLocaleLowerCase())).map((task) => (
-                    <Pressable key={task.id} style={styles.settingsRow} onPress={() => chooseTask(task)} accessibilityRole="button">
-                      <Text>{task.emoji || '✓'}</Text>
-                      <Text style={[styles.settingsRowTitle, { flex: 1 }]}>{task.title}</Text>
-                      <Ionicons name="chevron-forward" size={16} color="#646b76" />
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </View>
-            </View>
-          </Modal>
+
         </View>
       </View>
     </Modal>
