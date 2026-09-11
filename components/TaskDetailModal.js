@@ -38,6 +38,7 @@ export default function TaskDetailModal({
   onToggleSubtask,
   onToggleCompletion,
   onSaveNote,
+  tasks = [],
   onDeleteNote,
   onUnlockNotes,
   onNotePrivacyOptions,
@@ -342,6 +343,7 @@ export default function TaskDetailModal({
         hasImageError={hasImageError}
         onImageError={() => setHasImageError(true)}
         onSaveNote={onSaveNote}
+        tasks={tasks}
         onDeleteNote={onDeleteNote}
         onUnlockNotes={onUnlockNotes}
         onNotePrivacyOptions={onNotePrivacyOptions}

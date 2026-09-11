@@ -423,8 +423,9 @@ const translations = {
     },
     notes: {
       title: 'Notes',
-      chooseSource: 'New note',
-      generalNote: 'General note',
+      chooseSource: 'Change note link',
+      sourceConflict: 'This task already has a note on this day. Choose another task or General.',
+      generalNote: 'General',
       chooseTaskHint: 'Or link it to a task',
       searchTasks: 'Find a task',
       privacyTitle: 'Note privacy',
@@ -1217,8 +1218,9 @@ const translations = {
     },
     notes: {
       title: 'Notas',
-      chooseSource: 'Nova nota',
-      generalNote: 'Nota geral',
+      chooseSource: 'Alterar vínculo da nota',
+      sourceConflict: 'Esta task já tem uma nota neste dia. Escolha outra task ou Geral.',
+      generalNote: 'Geral',
       chooseTaskHint: 'Ou vincule a uma task',
       searchTasks: 'Buscar task',
       privacyTitle: 'Privacidade da nota',

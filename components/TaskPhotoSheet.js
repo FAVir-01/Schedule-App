@@ -150,6 +150,7 @@ export default function TaskPhotoSheet({
   hasImageError = false,
   onImageError,
   onSaveNote,
+  tasks = [],
   onDeleteNote,
   onUnlockNotes,
   onNotePrivacyOptions,
@@ -586,7 +587,9 @@ export default function TaskPhotoSheet({
         visible={isNoteEditorOpen && !task.note?.isLocked}
         note={task.note}
         defaultTitle={task.title}
+        tasks={tasks}
         taskContext={{
+          taskId: task.id,
           taskTitle: task.title,
           taskImage: task.customImage,
           taskEmoji: task.emoji,
@@ -596,7 +599,7 @@ export default function TaskPhotoSheet({
         reduceMotion={reduceMotion}
         onClose={() => setIsNoteEditorOpen(false)}
         onSave={(content) =>
-          onSaveNote?.(task.id, dateKey ?? getDateKey(new Date()), content)
+          onSaveNote?.(content, dateKey ?? getDateKey(new Date()))
         }
         onDelete={onDeleteNote}
         onPrivacyOptions={onNotePrivacyOptions}

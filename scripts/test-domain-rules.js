@@ -330,12 +330,35 @@ const {
   removeNote,
   upsertTaskNote,
   updateNoteContent,
+  saveNoteFromEditor,
   updateNoteText,
 } = require('../domain/notes');
 const { buildNotesFeed, matchesNoteSearch } = require('../domain/notesFeed');
 
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
+
+test('troca vinculo de notas preservando identidade e impedindo sobrescrita', () => {
+  const original = createNote('Texto', { title: 'Titulo', images: ['file:///photo.jpg'], pinned: true, now: new Date(2026, 8, 1), createId: () => 'note-1' });
+  const linked = saveNoteFromEditor([original], { ...original, source: 'task', taskId: 'prob', taskTitle: 'Prob' }).notes[0];
+  assert.equal(linked.id, original.id);
+  assert.equal(linked.dateKey, original.dateKey);
+  assert.equal(linked.createdAt, original.createdAt);
+  assert.deepEqual(linked.images, original.images);
+  assert.equal(linked.pinned, true);
+  const detached = saveNoteFromEditor([linked], { ...linked, source: 'standalone' }).notes[0];
+  assert.equal(detached.taskId, undefined);
+  assert.equal(detached.taskTitle, undefined);
+  assert.equal(normalizeNoteCollection([detached])[0].source, 'standalone');
+  const other = { ...linked, id: 'note-2', text: 'Outra' };
+  const collection = [detached, other];
+  const collision = saveNoteFromEditor(collection, { ...detached, source: 'task', taskId: 'prob' });
+  assert.equal(collision.error, 'occupied');
+  assert.equal(collision.notes, collection);
+  const moved = saveNoteFromEditor([linked], { ...linked, taskId: 'other', taskTitle: 'Other' }).notes[0];
+  assert.equal(moved.taskId, 'other');
+  assert.equal(moved.text, original.text);
+});
 
 test('resume o periodo local sem misturar lembretes ou inferir causalidade', () => {
   const dailyRepeat = { enabled: true, frequency: 'daily', interval: 1 };

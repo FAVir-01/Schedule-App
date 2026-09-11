@@ -112,12 +112,10 @@ import {
   prependHistoryEntry,
 } from './utils/historyUtils';
 import {
-  createNote,
   migrateLegacyTaskNotes,
   normalizeNoteCollection,
   removeNote,
-  upsertTaskNote,
-  updateNoteContent,
+  saveNoteFromEditor,
 } from './domain/notes';
 import { getWeekdayInitials, translations } from './constants/i18n';
 import { styles } from './styles/appStyles';
@@ -3949,65 +3947,25 @@ function ScheduleApp() {
     [appendHistoryEntry, selectedDateKey, tasks]
   );
 
-  // A polaroide cria ou edita a unica nota desta tarefa na data selecionada.
-  const handleSaveTaskNote = useCallback(
-    (taskId, noteDateKey, content) => {
-      if (loadFailuresRef.current.notes) {
-        showDataProtectionAlert();
-        return false;
-      }
-      const targetTask = tasks.find((task) => task.id === taskId);
-      if (!targetTask || !noteDateKey || !content) {
-        return false;
-      }
-      setNotes((previous) =>
-        upsertTaskNote(previous, {
-          taskId,
-          taskTitle: targetTask.title,
-          dateKey: noteDateKey,
-          title: content.title,
-          text: content.text,
-          images: content.images,
-          pinned: content.pinned,
-          cardColor: content.cardColor,
-        })
-      );
-      return true;
-    },
-    [showDataProtectionAlert, tasks]
-  );
-
-  // Nota avulsa criada diretamente no feed, sem vínculo com tarefa.
-  const handleCreateNote = useCallback(
-    (text, images = [], title = '', preferences = {}) => {
-      if (loadFailuresRef.current.notes) {
-        showDataProtectionAlert();
-        return false;
-      }
-      const note = createNote(text, { images, title, ...preferences });
-      if (!note) {
-        return false;
-      }
-      setNotes((previous) => [note, ...previous]);
-      triggerImpact(Haptics.ImpactFeedbackStyle.Light);
-      return true;
-    },
-    [showDataProtectionAlert]
-  );
-
-  const handleUpdateNote = useCallback(
-    (noteId, text, images = [], title = '', preferences = {}) => {
-      if (loadFailuresRef.current.notes) {
-        showDataProtectionAlert();
-        return false;
-      }
-      setNotes((previous) =>
-        updateNoteContent(previous, noteId, { text, images, title, ...preferences })
-      );
-      return true;
-    },
-    [showDataProtectionAlert]
-  );
+  const handleSaveNote = useCallback((content, dateKey) => {
+    if (loadFailuresRef.current.notes) {
+      showDataProtectionAlert();
+      return false;
+    }
+    const targetTask = content.source === 'task'
+      ? tasks.find((task) => String(task.id) === String(content.taskId)) : null;
+    const original = notes.find((note) => note.id === content.id);
+    if (content.source === 'task' && !targetTask && String(original?.taskId) !== String(content.taskId)) return false;
+    const result = saveNoteFromEditor(notes, {
+      ...content, taskTitle: targetTask?.title ?? original?.taskTitle,
+    }, { dateKey });
+    if (result.error) {
+      Alert.alert(t.notes.chooseSource, t.notes.sourceConflict);
+      return false;
+    }
+    setNotes(result.notes);
+    return true;
+  }, [notes, tasks, showDataProtectionAlert, t.notes]);
 
   const handleDeleteNote = useCallback(
     (noteId) => {
@@ -5278,23 +5236,22 @@ function ScheduleApp() {
         notes={notesForFeed}
         tasks={tasks}
         todayKey={todayKey}
-        onSaveTaskNote={handleSaveTaskNote}
+        onSaveNote={handleSaveNote}
         onUnlockNotes={requestNotesUnlock}
         onNotePrivacyOptions={showNotePrivacyOptions}
-        onCreateNote={handleCreateNote}
-        onUpdateNote={handleUpdateNote}
         onDeleteNote={handleDeleteNote}
         onBack={() => { setIsNotesOpen(false); setNotesUnlocked(false); }}
         reduceMotion={prefersReducedMotion}
       />
       <TaskDetailModal
+        tasks={tasks}
         language={language}
         visible={Boolean(activeTaskForSelectedDate)}
         task={activeTaskForSelectedDate}
         dateKey={selectedDateKey}
         onClose={closeTaskDetail}
         onToggleSubtask={handleToggleSubtask}
-        onSaveNote={handleSaveTaskNote}
+        onSaveNote={handleSaveNote}
         onUnlockNotes={requestNotesUnlock}
         onNotePrivacyOptions={showNotePrivacyOptions}
         onDeleteNote={handleDeleteNote}
