@@ -52,6 +52,9 @@ const CLOSE_EASING = Easing.bezier(0.3, 0, 0.8, 0.15);
 // (nota do dia, metricas, heatmap, marcos, dados) e a faixa de card que sobrava
 // no topo so tirava altura de rolagem sem mostrar nada.
 const PHOTO_GAP = 26;
+// Altura do bloco frasco + contagem (4 + 23 + 2 + 15 + 4): a base dele
+// fica na linha inferior da polaroide.
+const FREEZE_BLOCK_HEIGHT = 48;
 const MAX_FRAME = 190;
 
 const getNextMilestone = (finished) => {
@@ -576,14 +579,15 @@ export default function TaskPhotoSheet({
 
       {summary.freezeStock != null ? (
         // Estoque de gelo na calha esquerda da polaroide, entre a foto e a
-        // borda: nao ocupa linha nenhuma do conteudo. A legenda abre embaixo.
+        // borda, com a base do frasco na linha inferior da foto: nao ocupa
+        // linha nenhuma do conteudo. A legenda abre embaixo dessa linha.
         <Animated.View
           style={[
             styles.photoSheetFreeze,
             {
               left: 0,
               width: photoLeft,
-              top: photoTop + frameHeight / 2 - 22,
+              top: photoTop + frameHeight - FREEZE_BLOCK_HEIGHT,
               opacity: range([0, 0, 1], [0, CONTENT_START, 1]),
             },
           ]}
