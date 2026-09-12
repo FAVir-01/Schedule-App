@@ -17,9 +17,11 @@ import Svg, {
   Stop,
 } from 'react-native-svg';
 import { translations } from '../constants/i18n';
-import { FALLBACK_EMOJI, USE_NATIVE_DRIVER } from '../constants/app';
+import { FALLBACK_EMOJI, STREAK_FREEZE_MAX, USE_NATIVE_DRIVER } from '../constants/app';
 import {
   getTaskFinishedMilestoneForDate,
+  getTaskFreezeCardState,
+  getTaskStreakState,
   getQuantumProgressLabel,
   getQuantumProgressPercent,
   getQuantumStepLabel,
@@ -40,6 +42,14 @@ import {
 import { triggerSelection } from '../utils/feedbackUtils';
 import { styles } from '../styles/appStyles';
 import FinishedMilestoneBadge from './FinishedMilestoneBadge';
+import FreezeFlask from './FreezeFlask';
+import FreezeIce from './FreezeIce';
+import PotionGained, { POTION_TIMELINE, useCheckPunch } from './PotionGained';
+import StreakRing from './StreakRing';
+
+// Gelo e frasco so animam na TRANSICAO para o degelo; quem abre a tela com o
+// card ja descongelando encontra a pelicula e o frasco parados, como o selo.
+const FLASK_SIZE = 20;
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const QUANTUM_STEPPER_HEIGHT = 47;
@@ -194,6 +204,71 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
     () => getTaskFinishedMilestoneForDate(task, progressKey),
     [progressKey, task]
   );
+  const streakState = useMemo(() => getTaskStreakState(task), [task]);
+  const freezeState = useMemo(
+    () => getTaskFreezeCardState(task, progressKey, new Date(), streakState),
+    [progressKey, streakState, task]
+  );
+  const freezeKind = freezeState?.kind ?? null;
+  // Ganho de pocao: o gatilho e o estoque subir de fato, nada mais. Com 3/3 o
+  // setimo dia passa em branco porque nao houve o que ganhar.
+  const freezeStock = streakState.stock;
+  const previousStockRef = useRef(freezeStock);
+  const [potionGainKey, setPotionGainKey] = useState(0);
+  const [isGainFlaskVisible, setIsGainFlaskVisible] = useState(false);
+  const [isGainSceneVisible, setIsGainSceneVisible] = useState(false);
+  const checkPunchStyle = useCheckPunch(reduceMotion ? 0 : potionGainKey);
+
+  useEffect(() => {
+    const previous = previousStockRef.current;
+    previousStockRef.current = freezeStock;
+    if (freezeStock > previous) {
+      setPotionGainKey((key) => key + 1);
+    }
+  }, [freezeStock]);
+
+  // Anel da sequencia: so no ato de cumprir a tarefa neste card (hoje ou um
+  // dia atrasado, tanto faz). Rolar a lista nao dispara; abrir a tela tambem
+  // nao — o valor anterior nasce igual ao atual.
+  const streakCount = streakState.streak;
+  const previousStreakRef = useRef(streakCount);
+  const [streakRing, setStreakRing] = useState(null);
+
+  useEffect(() => {
+    const previous = previousStreakRef.current;
+    previousStreakRef.current = streakCount;
+    if (streakCount > previous && task.completed) {
+      setStreakRing({ play: Date.now(), from: previous, to: streakCount });
+    }
+  }, [streakCount, task.completed]);
+
+  useEffect(() => {
+    if (!potionGainKey) {
+      return undefined;
+    }
+    setIsGainSceneVisible(true);
+    const showTimer = setTimeout(() => setIsGainFlaskVisible(true), POTION_TIMELINE.flaskIn);
+    const hideTimer = setTimeout(() => {
+      setIsGainFlaskVisible(false);
+      setIsGainSceneVisible(false);
+    }, POTION_TIMELINE.flaskOut);
+    return () => {
+      clearTimeout(showTimer);
+      clearTimeout(hideTimer);
+    };
+  }, [potionGainKey]);
+  const previousFreezeKindRef = useRef(freezeKind);
+  // Conta as transicoes para o degelo enquanto o card esta montado: zero na
+  // montagem, entao rolar a lista nao repete o derretimento.
+  const [thawTransitionKey, setThawTransitionKey] = useState(0);
+
+  useEffect(() => {
+    const isTransition = previousFreezeKindRef.current !== freezeKind;
+    previousFreezeKindRef.current = freezeKind;
+    if (isTransition && freezeKind === 'thawing' && !reduceMotion) {
+      setThawTransitionKey((key) => key + 1);
+    }
+  }, [freezeKind, reduceMotion]);
   const finishedMilestoneMessage = useMemo(
     () =>
       finishedMilestone
@@ -633,15 +708,21 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
         <View style={styles.taskCardMain}>
         <Pressable style={styles.taskCardContent} onPress={handlePress}>
           <View style={styles.taskInfo}>
-            {task.customImage && !hasImageError ? (
-              <Image
-                source={{ uri: task.customImage }}
-                style={styles.taskEmojiImage}
-                onError={() => setHasImageError(true)}
-              />
-            ) : (
-              <Text style={styles.taskEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
-            )}
+            <StreakRing
+              play={reduceMotion ? null : streakRing?.play}
+              from={streakRing?.from}
+              to={streakRing?.to}
+            >
+              {task.customImage && !hasImageError ? (
+                <Image
+                  source={{ uri: task.customImage }}
+                  style={styles.taskEmojiImage}
+                  onError={() => setHasImageError(true)}
+                />
+              ) : (
+                <Text style={styles.taskEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
+              )}
+            </StreakRing>
             <View style={styles.taskDetails}>
               <Text
                 style={[styles.taskTitle, task.completed && styles.taskTitleCompleted]}
@@ -683,8 +764,32 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
             </View>
           </View>
         </Pressable>
+        {freezeKind === 'thawing' ? (
+          <FreezeFlask
+            key={thawTransitionKey}
+            remaining={freezeState.stock}
+            size={FLASK_SIZE}
+            autoPlay={thawTransitionKey > 0}
+            reduceMotion={reduceMotion}
+            accessibilityLabel={t.taskCard.freezeAccessibility
+              .replace('{stock}', String(freezeState.stock))
+              .replace('{max}', String(STREAK_FREEZE_MAX))}
+          />
+        ) : isGainFlaskVisible ? (
+          <FreezeFlask
+            key={`gain-${potionGainKey}`}
+            remaining={freezeStock}
+            size={FLASK_SIZE}
+            autoPlay
+            reduceMotion={reduceMotion}
+            accessibilityLabel={t.taskCard.freezeAccessibility
+              .replace('{stock}', String(freezeStock))
+              .replace('{max}', String(STREAK_FREEZE_MAX))}
+          />
+        ) : null}
         {!isReminder && (
-          <View style={styles.taskToggleGroup}>
+          <View style={[styles.taskToggleGroup, styles.taskToggleGroupAboveIce]}>
+            <Animated.View style={checkPunchStyle}>
             <Pressable
               onPress={handleTogglePress}
               onLongPress={handleToggleLongPress}
@@ -717,6 +822,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
                 task.completed && <Ionicons name="checkmark" size={18} color="#ffffff" />
               )}
             </Pressable>
+            </Animated.View>
             {isQuantum && !isQuantumComplete && quantumStepLabel ? (
               <Pressable
                 style={styles.taskToggleStepButton}
@@ -812,6 +918,12 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
             </Pressable>
           </Animated.View>
         )}
+        <FreezeIce
+          key={`ice-${thawTransitionKey}`}
+          state={freezeKind}
+          animate={thawTransitionKey > 0}
+        />
+        {isGainSceneVisible && !reduceMotion ? <PotionGained play={potionGainKey} /> : null}
       </Animated.View>
     </View>
   );

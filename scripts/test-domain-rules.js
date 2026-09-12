@@ -193,6 +193,8 @@ const {
   clearExpiredRepeatEnd,
   getTaskPausedSinceKey,
   getTaskStreak,
+  getTaskStreakState,
+  getTaskFreezeCardState,
   isTaskArchived,
   isTaskExpired,
   isTaskInactive,
@@ -2351,6 +2353,121 @@ test('sequencia so existe para o que se repete', () => {
     tasks: [avulsa], history: [], today: new Date(2026, 8, 3),
   });
   assert.equal(stats.currentStreak, 0);
+});
+
+test('gelo: 7 dias seguidos rendem um, ate tres guardados, e um dia perdido gasta um', () => {
+  const daily = (completedDates) => withScheduleMirror({
+    id: 'g', type: 'default', dateKey: '2026-08-01',
+    repeat: { enabled: true, frequency: 'daily', interval: 1 }, completedDates,
+  });
+  const done = (from, to) => {
+    const out = {};
+    for (let day = from; day <= to; day += 1) out[`2026-08-${String(day).padStart(2, '0')}`] = true;
+    return out;
+  };
+  const at = (day, month = 8) => new Date(2026, month - 1, day);
+
+  // Ganho: no 7º, 14º e 21º dia; o 28º não passa do teto.
+  assert.equal(getTaskStreakState(daily(done(1, 6)), at(6)).stock, 0);
+  assert.equal(getTaskStreakState(daily(done(1, 7)), at(7)).stock, 1);
+  assert.equal(getTaskStreakState(daily(done(1, 21)), at(21)).stock, 3);
+  assert.equal(getTaskStreakState(daily(done(1, 28)), at(28)).stock, 3);
+
+  // O cenário: sequência de 8 no dia 31/08, com 1 gelo; 1, 2 e 3/09 sem fazer.
+  const task = daily(done(24, 31));
+  const sep = (day, extra = {}) => ({ ...task, completedDates: { ...task.completedDates, ...extra } });
+  assert.deepEqual(getTaskStreakState(task, at(31)), { streak: 8, stock: 1, frozenDays: new Set(), thawing: false });
+  assert.equal(getTaskFreezeCardState(task, '2026-08-31', at(31)), null);
+
+  // Dia 1 ainda aberto: nada gasto, o card é normal.
+  assert.equal(getTaskFreezeCardState(task, '2026-09-01', at(1, 9)), null);
+  assert.equal(getTaskStreak(task, at(1, 9)), 8);
+
+  // Dia 2: o dia 1 congelou (gastou o gelo) e hoje descongela com 0 restante.
+  let state = getTaskStreakState(task, at(2, 9));
+  assert.equal(state.streak, 8);
+  assert.equal(state.stock, 0);
+  assert.deepEqual([...state.frozenDays], ['2026-09-01']);
+  assert.deepEqual(getTaskFreezeCardState(task, '2026-09-01', at(2, 9)), { kind: 'frozen', stock: 0 });
+  assert.deepEqual(getTaskFreezeCardState(task, '2026-09-02', at(2, 9)), { kind: 'thawing', stock: 0 });
+  assert.equal(getTaskFreezeCardState(task, '2026-09-03', at(2, 9)), null);
+
+  // Fazendo o dia 2: card normal e a sequência segue em 9.
+  const doneDay2 = sep(2, { '2026-09-02': true });
+  assert.equal(getTaskFreezeCardState(doneDay2, '2026-09-02', at(2, 9)), null);
+  assert.equal(getTaskStreak(doneDay2, at(2, 9)), 9);
+  assert.deepEqual(getTaskFreezeCardState(doneDay2, '2026-09-01', at(3, 9)), { kind: 'frozen', stock: 0 });
+  assert.equal(getTaskFreezeCardState(doneDay2, '2026-09-03', at(3, 9)), null);
+
+  // Sem gelo, o dia 2 perdido quebra: no dia 3 a sequência é 0 e nada descongela.
+  state = getTaskStreakState(task, at(3, 9));
+  assert.equal(state.streak, 0);
+  assert.equal(state.thawing, false);
+  assert.equal(getTaskFreezeCardState(task, '2026-09-02', at(3, 9)), null);
+  assert.equal(getTaskFreezeCardState(task, '2026-09-03', at(3, 9)), null);
+
+  // Com três gelos, três dias perdidos congelam e o quarto descongela em 0/3.
+  const rich = daily(done(1, 31));
+  assert.equal(getTaskStreakState(rich, at(31)).stock, 3);
+  state = getTaskStreakState(rich, at(4, 9));
+  assert.deepEqual([...state.frozenDays], ['2026-09-01', '2026-09-02', '2026-09-03']);
+  assert.equal(state.streak, 31);
+  assert.deepEqual(getTaskFreezeCardState(rich, '2026-09-04', at(4, 9)), { kind: 'thawing', stock: 0 });
+  const richDone = { ...rich, completedDates: { ...rich.completedDates, '2026-09-04': true } };
+  assert.equal(getTaskStreak(richDone, at(4, 9)), 32);
+  assert.equal(getTaskStreak(rich, at(5, 9)), 0);
+  assert.equal(getTaskFreezeCardState(rich, '2026-09-04', at(5, 9)), null);
+
+  // Dia não agendado não gasta gelo; a sequência do perfil respeita o congelado.
+  const weekly = withScheduleMirror({
+    id: 'w', type: 'default', dateKey: '2026-07-06',
+    repeat: { enabled: true, frequency: 'weekly', interval: 1, weekdays: ['mon'] },
+    completedDates: { '2026-07-06': true, '2026-07-13': true, '2026-07-20': true, '2026-07-27': true,
+      '2026-08-03': true, '2026-08-10': true, '2026-08-17': true },
+  });
+  state = getTaskStreakState(weekly, at(25));
+  assert.equal(state.stock, 0);
+  assert.deepEqual([...state.frozenDays], ['2026-08-24']);
+  assert.equal(state.streak, 7);
+  assert.deepEqual(getTaskFreezeCardState(weekly, '2026-08-31', at(31)), { kind: 'thawing', stock: 0 });
+  assert.equal(calculateProfileStats({ tasks: [task], history: [], today: at(2, 9) }).currentStreak, 8);
+  assert.equal(calculateProfileStats({ tasks: [task], history: [], today: at(3, 9) }).currentStreak, 0);
+});
+
+test('gelo: sem sequencia nao congela, sem frasco nao congela, e perder a sequencia nao devolve frascos', () => {
+  const daily = (completedDates, extra = {}) => withScheduleMirror({
+    id: 'g2', type: 'default', dateKey: '2026-08-01',
+    repeat: { enabled: true, frequency: 'daily', interval: 1 }, completedDates, ...extra,
+  });
+  const at = (day, month = 8) => new Date(2026, month - 1, day);
+
+  // Nunca fez: dias perdidos passam sem gelo e sem congelar.
+  const never = daily({});
+  assert.deepEqual(getTaskStreakState(never, at(10)), { streak: 0, stock: 0, frozenDays: new Set(), thawing: false });
+  assert.equal(getTaskFreezeCardState(never, '2026-08-05', at(10)), null);
+
+  // Sequencia curta (sem frasco): o dia perdido quebra, nada congela.
+  const short = daily({ '2026-08-01': true, '2026-08-02': true, '2026-08-03': true });
+  const shortState = getTaskStreakState(short, at(6));
+  assert.equal(shortState.streak, 0);
+  assert.equal(shortState.frozenDays.size, 0);
+  assert.equal(getTaskFreezeCardState(short, '2026-08-04', at(6)), null);
+  assert.equal(getTaskFreezeCardState(short, '2026-08-06', at(6)), null);
+
+  // Ganhou 1 no dia 7, perdeu 8 (congelado) e 9 (quebra): o estoque nao volta
+  // e a nova tentativa a partir do dia 10 recomeca do zero.
+  const done = {};
+  for (let day = 1; day <= 7; day += 1) done[`2026-08-0${day}`] = true;
+  const lost = daily({ ...done, '2026-08-10': true, '2026-08-11': true });
+  const lostState = getTaskStreakState(lost, at(11));
+  assert.deepEqual([...lostState.frozenDays], ['2026-08-08']);
+  assert.equal(lostState.streak, 2);
+  assert.equal(lostState.stock, 0);
+  assert.equal(getTaskFreezeCardState(lost, '2026-08-09', at(11)), null);
+
+  // Pausa longa: a tentativa anterior (com gelo) fica para tras inteira.
+  const paused = daily(done, { streakResetAt: '2026-08-20' });
+  assert.deepEqual(getTaskStreakState(paused, at(25)), { streak: 0, stock: 0, frozenDays: new Set(), thawing: false });
 });
 
 test('pausa longa reinicia a sequencia, intervalo entre ocorrencias nao', () => {

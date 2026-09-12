@@ -23,14 +23,17 @@ import {
   getTaskLatestFinishedMilestone,
   getTaskRepeatDisplayLabel,
   getTaskStreak,
+  getTaskStreakState,
   getTaskTagDisplayLabel,
   getTaskTypeDisplayLabel,
   shouldCountTaskTowardsStreak,
 } from '../utils/taskUtils';
 import { formatTaskTime } from '../utils/timeUtils';
+import { STREAK_FREEZE_MAX, USE_NATIVE_DRIVER } from '../constants/app';
 import { getTaskScheduleRows } from '../utils/taskScheduleDetails';
 import { getTaskTimeForDate } from '../domain/taskSchedule';
 import { styles } from '../styles/appStyles';
+import { FlaskShape } from './FreezeFlask';
 import MilestoneSeal from './MilestoneSeal';
 import PolaroidFrame, { getPolaroidHeight } from './PolaroidFrame';
 import TaskHeatmap from './TaskHeatmap';
@@ -160,6 +163,16 @@ export default function TaskPhotoSheet({
   const { width, height } = useWindowDimensions();
   const onClosedRef = useRef(onClosed);
   const scrollRef = useRef(null);
+  // A legenda do gelo so aparece no toque e some sozinha, como a frase do selo.
+  const freezeCaption = useRef(new Animated.Value(0)).current;
+  const showFreezeCaption = useCallback(() => {
+    freezeCaption.stopAnimation();
+    Animated.sequence([
+      Animated.timing(freezeCaption, { toValue: 1, duration: 300, useNativeDriver: USE_NATIVE_DRIVER }),
+      Animated.delay(3500),
+      Animated.timing(freezeCaption, { toValue: 0, duration: 500, useNativeDriver: USE_NATIVE_DRIVER }),
+    ]).start();
+  }, [freezeCaption]);
   const [isNoteEditorOpen, setIsNoteEditorOpen] = useState(false);
   const openNoteEditor = async () => {
     if (task?.note?.isLocked && !(await onUnlockNotes?.())) return;
@@ -331,6 +344,7 @@ export default function TaskPhotoSheet({
       detailRows,
       finished,
       isRecurring,
+      freezeStock: isRecurring ? getTaskStreakState(task).stock : null,
       metrics,
       latestMilestone,
       noteDateLabel,
@@ -422,6 +436,30 @@ export default function TaskPhotoSheet({
               anytimeLabel: t.sheet.anytime,
             })}
           </Text>
+          {summary.freezeStock != null ? (
+            <View style={styles.photoSheetFreezeRow}>
+              <Pressable
+                onPress={showFreezeCaption}
+                style={styles.photoSheetFreeze}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t.taskCard.freezeAccessibility
+                  .replace('{stock}', String(summary.freezeStock))
+                  .replace('{max}', String(STREAK_FREEZE_MAX))}
+              >
+                <FlaskShape level={summary.freezeStock} size={16} />
+                <Text style={styles.photoSheetFreezeText}>
+                  {`${summary.freezeStock}/${STREAK_FREEZE_MAX}`}
+                </Text>
+              </Pressable>
+              <Animated.Text
+                style={[styles.photoSheetFreezeCaption, { opacity: freezeCaption }]}
+                numberOfLines={1}
+              >
+                {t.taskModal.freezeCaption}
+              </Animated.Text>
+            </View>
+          ) : null}
 
           <ScrollView
             key={task.id}
