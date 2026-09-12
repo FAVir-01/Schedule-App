@@ -193,7 +193,9 @@ const TODAY_VISIBLE_DATE_RADIUS = 3;
 const TODAY_DATE_WINDOW_RADIUS = 45;
 const TODAY_DATE_TRANSITION_OUT_MS = 240;
 const TODAY_DATE_TRANSITION_IN_MS = 280;
-const TODAY_TASK_REORDER_MS = 300;
+// Depois dos 3s parado, o card sai do repouso: entrada e saida suaves, sem o
+// arranque seco do ease-out curto.
+const TODAY_TASK_REORDER_MS = 560;
 const DIARY_BACKGROUND_LOCK_DELAY_MS = 5 * 60 * 1000;
 
 const INITIAL_STORAGE_LOAD_FAILURES = {
@@ -1355,7 +1357,7 @@ function ScheduleApp() {
         const animation = Animated.timing(translateY, {
           toValue: 0,
           duration: TODAY_TASK_REORDER_MS,
-          easing: Easing.out(Easing.cubic),
+          easing: Easing.inOut(Easing.cubic),
           useNativeDriver: USE_NATIVE_DRIVER,
         });
         taskReorderAnimationsRef.current.set(taskId, animation);
