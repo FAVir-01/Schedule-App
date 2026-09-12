@@ -42,7 +42,9 @@ const T = {
   numOut: 0.84,
 };
 
-const LINE = 13; // altura de uma linha do rolo; o deslize e exatamente isso
+// Altura de uma linha do rolo; o deslize e exatamente isso. Cabe no vao entre a
+// foto (46px numa caixa de 50) e a borda do card (14px de padding).
+const LINE = 11;
 
 export default function StreakRing({
   play,
@@ -112,9 +114,9 @@ export default function StreakRing({
       {
         translateY: p.interpolate({
           inputRange: [T.drawEnd, T.numIn, T.numOut, 1],
-          // Entra de 3px abaixo: junto com o bottom da janela, nunca passa da
-          // borda do card — o numero se materializa ja dentro dele.
-          outputRange: [3, 0, 0, -3],
+          // Entra de 2px abaixo: com o bottom da janela, nunca passa da borda
+          // do card nem sobe sobre a foto — se materializa no vao entre os dois.
+          outputRange: [2, 0, 0, -2],
           extrapolate: 'clamp',
         }),
       },
@@ -177,9 +179,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    // Abaixo da caixa do icone, dentro do padding inferior do card (14px):
-    // a janela termina 4px acima da borda e a entrada de 3px cabe nesse vao.
-    bottom: -10,
+    // Janela de 11px comecando 1px abaixo da foto e terminando 3px acima da
+    // borda do card; a entrada de 2px cabe nesse vao.
+    bottom: -12,
     height: LINE,
     overflow: 'hidden', // sem isto os dois numeros aparecem juntos
   },
@@ -187,7 +189,7 @@ const styles = StyleSheet.create({
     height: LINE,
     lineHeight: LINE,
     textAlign: 'center',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '700',
     color: '#D8712C',
   },
