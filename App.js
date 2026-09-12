@@ -1318,21 +1318,22 @@ function ScheduleApp() {
       order.forEach((key, index) => {
         const position = positions.get(key);
         if (position.index !== index) {
-          const translateY = getTaskTranslateY(key);
           const predictedY = nextY;
-          const apply = (currentOffset) => {
-            const offset = position.y + currentOffset - predictedY;
-            translateY.setValue(offset);
-            taskKnownOffsetsRef.current.set(key, offset);
-          };
+          // Um `setValue` no nó antigo viaja pela fila do Animated, separado
+          // do commit que muda o layout — e perde a corrida às vezes. Um nó
+          // NOVO, nascido já com o deslocamento, entra como prop estática do
+          // próprio commit: layout novo e deslocamento são a mesma mutação,
+          // então não existe quadro com um sem o outro. Com animação em curso
+          // a posição visual só a thread nativa sabe; o último valor aplicado
+          // é a melhor aproximação, e o onLayout corrige o resto.
           const inFlight = taskReorderAnimationsRef.current.get(key);
           if (inFlight) {
             inFlight.stop();
             taskReorderAnimationsRef.current.delete(key);
-            translateY.stopAnimation(apply);
-          } else {
-            apply(taskKnownOffsetsRef.current.get(key) ?? 0);
           }
+          const offset = position.y + (taskKnownOffsetsRef.current.get(key) ?? 0) - predictedY;
+          taskAnimationsRef.current.set(key, new Animated.Value(offset));
+          taskKnownOffsetsRef.current.set(key, offset);
           positions.set(key, { ...position, y: predictedY, index });
           taskPreparedReorderRef.current.add(key);
         }
