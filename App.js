@@ -4246,7 +4246,11 @@ function ScheduleApp() {
     ({ children, index, item, onFocusCapture, onLayout, style }) => (
       <Animated.View
         onFocusCapture={onFocusCapture}
-        needsOffscreenAlphaCompositing
+        // Os dois buffers offscreen rasterizam a celula no tamanho dela e
+        // cortam a sombra que sai pelas laterais ("paredes" ao lado dos
+        // cards). So valem durante o fade da troca de dia, em que evitam
+        // que os filhos do card desbotem separados.
+        needsOffscreenAlphaCompositing={isTodayPageTransitioning}
         renderToHardwareTextureAndroid={isTodayPageTransitioning}
         onLayout={(event) => {
           onLayout?.(event);
@@ -4510,6 +4514,8 @@ function ScheduleApp() {
             styles.content,
             dynamicStyles.content,
             activeTab === 'calendar' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
+            // Ver styles.todayContent: o recuo lateral da agenda vai no conteúdo.
+            activeTab === 'today' && { paddingHorizontal: 0 },
             activeTab === 'profile' && { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0, alignItems: 'center', justifyContent: 'center' },
           ]}
           importantForAccessibility={isFabOpen ? 'no-hide-descendants' : 'auto'}
