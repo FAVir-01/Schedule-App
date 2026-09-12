@@ -489,6 +489,9 @@ function ScheduleApp() {
   const taskReorderAnimationsRef = useRef(new Map());
   const taskReorderGenerationsRef = useRef(new Map());
   const taskPositionContextRef = useRef(null);
+  // Cards cujo deslocamento foi aplicado antes do commit (ver
+  // prepareTaskReorderOffsets): o onLayout seguinte confirma e anima.
+  const taskPreparedReorderRef = useRef(new Set());
   const isDiaryPrivacyEnabled = userSettings.protectPrivateReflections === true;
 
   const runDiaryAuthentication = useCallback(async () => {
@@ -1241,6 +1244,53 @@ function ScheduleApp() {
       }),
     [currentTime, selectedDateKey, visibleTasks]
   );
+  const getTaskTranslateY = useCallback(
+    (taskId) => {
+      if (!taskAnimationsRef.current.has(taskId)) {
+        taskAnimationsRef.current.set(taskId, new Animated.Value(0));
+      }
+      return taskAnimationsRef.current.get(taskId);
+    },
+    []
+  );
+  // FLIP antecipado. O onLayout chega DEPOIS de a posição nova já ter sido
+  // pintada, e com o JS ocupado esse intervalo vira um quadro visível: o card
+  // aparece lá embaixo, volta e só então anima. Como as alturas e posições da
+  // ordem anterior já são conhecidas, a posição nova de cada card é prevista
+  // aqui, no mesmo render em que a ordem muda, e o deslocamento de volta é
+  // aplicado antes do commit. O onLayout depois só confirma e dispara.
+  const prepareTaskReorderOffsets = useCallback(
+    (order) => {
+      const positions = taskPositionsRef.current;
+      if (
+        activeTab !== 'today' ||
+        prefersReducedMotion ||
+        order.length < 2 ||
+        order.some((key) => !positions.has(key))
+      ) {
+        return;
+      }
+      const previous = order.map((key) => positions.get(key)).sort((a, b) => a.index - b.index);
+      const gap = previous[1].y - (previous[0].y + previous[0].height);
+      let nextY = previous[0].y;
+      order.forEach((key, index) => {
+        const position = positions.get(key);
+        if (position.index !== index) {
+          const translateY = getTaskTranslateY(key);
+          taskReorderAnimationsRef.current.get(key)?.stop();
+          taskReorderAnimationsRef.current.delete(key);
+          const predictedY = nextY;
+          translateY.stopAnimation((currentOffset) => {
+            translateY.setValue(position.y + currentOffset - predictedY);
+          });
+          positions.set(key, { ...position, y: predictedY, index });
+          taskPreparedReorderRef.current.add(key);
+        }
+        nextY += position.height + gap;
+      });
+    },
+    [activeTab, getTaskTranslateY, prefersReducedMotion]
+  );
   // Card concluído há menos de COMPLETED_CARD_HOLD_MS continua ordenado como
   // pendente. A decisão é tomada DENTRO da ordenação, no mesmo render em que a
   // conclusão chega: decidir num efeito deixava um quadro com o card lá no fim
@@ -1279,19 +1329,12 @@ function ScheduleApp() {
       }
     });
 
-    return [...incomplete, ...completed];
+    const sorted = [...incomplete, ...completed];
+    prepareTaskReorderOffsets(sorted.map((task) => getTaskListKey(task)));
+    return sorted;
     // settlingTick só força a reordenação quando uma espera termina.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDateKey, settlingTick, visibleTasksForSelectedDay]);
-  const getTaskTranslateY = useCallback(
-    (taskId) => {
-      if (!taskAnimationsRef.current.has(taskId)) {
-        taskAnimationsRef.current.set(taskId, new Animated.Value(0));
-      }
-      return taskAnimationsRef.current.get(taskId);
-    },
-    []
-  );
+  }, [prepareTaskReorderOffsets, selectedDateKey, settlingTick, visibleTasksForSelectedDay]);
   const resetTaskReorderAnimation = useCallback((taskId) => {
     const nextGeneration = (taskReorderGenerationsRef.current.get(taskId) ?? 0) + 1;
     taskReorderGenerationsRef.current.set(taskId, nextGeneration);
@@ -1308,16 +1351,20 @@ function ScheduleApp() {
       const { height, y } = event.nativeEvent.layout;
       const previousPosition = taskPositionsRef.current.get(taskId);
       taskPositionsRef.current.set(taskId, { height, index, y });
+      const wasPrepared = taskPreparedReorderRef.current.delete(taskId);
 
       if (
         activeTab !== 'today' ||
         prefersReducedMotion ||
         !previousPosition ||
-        // Expandir o painel quantum muda altura e posicao, mas nao a ordem.
-        // Deixar o layout seguir naturalmente evita uma segunda animacao FLIP
-        // disputando cada frame com a abertura/recolhimento do card.
-        previousPosition.index === index ||
-        (previousPosition.y === y && previousPosition.height === height)
+        // Card preparado já carrega o deslocamento: a posição prevista pode
+        // bater exatamente com a real, e mesmo assim a animação precisa tocar.
+        (!wasPrepared &&
+          // Expandir o painel quantum muda altura e posicao, mas nao a ordem.
+          // Deixar o layout seguir naturalmente evita uma segunda animacao FLIP
+          // disputando cada frame com a abertura/recolhimento do card.
+          (previousPosition.index === index ||
+            (previousPosition.y === y && previousPosition.height === height)))
       ) {
         return;
       }
@@ -1402,6 +1449,7 @@ function ScheduleApp() {
     const visibleIds = new Set(visibleTaskOrder);
     if (activeTab !== 'today' || prefersReducedMotion || contextChanged) {
       taskPositionsRef.current.clear();
+      taskPreparedReorderRef.current.clear();
       taskAnimationsRef.current.forEach((_, taskId) => resetTaskReorderAnimation(taskId));
       taskPositionContextRef.current =
         activeTab === 'today' ? visibleTaskOrderContext : null;
