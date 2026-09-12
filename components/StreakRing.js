@@ -175,7 +175,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: -9,
+    // Abaixo da caixa do icone, encostado no padding inferior do card.
+    bottom: -14,
     height: LINE,
     overflow: 'hidden', // sem isto os dois numeros aparecem juntos
   },
