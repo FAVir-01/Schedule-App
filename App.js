@@ -1241,49 +1241,38 @@ function ScheduleApp() {
       }),
     [currentTime, selectedDateKey, visibleTasks]
   );
-  // Chaves dos cards concluídos há menos de COMPLETED_CARD_HOLD_MS: continuam
-  // ordenados como pendentes até o tempo passar (ou até serem desmarcados).
-  const [settlingTaskKeys, setSettlingTaskKeys] = useState(() => new Set());
-  const settlingTimersRef = useRef(new Map());
-  const settlingCompletionRef = useRef({ dateKey: null, completed: new Map() });
-  const stopSettling = useCallback((key) => {
-    clearTimeout(settlingTimersRef.current.get(key));
-    settlingTimersRef.current.delete(key);
-    setSettlingTaskKeys((previous) => {
-      if (!previous.has(key)) {
-        return previous;
-      }
-      const next = new Set(previous);
-      next.delete(key);
-      return next;
-    });
-  }, []);
-  useEffect(() => {
-    const previous = settlingCompletionRef.current;
-    const completed = new Map();
-    visibleTasksForSelectedDay.forEach((task) => {
-      const key = getTaskListKey(task);
-      completed.set(key, Boolean(task.completed));
-      if (previous.dateKey !== selectedDateKey) {
-        return;
-      }
-      if (task.completed && previous.completed.get(key) === false) {
-        clearTimeout(settlingTimersRef.current.get(key));
-        settlingTimersRef.current.set(key, setTimeout(() => stopSettling(key), COMPLETED_CARD_HOLD_MS));
-        setSettlingTaskKeys((keys) => new Set(keys).add(key));
-      } else if (!task.completed && settlingTimersRef.current.has(key)) {
-        stopSettling(key);
-      }
-    });
-    settlingCompletionRef.current = { dateKey: selectedDateKey, completed };
-  }, [selectedDateKey, stopSettling, visibleTasksForSelectedDay]);
-  useEffect(() => () => settlingTimersRef.current.forEach((timer) => clearTimeout(timer)), []);
+  // Card concluído há menos de COMPLETED_CARD_HOLD_MS continua ordenado como
+  // pendente. A decisão é tomada DENTRO da ordenação, no mesmo render em que a
+  // conclusão chega: decidir num efeito deixava um quadro com o card lá no fim
+  // antes de voltar — o engasgo que aparecia ao tocar no check.
+  const settlingRef = useRef({ dateKey: null, completed: new Map(), timers: new Map() });
+  const [settlingTick, setSettlingTick] = useState(0);
+  useEffect(() => () => settlingRef.current.timers.forEach((timer) => clearTimeout(timer)), []);
   const sortedVisibleTasksForSelectedDay = useMemo(() => {
+    const settling = settlingRef.current;
+    if (settling.dateKey !== selectedDateKey) {
+      settling.dateKey = selectedDateKey;
+      settling.completed = new Map();
+      settling.timers.forEach((timer) => clearTimeout(timer));
+      settling.timers.clear();
+    }
     const incomplete = [];
     const completed = [];
 
     visibleTasksForSelectedDay.forEach((task) => {
-      if (task.completed && !settlingTaskKeys.has(getTaskListKey(task))) {
+      const key = getTaskListKey(task);
+      const wasCompleted = settling.completed.get(key);
+      settling.completed.set(key, Boolean(task.completed));
+      if (task.completed && wasCompleted === false && !settling.timers.has(key)) {
+        settling.timers.set(key, setTimeout(() => {
+          settling.timers.delete(key);
+          setSettlingTick((tick) => tick + 1);
+        }, COMPLETED_CARD_HOLD_MS));
+      } else if (!task.completed && settling.timers.has(key)) {
+        clearTimeout(settling.timers.get(key));
+        settling.timers.delete(key);
+      }
+      if (task.completed && !settling.timers.has(key)) {
         completed.push(task);
       } else {
         incomplete.push(task);
@@ -1291,7 +1280,9 @@ function ScheduleApp() {
     });
 
     return [...incomplete, ...completed];
-  }, [settlingTaskKeys, visibleTasksForSelectedDay]);
+    // settlingTick só força a reordenação quando uma espera termina.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDateKey, settlingTick, visibleTasksForSelectedDay]);
   const getTaskTranslateY = useCallback(
     (taskId) => {
       if (!taskAnimationsRef.current.has(taskId)) {
