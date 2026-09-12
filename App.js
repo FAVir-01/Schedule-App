@@ -65,7 +65,7 @@ import {
 import AddHabitSheet from './components/AddHabitSheet';
 import { DEFAULT_USER_SETTINGS } from './constants/userSettings';
 import { getNavigationBarThemeForTab } from './constants/navigation';
-import { lightenColor } from './utils/colorUtils';
+import { darkenColor, lightenColor } from './utils/colorUtils';
 import { getMoodMarker, getReflectionPhotos } from './utils/moodUtils';
 import {
   getDateKey,
@@ -1493,7 +1493,7 @@ function ScheduleApp() {
           totalSubtasks,
           completedSubtasks,
           backgroundColor: lightenColor(task.color, 0.75),
-          borderColor: task.color,
+          borderColor: darkenColor(task.color),
         };
         taskStatsCacheRef.current.set(task, { dateKey: selectedDateKey, value });
         return value;

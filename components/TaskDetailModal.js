@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns';
 import { getDateLocale, translations } from '../constants/i18n';
-import { lightenColor } from '../utils/colorUtils';
+import { darkenColor, lightenColor } from '../utils/colorUtils';
 import { normalizeDateValue } from '../utils/dateUtils';
 import {
   getQuantumProgressLabel,
@@ -151,7 +151,7 @@ export default function TaskDetailModal({
           <Animated.View
             style={[
               styles.detailCard,
-              { backgroundColor: cardBackground, borderColor: task.color },
+              { backgroundColor: cardBackground, borderColor: darkenColor(task.color) },
               {
                 opacity: photoProgress.interpolate({
                   inputRange: [0, 0.6],
