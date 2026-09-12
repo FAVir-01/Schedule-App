@@ -19,11 +19,13 @@ import {
   Platform,
   Image,
   FlatList,
+  LayoutAnimation,
   Pressable,
   ScrollView,
   StatusBar,
   Text,
   TouchableOpacity,
+  UIManager,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -196,6 +198,20 @@ const TODAY_DATE_TRANSITION_IN_MS = 280;
 // Depois dos 3s parado, o card sai do repouso: entrada e saida suaves, sem o
 // arranque seco do ease-out curto.
 const TODAY_TASK_REORDER_MS = 560;
+// A troca de lugar é animada pela plataforma (LayoutAnimation), não pelo
+// FLIP em translateY. No Android o setValue de um valor nativo é enfileirado
+// e executado na thread de UI no frame seguinte, enquanto o layout do Fabric
+// é aplicado no mount: sem ordem garantida entre os dois, o card aparecia no
+// lugar novo por um quadro e voltava. Animando a própria mudança de layout
+// não existe corrida. O FLIP fica no código, desligado, como referência.
+const USE_LAYOUT_ANIMATION_FOR_REORDER = true;
+const TODAY_TASK_REORDER_LAYOUT_ANIMATION = {
+  duration: TODAY_TASK_REORDER_MS,
+  update: { type: LayoutAnimation.Types.easeInEaseOut },
+};
+if (Platform.OS === 'android') {
+  UIManager.setLayoutAnimationEnabledExperimental?.(true);
+}
 const DIARY_BACKGROUND_LOCK_DELAY_MS = 5 * 60 * 1000;
 
 const INITIAL_STORAGE_LOAD_FAILURES = {
@@ -1264,9 +1280,28 @@ function ScheduleApp() {
   // ordem anterior já são conhecidas, a posição nova de cada card é prevista
   // aqui, no mesmo render em que a ordem muda, e o deslocamento de volta é
   // aplicado antes do commit. O onLayout depois só confirma e dispara.
+  const lastTaskOrderRef = useRef(null);
   const prepareTaskReorderOffsets = useCallback(
     (order) => {
       const positions = taskPositionsRef.current;
+      if (USE_LAYOUT_ANIMATION_FOR_REORDER) {
+        // Só uma troca de lugar entre os mesmos cards (nada entrando ou
+        // saindo) pede a animação de layout; assim a criação de views novas
+        // não ganha fade nem deslize.
+        const previousOrder = lastTaskOrderRef.current;
+        lastTaskOrderRef.current = order;
+        if (
+          activeTab === 'today' &&
+          !prefersReducedMotion &&
+          previousOrder &&
+          previousOrder.length === order.length &&
+          previousOrder.join(':') !== order.join(':') &&
+          order.every((key) => previousOrder.includes(key))
+        ) {
+          LayoutAnimation.configureNext(TODAY_TASK_REORDER_LAYOUT_ANIMATION);
+        }
+        return;
+      }
       if (
         activeTab !== 'today' ||
         prefersReducedMotion ||
@@ -1368,6 +1403,7 @@ function ScheduleApp() {
       const wasPrepared = taskPreparedReorderRef.current.delete(taskId);
 
       if (
+        USE_LAYOUT_ANIMATION_FOR_REORDER ||
         activeTab !== 'today' ||
         prefersReducedMotion ||
         !previousPosition ||
