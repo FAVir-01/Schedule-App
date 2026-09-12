@@ -204,7 +204,9 @@ const TODAY_TASK_REORDER_MS = 560;
 // é aplicado no mount: sem ordem garantida entre os dois, o card aparecia no
 // lugar novo por um quadro e voltava. Animando a própria mudança de layout
 // não existe corrida. O FLIP fica no código, desligado, como referência.
-const USE_LAYOUT_ANIMATION_FOR_REORDER = true;
+// Desligado: no aparelho o LayoutAnimation não animou nada (troca seca).
+// Fica o FLIP, que anima, com a corrida ocasional a investigar no aparelho.
+const USE_LAYOUT_ANIMATION_FOR_REORDER = false;
 const TODAY_TASK_REORDER_LAYOUT_ANIMATION = {
   duration: TODAY_TASK_REORDER_MS,
   update: { type: LayoutAnimation.Types.easeInEaseOut },
