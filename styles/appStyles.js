@@ -52,6 +52,10 @@ export const styles = StyleSheet.create({
   },
   todayContent: {
     flexGrow: 1,
+    // O recuo lateral fica no conteúdo, não no container: a FlatList ocupa a
+    // largura toda, porque ScrollView no Android clipa nos próprios limites e
+    // uma lista da largura do card cortava a sombra que sai pelas laterais.
+    paddingHorizontal: 24,
     paddingBottom: 48,
   },
   todayContentWithTemporalAction: {
