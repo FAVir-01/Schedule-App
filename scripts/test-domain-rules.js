@@ -3689,7 +3689,11 @@ test('anima o painel quantum e reordena cards sem saltos interrompidos', () => {
   assert.equal(appSource.includes('useLayoutEffect(() => {'), true);
   assert.equal(appSource.includes('taskPositionsRef'), true);
   assert.equal(appSource.includes('visibleTaskStateCacheRef'), true);
-  assert.equal(appSource.includes('translateY.stopAnimation((currentOffset) =>'), true);
+  // Só com animação em curso vale perguntar a posição à thread nativa
+  // (assíncrono); parado, o deslocamento conhecido no JS entra na hora.
+  assert.equal(appSource.includes('translateY.stopAnimation(startFrom)'), true);
+  assert.equal(appSource.includes('startFrom(taskKnownOffsetsRef.current.get(taskId) ?? 0)'), true);
+  assert.equal(appSource.includes('prepareTaskReorderOffsets(sorted.map((task) => getTaskListKey(task)))'), true);
   assert.equal(appSource.includes('getInterruptedTaskReorderOffset({'), true);
   assert.equal(appSource.includes('duration: TODAY_TASK_REORDER_MS'), true);
   assert.equal(appSource.includes('easing: Easing.out(Easing.cubic)'), true);

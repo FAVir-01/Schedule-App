@@ -492,6 +492,11 @@ function ScheduleApp() {
   // Cards cujo deslocamento foi aplicado antes do commit (ver
   // prepareTaskReorderOffsets): o onLayout seguinte confirma e anima.
   const taskPreparedReorderRef = useRef(new Set());
+  // Último deslocamento aplicado por card, conhecido no JS. Em valor já
+  // ligado ao driver nativo, `stopAnimation(cb)` vai buscar o valor na thread
+  // nativa e responde assíncrono — tarde demais para antecipar o FLIP. Sem
+  // animação em curso o valor é este; só com animação em curso vale perguntar.
+  const taskKnownOffsetsRef = useRef(new Map());
   const isDiaryPrivacyEnabled = userSettings.protectPrivateReflections === true;
 
   const runDiaryAuthentication = useCallback(async () => {
@@ -1277,12 +1282,20 @@ function ScheduleApp() {
         const position = positions.get(key);
         if (position.index !== index) {
           const translateY = getTaskTranslateY(key);
-          taskReorderAnimationsRef.current.get(key)?.stop();
-          taskReorderAnimationsRef.current.delete(key);
           const predictedY = nextY;
-          translateY.stopAnimation((currentOffset) => {
-            translateY.setValue(position.y + currentOffset - predictedY);
-          });
+          const apply = (currentOffset) => {
+            const offset = position.y + currentOffset - predictedY;
+            translateY.setValue(offset);
+            taskKnownOffsetsRef.current.set(key, offset);
+          };
+          const inFlight = taskReorderAnimationsRef.current.get(key);
+          if (inFlight) {
+            inFlight.stop();
+            taskReorderAnimationsRef.current.delete(key);
+            translateY.stopAnimation(apply);
+          } else {
+            apply(taskKnownOffsetsRef.current.get(key) ?? 0);
+          }
           positions.set(key, { ...position, y: predictedY, index });
           taskPreparedReorderRef.current.add(key);
         }
@@ -1345,6 +1358,7 @@ function ScheduleApp() {
       translateY.stopAnimation();
       translateY.setValue(0);
     }
+    taskKnownOffsetsRef.current.set(taskId, 0);
   }, []);
   const handleTaskLayout = useCallback(
     (taskId, index, event) => {
@@ -1372,12 +1386,10 @@ function ScheduleApp() {
       const translateY = getTaskTranslateY(taskId);
       const generation = (taskReorderGenerationsRef.current.get(taskId) ?? 0) + 1;
       taskReorderGenerationsRef.current.set(taskId, generation);
-      taskReorderAnimationsRef.current.get(taskId)?.stop();
+      const inFlight = taskReorderAnimationsRef.current.get(taskId);
       taskReorderAnimationsRef.current.delete(taskId);
 
-      // stopAnimation devolve o valor realmente apresentado pela thread nativa.
-      // Assim um segundo toque continua da posição visual atual, sem salto.
-      translateY.stopAnimation((currentOffset) => {
+      const startFrom = (currentOffset) => {
         if (taskReorderGenerationsRef.current.get(taskId) !== generation) {
           return;
         }
@@ -1388,10 +1400,12 @@ function ScheduleApp() {
         });
         if (Math.abs(nextOffset) < 0.5) {
           translateY.setValue(0);
+          taskKnownOffsetsRef.current.set(taskId, 0);
           return;
         }
 
         translateY.setValue(nextOffset);
+        taskKnownOffsetsRef.current.set(taskId, nextOffset);
         const animation = Animated.timing(translateY, {
           toValue: 0,
           duration: TODAY_TASK_REORDER_MS,
@@ -1405,8 +1419,18 @@ function ScheduleApp() {
           }
           taskReorderAnimationsRef.current.delete(taskId);
           translateY.setValue(0);
+          taskKnownOffsetsRef.current.set(taskId, 0);
         });
-      });
+      };
+
+      if (inFlight) {
+        // Com animação em curso, só a thread nativa sabe a posição visual:
+        // um segundo toque continua de lá, sem salto.
+        inFlight.stop();
+        translateY.stopAnimation(startFrom);
+      } else {
+        startFrom(taskKnownOffsetsRef.current.get(taskId) ?? 0);
+      }
     },
     [activeTab, getTaskTranslateY, prefersReducedMotion]
   );
