@@ -112,7 +112,9 @@ export default function StreakRing({
       {
         translateY: p.interpolate({
           inputRange: [T.drawEnd, T.numIn, T.numOut, 1],
-          outputRange: [4, 0, 0, -3],
+          // Entra de 3px abaixo: junto com o bottom da janela, nunca passa da
+          // borda do card — o numero se materializa ja dentro dele.
+          outputRange: [3, 0, 0, -3],
           extrapolate: 'clamp',
         }),
       },
@@ -175,8 +177,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    // Abaixo da caixa do icone, encostado no padding inferior do card.
-    bottom: -14,
+    // Abaixo da caixa do icone, dentro do padding inferior do card (14px):
+    // a janela termina 4px acima da borda e a entrada de 3px cabe nesse vao.
+    bottom: -10,
     height: LINE,
     overflow: 'hidden', // sem isto os dois numeros aparecem juntos
   },
