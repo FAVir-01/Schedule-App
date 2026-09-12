@@ -436,30 +436,6 @@ export default function TaskPhotoSheet({
               anytimeLabel: t.sheet.anytime,
             })}
           </Text>
-          {summary.freezeStock != null ? (
-            <View style={styles.photoSheetFreezeRow}>
-              <Pressable
-                onPress={showFreezeCaption}
-                style={styles.photoSheetFreeze}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={t.taskCard.freezeAccessibility
-                  .replace('{stock}', String(summary.freezeStock))
-                  .replace('{max}', String(STREAK_FREEZE_MAX))}
-              >
-                <FlaskShape level={summary.freezeStock} size={16} />
-                <Text style={styles.photoSheetFreezeText}>
-                  {`${summary.freezeStock}/${STREAK_FREEZE_MAX}`}
-                </Text>
-              </Pressable>
-              <Animated.Text
-                style={[styles.photoSheetFreezeCaption, { opacity: freezeCaption }]}
-                numberOfLines={1}
-              >
-                {t.taskModal.freezeCaption}
-              </Animated.Text>
-            </View>
-          ) : null}
 
           <ScrollView
             key={task.id}
@@ -597,6 +573,43 @@ export default function TaskPhotoSheet({
           />
         </Pressable>
       </Animated.View>
+
+      {summary.freezeStock != null ? (
+        // Estoque de gelo na calha esquerda da polaroide, entre a foto e a
+        // borda: nao ocupa linha nenhuma do conteudo. A legenda abre embaixo.
+        <Animated.View
+          style={[
+            styles.photoSheetFreeze,
+            {
+              left: 0,
+              width: photoLeft,
+              top: photoTop + frameHeight / 2 - 22,
+              opacity: range([0, 0, 1], [0, CONTENT_START, 1]),
+            },
+          ]}
+        >
+          <Pressable
+            onPress={showFreezeCaption}
+            style={styles.photoSheetFreezeButton}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={t.taskCard.freezeAccessibility
+              .replace('{stock}', String(summary.freezeStock))
+              .replace('{max}', String(STREAK_FREEZE_MAX))}
+          >
+            <FlaskShape level={summary.freezeStock} size={20} />
+            <Text style={styles.photoSheetFreezeText}>
+              {`${summary.freezeStock}/${STREAK_FREEZE_MAX}`}
+            </Text>
+          </Pressable>
+          <Animated.Text
+            style={[styles.photoSheetFreezeCaption, { opacity: freezeCaption }]}
+            numberOfLines={4}
+          >
+            {t.taskModal.freezeCaption}
+          </Animated.Text>
+        </Animated.View>
+      ) : null}
 
       <Animated.View
         style={[
