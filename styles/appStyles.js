@@ -491,6 +491,11 @@ export const styles = StyleSheet.create({
   finishedMilestoneBadge: {
     flexShrink: 0,
   },
+  // Único filho da linha com zIndex: fica acima da placa de gelo (zIndex 1)
+  // sem prender o resto num contexto de empilhamento. Ver FreezeIce.
+  taskToggleGroupAboveIce: {
+    zIndex: 2,
+  },
   taskToggle: {
     width: 32,
     height: 32,
@@ -760,6 +765,31 @@ export const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 18,
     fontSize: 14,
+    color: '#4b4b63',
+    textAlign: 'center',
+  },
+  photoSheetFreezeRow: {
+    alignItems: 'center',
+    marginTop: -10,
+    marginBottom: 12,
+  },
+  photoSheetFreeze: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  photoSheetFreezeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0EA5E9',
+  },
+  photoSheetFreezeCaption: {
+    marginTop: 2,
+    height: 16,
+    fontSize: 12,
+    lineHeight: 16,
     color: '#4b4b63',
     textAlign: 'center',
   },

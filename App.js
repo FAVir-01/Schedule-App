@@ -184,6 +184,9 @@ import { migrateImportedTemplateTasks } from './utils/templateUtils';
 const habitImage = require('./assets/add-habit.png');
 const reflectionImage = require('./assets/add-reflection.png');
 const TASK_DELETE_UNDO_DURATION_MS = 6000;
+// Card recém-concluído fica no lugar por este tempo antes de descer para o fim
+// da lista: dá para ver o anel da sequência e o check onde a pessoa tocou.
+const COMPLETED_CARD_HOLD_MS = 3000;
 const PROFILE_OVERALL_FILTER_ITEM = Object.freeze({ id: '__overall__' });
 const PROFILE_FILTER_MORE_ITEM = Object.freeze({ id: '__more__' });
 const TODAY_VISIBLE_DATE_RADIUS = 3;
@@ -1236,12 +1239,49 @@ function ScheduleApp() {
       }),
     [currentTime, selectedDateKey, visibleTasks]
   );
+  // Chaves dos cards concluídos há menos de COMPLETED_CARD_HOLD_MS: continuam
+  // ordenados como pendentes até o tempo passar (ou até serem desmarcados).
+  const [settlingTaskKeys, setSettlingTaskKeys] = useState(() => new Set());
+  const settlingTimersRef = useRef(new Map());
+  const settlingCompletionRef = useRef({ dateKey: null, completed: new Map() });
+  const stopSettling = useCallback((key) => {
+    clearTimeout(settlingTimersRef.current.get(key));
+    settlingTimersRef.current.delete(key);
+    setSettlingTaskKeys((previous) => {
+      if (!previous.has(key)) {
+        return previous;
+      }
+      const next = new Set(previous);
+      next.delete(key);
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    const previous = settlingCompletionRef.current;
+    const completed = new Map();
+    visibleTasksForSelectedDay.forEach((task) => {
+      const key = getTaskListKey(task);
+      completed.set(key, Boolean(task.completed));
+      if (previous.dateKey !== selectedDateKey) {
+        return;
+      }
+      if (task.completed && previous.completed.get(key) === false) {
+        clearTimeout(settlingTimersRef.current.get(key));
+        settlingTimersRef.current.set(key, setTimeout(() => stopSettling(key), COMPLETED_CARD_HOLD_MS));
+        setSettlingTaskKeys((keys) => new Set(keys).add(key));
+      } else if (!task.completed && settlingTimersRef.current.has(key)) {
+        stopSettling(key);
+      }
+    });
+    settlingCompletionRef.current = { dateKey: selectedDateKey, completed };
+  }, [selectedDateKey, stopSettling, visibleTasksForSelectedDay]);
+  useEffect(() => () => settlingTimersRef.current.forEach((timer) => clearTimeout(timer)), []);
   const sortedVisibleTasksForSelectedDay = useMemo(() => {
     const incomplete = [];
     const completed = [];
 
     visibleTasksForSelectedDay.forEach((task) => {
-      if (task.completed) {
+      if (task.completed && !settlingTaskKeys.has(getTaskListKey(task))) {
         completed.push(task);
       } else {
         incomplete.push(task);
@@ -1249,7 +1289,7 @@ function ScheduleApp() {
     });
 
     return [...incomplete, ...completed];
-  }, [visibleTasksForSelectedDay]);
+  }, [settlingTaskKeys, visibleTasksForSelectedDay]);
   const getTaskTranslateY = useCallback(
     (taskId) => {
       if (!taskAnimationsRef.current.has(taskId)) {

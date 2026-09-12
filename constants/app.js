@@ -9,6 +9,10 @@ export const DEFAULT_REPEAT_CONFIG = { enabled: true, frequency: 'daily', interv
 // O critério é o tempo GUARDADA, não o tamanho do intervalo entre ocorrências:
 // um hábito mensal tem 30 dias de vão e não deve perder nada por isso.
 export const STREAK_PAUSE_TOLERANCE_DAYS = 10;
+// Gelo: um dia agendado sem fazer gasta um gelo e a sequência segue como se o
+// dia não existisse. Ganha-se um a cada 7 conclusões seguidas, até 3 guardados.
+export const STREAK_FREEZE_MAX = 3;
+export const STREAK_FREEZE_EARN_EVERY = 7;
 export const REMINDER_OFFSETS = {
   none: null,
   at_time: 0,

@@ -6,6 +6,7 @@ import {
 } from './dateUtils';
 import {
   getTaskCompletionStatus,
+  getTaskStreakState,
   shouldCountTaskTowardsCompletion,
   shouldCountTaskTowardsStreak,
 } from './taskUtils';
@@ -110,6 +111,8 @@ export const calculateProfileStats = ({
     matchesDate: createTaskScheduleMatcher(task, {
       targetDatesAreNormalized: true,
     }),
+    // Um dia congelado pela tarefa não derruba a sequência do perfil.
+    frozenDays: getTaskStreakState(task, normalizedToday).frozenDays,
   }));
   let currentStreak = 0;
   let bestStreak = 0;
@@ -117,19 +120,26 @@ export const calculateProfileStats = ({
   dates.forEach((date) => {
     let hasScheduledTask = false;
     let isComplete = true;
+    // Dia salvo por gelo: não soma nem quebra, como na própria tarefa.
+    let isFrozen = false;
 
     for (const scheduledTask of scheduledTasks) {
       if (!scheduledTask.matchesDate(date)) {
         continue;
       }
       hasScheduledTask = true;
-      if (!getTaskCompletionStatus(scheduledTask.task, date)) {
-        isComplete = false;
-        break;
+      if (getTaskCompletionStatus(scheduledTask.task, date)) {
+        continue;
       }
+      if (scheduledTask.frozenDays.has(getDateKey(date))) {
+        isFrozen = true;
+        continue;
+      }
+      isComplete = false;
+      break;
     }
 
-    if (!hasScheduledTask) {
+    if (!hasScheduledTask || (isComplete && isFrozen)) {
       return;
     }
     if (isComplete) {

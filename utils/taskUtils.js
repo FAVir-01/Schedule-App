@@ -2,6 +2,8 @@ import { getTaskForDate } from '../domain/taskDefinition';
 import {
   DEFAULT_REPEAT_CONFIG,
   STREAK_PAUSE_TOLERANCE_DAYS,
+  STREAK_FREEZE_MAX,
+  STREAK_FREEZE_EARN_EVERY,
 } from '../constants/app';
 import {
   getCurrentScheduleVersion,
@@ -674,43 +676,89 @@ export const shouldResetStreakAfterPause = (
 // Sequência de ocorrências consecutivas concluídas, respeitando a repetição:
 // dias em que a tarefa não está agendada não quebram a sequência, e o dia de
 // hoje ainda incompleto também não zera.
+//
+// Tudo é derivado do histórico, nada é gravado: o estoque de gelo e os dias
+// congelados saem da mesma caminhada, do começo da tarefa até hoje. Por isso
+// a regra vale retroativamente, sobrevive a backup e a edição de meta.
 const STREAK_LOOKBACK_LIMIT_DAYS = 730;
 
-export const getTaskStreak = (task, today = new Date()) => {
+const EMPTY_STREAK_STATE = Object.freeze({
+  streak: 0,
+  stock: 0,
+  frozenDays: new Set(),
+  // Verdadeiro quando a última ocorrência antes de hoje foi congelada: o card
+  // de hoje aparece descongelando até ser feito.
+  thawing: false,
+});
+
+export const getTaskStreakState = (task, today = new Date()) => {
   if (!shouldCountTaskTowardsStreak(task)) {
-    return 0;
+    return EMPTY_STREAK_STATE;
   }
 
   const startDate = normalizeDateValue(task.dateKey ?? task.date);
-  const cursor = normalizeDateValue(today);
-  if (!startDate || !cursor) {
-    return 0;
+  const todayDate = normalizeDateValue(today);
+  if (!startDate || !todayDate) {
+    return EMPTY_STREAK_STATE;
   }
 
-  // Marco deixado por uma pausa longa: a contagem não atravessa essa data.
+  // Marco deixado por uma pausa longa: o que veio antes é outra tentativa.
   const resetDate = normalizeDateValue(task.streakResetAt);
-  const resetTime = resetDate ? resetDate.getTime() : null;
+  const cursor = new Date(todayDate);
+  cursor.setDate(cursor.getDate() - (STREAK_LOOKBACK_LIMIT_DAYS - 1));
+  [startDate, resetDate].forEach((bound) => {
+    if (bound && cursor.getTime() < bound.getTime()) {
+      cursor.setTime(bound.getTime());
+    }
+  });
 
   let streak = 0;
-  for (let i = 0; i < STREAK_LOOKBACK_LIMIT_DAYS; i += 1) {
-    if (cursor.getTime() < startDate.getTime()) {
-      break;
-    }
-    if (resetTime != null && cursor.getTime() < resetTime) {
-      break;
-    }
+  let stock = 0;
+  let thawing = false;
+  const frozenDays = new Set();
+  while (cursor.getTime() <= todayDate.getTime()) {
     if (shouldTaskAppearOnDate(task, cursor)) {
+      const isToday = cursor.getTime() === todayDate.getTime();
       // Sequência conta DIAS: a segunda com duas aulas só entra quando as duas
       // foram marcadas.
       if (isTaskDayCompleted(task, cursor)) {
         streak += 1;
-      } else if (i > 0) {
-        break;
+        if (streak % STREAK_FREEZE_EARN_EVERY === 0 && stock < STREAK_FREEZE_MAX) {
+          stock += 1;
+        }
+        thawing = false;
+      } else if (isToday) {
+        // O dia ainda não acabou: nem gasta gelo nem quebra.
+      } else if (stock > 0 && streak > 0) {
+        // Gelo protege uma sequência; sem sequência não há o que proteger.
+        stock -= 1;
+        frozenDays.add(getDateKey(cursor));
+        thawing = true;
+      } else {
+        streak = 0;
+        thawing = false;
       }
     }
-    cursor.setDate(cursor.getDate() - 1);
+    cursor.setDate(cursor.getDate() + 1);
   }
-  return streak;
+  return { streak, stock, frozenDays, thawing };
+};
+
+export const getTaskStreak = (task, today = new Date()) => getTaskStreakState(task, today).streak;
+
+// Estado visual do card de um dia: 'frozen' num dia passado que gastou gelo,
+// 'thawing' hoje, enquanto não for feito, quando a ocorrência anterior foi
+// congelada. `stock` é o que sobra depois desses gastos.
+export const getTaskFreezeCardState = (task, dateKey, today = new Date(), state = getTaskStreakState(task, today)) => {
+  const key = getDateKeyFromOccurrenceKey(dateKey);
+  if (state.frozenDays.has(key)) {
+    return { kind: 'frozen', stock: state.stock };
+  }
+  const todayDate = normalizeDateValue(today);
+  if (state.thawing && todayDate && key === getDateKey(todayDate) && !isTaskDayCompleted(task, todayDate)) {
+    return { kind: 'thawing', stock: state.stock };
+  }
+  return null;
 };
 
 export const normalizeRepeatConfig = (repeatConfig) => {
