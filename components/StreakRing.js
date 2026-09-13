@@ -6,10 +6,12 @@
 //
 // LINHA DO TEMPO (a partir do disparo):
 //   0ms      o anel comeca a se desenhar no topo, no sentido horario
+//   676ms    o numero comeca a subir de 4px abaixo, ainda com o valor anterior
 //   870ms    o anel fecha
-//   1220ms   o numero aparece embaixo, ainda com o valor anterior
-//   1450ms   o numero vira para o valor novo, deslizando uma linha para cima
-//   2440ms   o numero sai
+//   988ms    o numero esta no lugar, totalmente visivel
+//   1200ms   o numero vira para o valor novo, deslizando uma linha para cima
+//   2184ms   o numero comeca a sair, 3px para cima
+//   2600ms   o numero sumiu
 //   2900ms   o anel termina de se desenrolar pelo mesmo caminho e some
 //
 // A saida do anel nao e um fade: ele apaga na ordem em que acendeu, o que
@@ -20,12 +22,22 @@
 // fixa de `size`, e o anel se desenha por fora dele. A caixa existe com ou sem
 // anel, entao o layout da linha nao muda quando o efeito toca.
 //
+// O NUMERO
+//   12,5px peso 800, contornado de branco com 2px, centrado logo abaixo da
+//   foto e com 12px de folga para cada lado da caixa (cabe quatro digitos).
+//   O contorno e o mesmo texto desenhado por baixo em SVG, tracado de branco
+//   com o dobro da espessura (metade fica dentro da letra) — o RN nao tem
+//   contorno de texto e so aceita uma sombra. Dois niveis: o de fora carrega
+//   opacidade e deslocamento com overflow visivel; a janela de dentro, de
+//   15px, recorta o rolo. Com um nivel so o contorno e cortado em cima e
+//   embaixo. O numero tem relogio proprio de 2,6s, no driver nativo.
+//
 // `strokeDashoffset` e prop de SVG: anima no driver de JS (um anel por vez,
-// custo desprezivel). O rolo do numero e o anel usam o mesmo relogio `p`.
+// custo desprezivel).
 
 import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { Animated, Easing, StyleSheet, View } from 'react-native';
+import Svg, { Circle, Defs, G, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { USE_NATIVE_DRIVER } from '../constants/app';
 import { darkenColor } from '../utils/colorUtils';
 import { getStreakPalette } from '../utils/streakColor';
@@ -44,17 +56,24 @@ const GLOW_STROKE = 6.4; // borda externa encosta na caixa de 50, sem cortar
 const GLOW_OPACITY = 0.22;
 const DUR = 2900;
 
-// Marcos da linha do tempo, em fracao da duracao total.
+// Marcos da linha do tempo do anel, em fracao da duracao total.
 const T = {
   drawEnd: 0.3,
   holdEnd: 0.52,
-  numIn: 0.42,
-  numOut: 0.84,
 };
 
-// Altura de uma linha do rolo; o deslize e exatamente isso. Cabe no vao entre a
-// foto (46px numa caixa de 50) e a borda do card (14px de padding).
-const LINE = 11;
+// Numero
+const NUM_DUR = 2600;
+const LINE = 15; // altura de uma linha do rolo; o deslize e exatamente isso
+const NUM_SIDE = 12; // folga alem da caixa, de cada lado
+const NUM_FONT = 12.5;
+const NUM_BASELINE = 11.5; // linha de base dentro dos 15px
+// A janela termina 10px abaixo da caixa: o centro do texto fica 4,5px abaixo
+// da borda da foto (46px numa caixa de 50), o contorno branco encostando na
+// foto como um selo. Cabe nos 14px de padding do card.
+const NUM_BOTTOM = -10;
+const ROLL_DELAY = 1200;
+const ROLL_DUR = 420;
 
 export default function StreakRing({
   play,
@@ -64,12 +83,14 @@ export default function StreakRing({
   children, // o icone da tarefa, desenhado dentro do anel
 }) {
   const p = useRef(new Animated.Value(0)).current; // 0 -> 1 ao longo dos 2,9s
+  const num = useRef(new Animated.Value(0)).current; // 0 -> 1 ao longo dos 2,6s
   const roll = useRef(new Animated.Value(0)).current; // 0 = mostra `from`, 1 = `to`
   const gradientId = useRef(`ember${Math.random().toString(36).slice(2, 8)}`).current;
 
   useEffect(() => {
     if (!play) return undefined;
     p.setValue(0);
+    num.setValue(0);
     roll.setValue(0);
     const clock = Animated.timing(p, {
       toValue: 1,
@@ -77,22 +98,32 @@ export default function StreakRing({
       easing: Easing.linear,
       useNativeDriver: false,
     });
+    const numClock = Animated.timing(num, {
+      toValue: 1,
+      duration: NUM_DUR,
+      easing: Easing.linear,
+      useNativeDriver: USE_NATIVE_DRIVER,
+    });
+    // Ease-out sem ultrapassagem: se passasse do ponto, apareceria uma faixa
+    // vazia acima do valor novo.
     const flip = Animated.sequence([
-      Animated.delay(1450),
+      Animated.delay(ROLL_DELAY),
       Animated.timing(roll, {
         toValue: 1,
-        duration: 420,
+        duration: ROLL_DUR,
         easing: Easing.bezier(0.25, 0.9, 0.3, 1),
         useNativeDriver: USE_NATIVE_DRIVER,
       }),
     ]);
     clock.start();
+    numClock.start();
     flip.start();
     return () => {
       clock.stop();
+      numClock.stop();
       flip.stop();
     };
-  }, [play, p, roll]);
+  }, [num, p, play, roll]);
 
   if (!play) {
     return <View style={[styles.box, { width: size, height: size }]}>{children}</View>;
@@ -116,19 +147,19 @@ export default function StreakRing({
     outputRange: [0, 1, 1, 0],
     extrapolate: 'clamp',
   });
+  // Entrada de 4px abaixo entre 26% e 38%; saida de 3px para cima entre 84%
+  // e 100% dos 2,6s.
   const numStyle = {
-    opacity: p.interpolate({
-      inputRange: [0, T.drawEnd, T.numIn, T.numOut, 1],
+    opacity: num.interpolate({
+      inputRange: [0, 0.26, 0.38, 0.84, 1],
       outputRange: [0, 0, 1, 1, 0],
       extrapolate: 'clamp',
     }),
     transform: [
       {
-        translateY: p.interpolate({
-          inputRange: [T.drawEnd, T.numIn, T.numOut, 1],
-          // Entra de 2px abaixo: com o bottom da janela, nunca passa da borda
-          // do card nem sobe sobre a foto — se materializa no vao entre os dois.
-          outputRange: [2, 0, 0, -2],
+        translateY: num.interpolate({
+          inputRange: [0, 0.26, 0.38, 0.84, 1],
+          outputRange: [4, 4, 0, 0, -3],
           extrapolate: 'clamp',
         }),
       },
@@ -138,6 +169,7 @@ export default function StreakRing({
   const rollStyle = {
     transform: [{ translateY: Animated.multiply(roll, -LINE) }],
   };
+  const numWidth = size + NUM_SIDE * 2;
 
   return (
     <View style={[styles.box, { width: size, height: size }]}>
@@ -196,11 +228,40 @@ export default function StreakRing({
         />
       </Svg>
 
-      <Animated.View style={[styles.rollWindow, numStyle]} pointerEvents="none">
-        <Animated.View style={rollStyle}>
-          <Text style={[styles.digit, { color: palette.digit }]}>{from}</Text>
-          <Text style={[styles.digit, { color: palette.digit }]}>{to}</Text>
-        </Animated.View>
+      <Animated.View style={[styles.numOuter, numStyle]} pointerEvents="none">
+        <View style={styles.numWindow}>
+          <Animated.View style={rollStyle}>
+            <Svg width={numWidth} height={LINE * 2}>
+              {[from, to].map((value, index) => (
+                <G key={index}>
+                  <SvgText
+                    x={numWidth / 2}
+                    y={LINE * index + NUM_BASELINE}
+                    textAnchor="middle"
+                    fontSize={NUM_FONT}
+                    fontWeight="800"
+                    fill="#FFFFFF"
+                    stroke="#FFFFFF"
+                    strokeWidth={4}
+                    strokeLinejoin="round"
+                  >
+                    {String(value)}
+                  </SvgText>
+                  <SvgText
+                    x={numWidth / 2}
+                    y={LINE * index + NUM_BASELINE}
+                    textAnchor="middle"
+                    fontSize={NUM_FONT}
+                    fontWeight="800"
+                    fill={palette.digit}
+                  >
+                    {String(value)}
+                  </SvgText>
+                </G>
+              ))}
+            </Svg>
+          </Animated.View>
+        </View>
       </Animated.View>
     </View>
   );
@@ -212,21 +273,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rollWindow: {
+  numOuter: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    // Janela de 11px comecando 1px abaixo da foto e terminando 3px acima da
-    // borda do card; a entrada de 2px cabe nesse vao.
-    bottom: -12,
+    left: -NUM_SIDE,
+    right: -NUM_SIDE,
+    bottom: NUM_BOTTOM,
     height: LINE,
-    overflow: 'hidden', // sem isto os dois numeros aparecem juntos
+    overflow: 'visible', // o contorno de 2px transborda da janela
   },
-  digit: {
+  numWindow: {
     height: LINE,
-    lineHeight: LINE,
-    textAlign: 'center',
-    fontSize: 10,
-    fontWeight: '700',
+    overflow: 'hidden', // recorta o rolo; sem isto os dois numeros aparecem juntos
   },
 });
