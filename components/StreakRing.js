@@ -37,8 +37,10 @@
 //   cima dela vai um contorno branco de 2px centrado no raio 23 (ocupa 22-24):
 //   e a camada que cobre a metade interna de qualquer traco e faz os aneis
 //   parecerem passar por tras da imagem. Foto e contorno sao desenhados DEPOIS
-//   dos aneis, de proposito. Do centro para fora os aneis crescem em raio e em
-//   espessura, e a cor vai do tom claro ao escuro da paleta, como numa chama:
+//   dos aneis, de proposito. So com foto (`contour`): em volta de um emoji nao
+//   ha borda para contornar e o circulo branco fica solto. Do centro para fora
+//   os aneis crescem em raio e em espessura, e a cor vai do tom claro ao escuro
+//   da paleta, como numa chama:
 //
 //     anel  raio   traco   ocupa          folga
 //     3     25.3   2.1     24.25-26.35    0.25 para o contorno
@@ -78,10 +80,12 @@
 //   foto e com 12px de folga para cada lado da caixa (cabe quatro digitos).
 //   O contorno e o mesmo texto desenhado por baixo em SVG, tracado de branco
 //   com o dobro da espessura (metade fica dentro da letra) — o RN nao tem
-//   contorno de texto e so aceita uma sombra. Dois niveis: o de fora carrega
-//   opacidade e deslocamento com overflow visivel; a janela de dentro, de
-//   15px, recorta o rolo. Com um nivel so o contorno e cortado em cima e
-//   embaixo. Relogio proprio de 2,6s, no driver nativo:
+//   contorno de texto e so aceita uma sombra. O rolo (valor antigo em cima,
+//   novo embaixo, sobe uma linha) e recortado pelo proprio SVG, de 15px de
+//   altura: `overflow: hidden` numa View nao corta um SVG no Android, entao
+//   os dois textos deslizam pela prop `y`, que o react-native-svg anima via
+//   setNativeProps, e o que sai da area do SVG some sozinho. Relogio proprio
+//   de 2,6s:
 //     676ms    comeca a subir de 4px abaixo, ainda com o valor anterior
 //     988ms    no lugar, totalmente visivel
 //     1200ms   vira para o valor novo, deslizando uma linha para cima
@@ -103,6 +107,7 @@ import { darkenColor } from '../utils/colorUtils';
 import { getStreakPalette } from '../utils/streakColor';
 
 const ACircle = Animated.createAnimatedComponent(Circle);
+const AText = Animated.createAnimatedComponent(SvgText);
 
 export const STREAK_RING_BOX = 50; // caixa do icone no card
 export const STREAK_RING_MIN = 3; // sequencia minima para o efeito tocar
@@ -166,6 +171,7 @@ export default function StreakRing({
   from, // valor anterior da sequencia
   to, // valor novo
   size = STREAK_RING_BOX,
+  contour = false, // true quando o icone e a foto: liga o contorno branco
   children, // o icone da tarefa, desenhado dentro do efeito
 }) {
   const p = useRef(new Animated.Value(0)).current; // anel incandescente, 0 -> 1 nos 2,9s
@@ -228,7 +234,7 @@ export default function StreakRing({
           toValue: 1,
           duration: ROLL_DUR,
           easing: Easing.bezier(0.25, 0.9, 0.3, 1),
-          useNativeDriver: USE_NATIVE_DRIVER,
+          useNativeDriver: false, // `y` e prop de SVG
         }),
       ])
     );
@@ -264,47 +270,45 @@ export default function StreakRing({
       },
     ],
   };
-  // O rolo: dois valores empilhados, sobe exatamente uma linha.
-  const rollStyle = {
-    transform: [{ translateY: Animated.multiply(roll, -LINE) }],
-  };
+  // O rolo: dois valores empilhados, sobe exatamente uma linha. A linha de
+  // base de cada um e animada; o SVG de 15px recorta o que sai.
   const numWidth = size + NUM_SIDE * 2;
+  const lineShift = Animated.multiply(roll, -LINE);
 
   const number = (
     <Animated.View style={[styles.numOuter, numStyle]} pointerEvents="none">
-      <View style={styles.numWindow}>
-        <Animated.View style={rollStyle}>
-          <Svg width={numWidth} height={LINE * 2}>
-            {[from, to].map((value, index) => (
-              <G key={index}>
-                <SvgText
-                  x={numWidth / 2}
-                  y={LINE * index + NUM_BASELINE}
-                  textAnchor="middle"
-                  fontSize={NUM_FONT}
-                  fontWeight="800"
-                  fill="#FFFFFF"
-                  stroke="#FFFFFF"
-                  strokeWidth={4}
-                  strokeLinejoin="round"
-                >
-                  {String(value)}
-                </SvgText>
-                <SvgText
-                  x={numWidth / 2}
-                  y={LINE * index + NUM_BASELINE}
-                  textAnchor="middle"
-                  fontSize={NUM_FONT}
-                  fontWeight="800"
-                  fill={palette.digit}
-                >
-                  {String(value)}
-                </SvgText>
-              </G>
-            ))}
-          </Svg>
-        </Animated.View>
-      </View>
+      <Svg width={numWidth} height={LINE}>
+        {[from, to].map((value, index) => {
+          const baseline = Animated.add(lineShift, LINE * index + NUM_BASELINE);
+          return (
+            <G key={index}>
+              <AText
+                x={numWidth / 2}
+                y={baseline}
+                textAnchor="middle"
+                fontSize={NUM_FONT}
+                fontWeight="800"
+                fill="#FFFFFF"
+                stroke="#FFFFFF"
+                strokeWidth={4}
+                strokeLinejoin="round"
+              >
+                {String(value)}
+              </AText>
+              <AText
+                x={numWidth / 2}
+                y={baseline}
+                textAnchor="middle"
+                fontSize={NUM_FONT}
+                fontWeight="800"
+                fill={palette.digit}
+              >
+                {String(value)}
+              </AText>
+            </G>
+          );
+        })}
+      </Svg>
     </Animated.View>
   );
 
@@ -459,23 +463,25 @@ export default function StreakRing({
 
       {/* Contorno branco por cima da foto: a camada que esconde a metade
           interna dos tracos. Acende e apaga com o anel externo. */}
-      <Svg
-        width={BLAZE_SVG}
-        height={BLAZE_SVG}
-        viewBox={blazeViewBox}
-        style={blazeStyle}
-        pointerEvents="none"
-      >
-        <ACircle
-          cx={0}
-          cy={0}
-          r={PHOTO_RADIUS}
-          fill="none"
-          stroke="#FFFFFF"
-          strokeWidth={CONTOUR_WIDTH}
-          opacity={rings[0].opacity}
-        />
-      </Svg>
+      {contour ? (
+        <Svg
+          width={BLAZE_SVG}
+          height={BLAZE_SVG}
+          viewBox={blazeViewBox}
+          style={blazeStyle}
+          pointerEvents="none"
+        >
+          <ACircle
+            cx={0}
+            cy={0}
+            r={PHOTO_RADIUS}
+            fill="none"
+            stroke="#FFFFFF"
+            strokeWidth={CONTOUR_WIDTH}
+            opacity={rings[0].opacity}
+          />
+        </Svg>
+      ) : null}
 
       {number}
     </View>
@@ -494,10 +500,6 @@ const styles = StyleSheet.create({
     right: -NUM_SIDE,
     bottom: NUM_BOTTOM,
     height: LINE,
-    overflow: 'visible', // o contorno de 2px transborda da janela
-  },
-  numWindow: {
-    height: LINE,
-    overflow: 'hidden', // recorta o rolo; sem isto os dois numeros aparecem juntos
+    alignItems: 'center',
   },
 });
