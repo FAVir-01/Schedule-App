@@ -27,6 +27,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { USE_NATIVE_DRIVER } from '../constants/app';
+import { getStreakPalette } from '../utils/streakColor';
 
 const ACircle = Animated.createAnimatedComponent(Circle);
 
@@ -91,6 +92,8 @@ export default function StreakRing({
   const half = size / 2;
   const radius = half - STROKE;
   const circumference = 2 * Math.PI * radius;
+  // A cor acompanha o valor novo: e ele que o anel esta celebrando.
+  const palette = getStreakPalette(to);
 
   // O traco se desenha ate fechar, segura, e depois se desenrola pelo mesmo
   // caminho — o offset continua descendo ate -CIRC em vez de voltar.
@@ -139,9 +142,9 @@ export default function StreakRing({
       >
         <Defs>
           <LinearGradient id={gradientId} x1="0%" y1="100%" x2="100%" y2="0%">
-            <Stop offset="0" stopColor="#D9551A" />
-            <Stop offset="0.55" stopColor="#FFA93F" />
-            <Stop offset="1" stopColor="#FFD89A" />
+            <Stop offset="0" stopColor={palette.ringStart} />
+            <Stop offset="0.55" stopColor={palette.ringMid} />
+            <Stop offset="1" stopColor={palette.ringEnd} />
           </LinearGradient>
         </Defs>
         <ACircle
@@ -161,8 +164,8 @@ export default function StreakRing({
 
       <Animated.View style={[styles.rollWindow, numStyle]} pointerEvents="none">
         <Animated.View style={rollStyle}>
-          <Text style={styles.digit}>{from}</Text>
-          <Text style={styles.digit}>{to}</Text>
+          <Text style={[styles.digit, { color: palette.digit }]}>{from}</Text>
+          <Text style={[styles.digit, { color: palette.digit }]}>{to}</Text>
         </Animated.View>
       </Animated.View>
     </View>
@@ -191,6 +194,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 10,
     fontWeight: '700',
-    color: '#D8712C',
   },
 });

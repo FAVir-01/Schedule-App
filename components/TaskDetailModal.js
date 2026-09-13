@@ -22,6 +22,7 @@ import {
   getTaskStreak,
 } from '../utils/taskUtils';
 import { formatTaskTime } from '../utils/timeUtils';
+import { getStreakPalette } from '../utils/streakColor';
 import { getTaskTimeForDate } from '../domain/taskSchedule';
 import { getTaskDefinitionChangeLabel } from '../domain/taskDefinition';
 import { styles } from '../styles/appStyles';
@@ -103,6 +104,7 @@ export default function TaskDetailModal({
     () => (visible && task ? getTaskStreak(task) : 0),
     [task, visible]
   );
+  const streakPalette = getStreakPalette(streak);
   const finishedMilestone = useMemo(
     () => (visible && task ? getTaskLatestFinishedMilestone(task) : null),
     [task, visible]
@@ -206,8 +208,8 @@ export default function TaskDetailModal({
                 </Text>
                 {streak > 0 ? (
                   <View style={styles.detailStreakRow}>
-                    <Ionicons name="flame" size={14} color="#f2732e" />
-                    <Text style={styles.detailStreakText}>
+                    <Ionicons name="flame" size={14} color={streakPalette.accent} />
+                    <Text style={[styles.detailStreakText, { color: streakPalette.accent }]}>
                       {`${t.taskModal.streak}: ${streak} ${streak === 1 ? t.profile.day : t.profile.days}`}
                     </Text>
                   </View>
