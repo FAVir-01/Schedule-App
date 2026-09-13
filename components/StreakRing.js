@@ -5,14 +5,15 @@
 // nenhum estado permanente e criado por este efeito.
 //
 // TRES FASES, pelo valor novo da sequencia (`to`):
-//   1-2      nada. Dois dias ainda nao sao uma sequencia para celebrar.
+//   1-2      so o numero contornado. Dois dias ainda nao sao uma sequencia
+//            para celebrar com fogo, mas a contagem ja aparece.
 //   3-6      o anel incandescente: um traco que se desenha, segura e se
 //            desenrola pelo mesmo caminho (2,9s).
 //   7-33     os aneis de brasa: tres linguas de fogo que lambem a foto (2,6s),
 //            todas no mesmo sentido.
 //   34+      os mesmos aneis, com o do meio girando ao contrario: as pontas se
 //            cruzam no meio do percurso.
-//   O numero contornado aparece em todas as fases, com o mesmo relogio.
+//   O numero contornado aparece em todas as fases, com o mesmo relogio de 2,6s.
 //
 // No nosso card o icone e o emoji (34px) ou a foto redonda (46px) da tarefa,
 // nao um desenho do SVG: ele entra como `children`, sempre dentro de uma caixa
@@ -87,8 +88,12 @@
 //     2184ms   comeca a sair, 3px para cima
 //     2600ms   sumiu
 //
-// `strokeDashoffset` e `rotation` sao props de SVG: animam no driver de JS
-// (no maximo tres aneis por vez, custo desprezivel).
+// `strokeDashoffset` e prop de SVG: anima no driver de JS (no maximo tres
+// aneis por vez, custo desprezivel). A rotacao NAO pode ser a prop `rotation`
+// do Circle: o setNativeProps do react-native-svg 15 repassa as props cruas e
+// nao converte rotation em matriz, entao o valor animado e ignorado e o arco
+// abre e fecha preso no topo. Cada anel de brasa gira num Animated.View em
+// volta do seu proprio SVG — transform de View, que anima de verdade.
 
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
@@ -152,6 +157,7 @@ const getMode = (to) => {
   const value = Number(to) || 0;
   if (value >= STREAK_BLAZE_MIN) return 'blaze';
   if (value >= STREAK_RING_MIN) return 'ring';
+  if (value >= 1) return 'number';
   return null;
 };
 
@@ -302,6 +308,15 @@ export default function StreakRing({
     </Animated.View>
   );
 
+  if (mode === 'number') {
+    return (
+      <View style={box}>
+        {children}
+        {number}
+      </View>
+    );
+  }
+
   if (mode === 'ring') {
     const radius = half - RING_INSET;
     const circumference = 2 * Math.PI * radius;
@@ -408,38 +423,37 @@ export default function StreakRing({
       }),
       rotation: value.interpolate({
         inputRange: [0, BLAZE_PEAK, 1],
-        outputRange: reversed ? [-90, -370, -640] : [-90, 190, 460],
+        outputRange: reversed ? ['-90deg', '-370deg', '-640deg'] : ['-90deg', '190deg', '460deg'],
         extrapolate: 'clamp',
       }),
     };
   });
+  const blazeBox = { width: BLAZE_SVG, height: BLAZE_SVG };
 
   return (
     <View style={box}>
-      <Svg
-        width={BLAZE_SVG}
-        height={BLAZE_SVG}
-        viewBox={blazeViewBox}
-        style={blazeStyle}
-        pointerEvents="none"
-      >
-        {rings.map((ring) => (
-          <ACircle
-            key={ring.key}
-            cx={0}
-            cy={0}
-            r={ring.radius}
-            fill="none"
-            stroke={ring.color}
-            strokeWidth={ring.width}
-            strokeLinecap="round"
-            strokeDasharray={`${ring.circumference}`}
-            strokeDashoffset={ring.dashOffset}
-            opacity={ring.opacity}
-            rotation={ring.rotation}
-          />
-        ))}
-      </Svg>
+      {rings.map((ring) => (
+        <Animated.View
+          key={ring.key}
+          style={[blazeStyle, blazeBox, { transform: [{ rotate: ring.rotation }] }]}
+          pointerEvents="none"
+        >
+          <Svg width={BLAZE_SVG} height={BLAZE_SVG} viewBox={blazeViewBox}>
+            <ACircle
+              cx={0}
+              cy={0}
+              r={ring.radius}
+              fill="none"
+              stroke={ring.color}
+              strokeWidth={ring.width}
+              strokeLinecap="round"
+              strokeDasharray={`${ring.circumference}`}
+              strokeDashoffset={ring.dashOffset}
+              opacity={ring.opacity}
+            />
+          </Svg>
+        </Animated.View>
+      ))}
 
       {children}
 
