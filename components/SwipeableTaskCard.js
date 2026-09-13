@@ -715,6 +715,7 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
               play={reduceMotion ? null : streakRing?.play}
               from={streakRing?.from}
               to={streakRing?.to}
+              contour={Boolean(task.customImage) && !hasImageError}
             >
               <IconShine play={reduceMotion ? 0 : iconShineKey}>
                 {task.customImage && !hasImageError ? (
