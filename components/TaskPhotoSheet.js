@@ -318,9 +318,10 @@ export default function TaskPhotoSheet({
         : []),
     ];
 
+    const streak = isRecurring ? getTaskStreak(task) : 0;
     const metrics = isRecurring
       ? [
-          { key: 'streak', label: t.taskModal.currentStreak, value: getTaskStreak(task) },
+          { key: 'streak', label: t.taskModal.currentStreak, value: streak },
           { key: 'finished', label: t.taskModal.totalFinished, value: finished },
           { key: 'active', label: t.taskModal.activeFor, value: activeDaysLabel },
         ]
@@ -347,6 +348,7 @@ export default function TaskPhotoSheet({
       detailRows,
       finished,
       isRecurring,
+      streak,
       freezeStock: isRecurring ? getTaskStreakState(task).stock : null,
       metrics,
       latestMilestone,
@@ -635,6 +637,9 @@ export default function TaskPhotoSheet({
           task={task}
           hasImageError={hasImageError}
           onImageError={onImageError}
+          streak={summary.streak}
+          active={!isNoteEditorOpen}
+          reduceMotion={reduceMotion}
         />
       </Animated.View>
 
