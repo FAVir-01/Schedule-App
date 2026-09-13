@@ -188,9 +188,6 @@ export default function TaskDetailModal({
                   task={task}
                   hasImageError={hasImageError}
                   onImageError={() => setHasImageError(true)}
-                  streak={streak}
-                  active={visible && !photoFlight}
-                  reduceMotion={reduceMotion}
                 />
               </Pressable>
               <View style={styles.detailTitleContainer}>
