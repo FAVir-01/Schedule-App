@@ -27,12 +27,21 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { USE_NATIVE_DRIVER } from '../constants/app';
+import { darkenColor } from '../utils/colorUtils';
 import { getStreakPalette } from '../utils/streakColor';
 
 const ACircle = Animated.createAnimatedComponent(Circle);
 
 export const STREAK_RING_BOX = 50; // caixa do icone no card
-const STROKE = 3.2;
+// O traco engrossou de 3,2 para 4 sem mudar de lugar: o raio segue medido
+// pelo recuo antigo, entao o anel cresce meio pixel para cada lado.
+const STROKE = 4;
+const RING_INSET = 3.2;
+// Brilho: o mesmo anel, mais largo e quase transparente, por baixo do traco.
+// Sem filtro de blur (react-native-svg nao garante no Android), e o que da
+// a leitura de brasa acesa em vez de linha chapada.
+const GLOW_STROKE = 6.4; // borda externa encosta na caixa de 50, sem cortar
+const GLOW_OPACITY = 0.22;
 const DUR = 2900;
 
 // Marcos da linha do tempo, em fracao da duracao total.
@@ -90,7 +99,7 @@ export default function StreakRing({
   }
 
   const half = size / 2;
-  const radius = half - STROKE;
+  const radius = half - RING_INSET;
   const circumference = 2 * Math.PI * radius;
   // A cor acompanha o valor novo: e ele que o anel esta celebrando.
   const palette = getStreakPalette(to);
@@ -141,12 +150,37 @@ export default function StreakRing({
         pointerEvents="none"
       >
         <Defs>
-          <LinearGradient id={gradientId} x1="0%" y1="100%" x2="100%" y2="0%">
-            <Stop offset="0" stopColor={palette.ringStart} />
-            <Stop offset="0.55" stopColor={palette.ringMid} />
-            <Stop offset="1" stopColor={palette.ringEnd} />
+          {/* Da diagonal inferior-esquerda a superior-direita: sombra no pe,
+              corpo quente no meio, reflexo de luz perto do topo e volta ao
+              corpo — um anel iluminado de um lado, nao um degrade plano. */}
+          <LinearGradient
+            id={gradientId}
+            gradientUnits="userSpaceOnUse"
+            x1={-half}
+            y1={half}
+            x2={half}
+            y2={-half}
+          >
+            <Stop offset="0" stopColor={darkenColor(palette.ringStart, 0.28)} />
+            <Stop offset="0.28" stopColor={palette.ringStart} />
+            <Stop offset="0.56" stopColor={palette.ringMid} />
+            <Stop offset="0.8" stopColor={palette.ringEnd} />
+            <Stop offset="1" stopColor={palette.ringMid} />
           </LinearGradient>
         </Defs>
+        <ACircle
+          cx={0}
+          cy={0}
+          r={radius}
+          fill="none"
+          stroke={`url(#${gradientId})`}
+          strokeWidth={GLOW_STROKE}
+          strokeLinecap="round"
+          strokeDasharray={`${circumference}`}
+          strokeDashoffset={dashOffset}
+          opacity={Animated.multiply(ringOpacity, GLOW_OPACITY)}
+          rotation={-90}
+        />
         <ACircle
           cx={0}
           cy={0}
