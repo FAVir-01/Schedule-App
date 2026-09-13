@@ -44,6 +44,7 @@ import { styles } from '../styles/appStyles';
 import FinishedMilestoneBadge from './FinishedMilestoneBadge';
 import FreezeFlask from './FreezeFlask';
 import FreezeIce from './FreezeIce';
+import IconShine from './IconShine';
 import PotionGained, { POTION_TIMELINE, useCheckPunch } from './PotionGained';
 import StreakRing from './StreakRing';
 
@@ -102,6 +103,9 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
   const [adjustStep, setAdjustStep] = useState(null);
   const [finishedMilestoneAnimationToken, setFinishedMilestoneAnimationToken] = useState(0);
+  // Reflexo sobre o icone: so no ato de cumprir a tarefa neste card. Nasce
+  // zero na montagem, entao abrir a tela ou rolar a lista nao dispara.
+  const [iconShineKey, setIconShineKey] = useState(0);
   const adjustPanelProgress = useRef(new Animated.Value(0)).current;
   const currentOffsetRef = useRef(0);
   const previousCompletionRef = useRef({
@@ -280,12 +284,11 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
   useEffect(() => {
     const previous = previousCompletionRef.current;
     const completed = Boolean(task.completed);
-    if (
-      previous.dateKey === progressKey &&
-      !previous.completed &&
-      completed &&
-      finishedMilestone
-    ) {
+    const justCompleted = previous.dateKey === progressKey && !previous.completed && completed;
+    if (justCompleted) {
+      setIconShineKey((key) => key + 1);
+    }
+    if (justCompleted && finishedMilestone) {
       setFinishedMilestoneAnimationToken((token) => token + 1);
     }
     previousCompletionRef.current = { dateKey: progressKey, completed };
@@ -713,15 +716,17 @@ const SwipeableTaskCard = React.memo(function SwipeableTaskCard({
               from={streakRing?.from}
               to={streakRing?.to}
             >
-              {task.customImage && !hasImageError ? (
-                <Image
-                  source={{ uri: task.customImage }}
-                  style={styles.taskEmojiImage}
-                  onError={() => setHasImageError(true)}
-                />
-              ) : (
-                <Text style={styles.taskEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
-              )}
+              <IconShine play={reduceMotion ? 0 : iconShineKey}>
+                {task.customImage && !hasImageError ? (
+                  <Image
+                    source={{ uri: task.customImage }}
+                    style={styles.taskEmojiImage}
+                    onError={() => setHasImageError(true)}
+                  />
+                ) : (
+                  <Text style={styles.taskEmoji}>{task.emoji || FALLBACK_EMOJI}</Text>
+                )}
+              </IconShine>
             </StreakRing>
             <View style={styles.taskDetails}>
               <Text
