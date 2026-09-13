@@ -7,6 +7,7 @@ import { FALLBACK_EMOJI } from '../constants/app';
 import { normalizeDateValue } from '../utils/dateUtils';
 import { getTaskTagDisplayLabel } from '../utils/taskUtils';
 import { lightenColor } from '../utils/colorUtils';
+import { getStreakPalette } from '../utils/streakColor';
 import { triggerSelection } from '../utils/feedbackUtils';
 import { styles } from '../styles/appStyles';
 
@@ -24,6 +25,7 @@ function ProfileTaskRow({
   language = 'en',
 }) {
   const t = translations[language] ?? translations.en;
+  const streakPalette = getStreakPalette(streak);
   const [hasImageError, setHasImageError] = useState(false);
 
   useEffect(() => {
@@ -121,14 +123,19 @@ function ProfileTaskRow({
         </View>
       ) : streak > 0 ? (
         <View
-          style={styles.profileTaskStreakBadge}
+          style={[
+            styles.profileTaskStreakBadge,
+            { backgroundColor: streakPalette.badge },
+          ]}
           accessibilityLabel={t.profileTasks.streakAccessibility.replace(
             '{count}',
             String(streak)
           )}
         >
-          <Ionicons name="flame" size={13} color="#b63d00" />
-          <Text style={styles.profileTaskStreakText}>{streak}</Text>
+          <Ionicons name="flame" size={13} color={streakPalette.deep} />
+          <Text style={[styles.profileTaskStreakText, { color: streakPalette.deep }]}>
+            {streak}
+          </Text>
         </View>
       ) : null}
     </Pressable>
