@@ -3,6 +3,8 @@ import { Image, Text, View } from 'react-native';
 import { FALLBACK_EMOJI } from '../constants/app';
 import { lightenColor } from '../utils/colorUtils';
 import { styles } from '../styles/appStyles';
+import { hasPolaroidFlame } from '../utils/polaroidFlame';
+import PolaroidFlame from './PolaroidFlame';
 
 // A moldura é descrita em frações da largura, não em pixels fixos.
 //
@@ -21,6 +23,9 @@ export default function PolaroidFrame({
   task,
   hasImageError = false,
   onImageError,
+  streak = 0,
+  active = true,
+  reduceMotion = false,
   style,
 }) {
   const pad = size * PAD_RATIO;
@@ -55,6 +60,9 @@ export default function PolaroidFrame({
         </View>
       )}
       <View style={{ height: size * BASE_RATIO }} />
+      {hasPolaroidFlame(streak) ? (
+        <PolaroidFlame size={size} streak={streak} active={active} reduceMotion={reduceMotion} />
+      ) : null}
     </View>
   );
 }

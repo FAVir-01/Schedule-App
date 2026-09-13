@@ -5062,4 +5062,39 @@ test('task-wide note protection includes future notes, survives backup, and keep
   assert.deepEqual(normalizeNotePrivacy({}), { protectedNoteIds: [], protectedNoteTaskIds: [] });
 });
 
+const { hasPolaroidFlame, getPolaroidFlamePaths, POLAROID_FLAME_HEIGHT } = require('../utils/polaroidFlame');
+
+test('fogo da polaroid acende no dia 7 e apaga ao perder a sequencia', () => {
+  [undefined, null, NaN, Infinity, 'invalid', -1, 0, 1, 6].forEach((streak) => {
+    assert.equal(hasPolaroidFlame(streak), false);
+  });
+  [7, '7', 34, 60, 365].forEach((streak) => {
+    assert.equal(hasPolaroidFlame(streak), true);
+  });
+  assert.deepEqual([6, 7, 8, 0].map(hasPolaroidFlame), [false, true, true, false]);
+});
+
+test('chama varia com o tempo e mantem corpo e brilho dentro da base proporcional', () => {
+  const initial = getPolaroidFlamePaths(0);
+  assert.deepEqual(getPolaroidFlamePaths(0), initial);
+  assert.notDeepEqual(getPolaroidFlamePaths(0.5), initial);
+  for (const time of [0, 0.04, 0.5, 10, 60, 3600, NaN]) {
+    const paths = getPolaroidFlamePaths(time);
+    for (const key of ['edge', 'core', 'crest']) {
+      assert.equal(/NaN|Infinity/.test(paths[key]), false);
+      const coordinates = [...paths[key].matchAll(/[ML]([\d.]+),([\d.]+)/g)];
+      assert.ok(coordinates.length > 2);
+      coordinates.forEach(([, x, y]) => {
+        assert.ok(Number(x) >= 0 && Number(x) <= 100);
+        assert.ok(Number(y) >= 0 && Number(y) <= POLAROID_FLAME_HEIGHT);
+      });
+    }
+    assert.ok(paths.edge.endsWith('Z'));
+    assert.ok(paths.core.endsWith('Z'));
+    const edgeYs = [...paths.crest.matchAll(/[ML][\d.]+,([\d.]+)/g)].map((match) => Number(match[1]));
+    const coreYs = [...paths.core.matchAll(/[ML][\d.]+,([\d.]+)/g)].slice(0, edgeYs.length).map((match) => Number(match[1]));
+    coreYs.forEach((y, index) => assert.ok(y >= edgeYs[index]));
+  }
+});
+
 void runTests();
