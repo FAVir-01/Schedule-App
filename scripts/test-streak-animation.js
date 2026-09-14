@@ -35,7 +35,22 @@ class Value {
   }
 }
 const listeners = new Set();
-const animations = [];
+// requestAnimationFrame falso: os quadros so avancam quando o teste manda.
+const frames = new Map();
+let frameId = 0;
+let frameNow = 0;
+globalThis.requestAnimationFrame = (callback) => {
+  frameId += 1;
+  frames.set(frameId, callback);
+  return frameId;
+};
+globalThis.cancelAnimationFrame = (id) => frames.delete(id);
+const tick = (ms) => {
+  frameNow += ms;
+  const pending = [...frames.entries()];
+  frames.clear();
+  pending.forEach(([, callback]) => callback(frameNow));
+};
 const native = {
   View: 'View',
   StyleSheet: { create: (styles) => styles, absoluteFill: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 } },
@@ -56,12 +71,6 @@ const native = {
     multiply: (value, factor) => ({ read: () => value.read() * factor }),
     View: 'AnimatedView',
     createAnimatedComponent: (Component) => ({ animated: Component }),
-    timing: (clock, config) => {
-      const animation = { clock, config, running: false,
-        start() { this.running = true; }, stop() { this.running = false; } };
-      animations.push(animation);
-      return animation;
-    },
   },
 };
 let harness;
@@ -102,6 +111,36 @@ const SvgText = require('react-native-svg/lib/commonjs/elements/Text').default;
 svg = { __esModule: true, default: 'Svg', G: SvgGroup, Text: SvgText };
 for (const name of ['Circle', 'ClipPath', 'Defs', 'LinearGradient', 'Rect', 'Stop']) svg[name] = name;
 const StreakRing = require('../components/StreakRing').default;
+const { createStreakClock, STREAK_MAX_FRAME_STEP } = require('../utils/streakAnimation');
+
+// Engasgo do JS: um quadro atrasado 200ms avanca no maximo dois quadros —
+// a animacao pausa em vez de saltar para alcancar o relogio de parede.
+{
+  const clock = new Value(0);
+  let ended = 0;
+  const runner = createStreakClock(clock, 1000, { onEnd: () => { ended += 1; } });
+  runner.start();
+  assert.equal(clock.value, 0);
+  tick(0);
+  tick(16);
+  assert.equal(clock.value, 16);
+  tick(200);
+  assert.equal(clock.value, 16 + STREAK_MAX_FRAME_STEP);
+  assert.equal(runner.running, true);
+  runner.cancel();
+  assert.equal(runner.running, false);
+  assert.equal(frames.size, 0);
+  runner.start();
+  assert.equal(clock.value, 0);
+  tick(0);
+  tick(5000);
+  assert.equal(clock.value, STREAK_MAX_FRAME_STEP);
+  for (let i = 0; i < 40; i += 1) tick(34);
+  assert.equal(clock.value, 1000);
+  assert.equal(ended, 1);
+  assert.equal(runner.running, false);
+}
+console.log('Relogio OK: pausa no engasgo, cancela e termina no fim.');
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-6, `${actual} != ${expected}`);
 const all = (node, predicate) => {
   if (!node || typeof node !== 'object') return [];
@@ -136,10 +175,9 @@ for (const to of [1, 3, 7, 34, 1000]) {
   const props = { play: 1, from: to - 1, to, contour: true, children: icon };
   const idle = render({ ...props, play: null });
   const tree = render(props);
-  const animation = animations[animations.length - 1];
-  const clock = animation.clock;
-  assert.equal(animation.config.useNativeDriver, false);
-  assert.equal(animation.config.isInteraction, false);
+  const clock = harness.hooks[0].current;
+  assert.ok(clock instanceof Value);
+  assert.equal(frames.size, 1); // o relogio esta rodando
   assert.equal(listeners.size, 1);
   assert.equal(idle.props.children[1].type, tree.props.children[1].type);
   assert.equal(tree.props.children[1].props.children, icon);
@@ -213,18 +251,23 @@ for (const to of [1, 3, 7, 34, 1000]) {
       previousAngle = angle;
     }
   });
-  const countBeforeRender = animations.length;
+  tick(0);
+  tick(16);
+  assert.equal(clock.value, 16);
+  const frameBeforeRender = [...frames.keys()][0];
   render(props); // rerender incidental não reinicia.
-  assert.equal(animations.length, countBeforeRender);
+  assert.equal([...frames.keys()][0], frameBeforeRender);
   render({ ...props, play: 2 }); // replay cancela o anterior e volta ao início.
-  assert.equal(animation.running, false);
+  assert.equal(frames.size, 1);
+  assert.notEqual([...frames.keys()][0], frameBeforeRender);
   assert.equal(clock.value, 0);
   listeners.forEach((fn) => fn('background'));
   assert.equal(clock.value, to >= 3 && to < 7 ? 2900 : 2600);
-  assert.equal(animations[animations.length - 1].running, false);
+  assert.equal(frames.size, 0);
   render({ ...props, play: null });
   assert.equal(listeners.size, 0);
   cleanup();
   assert.equal(listeners.size, 0);
+  assert.equal(frames.size, 0);
 }
 console.log('Streak OK: marcos A/B, matriz nativa, rolo 15px, imagem estável, replay e cancelamento.');

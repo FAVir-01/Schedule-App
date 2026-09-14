@@ -56,3 +56,50 @@ export const getStreakAnimationTracks = (to, size = STREAK_RING_BOX) => {
     }),
   };
 };
+
+// Relógio quadro a quadro. O `Animated.timing` mede o tempo pelo relógio de
+// parede: se a thread de JS engasga (o app inteiro re-renderiza e salva ao
+// concluir uma tarefa), a animação congela e depois SALTA para alcançar o
+// tempo perdido — é o "volta e vai" dos anéis. Aqui cada quadro avança no
+// máximo `STREAK_MAX_FRAME_STEP`: num engasgo a animação pausa e retoma de
+// onde parou. Anima no driver de JS porque strokeDashoffset não é prop de
+// View; o custo é um setValue por quadro.
+export const STREAK_MAX_FRAME_STEP = 34; // dois quadros a 60Hz
+
+export const createStreakClock = (clock, duration, { onEnd } = {}) => {
+  let frame = null;
+  let last = null;
+  let elapsed = 0;
+  const finish = () => {
+    frame = null;
+    clock.setValue(duration);
+    onEnd?.();
+  };
+  const step = (now) => {
+    if (last != null) elapsed += Math.min(now - last, STREAK_MAX_FRAME_STEP);
+    last = now;
+    if (elapsed >= duration) {
+      finish();
+      return;
+    }
+    clock.setValue(elapsed);
+    frame = globalThis.requestAnimationFrame(step);
+  };
+  return {
+    start() {
+      if (frame != null) return;
+      last = null;
+      elapsed = 0;
+      clock.setValue(0);
+      frame = globalThis.requestAnimationFrame(step);
+    },
+    // Cancela sem pular para o fim: quem para decide onde o relógio fica.
+    cancel() {
+      if (frame != null) globalThis.cancelAnimationFrame(frame);
+      frame = null;
+    },
+    get running() {
+      return frame != null;
+    },
+  };
+};

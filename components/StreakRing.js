@@ -4,6 +4,7 @@ import Svg, { Circle, ClipPath, Defs, G, LinearGradient, Rect, Stop, Text as Svg
 import { darkenColor } from '../utils/colorUtils';
 import { getStreakPalette } from '../utils/streakColor';
 import {
+  createStreakClock,
   getStreakAnimationTracks,
   STREAK_NUMBER_LINE as LINE,
   STREAK_RING_BOX,
@@ -60,15 +61,11 @@ export default function StreakRing({
   useEffect(() => {
     clock.setValue(0);
     if (!mode) return undefined;
-    const animation = Animated.timing(clock, {
-      toValue: timeline.duration,
-      duration: timeline.duration,
-      easing: Easing.linear,
-      useNativeDriver: false, // strokeDashoffset não é uma propriedade de View.
-      isInteraction: false,
-    });
+    // Quadro a quadro, nao pelo relogio de parede: um engasgo do JS pausa a
+    // animacao em vez de faze-la saltar (ver createStreakClock).
+    const animation = createStreakClock(clock, timeline.duration);
     const stop = () => {
-      animation.stop();
+      animation.cancel();
       clock.setValue(timeline.duration);
     };
     if (AppState.currentState == null || AppState.currentState === 'active') {
@@ -80,7 +77,7 @@ export default function StreakRing({
       if (state !== 'active') stop();
     });
     return () => {
-      animation.stop();
+      animation.cancel();
       subscription.remove();
     };
   }, [clock, mode, play, from, to, timeline.duration]);
