@@ -96,8 +96,14 @@ export default function StreakRing({
     opacity: motion.number.opacity,
     transform: [{ translateY: motion.number.translateY }],
   };
+  // GroupView do SVG Android troca o canvas ao alternar opacity entre 1 e
+  // valores fracionários. Animamos a tinta, que não cria essa camada bitmap.
   const numberLines = (outline) => [from, to].map((value, index) => (
-    <AG key={index} opacity={index === 0 ? motion.number.previousOpacity : motion.number.nextOpacity}>
+    <AG
+      key={index}
+      fillOpacity={index === 0 ? motion.number.previousOpacity : motion.number.nextOpacity}
+      strokeOpacity={index === 0 ? motion.number.previousOpacity : motion.number.nextOpacity}
+    >
       <SvgText
         x={numWidth / 2}
         y={NUM_BASELINE + LINE * index}
@@ -124,13 +130,14 @@ export default function StreakRing({
             {motion.blaze.map((ring) => (
               // G converte rotation em matriz nativa; Circle não faz essa
               // conversão em setNativeProps. Todos ficam no mesmo SVG.
-              <AG key={ring.key} rotation={ring.rotation} opacity={ring.opacity}>
+              <AG key={ring.key} rotation={ring.rotation}>
                 <ACircle
                   cx={0}
                   cy={0}
                   r={ring.radius}
                   fill="none"
                   stroke={palette[ring.key]}
+                  strokeOpacity={ring.opacity}
                   strokeWidth={ring.width}
                   strokeLinecap="round"
                   strokeDasharray={[ring.circumference, ring.circumference]}
@@ -162,7 +169,7 @@ export default function StreakRing({
                 <Stop offset="1" stopColor={palette.ringMid} />
               </LinearGradient>
             </Defs>
-            <AG rotation={-90} opacity={motion.ring.opacity}>
+            <G rotation={-90}>
               {[{ width: 6.4, opacity: 0.22 }, { width: 4, opacity: 1 }].map((stroke) => (
                 <ACircle
                   key={stroke.width}
@@ -172,13 +179,13 @@ export default function StreakRing({
                   fill="none"
                   stroke={`url(#${id}ember)`}
                   strokeWidth={stroke.width}
-                  strokeOpacity={stroke.opacity}
+                  strokeOpacity={Animated.multiply(motion.ring.opacity, stroke.opacity)}
                   strokeLinecap="round"
                   strokeDasharray={[timeline.ring.circumference, timeline.ring.circumference]}
                   strokeDashoffset={motion.ring.dashOffset}
                 />
               ))}
-            </AG>
+            </G>
           </Svg>
         ) : null}
         {mode === 'blaze' && contour ? (
