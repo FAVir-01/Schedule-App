@@ -2253,6 +2253,33 @@ test('horário encerrado resolve visualmente lembretes sem arquivar ou registrar
   assert.equal(isReminderTimeElapsed(reminder, '2026-09-08', new Date(2026, 8, 9, 12)), true);
 });
 
+test('lembrete com duas ocorrências no dia risca cada card pelo próprio horário', () => {
+  // Segunda 08:00-09:00 e de novo 14:00-16:00: ao meio-dia só a da manhã passou.
+  const { getTaskOccurrencesForDate, withScheduleMirror } = require('../domain/taskSchedule');
+  const monday = '2026-09-14';
+  // Como no app: o horário agrupado mora na versão do agendamento, não só no espelho.
+  const reminder = withScheduleMirror({
+    type: 'reminder', dateKey: monday, completedDates: {},
+    repeat: { enabled: true, frequency: 'weekly', interval: 1, weekdays: ['mon'] },
+    time: { specified: true, mode: 'period', groups: [
+      { id: 'g1', days: ['mon'], specified: true, mode: 'period', period: {
+        start: { hour: 8, minute: 0, meridiem: 'AM' }, end: { hour: 9, minute: 0, meridiem: 'AM' },
+      } },
+      { id: 'g2', days: ['mon'], specified: true, mode: 'period', period: {
+        start: { hour: 2, minute: 0, meridiem: 'PM' }, end: { hour: 4, minute: 0, meridiem: 'PM' },
+      } },
+    ] },
+  });
+  const cards = getTaskOccurrencesForDate(reminder, monday)
+    .map((occurrence) => ({ ...reminder, time: occurrence.time, occurrenceId: occurrence.id }));
+  assert.equal(cards.length, 2);
+  const noon = new Date(2026, 8, 14, 12, 0);
+  assert.equal(isReminderTimeElapsed(cards[0], monday, noon), true);
+  assert.equal(isReminderTimeElapsed(cards[1], monday, noon), false);
+  assert.equal(isReminderTimeElapsed(cards[1], monday, new Date(2026, 8, 14, 16, 0, 1)), true);
+  assert.equal(isReminderTimeElapsed(cards[1], monday, new Date(2026, 8, 15, 8, 0)), true);
+});
+
 test('detalhes mostram dias e cada horário da versão atual do agendamento', () => {
   const task = {
     dateKey: '2026-09-01', repeat: { enabled: false },

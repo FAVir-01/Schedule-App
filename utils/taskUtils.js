@@ -7,7 +7,7 @@ import {
 } from '../constants/app';
 import {
   getCurrentScheduleVersion,
-  getTaskTimeForDate,
+  getTaskTimeForOccurrence,
   isTaskDayCompleted,
   shouldTaskAppearOnDate,
   toScheduleKey,
@@ -35,13 +35,15 @@ const getTaskCompletionStatus = (task, date) => {
 };
 
 // Estado visual do lembrete: horário encerrado não significa falta nem arquivamento.
+// Num dia com duas ocorrências cada card carrega o seu horário: resolver pela
+// data devolveria sempre a primeira, e a da tarde ficaria riscada ao fim da manhã.
 export const isReminderTimeElapsed = (task, targetDate, now = new Date()) => {
   if (task?.type !== 'reminder') return false;
   const target = normalizeDateValue(targetDate);
   const today = normalizeDateValue(now);
   if (!target || !today) return false;
   if (target.getTime() !== today.getTime()) return target < today;
-  const time = getTaskTimeForDate(task, target);
+  const time = getTaskTimeForOccurrence(task, target);
   if (!time?.specified) return false;
   const end = time.mode === 'period' ? time.period?.end : time.point;
   if (!end) return false;
