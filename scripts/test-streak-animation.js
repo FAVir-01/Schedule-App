@@ -53,6 +53,7 @@ const native = {
   },
   Animated: {
     Value,
+    multiply: (value, factor) => ({ read: () => value.read() * factor }),
     View: 'AnimatedView',
     createAnimatedComponent: (Component) => ({ animated: Component }),
     timing: (clock, config) => {
@@ -151,6 +152,12 @@ for (const to of [1, 3, 7, 34, 1000]) {
     assert.equal(text.textAnchor, 'middle');
   });
   const groups = all(tree, (node) => node.type?.animated === SvgGroup);
+  // Opacity de grupo usa uma camada bitmap defeituosa no Android ao voltar
+  // de 1 para valores fracionários; a transparência deve pertencer à tinta.
+  groups.forEach((node) => assert.equal(node.props.opacity, undefined));
+  const numberRows = groups.filter((node) => node.props.fillOpacity);
+  assert.equal(numberRows.length, 4);
+  numberRows.forEach((node) => assert.equal(node.props.fillOpacity, node.props.strokeOpacity));
   const rollGroups = groups.filter((node) => node.props.translateY);
   assert.equal(rollGroups.length, 2);
   const number = all(tree, (node) => node.type === 'AnimatedView')[0];
@@ -179,22 +186,22 @@ for (const to of [1, 3, 7, 34, 1000]) {
   assert.equal(rings.length, to >= 7 ? 3 : 0);
   rings.forEach((node, index) => {
     const delay = index * 100;
+    const circle = node.props.children.props;
     clock.setValue(delay + 240);
-    close(node.props.opacity.read(), 1);
+    close(circle.strokeOpacity.read(), 1);
     clock.setValue(delay + 2064);
-    close(node.props.opacity.read(), 1);
+    close(circle.strokeOpacity.read(), 1);
     clock.setValue(delay + 1008);
     const angle = node.props.rotation.read();
     close(angle, to >= 34 && index === 1 ? -370 : 190);
-    const circle = node.props.children.props;
     close(circle.strokeDashoffset.read() / circle.strokeDasharray[0], -0.26);
     const group = new SvgGroup({});
     group.root = { setNativeProps: (props) => { sent = props; } };
-    group.setNativeProps({ rotation: angle, opacity: 1 });
+    group.setNativeProps({ rotation: angle });
     close(sent.matrix[0], Math.cos(angle * Math.PI / 180));
     close(sent.matrix[1], Math.sin(angle * Math.PI / 180));
     clock.setValue(delay + 2400);
-    close(node.props.opacity.read(), 0);
+    close(circle.strokeOpacity.read(), 0);
     const direction = to >= 34 && index === 1 ? -1 : 1;
     let previousAngle = -90;
     for (let ms = 0; ms <= 2600; ms += 16) {
