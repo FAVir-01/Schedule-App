@@ -1,35 +1,47 @@
-import React, { useEffect, useId, useMemo, useRef } from 'react';
-import { Animated, AppState, Easing, StyleSheet, View } from 'react-native';
+// Anel da sequencia.
+//
+// Toca em volta do icone da tarefa quando a sequencia avanca, mostra o numero
+// novo por baixo e some sem deixar rastro. As fases, os tempos e a geometria
+// estao em utils/streakAnimation.js; aqui e so o desenho.
+//
+// POR QUE NAO USA `Animated` NO SVG
+//   No Fabric, o Animated trata os elementos do react-native-svg como Paper:
+//   manda setNativeProps a cada quadro e nunca sincroniza a arvore do React
+//   (createAnimatedPropsHook, "Check 4"). Qualquer re-render do card entao
+//   recommita o SVG com os props do ultimo render — a posicao inicial — e o
+//   quadro seguinte devolve a atual: o anel pisca entre o inicio e o agora,
+//   um "fantasma". Para View o RN ressincroniza a cada 48ms; para SVG nao.
+//
+//   Aqui o relogio e estado do React e cada quadro re-renderiza o anel com
+//   valores concretos. A arvore e minuscula (tres circulos, quatro textos);
+//   um commit por quadro cabe folgado, e nunca ha duas verdades sobre onde o
+//   anel esta. O relogio avanca por quadro com limite: um engasgo do JS pausa
+//   a animacao em vez de faze-la saltar (createStreakClock).
+
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { AppState, Easing, StyleSheet, View } from 'react-native';
 import Svg, { Circle, ClipPath, Defs, G, LinearGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import { darkenColor } from '../utils/colorUtils';
 import { getStreakPalette } from '../utils/streakColor';
 import {
   createStreakClock,
   getStreakAnimationTracks,
+  interpolateTrack,
   STREAK_NUMBER_LINE as LINE,
   STREAK_RING_BOX,
 } from '../utils/streakAnimation';
 
 export { STREAK_RING_BOX, STREAK_RING_MIN, STREAK_BLAZE_MIN, STREAK_CROSS_MIN } from '../utils/streakAnimation';
 
-const ACircle = Animated.createAnimatedComponent(Circle);
-const AG = Animated.createAnimatedComponent(G);
 const BLAZE_SVG = 66;
 const NUM_SIDE = 12;
 const NUM_OUTLINE = 2;
 const NUM_BASELINE = 11.5;
-const EASINGS = {
+export const STREAK_EASINGS = {
   easeInOut: Easing.bezier(0.42, 0, 0.58, 1),
   roll: Easing.bezier(0.25, 0.9, 0.3, 1),
   linear: Easing.linear,
 };
-
-// Um relógio linear mantém anéis, opacidade e número sincronizados. O easing
-// pertence a cada propriedade, não ao tempo usado para localizar os marcos.
-const bindTrack = (clock, track) => clock.interpolate({
-  ...track,
-  easing: EASINGS[track.easing],
-});
 
 export default function StreakRing({
   play,
@@ -39,37 +51,25 @@ export default function StreakRing({
   contour = false,
   children,
 }) {
-  const clock = useRef(new Animated.Value(0)).current;
   const id = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const timeline = useMemo(() => getStreakAnimationTracks(to, size), [to, size]);
   const mode = play ? timeline.mode : null;
   const palette = useMemo(() => getStreakPalette(to), [to]);
-  const motion = useMemo(() => ({
-    number: Object.fromEntries(Object.entries(timeline.number).map(([key, track]) => [key, bindTrack(clock, track)])),
-    ring: {
-      dashOffset: bindTrack(clock, timeline.ring.dashOffset),
-      opacity: bindTrack(clock, timeline.ring.opacity),
-    },
-    blaze: timeline.blaze.map((ring) => ({
-      ...ring,
-      opacity: bindTrack(clock, ring.opacity),
-      dashOffset: bindTrack(clock, ring.dashOffset),
-      rotation: bindTrack(clock, ring.rotation),
-    })),
-  }), [clock, timeline]);
+  // Milissegundos desde o disparo. E estado de proposito: ver o cabecalho.
+  const [time, setTime] = useState(0);
+  const clockRef = useRef(null);
 
   useEffect(() => {
-    clock.setValue(0);
+    setTime(0);
     if (!mode) return undefined;
-    // Quadro a quadro, nao pelo relogio de parede: um engasgo do JS pausa a
-    // animacao em vez de faze-la saltar (ver createStreakClock).
-    const animation = createStreakClock(clock, timeline.duration);
+    const clock = createStreakClock({ setValue: setTime }, timeline.duration);
+    clockRef.current = clock;
     const stop = () => {
-      animation.cancel();
-      clock.setValue(timeline.duration);
+      clock.cancel();
+      setTime(timeline.duration);
     };
     if (AppState.currentState == null || AppState.currentState === 'active') {
-      animation.start();
+      clock.start();
     } else {
       stop();
     }
@@ -77,11 +77,22 @@ export default function StreakRing({
       if (state !== 'active') stop();
     });
     return () => {
-      animation.cancel();
+      clock.cancel();
+      clockRef.current = null;
       subscription.remove();
     };
-  }, [clock, mode, play, from, to, timeline.duration]);
+  }, [mode, play, from, to, timeline.duration]);
 
+  const box = [styles.box, { width: size, height: size }];
+  if (!mode) {
+    return (
+      <View style={box}>
+        <View style={styles.icon}>{children}</View>
+      </View>
+    );
+  }
+
+  const at = (track) => interpolateTrack(track, time, STREAK_EASINGS);
   const half = size / 2;
   const numWidth = size + NUM_SIDE * 2;
   const blazeStyle = {
@@ -89,18 +100,18 @@ export default function StreakRing({
     left: (size - BLAZE_SVG) / 2,
     top: (size - BLAZE_SVG) / 2,
   };
+  const number = timeline.number;
   const numStyle = {
-    opacity: motion.number.opacity,
-    transform: [{ translateY: motion.number.translateY }],
+    opacity: at(number.opacity),
+    transform: [{ translateY: at(number.translateY) }],
   };
+  const roll = at(number.roll);
+  const rowOpacity = [at(number.previousOpacity), at(number.nextOpacity)];
   // GroupView do SVG Android troca o canvas ao alternar opacity entre 1 e
-  // valores fracionários. Animamos a tinta, que não cria essa camada bitmap.
+  // valores fracionarios. A transparencia vai na tinta, que nao cria essa
+  // camada bitmap.
   const numberLines = (outline) => [from, to].map((value, index) => (
-    <AG
-      key={index}
-      fillOpacity={index === 0 ? motion.number.previousOpacity : motion.number.nextOpacity}
-      strokeOpacity={index === 0 ? motion.number.previousOpacity : motion.number.nextOpacity}
-    >
+    <G key={index} fillOpacity={rowOpacity[index]} strokeOpacity={rowOpacity[index]}>
       <SvgText
         x={numWidth / 2}
         y={NUM_BASELINE + LINE * index}
@@ -114,21 +125,25 @@ export default function StreakRing({
       >
         {String(value ?? 0)}
       </SvgText>
-    </AG>
+    </G>
   ));
+  const blaze = timeline.blaze.map((ring) => ({
+    ...ring,
+    opacity: at(ring.opacity),
+    dashOffset: at(ring.dashOffset),
+    rotation: at(ring.rotation),
+  }));
 
   return (
-    <View style={[styles.box, { width: size, height: size }]}>
-      {/* As três camadas existem sempre: disparar/trocar a fase não remonta
-          a imagem nem interrompe o brilho que está tocando sobre ela. */}
+    <View style={box}>
+      {/* As tres camadas existem sempre: disparar/trocar a fase nao remonta
+          a imagem nem interrompe o brilho que esta tocando sobre ela. */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none" accessible={false}>
         {mode === 'blaze' ? (
           <Svg width={BLAZE_SVG} height={BLAZE_SVG} viewBox="-33 -33 66 66" style={blazeStyle}>
-            {motion.blaze.map((ring) => (
-              // G converte rotation em matriz nativa; Circle não faz essa
-              // conversão em setNativeProps. Todos ficam no mesmo SVG.
-              <AG key={ring.key} rotation={ring.rotation}>
-                <ACircle
+            {blaze.map((ring) => (
+              <G key={ring.key} rotation={ring.rotation}>
+                <Circle
                   cx={0}
                   cy={0}
                   r={ring.radius}
@@ -140,7 +155,7 @@ export default function StreakRing({
                   strokeDasharray={[ring.circumference, ring.circumference]}
                   strokeDashoffset={ring.dashOffset}
                 />
-              </AG>
+              </G>
             ))}
           </Svg>
         ) : null}
@@ -168,18 +183,18 @@ export default function StreakRing({
             </Defs>
             <G rotation={-90}>
               {[{ width: 6.4, opacity: 0.22 }, { width: 4, opacity: 1 }].map((stroke) => (
-                <ACircle
+                <Circle
                   key={stroke.width}
                   cx={0}
                   cy={0}
                   r={half - 3.2}
                   fill="none"
                   stroke={`url(#${id}ember)`}
+                  strokeOpacity={at(timeline.ring.opacity) * stroke.opacity}
                   strokeWidth={stroke.width}
-                  strokeOpacity={Animated.multiply(motion.ring.opacity, stroke.opacity)}
                   strokeLinecap="round"
                   strokeDasharray={[timeline.ring.circumference, timeline.ring.circumference]}
-                  strokeDashoffset={motion.ring.dashOffset}
+                  strokeDashoffset={at(timeline.ring.dashOffset)}
                 />
               ))}
             </G>
@@ -187,29 +202,25 @@ export default function StreakRing({
         ) : null}
         {mode === 'blaze' && contour ? (
           <Svg width={BLAZE_SVG} height={BLAZE_SVG} viewBox="-33 -33 66 66" style={blazeStyle}>
-            <ACircle cx={0} cy={0} r={23} fill="none" stroke="#FFFFFF" strokeWidth={2} opacity={motion.blaze[0].opacity} />
+            <Circle cx={0} cy={0} r={23} fill="none" stroke="#FFFFFF" strokeWidth={2} opacity={blaze[0].opacity} />
           </Svg>
         ) : null}
-        {mode ? (
-          <Animated.View style={[styles.numOuter, numStyle]}>
-            {/* A janela do preenchimento tem 15px. O contorno tem mais 2px
-                em cada borda; o SVG externo precisa comportar esse halo. */}
-            <Svg width={numWidth} height={LINE + NUM_OUTLINE * 2} viewBox={`0 ${-NUM_OUTLINE} ${numWidth} ${LINE + NUM_OUTLINE * 2}`} style={styles.numberSvg}>
-              <Defs>
-                <ClipPath id={`${id}fillWindow`}><Rect x={0} y={0} width={numWidth} height={LINE} /></ClipPath>
-                <ClipPath id={`${id}outlineWindow`}><Rect x={0} y={-NUM_OUTLINE} width={numWidth} height={LINE + NUM_OUTLINE * 2} /></ClipPath>
-              </Defs>
-              {/* O texto fica estático. Só o grupo desliza: animar Text.y
-                  também cria uma translação e limpa a fonte no SVG 15.15. */}
-              <G clipPath={`url(#${id}outlineWindow)`}>
-                <AG translateY={motion.number.roll}>{numberLines(true)}</AG>
-              </G>
-              <G clipPath={`url(#${id}fillWindow)`}>
-                <AG translateY={motion.number.roll}>{numberLines(false)}</AG>
-              </G>
-            </Svg>
-          </Animated.View>
-        ) : null}
+        <View style={[styles.numOuter, numStyle]}>
+          {/* A janela do preenchimento tem 15px. O contorno tem mais 2px em
+              cada borda; o SVG externo precisa comportar esse halo. */}
+          <Svg width={numWidth} height={LINE + NUM_OUTLINE * 2} viewBox={`0 ${-NUM_OUTLINE} ${numWidth} ${LINE + NUM_OUTLINE * 2}`} style={styles.numberSvg}>
+            <Defs>
+              <ClipPath id={`${id}fillWindow`}><Rect x={0} y={0} width={numWidth} height={LINE} /></ClipPath>
+              <ClipPath id={`${id}outlineWindow`}><Rect x={0} y={-NUM_OUTLINE} width={numWidth} height={LINE + NUM_OUTLINE * 2} /></ClipPath>
+            </Defs>
+            <G clipPath={`url(#${id}outlineWindow)`}>
+              <G translateY={roll}>{numberLines(true)}</G>
+            </G>
+            <G clipPath={`url(#${id}fillWindow)`}>
+              <G translateY={roll}>{numberLines(false)}</G>
+            </G>
+          </Svg>
+        </View>
       </View>
     </View>
   );

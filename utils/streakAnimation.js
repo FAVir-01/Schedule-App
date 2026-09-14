@@ -103,3 +103,18 @@ export const createStreakClock = (clock, duration, { onEnd } = {}) => {
     },
   };
 };
+
+// O mesmo que `Animated.interpolate` com `easing`: acha o trecho, normaliza
+// e aplica o easing a esse trecho. `easings` traduz o nome da trilha para a
+// funcao (o componente passa as do RN; o teste, as suas).
+export const interpolateTrack = (track, time, easings) => {
+  const { inputRange: x, outputRange: y, easing } = track;
+  const last = x.length - 1;
+  const clamped = Math.max(x[0], Math.min(x[last], Number(time) || 0));
+  let index = 0;
+  while (index < last - 1 && clamped > x[index + 1]) index += 1;
+  const span = x[index + 1] - x[index];
+  const progress = span > 0 ? (clamped - x[index]) / span : 1;
+  const ease = easings?.[easing] ?? ((value) => value);
+  return y[index] + (y[index + 1] - y[index]) * ease(progress);
+};
