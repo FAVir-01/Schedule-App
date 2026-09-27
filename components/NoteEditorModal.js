@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FALLBACK_EMOJI } from '../constants/app';
 import { translations } from '../constants/i18n';
 import {
   NOTE_CARD_COLORS,
@@ -103,7 +104,7 @@ function TaskOriginAvatar({ context, size = 28 }) {
         />
       ) : (
         <Text style={[styles.noteTaskAvatarEmoji, { fontSize: Math.max(11, size * 0.55) }]}>
-          {context?.taskEmoji || '✓'}
+          {context?.taskEmoji || FALLBACK_EMOJI}
         </Text>
       )}
     </View>
@@ -137,7 +138,7 @@ export default function NoteEditorModal({
   reduceMotion = false,
   onSave,
   onDelete,
-  onPrivacyOptions,
+  onToggleProtection,
   onClose,
 }) {
   const insets = useSafeAreaInsets();
@@ -436,6 +437,25 @@ export default function NoteEditorModal({
     showFeedback(nextPinned ? t.notePinned : t.noteUnpinned, nextPinned ? 'pin' : 'pin-outline');
   }, [editor?.pinned, showFeedback, t.notePinned, t.noteUnpinned]);
 
+  const hasUnsavedChanges = Boolean(note?.id && editor && (
+    editor.source !== note.source ||
+    String(editor.taskId ?? '') !== String(note.taskId ?? '') ||
+    editor.title !== (note.title ?? defaultTitle ?? '') ||
+    editor.text !== note.text ||
+    JSON.stringify(editor.images) !== JSON.stringify(note.images ?? []) ||
+    editor.pinned !== (note.pinned === true) ||
+    editor.cardColor !== (note.cardColor ?? null)
+  ));
+
+  const handleProtectionChange = useCallback((scope, enabled) => {
+    setEditorMenu(null);
+    if (hasUnsavedChanges) {
+      Alert.alert(t.privacyTitle, t.saveBeforePrivacy);
+      return;
+    }
+    onToggleProtection?.(note, scope, enabled);
+  }, [hasUnsavedChanges, note, onToggleProtection, t.privacyTitle, t.saveBeforePrivacy]);
+
   const popoverAnimationStyle = {
     transform: [
       {
@@ -645,6 +665,41 @@ export default function NoteEditorModal({
                   <View style={styles.noteEditorMenuDivider} />
                   <Pressable
                     style={styles.noteEditorMenuItem}
+                    onPress={() => handleProtectionChange('note', !note?.noteProtected)}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons
+                      name={note?.noteProtected ? 'lock-open-outline' : 'lock-closed-outline'}
+                      size={20}
+                      color="#3f4552"
+                    />
+                    <Text style={styles.noteEditorMenuItemText}>
+                      {note?.noteProtected ? t.unprotectNote : t.protectNote}
+                    </Text>
+                  </Pressable>
+                  {note?.source === 'task' ? (
+                    <Pressable
+                      style={styles.noteEditorMenuItem}
+                      onPress={() => handleProtectionChange('task', !note?.taskNotesProtected)}
+                      accessibilityRole="button"
+                    >
+                      <Ionicons
+                        name={note?.taskNotesProtected ? 'shield-checkmark' : 'shield-checkmark-outline'}
+                        size={20}
+                        color="#3f4552"
+                      />
+                      <Text style={styles.noteEditorMenuItemText}>
+                        {note?.taskNotesProtected ? t.unprotectTaskNotes : t.protectTaskNotes}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </>
+              ) : null}
+              {editor?.id ? (
+                <>
+                  <View style={styles.noteEditorMenuDivider} />
+                  <Pressable
+                    style={styles.noteEditorMenuItem}
                     onPress={handleDelete}
                     accessibilityRole="button"
                   >
@@ -661,8 +716,8 @@ export default function NoteEditorModal({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18 }}>
-                <Pressable style={[styles.noteEditorTaskLabel, { marginBottom: 0, flexShrink: 1 }]}
+              <View style={styles.noteEditorTaskRow}>
+                <Pressable style={styles.noteEditorTaskLabel}
                   accessibilityRole="button" accessibilityLabel={t.chooseSource}
                   onPress={() => { Keyboard.dismiss(); setTaskSearch(''); setChoosingSource(true); }}>
                 {editor?.source === 'task' ? <TaskOriginAvatar context={selectedTaskContext} /> :
@@ -672,18 +727,6 @@ export default function NoteEditorModal({
                 </Text>
                 <Ionicons name="chevron-down" size={14} color="#35268f" />
                 </Pressable>
-                {note?.id && onPrivacyOptions ? (
-                  <Pressable hitSlop={8} accessibilityRole="button" accessibilityLabel={t.privacyOptions}
-                    onPress={() => {
-                      const changed = editor.source !== note.source || String(editor.taskId ?? '') !== String(note.taskId ?? '') || editor.title !== (note.title ?? defaultTitle ?? '') || editor.text !== note.text ||
-                        JSON.stringify(editor.images) !== JSON.stringify(note.images ?? []) ||
-                        editor.pinned !== (note.pinned === true) || editor.cardColor !== (note.cardColor ?? null);
-                      if (changed) Alert.alert(t.privacyTitle, t.saveBeforePrivacy);
-                      else onPrivacyOptions(note);
-                    }}>
-                    <Ionicons name="ellipsis-horizontal" size={18} color="#646b76" />
-                  </Pressable>
-                ) : null}
               </View>
 
             <TextInput
@@ -765,7 +808,11 @@ export default function NoteEditorModal({
                   setEditor((current) => ({ ...current, source: 'task', taskId: task.id, taskTitle: task.title }));
                   setChoosingSource(false);
                 }}>
-                  <Text>{task.emoji}</Text>
+                  <TaskOriginAvatar context={{
+                    taskImage: task.customImage,
+                    taskEmoji: task.emoji,
+                    taskColor: task.color,
+                  }} size={34} />
                   <Text style={[styles.settingsRowTitle, { flex: 1 }]}>{task.title}</Text>
                   {editor?.source === 'task' && String(editor.taskId) === String(task.id) && <Ionicons name="checkmark" size={18} color="#35268f" />}
                 </Pressable>

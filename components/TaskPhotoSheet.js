@@ -159,7 +159,7 @@ export default function TaskPhotoSheet({
   tasks = [],
   onDeleteNote,
   onUnlockNotes,
-  onNotePrivacyOptions,
+  onToggleNoteProtection,
   onClose,
   onClosed,
 }) {
@@ -657,7 +657,7 @@ export default function TaskPhotoSheet({
           onSaveNote?.(content, dateKey ?? getDateKey(new Date()))
         }
         onDelete={onDeleteNote}
-        onPrivacyOptions={onNotePrivacyOptions}
+        onToggleProtection={onToggleNoteProtection}
       />
     </View>
   );

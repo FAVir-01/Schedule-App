@@ -1,6 +1,6 @@
 import { getTaskForDate, updateTaskForDate, preserveTaskDefinitionOnEdit } from './domain/taskDefinition';
 import { reconcileSubtaskEntries } from './domain/subtaskEditor';
-import { getNoteProtection, normalizeNotePrivacy, protectNoteForDisplay, setNoteProtection } from './domain/notePrivacy';
+import { normalizeNotePrivacy, protectNoteForDisplay, setNoteProtection } from './domain/notePrivacy';
 import React, {
   useCallback,
   useEffect,
@@ -1678,27 +1678,16 @@ function ScheduleApp() {
     return () => subscription.remove();
   }, []);
 
-  const showNotePrivacyOptions = useCallback((note) => {
-    const protection = getNoteProtection(note, userSettings);
-    const change = async (scope, enabled) => {
-      if (!isHydrated || loadFailuresRef.current.settings) {
-        Alert.alert(t.dataProtection.loadErrorTitle, t.dataProtection.loadErrorMessage);
-        return;
-      }
-      if (!(await requestNotesUnlock(false))) return;
-      setUserSettings((current) => setNoteProtection(current, note, scope, enabled));
-      setNotesUnlocked(false);
-    };
-    Alert.alert(t.notes.privacyTitle, t.notes.privacyHint, [
-      { text: protection.noteProtected ? t.notes.unprotectNote : t.notes.protectNote,
-        onPress: () => { void change('note', !protection.noteProtected); } },
-      ...(note.source === 'task' ? [{
-        text: protection.taskNotesProtected ? t.notes.unprotectTaskNotes : t.notes.protectTaskNotes,
-        onPress: () => { void change('task', !protection.taskNotesProtected); },
-      }] : []),
-      { text: t.common.cancel, style: 'cancel' },
-    ]);
-  }, [isHydrated, requestNotesUnlock, t.common.cancel, t.dataProtection, t.notes, userSettings]);
+  const handleToggleNoteProtection = useCallback(async (note, scope, enabled) => {
+    if (!isHydrated || loadFailuresRef.current.settings) {
+      Alert.alert(t.dataProtection.loadErrorTitle, t.dataProtection.loadErrorMessage);
+      return false;
+    }
+    if (!(await requestNotesUnlock(false))) return false;
+    setUserSettings((current) => setNoteProtection(current, note, scope, enabled));
+    setNotesUnlocked(false);
+    return true;
+  }, [isHydrated, requestNotesUnlock, t.dataProtection]);
 
   const notesForFeed = useMemo(() => {
     const taskById = new Map(tasks.map((task) => [`${task.id}`, task]));
@@ -4111,6 +4100,20 @@ function ScheduleApp() {
     return true;
   }, [notes, tasks, showDataProtectionAlert, t.notes]);
 
+  const handleToggleNotePinned = useCallback((note) => {
+    if (loadFailuresRef.current.notes) {
+      showDataProtectionAlert();
+      return false;
+    }
+    setNotes((current) => current.map((item) =>
+      item.id === note.id
+        ? { ...item, pinned: item.pinned !== true, updatedAt: new Date().toISOString() }
+        : item
+    ));
+    triggerSelection();
+    return true;
+  }, [showDataProtectionAlert]);
+
   const handleDeleteNote = useCallback(
     (noteId) => {
       if (loadFailuresRef.current.notes) {
@@ -5388,7 +5391,8 @@ function ScheduleApp() {
         todayKey={todayKey}
         onSaveNote={handleSaveNote}
         onUnlockNotes={requestNotesUnlock}
-        onNotePrivacyOptions={showNotePrivacyOptions}
+        onToggleNoteProtection={handleToggleNoteProtection}
+        onToggleNotePinned={handleToggleNotePinned}
         onDeleteNote={handleDeleteNote}
         onBack={() => { setIsNotesOpen(false); setNotesUnlocked(false); }}
         reduceMotion={prefersReducedMotion}
@@ -5403,7 +5407,7 @@ function ScheduleApp() {
         onToggleSubtask={handleToggleSubtask}
         onSaveNote={handleSaveNote}
         onUnlockNotes={requestNotesUnlock}
-        onNotePrivacyOptions={showNotePrivacyOptions}
+        onToggleNoteProtection={handleToggleNoteProtection}
         onDeleteNote={handleDeleteNote}
         onToggleCompletion={(taskId) => handleToggleTaskDayCompletion(taskId, selectedDateKey)}
         reduceMotion={prefersReducedMotion}

@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { format, isToday, isYesterday } from 'date-fns';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FALLBACK_EMOJI } from '../constants/app';
 import { getDateLocale, translations } from '../constants/i18n';
 import { buildNotesFeed } from '../domain/notesFeed';
 import { styles } from '../styles/appStyles';
@@ -109,15 +110,26 @@ function TaskNoteAvatar({ note, size = 22 }) {
         />
       ) : (
         <Text style={[styles.noteTaskAvatarEmoji, { fontSize: Math.max(11, size * 0.55) }]}>
-          {note?.taskEmoji || '✓'}
+          {note?.taskEmoji || FALLBACK_EMOJI}
         </Text>
       )}
     </View>
   );
 }
 
-function NoteCard({ note, title, onPress, onSourcePress, onPrivacyOptions, labels, reduceMotion }) {
+function NoteCard({
+  note,
+  title,
+  onPress,
+  onSourcePress,
+  onTogglePinned,
+  onToggleProtection,
+  labels,
+  reduceMotion,
+}) {
   const isTaskNote = note.source === 'task';
+  const [showActions, setShowActions] = useState(false);
+  const longPressRef = useRef(false);
   const entrance = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
 
   useEffect(() => {
@@ -139,6 +151,27 @@ function NoteCard({ note, title, onPress, onSourcePress, onPrivacyOptions, label
   const cardColors = note.cardColor
     ? { backgroundColor: lightenColor(note.cardColor, 0.75), borderColor: note.cardColor }
     : null;
+  const sourceColors = note.taskColor
+    ? {
+        backgroundColor: lightenColor(note.taskColor, 0.84),
+        borderColor: lightenColor(note.taskColor, 0.48),
+      }
+    : null;
+  const handleCardPress = () => {
+    if (longPressRef.current) {
+      longPressRef.current = false;
+      return;
+    }
+    if (showActions) {
+      setShowActions(false);
+      return;
+    }
+    onPress?.();
+  };
+  const handleLongPress = () => {
+    longPressRef.current = true;
+    setShowActions((current) => !current);
+  };
   return (
     <Animated.View
       style={{
@@ -155,21 +188,32 @@ function NoteCard({ note, title, onPress, onSourcePress, onPrivacyOptions, label
           cardColors,
           pressed && styles.noteGridCardPressed,
         ]}
-        onPress={onPress}
+        onPress={handleCardPress}
+        onLongPress={handleLongPress}
+        delayLongPress={360}
         accessibilityRole="button"
         accessibilityLabel={`${title}: ${note.text}`}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10 }}>
-          <Pressable style={{ flex: 1, borderRadius: 10, backgroundColor: '#f1efff', padding: 6 }} accessibilityRole="button" accessibilityLabel={labels.chooseSource} onPress={(event) => { event.stopPropagation(); onSourcePress(); }}>
-          <Text style={[styles.noteGridCardText, { fontSize: 11, color: '#35268f' }]} numberOfLines={1}>
-            {isTaskNote ? note.taskTitle || labels.unknownTask : labels.generalNote}
-          </Text>
+        <View style={styles.noteCardSourceRow}>
+          <Pressable
+            style={[styles.noteCardSourceTag, sourceColors]}
+            accessibilityRole="button"
+            accessibilityLabel={labels.chooseSource}
+            onPress={(event) => { event.stopPropagation(); onSourcePress(); }}
+          >
+            {isTaskNote ? (
+              <TaskNoteAvatar note={note} size={19} />
+            ) : (
+              <View style={styles.noteCardSourceIcon}>
+                <Ionicons name="document-text-outline" size={11} color="#4938b8" />
+              </View>
+            )}
+            <Text style={styles.noteCardSourceText} numberOfLines={1}>
+              {isTaskNote ? note.taskTitle || labels.unknownTask : labels.generalNote}
+            </Text>
+            <Ionicons name="chevron-forward" size={11} color="#6c61a5" />
           </Pressable>
           {(note.noteProtected || note.taskNotesProtected) && <Ionicons name="lock-closed-outline" size={12} color="#646b76" />}
-          <Pressable onPress={(event) => { event.stopPropagation(); onPrivacyOptions?.(note); }}
-            hitSlop={8} accessibilityRole="button" accessibilityLabel={labels.privacyOptions}>
-            <Ionicons name="ellipsis-horizontal" size={18} color="#646b76" />
-          </Pressable>
         </View>
         <View style={styles.noteGridCardHeader}>
           {isTaskNote ? (
@@ -196,6 +240,43 @@ function NoteCard({ note, title, onPress, onSourcePress, onPrivacyOptions, label
           </View>
         ) : <NoteImages images={note.images} />}
       </Pressable>
+      {showActions ? (
+        <View style={styles.noteCardActions}>
+          <Pressable
+            style={styles.noteCardAction}
+            onPress={() => {
+              setShowActions(false);
+              onToggleProtection?.(note, 'note', !note.noteProtected);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={note.noteProtected ? labels.unprotectNote : labels.protectNote}
+          >
+            <Ionicons
+              name={note.noteProtected ? 'lock-open-outline' : 'lock-closed-outline'}
+              size={17}
+              color="#4938b8"
+            />
+            <Text style={styles.noteCardActionText} numberOfLines={1}>
+              {note.noteProtected ? labels.unprotectShort : labels.protectShort}
+            </Text>
+          </Pressable>
+          <View style={styles.noteCardActionDivider} />
+          <Pressable
+            style={styles.noteCardAction}
+            onPress={() => {
+              setShowActions(false);
+              onTogglePinned?.(note);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={note.pinned ? labels.unpin : labels.pin}
+          >
+            <Ionicons name={note.pinned ? 'pin' : 'pin-outline'} size={17} color="#4938b8" />
+            <Text style={styles.noteCardActionText} numberOfLines={1}>
+              {note.pinned ? labels.unpinShort : labels.pinShort}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
     </Animated.View>
   );
 }
@@ -208,7 +289,8 @@ export default function NotesScreen({
   todayKey,
   onSaveNote,
   onUnlockNotes,
-  onNotePrivacyOptions,
+  onToggleNoteProtection,
+  onToggleNotePinned,
   onDeleteNote,
   onBack,
   reduceMotion = false,
@@ -339,7 +421,8 @@ export default function NotesScreen({
                                 title={title}
                                 onPress={() => openExistingEditor(note)}
                                 onSourcePress={() => openExistingEditor(note, true)}
-                                onPrivacyOptions={onNotePrivacyOptions}
+                                onToggleProtection={onToggleNoteProtection}
+                                onTogglePinned={onToggleNotePinned}
                                 labels={t}
                                 reduceMotion={reduceMotion}
                               />
@@ -378,7 +461,7 @@ export default function NotesScreen({
             language={language}
             reduceMotion={reduceMotion}
             onClose={() => setEditorTarget(null)}
-            onPrivacyOptions={onNotePrivacyOptions}
+            onToggleProtection={onToggleNoteProtection}
             onSave={(content) => onSaveNote?.(content, editorTarget.dateKey ?? todayKey)}
             onDelete={onDeleteNote}
           />
