@@ -10,6 +10,7 @@ import { lightenColor } from '../utils/colorUtils';
 import { getStreakPalette } from '../utils/streakColor';
 import { triggerSelection } from '../utils/feedbackUtils';
 import { styles } from '../styles/appStyles';
+import StreakFlame from './StreakFlame';
 
 // Card da lista "Suas tarefas": sem gestos escondidos — toque abre o detalhe,
 // long-press entra no modo de seleção (checkbox só aparece nesse modo).
@@ -132,7 +133,7 @@ function ProfileTaskRow({
             String(streak)
           )}
         >
-          <Ionicons name="flame" size={13} color={streakPalette.deep} />
+          <StreakFlame streak={streak} size={15} />
           <Text style={[styles.profileTaskStreakText, { color: streakPalette.deep }]}>
             {streak}
           </Text>

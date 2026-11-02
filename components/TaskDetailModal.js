@@ -28,6 +28,7 @@ import { getTaskDefinitionChangeLabel } from '../domain/taskDefinition';
 import { styles } from '../styles/appStyles';
 import FinishedMilestoneBadge from './FinishedMilestoneBadge';
 import PolaroidFrame from './PolaroidFrame';
+import StreakFlame from './StreakFlame';
 import TaskPhotoSheet from './TaskPhotoSheet';
 
 export default function TaskDetailModal({
@@ -208,7 +209,7 @@ export default function TaskDetailModal({
                 </Text>
                 {streak > 0 ? (
                   <View style={styles.detailStreakRow}>
-                    <Ionicons name="flame" size={14} color={streakPalette.accent} />
+                    <StreakFlame streak={streak} size={16} />
                     <Text style={[styles.detailStreakText, { color: streakPalette.accent }]}>
                       {`${t.taskModal.streak}: ${streak} ${streak === 1 ? t.profile.day : t.profile.days}`}
                     </Text>

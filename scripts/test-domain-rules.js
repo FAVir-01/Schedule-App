@@ -2382,6 +2382,31 @@ test('sequencia so existe para o que se repete', () => {
   assert.equal(stats.currentStreak, 0);
 });
 
+test('chama da sequencia sobe de nivel nos marcos e so acrescenta partes', () => {
+  const { getStreakFlameLevel, getStreakFlameShape, getStreakFlameColors } = require('../utils/streakFlame');
+  const { getStreakPalette } = require('../utils/streakColor');
+  assert.deepEqual(
+    [0, 1, 6, 7, 13, 14, 29, 30, 59, 60, 99, 100, 400].map(getStreakFlameLevel),
+    [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6]
+  );
+  let previous = null;
+  for (let level = 1; level <= 6; level += 1) {
+    const shape = getStreakFlameShape(level);
+    assert.match(shape.outer, /^M[\d.,]+C.*Z$/);
+    if (previous) {
+      assert.ok(shape.tongues.length >= previous.tongues.length);
+      assert.ok(shape.embers.length >= previous.embers.length);
+      assert.ok(Boolean(shape.inner) || !previous.inner);
+    }
+    previous = shape;
+  }
+  // A cor e a do anel no mesmo dia; so o ultimo nivel ganha o miolo gelo.
+  const darken = (hex) => hex;
+  const day20 = getStreakFlameColors(getStreakPalette(20), getStreakFlameLevel(20), darken);
+  assert.equal(day20.outer[0], getStreakPalette(20).ringStart);
+  assert.notEqual(getStreakFlameColors(getStreakPalette(100), 6, darken).core[2], getStreakPalette(100).flameCore);
+});
+
 test('stats do perfil contam o dia como o card: horarios do dia e retomada apos pausa', () => {
   const day = (n) => `2026-10-${String(n).padStart(2, '0')}`;
   const today = new Date(2026, 9, 20);

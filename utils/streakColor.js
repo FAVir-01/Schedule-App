@@ -25,6 +25,7 @@ const EMBER = {
   accent: '#F2732E', // chama e texto da tela de detalhe
   deep: '#B63D00', // chama e contador do perfil
   badge: '#FFF4E6', // fundo do selo no perfil
+  flameCore: '#FFF1C2', // miolo da chama, o ponto mais claro
 };
 
 const VIOLET = {
@@ -35,6 +36,7 @@ const VIOLET = {
   accent: '#3C2BA7',
   deep: '#2E1B85',
   badge: '#ECE8FB',
+  flameCore: '#F1ECFF',
 };
 
 const KEYS = Object.keys(EMBER);

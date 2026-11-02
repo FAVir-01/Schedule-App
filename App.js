@@ -135,6 +135,7 @@ import {
   willProgressReachCompletion,
 } from './utils/celebrationUtils';
 import { calculateProfileStats } from './utils/profileStatsUtils';
+import StreakFlame from './components/StreakFlame';
 import { measureSynchronous } from './utils/performanceUtils';
 import { buildTaskReminderContent } from './utils/notificationUtils';
 import { AnimatedPressable } from './components/animatedComponents';
@@ -4832,7 +4833,7 @@ function ScheduleApp() {
                     <View style={styles.profileStatCard}>
                       <View style={styles.profileStatHeaderRow}>
                         <Text style={styles.profileStatLabel}>{t.profile.currentStreak}</Text>
-                        <Ionicons name="flame" size={14} color="#f59e0b" />
+                        <StreakFlame streak={profileStats.currentStreak} size={16} animated={profileStats.currentStreak > 0} />
                       </View>
                       <View style={styles.profileStatValueRow}>
                         <Text style={styles.profileStatValue}>{profileStats.currentStreak}</Text>
