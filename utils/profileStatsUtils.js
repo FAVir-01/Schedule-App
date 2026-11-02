@@ -1,11 +1,15 @@
 import { differenceInCalendarDays } from 'date-fns';
-import { createTaskScheduleMatcher } from '../domain/taskSchedule';
+import {
+  createTaskScheduleMatcher,
+  getTaskOccurrencesForDate,
+  isTaskDayCompleted,
+} from '../domain/taskSchedule';
 import {
   getDateKey,
   normalizeDateValue,
 } from './dateUtils';
+import { getOccurrenceKey } from './taskTimeUtils';
 import {
-  getTaskCompletionStatus,
   getTaskStreakState,
   shouldCountTaskTowardsCompletion,
   shouldCountTaskTowardsStreak,
@@ -114,10 +118,18 @@ export const calculateProfileStats = ({
     // Um dia congelado pela tarefa não derruba a sequência do perfil.
     frozenDays: getTaskStreakState(task, normalizedToday).frozenDays,
   }));
+  // Com um hábito filtrado a sequência é a do card dele: a retomada depois de
+  // uma pausa longa começa outra tentativa. No Geral a pausa não pesa, porque
+  // os dias parados nem estão agendados.
+  const resetDate = selectedTask ? normalizeDateValue(selectedTask.streakResetAt) : null;
+  const resetKey = resetDate ? getDateKey(resetDate) : null;
   let currentStreak = 0;
   let bestStreak = 0;
 
   dates.forEach((date) => {
+    if (resetKey && getDateKey(date) === resetKey) {
+      currentStreak = 0;
+    }
     let hasScheduledTask = false;
     let isComplete = true;
     // Dia salvo por gelo: não soma nem quebra, como na própria tarefa.
@@ -128,7 +140,9 @@ export const calculateProfileStats = ({
         continue;
       }
       hasScheduledTask = true;
-      if (getTaskCompletionStatus(scheduledTask.task, date)) {
+      // O dia conta inteiro, como no card: a matéria das 07:20 e das 15:20
+      // grava uma conclusão por horário, e só as duas fecham o dia.
+      if (isTaskDayCompleted(scheduledTask.task, date)) {
         continue;
       }
       if (scheduledTask.frozenDays.has(getDateKey(date))) {
@@ -186,10 +200,13 @@ export const buildDailyCompletionSeries = ({
       if (!matchesDate(date)) {
         return;
       }
-      totalByDate[index] += 1;
-      if (getTaskCompletionStatus(task, dateKeys[index])) {
-        completedByDate[index] += 1;
-      }
+      // Por ocorrência, como no resto do app: duas aulas na segunda somam duas.
+      getTaskOccurrencesForDate(task, date).forEach((occurrence) => {
+        totalByDate[index] += 1;
+        if (task.completedDates?.[getOccurrenceKey(dateKeys[index], occurrence.id)]) {
+          completedByDate[index] += 1;
+        }
+      });
     });
   });
 

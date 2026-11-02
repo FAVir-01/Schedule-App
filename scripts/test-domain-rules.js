@@ -2382,6 +2382,47 @@ test('sequencia so existe para o que se repete', () => {
   assert.equal(stats.currentStreak, 0);
 });
 
+test('stats do perfil contam o dia como o card: horarios do dia e retomada apos pausa', () => {
+  const day = (n) => `2026-10-${String(n).padStart(2, '0')}`;
+  const today = new Date(2026, 9, 20);
+  const done = (from, to, suffixes = ['']) => {
+    const out = {};
+    for (let n = from; n <= to; n += 1) suffixes.forEach((suffix) => { out[day(n) + suffix] = true; });
+    return out;
+  };
+  const allDays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  const group = (id, hour, meridiem) => ({
+    id, days: allDays, specified: true, mode: 'period',
+    period: { start: { hour, minute: 20, meridiem }, end: { hour: hour + 1, minute: 0, meridiem } },
+  });
+  const aula = withScheduleMirror({
+    id: 'aula', type: 'default', dateKey: day(1),
+    repeat: { enabled: true, frequency: 'weekly', interval: 1, weekdays: allDays },
+    time: { specified: true, mode: 'period', groups: [group('g1', 7, 'AM'), group('g2', 3, 'PM')] },
+    // O dia 19 só teve a aula da manhã: não fecha o dia, e o gelo o cobre.
+    completedDates: { ...done(1, 18, ['#g1', '#g2']), [`${day(19)}#g1`]: true },
+  });
+  assert.equal(getTaskStreak(aula, today), 18);
+  const aulaStats = calculateProfileStats({ tasks: [aula], history: [], selectedTask: aula, today });
+  assert.equal(aulaStats.currentStreak, 18);
+  assert.equal(aulaStats.bestStreak, 18);
+  assert.equal(calculateProfileStats({ tasks: [aula], history: [], today }).bestStreak, 18);
+  const serie = buildDailyCompletionSeries({ tasks: [aula], endDate: new Date(2026, 9, 19), days: 2 });
+  assert.deepEqual(serie.entries, [{ completed: 2, total: 2 }, { completed: 1, total: 2 }]);
+
+  // Retomada depois de pausa longa: o filtro mostra a tentativa atual, como o
+  // card; a melhor continua sendo a de antes.
+  const retomada = withScheduleMirror({
+    id: 'retomada', type: 'default', dateKey: day(1),
+    repeat: { enabled: true, frequency: 'daily', interval: 1 },
+    streakResetAt: day(15), completedDates: done(1, 19),
+  });
+  const retomadaStats = calculateProfileStats({ tasks: [retomada], history: [], selectedTask: retomada, today });
+  assert.equal(getTaskStreak(retomada, today), 5);
+  assert.equal(retomadaStats.currentStreak, 5);
+  assert.equal(retomadaStats.bestStreak, 14);
+});
+
 test('gelo: 7 dias seguidos rendem um, ate tres guardados, e um dia perdido gasta um', () => {
   const daily = (completedDates) => withScheduleMirror({
     id: 'g', type: 'default', dateKey: '2026-08-01',
