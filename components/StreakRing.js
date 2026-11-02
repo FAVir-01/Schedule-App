@@ -31,9 +31,8 @@ import {
   STREAK_RING_BOX,
 } from '../utils/streakAnimation';
 
-export { STREAK_RING_BOX, STREAK_RING_MIN, STREAK_BLAZE_MIN, STREAK_CROSS_MIN } from '../utils/streakAnimation';
+export { STREAK_RING_BOX, STREAK_RING_MIN } from '../utils/streakAnimation';
 
-const BLAZE_SVG = 66;
 const NUM_SIDE = 12;
 const NUM_OUTLINE = 2;
 const NUM_BASELINE = 11.5;
@@ -48,7 +47,6 @@ export default function StreakRing({
   from,
   to,
   size = STREAK_RING_BOX,
-  contour = false,
   children,
 }) {
   const id = useId().replace(/[^a-zA-Z0-9_-]/g, '');
@@ -95,11 +93,6 @@ export default function StreakRing({
   const at = (track) => interpolateTrack(track, time, STREAK_EASINGS);
   const half = size / 2;
   const numWidth = size + NUM_SIDE * 2;
-  const blazeStyle = {
-    position: 'absolute',
-    left: (size - BLAZE_SVG) / 2,
-    top: (size - BLAZE_SVG) / 2,
-  };
   const number = timeline.number;
   const numStyle = {
     opacity: at(number.opacity),
@@ -127,40 +120,9 @@ export default function StreakRing({
       </SvgText>
     </G>
   ));
-  const blaze = timeline.blaze.map((ring) => ({
-    ...ring,
-    opacity: at(ring.opacity),
-    dashOffset: at(ring.dashOffset),
-    rotation: at(ring.rotation),
-  }));
 
   return (
     <View style={box}>
-      {/* As tres camadas existem sempre: disparar/trocar a fase nao remonta
-          a imagem nem interrompe o brilho que esta tocando sobre ela. */}
-      <View style={StyleSheet.absoluteFill} pointerEvents="none" accessible={false}>
-        {mode === 'blaze' ? (
-          <Svg width={BLAZE_SVG} height={BLAZE_SVG} viewBox="-33 -33 66 66" style={blazeStyle}>
-            {blaze.map((ring) => (
-              <G key={ring.key} rotation={ring.rotation}>
-                <Circle
-                  cx={0}
-                  cy={0}
-                  r={ring.radius}
-                  fill="none"
-                  stroke={palette[ring.key]}
-                  strokeOpacity={ring.opacity}
-                  strokeWidth={ring.width}
-                  strokeLinecap="round"
-                  strokeDasharray={[ring.circumference, ring.circumference]}
-                  strokeDashoffset={ring.dashOffset}
-                />
-              </G>
-            ))}
-          </Svg>
-        ) : null}
-      </View>
-
       <View style={styles.icon}>{children}</View>
 
       <View
@@ -198,11 +160,6 @@ export default function StreakRing({
                 />
               ))}
             </G>
-          </Svg>
-        ) : null}
-        {mode === 'blaze' && contour ? (
-          <Svg width={BLAZE_SVG} height={BLAZE_SVG} viewBox="-33 -33 66 66" style={blazeStyle}>
-            <Circle cx={0} cy={0} r={23} fill="none" stroke="#FFFFFF" strokeWidth={2} opacity={blaze[0].opacity} />
           </Svg>
         ) : null}
         <View style={[styles.numOuter, numStyle]}>

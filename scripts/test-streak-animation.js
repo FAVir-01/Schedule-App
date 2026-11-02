@@ -93,6 +93,7 @@ for (const name of ['Circle', 'ClipPath', 'Defs', 'G', 'LinearGradient', 'Rect',
 const StreakRing = require('../components/StreakRing').default;
 const { STREAK_EASINGS } = require('../components/StreakRing');
 const { createStreakClock, interpolateTrack, STREAK_MAX_FRAME_STEP } = require('../utils/streakAnimation');
+const { getStreakPalette } = require('../utils/streakColor');
 
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-6, `${actual} != ${expected}`);
 const all = (node, predicate) => {
@@ -155,14 +156,14 @@ console.log('Relogio OK: pausa no engasgo, cancela e termina no fim.');
 
 for (const to of [1, 3, 7, 34, 1000]) {
   newHarness();
-  const props = { play: 1, from: to - 1, to, contour: true, children: icon };
+  const props = { play: 1, from: to - 1, to, children: icon };
   const idle = render({ ...props, play: null });
   assert.equal(all(idle, (node) => node.type === 'Svg').length, 0);
   let tree = render(props);
   assert.equal(frames.size, 1); // o relógio está rodando
   assert.equal(listeners.size, 1);
-  assert.equal(tree.props.children[1].type, idle.props.children.type);
-  assert.equal(tree.props.children[1].props.children, icon);
+  assert.equal(tree.props.children[0].type, idle.props.children.type);
+  assert.equal(tree.props.children[0].props.children, icon);
 
   // Sem Animated em lugar nenhum: todo valor entregue ao SVG é concreto.
   const seek = (ms) => {
@@ -211,44 +212,18 @@ for (const to of [1, 3, 7, 34, 1000]) {
     if (ms >= 1620) assert.deepEqual(rows.map((row) => row.props.fillOpacity), [0, 1]);
   }
 
-  const ringsAt = (ms) => all(seek(ms), (node) => node.type === 'G' && typeof node.props.rotation === 'number' && node.props.rotation !== -90)
-    .concat(all(tree, (node) => node.type === 'G' && node.props.rotation === -90 && to >= 7));
-  const blazeRings = (ms) => all(seek(ms), (node) => node.type === 'Svg' && node.props.viewBox === '-33 -33 66 66')[0]?.props.children ?? [];
-  assert.equal(blazeRings(0).length, to >= 7 ? 3 : 0);
-  if (to >= 7) {
-    blazeRings(0).forEach((node, index) => {
-      const delay = index * 100;
-      const circleAt = (ms) => blazeRings(ms)[index].props.children.props;
-      const groupAt = (ms) => blazeRings(ms)[index].props;
-      close(circleAt(delay + 240).strokeOpacity, 1);
-      close(circleAt(delay + 2064).strokeOpacity, 1);
-      const peak = circleAt(delay + 1008);
-      close(groupAt(delay + 1008).rotation, to >= 34 && index === 1 ? -370 : 190);
-      close(peak.strokeDashoffset / peak.strokeDasharray[0], -0.26);
-      close(circleAt(delay + 2400).strokeOpacity, 0);
-      const direction = to >= 34 && index === 1 ? -1 : 1;
-      let previousAngle = -90;
-      for (let ms = 0; ms <= 2600; ms += 16) {
-        const angle = groupAt(ms).rotation;
-        assert.ok((angle - previousAngle) * direction >= -1e-6);
-        const circle = circleAt(ms);
-        const offset = circle.strokeDashoffset / circle.strokeDasharray[0];
-        assert.ok(offset >= -0.996 - 1e-6 && offset <= -0.26 + 1e-6);
-        previousAngle = angle;
-      }
-    });
-    const contourAt = (ms) => all(seek(ms), (node) => node.type === 'Circle' && node.props.r === 23)[0];
-    close(contourAt(240).props.opacity, 1);
-    close(contourAt(2400).props.opacity, 0);
-  }
-  if (to >= 3 && to < 7) {
+  if (to >= 3) {
     const ringCircles = (ms) => all(seek(ms), (node) => node.type === 'Circle' && node.props.r === 21.8);
     assert.equal(ringCircles(0).length, 2);
     close(ringCircles(870)[1].props.strokeDashoffset, 0);
     close(ringCircles(232)[1].props.strokeOpacity, 1);
     close(ringCircles(2900)[1].props.strokeOpacity, 0);
   }
-  void ringsAt;
+  // Cor progride com a sequencia: o gradiente do anel le a paleta do dia.
+  if (to >= 3) {
+    const stops = all(seek(0), (node) => node.type === 'Stop');
+    assert.equal(stops[1].props.stopColor, getStreakPalette(to).ringStart);
+  }
 
   // O relógio de verdade alimenta o mesmo estado.
   timeHook().set(0);
@@ -263,7 +238,7 @@ for (const to of [1, 3, 7, 34, 1000]) {
   assert.notEqual([...frames.keys()][0], frameBeforeRender);
   assert.equal(timeHook().value, 0);
   listeners.forEach((fn) => fn('background'));
-  assert.equal(timeHook().value, to >= 3 && to < 7 ? 2900 : 2600);
+  assert.equal(timeHook().value, to >= 3 ? 2900 : 2600);
   assert.equal(frames.size, 0);
   render({ ...props, play: null });
   assert.equal(listeners.size, 0);
