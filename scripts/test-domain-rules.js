@@ -2383,7 +2383,9 @@ test('sequencia so existe para o que se repete', () => {
 });
 
 test('chama da sequencia sobe de nivel nos marcos e so acrescenta partes', () => {
-  const { getStreakFlameLevel, getStreakFlameShape, getStreakFlameColors } = require('../utils/streakFlame');
+  const {
+    getStreakFlameColors, getStreakFlameLevel, getStreakFlameShape, STREAK_FLAME_OUTLINE,
+  } = require('../utils/streakFlame');
   const { getStreakPalette } = require('../utils/streakColor');
   assert.deepEqual(
     [0, 1, 6, 7, 13, 14, 29, 30, 59, 60, 99, 100, 400].map(getStreakFlameLevel),
@@ -2393,11 +2395,14 @@ test('chama da sequencia sobe de nivel nos marcos e so acrescenta partes', () =>
   for (let level = 1; level <= 6; level += 1) {
     const shape = getStreakFlameShape(level);
     assert.match(shape.outer, /^M[\d.,]+C.*Z$/);
+    // Cada nivel so acrescenta camadas; nenhuma parte some ao subir.
     if (previous) {
-      assert.ok(shape.tongues.length >= previous.tongues.length);
-      assert.ok(shape.embers.length >= previous.embers.length);
-      assert.ok(Boolean(shape.inner) || !previous.inner);
+      ['mid', 'inner', 'glow'].forEach((key) => assert.ok(Boolean(shape[key]) || !previous[key]));
     }
+    // Nada passa do quadro de 24, nem com o contorno: era o corte embaixo.
+    const ys = shape.outer.match(/-?[\d.]+/g).filter((_, index) => index % 2 === 1).map(Number);
+    assert.ok(Math.max(...ys) + STREAK_FLAME_OUTLINE / 2 <= 22.5);
+    assert.ok(Math.min(...ys) - STREAK_FLAME_OUTLINE / 2 >= 1);
     previous = shape;
   }
   // A cor e a do anel no mesmo dia; so o ultimo nivel ganha o miolo gelo.

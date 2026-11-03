@@ -4,13 +4,14 @@
 // e o desenho e o movimento.
 //
 // POR QUE TRES SVG EMPILHADOS
-//   O Animated no SVG do Fabric deixa "fantasma" (ver StreakRing). Cada camada
-//   que se mexe sozinha mora no proprio SVG, dentro de uma Animated.View; a
-//   View o native driver anima sem passar pelo JS, e o desenho nunca muda.
+//   O Animated no SVG do Fabric deixa "fantasma" (ver StreakRing). Cada grupo
+//   de camadas que se mexe sozinho mora no proprio SVG, dentro de uma
+//   Animated.View; a View o native driver anima sem passar pelo JS, e o
+//   desenho nunca muda.
 
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, StyleSheet, View } from 'react-native';
-import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
+import Svg, { Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 import { darkenColor } from '../utils/colorUtils';
 import { getStreakPalette } from '../utils/streakColor';
 import {
@@ -19,9 +20,10 @@ import {
   getStreakFlameShape,
   STREAK_FLAME_BOX,
   STREAK_FLAME_MOTION as MOTION,
+  STREAK_FLAME_ORIGIN,
+  STREAK_FLAME_OUTLINE,
 } from '../utils/streakFlame';
 
-const ORIGIN = '50% 92%';
 const wave = Easing.inOut(Easing.sin);
 
 // Vai e volta pelo periodo inteiro; o native driver repete sem o JS.
@@ -60,6 +62,11 @@ const useReduceMotion = () => {
   return reduce;
 };
 
+const scaleBetween = (value, [fromX, fromY], [toX, toY]) => [
+  { scaleX: value.interpolate({ inputRange: [0, 1], outputRange: [fromX, toX] }) },
+  { scaleY: value.interpolate({ inputRange: [0, 1], outputRange: [fromY, toY] }) },
+];
+
 export default function StreakFlame({ streak, size = 14, animated = true, style }) {
   const id = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   // Quem passa a chama ja tem sequencia; sem ela, o primeiro nivel.
@@ -77,20 +84,28 @@ export default function StreakFlame({ streak, size = 14, animated = true, style 
   const lick = useLoop(MOTION.lick.period, active);
   const pulse = useLoop(MOTION.pulse.period, active);
 
-  const box = { width: size, height: size };
-  const layer = [StyleSheet.absoluteFill, { transformOrigin: ORIGIN }];
-  const svgProps = { width: size, height: size, viewBox: `0 0 ${STREAK_FLAME_BOX} ${STREAK_FLAME_BOX}` };
-  const gradient = (key, [top, mid, bottom]) => (
-    <LinearGradient id={`${id}${key}`} x1="0" y1="0" x2="0" y2="1">
-      <Stop offset="0" stopColor={top} />
-      <Stop offset="0.5" stopColor={mid} />
-      <Stop offset="1" stopColor={bottom} />
-    </LinearGradient>
-  );
+  const layer = [StyleSheet.absoluteFill, { transformOrigin: STREAK_FLAME_ORIGIN }];
+  const svgProps = {
+    width: size,
+    height: size,
+    viewBox: `0 0 ${STREAK_FLAME_BOX} ${STREAK_FLAME_BOX}`,
+    style: StyleSheet.absoluteFill,
+  };
+  const gradient = (key) => {
+    const stops = colors[key];
+    return (
+      <LinearGradient key={key} id={`${id}${key}`} x1="0" y1="0" x2="0" y2="1">
+        {stops.map((color, index) => (
+          <Stop key={index} offset={index / (stops.length - 1)} stopColor={color} />
+        ))}
+      </LinearGradient>
+    );
+  };
+  const fill = (key) => `url(#${id}${key})`;
 
   return (
     <View
-      style={[box, style]}
+      style={[{ width: size, height: size }, style]}
       pointerEvents="none"
       accessible={false}
       importantForAccessibility="no-hide-descendants"
@@ -98,63 +113,53 @@ export default function StreakFlame({ streak, size = 14, animated = true, style 
       <Animated.View
         style={[layer, {
           transform: [
-            { scaleX: breathe.interpolate({ inputRange: [0, 1], outputRange: [1, MOTION.breathe.scaleX] }) },
-            { scaleY: breathe.interpolate({ inputRange: [0, 1], outputRange: [1, MOTION.breathe.scaleY] }) },
+            ...scaleBetween(breathe, [1, 1], [MOTION.breathe.scaleX, MOTION.breathe.scaleY]),
+            {
+              rotate: sway.interpolate({
+                inputRange: [0, 1],
+                outputRange: MOTION.sway.rotate.map((deg) => `${deg}deg`),
+              }),
+            },
           ],
         }]}
       >
-        <Animated.View
-          style={[layer, {
-            transform: [{
-              skewX: sway.interpolate({
-                inputRange: [0, 0.5, 1],
-                outputRange: [`${MOTION.sway.skew[0]}deg`, '0deg', `${MOTION.sway.skew[1]}deg`],
-              }),
-            }],
-          }]}
-        >
-          <Svg {...svgProps} style={StyleSheet.absoluteFill}>
-            <Defs>
-              {gradient('outer', colors.outer)}
-            </Defs>
-            {shape.tongues.map((d, index) => (
-              <Path key={index} d={d} fill={`url(#${id}outer)`} stroke={colors.outline} strokeWidth={0.7} strokeLinejoin="round" />
-            ))}
-            <Path d={shape.outer} fill={`url(#${id}outer)`} stroke={colors.outline} strokeWidth={0.7} strokeLinejoin="round" />
-            {shape.embers.map((ember, index) => (
-              <Circle key={index} cx={ember.cx} cy={ember.cy} r={ember.r} fill={colors.ember} />
-            ))}
-          </Svg>
+        <Svg {...svgProps}>
+          <Defs>{gradient('outer')}</Defs>
+          {shape.glow ? <Path d={shape.glow} fill={colors.glow} fillOpacity={0.28} /> : null}
+          {/* Contorno por baixo do preenchimento, como o paint-order da
+              referencia: so a metade de fora aparece. */}
+          <Path
+            d={shape.outer}
+            fill="none"
+            stroke={colors.outline}
+            strokeWidth={STREAK_FLAME_OUTLINE}
+            strokeLinejoin="round"
+          />
+          <Path d={shape.outer} fill={fill('outer')} />
+        </Svg>
 
-          {shape.inner ? (
-            <Animated.View
-              style={[layer, {
-                transform: [
-                  { scaleX: lick.interpolate({ inputRange: [0, 1], outputRange: [1, MOTION.lick.scaleX] }) },
-                  { scaleY: lick.interpolate({ inputRange: [0, 1], outputRange: [1, MOTION.lick.scaleY] }) },
-                ],
-              }]}
-            >
-              <Svg {...svgProps} style={StyleSheet.absoluteFill}>
-                <Defs>{gradient('inner', colors.inner)}</Defs>
-                <Path d={shape.inner} fill={`url(#${id}inner)`} />
-              </Svg>
-            </Animated.View>
-          ) : null}
-
+        {shape.mid || shape.inner ? (
           <Animated.View
-            style={[layer, {
-              transform: [
-                { scaleX: pulse.interpolate({ inputRange: [0, 1], outputRange: [MOTION.pulse.from[0], MOTION.pulse.to[0]] }) },
-                { scaleY: pulse.interpolate({ inputRange: [0, 1], outputRange: [MOTION.pulse.from[1], MOTION.pulse.to[1]] }) },
-              ],
-            }]}
+            style={[layer, { transform: scaleBetween(lick, [1, 1], [MOTION.lick.scaleX, MOTION.lick.scaleY]) }]}
           >
-            <Svg {...svgProps} style={StyleSheet.absoluteFill}>
-              <Defs>{gradient('core', colors.core)}</Defs>
-              <Path d={shape.core} fill={`url(#${id}core)`} />
+            <Svg {...svgProps}>
+              <Defs>
+                {shape.mid ? gradient('mid') : null}
+                {shape.inner ? gradient('inner') : null}
+              </Defs>
+              {shape.mid ? <Path d={shape.mid} fill={fill('mid')} /> : null}
+              {shape.inner ? <Path d={shape.inner} fill={fill('inner')} /> : null}
             </Svg>
           </Animated.View>
+        ) : null}
+
+        <Animated.View
+          style={[layer, { transform: scaleBetween(pulse, MOTION.pulse.from, MOTION.pulse.to) }]}
+        >
+          <Svg {...svgProps}>
+            <Defs>{gradient('core')}</Defs>
+            <Path d={shape.core} fill={fill('core')} />
+          </Svg>
         </Animated.View>
       </Animated.View>
     </View>
